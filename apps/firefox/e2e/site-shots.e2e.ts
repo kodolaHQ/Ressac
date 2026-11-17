@@ -71,7 +71,6 @@ describe.skipIf(!lang)("site shots", () => {
     await dispatch(m, { type: "chooseEngine", engine: "duckduckgo" });
     const s0 = await state(m);
     const windowId = s0.windows[0]!.id;
-    await dispatch(m, { type: "homeAgentPanel", windowId, open: false });
     const home = s0.spaces[0]!;
     const [first, ...others] = T.spaces;
     await dispatch(m, { type: "updateSpace", id: home.id, name: first![0]!, icon: first![1]!, private: false, profile: home.profile, aura: "aube" });

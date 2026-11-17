@@ -77,7 +77,7 @@ interface Entry {
   engine?: string;
   /** The engine changed since this session started: the panel offers to relaunch it. */
   engineChanged?: boolean;
-  /** The user sent something (Enter, or a text put in for them): the conversation is someone's, never cut on its own. */
+  /** A message was sent (the user's Enter, or a text submitted for them): the conversation is someone's, never cut on its own. A draft is not. */
   touched?: boolean;
 }
 
@@ -237,10 +237,8 @@ export class SessionsAgent {
   prefill(f: WindowId, text: string, written?: () => void, submit = false): void {
     const p = { text: text, ...(written ? { written: written } : {}), ...(submit ? { submit: true } : {}) };
     let e = this.inputs.get(f);
-    if (e) e.touched = true;
     if (e?.session?.active) return this.writePrefill(f, e.session, p);
     e ??= this.entry(f, { cols: 80, rows: 24 });
-    e.touched = true;
     e.prefill = p;
   }
 
@@ -250,8 +248,10 @@ export class SessionsAgent {
     if (!p.submit) return;
     // Enter apart from the text: in the same write, the agent's TUI takes it as a pasted newline, not a send.
     setTimeout(() => {
-      if (this.inputs.get(f)?.session !== s || !s.active) return;
+      const e = this.inputs.get(f);
+      if (e?.session !== s || !s.active) return;
       s.write("\r");
+      e.touched = true;
       this.o.onSend?.(f);
     }, SUBMIT_DELAY_MS);
   }

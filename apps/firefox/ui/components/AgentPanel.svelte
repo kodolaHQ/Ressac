@@ -145,16 +145,27 @@
     const n = focusAgent.n;
     if (!visible) {
       served = n;
+      focusOwed = false;
       return;
     }
     if (n === served) return;
     served = n;
+    focusOwed = untrack(() => appState.state !== "active");
     if (notePending()) userAsked = true;
     // The first-time note keeps the keyboard until Compris.
     const aim = () => visible && !notePending() && terminalAgent.focus();
     void tick().then(aim);
     const relaunches = [100, 500].map((ms) => setTimeout(() => !terminalAgent.hasFocus() && aim(), ms));
     return () => relaunches.forEach(clearTimeout);
+  });
+  // A session still preparing masks its terminal, which cannot take the keyboard: it does once active (a first opening).
+  let focusOwed = false;
+  $effect(() => {
+    if (appState.state !== "active" || !visible) return;
+    untrack(() => {
+      if (focusOwed && !notePending()) void tick().then(() => visible && !terminalAgent.hasFocus() && terminalAgent.focus());
+      focusOwed = false;
+    });
   });
   // The note takes the keyboard; Compris gives it back: to the terminal if the user opened the panel (⌘J, ✦), else to
   // where it was (the empty page's field when the home page opened the panel). Captured before the note mounts.

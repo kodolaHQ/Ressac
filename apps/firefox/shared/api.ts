@@ -142,8 +142,6 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("openRecap"), windowId: id, id: z.string().regex(/^[0-9a-f-]{36}$/), title: z.string().max(120) }),
   /** Activates this window's « Actions » page, or opens it. */
   z.object({ type: z.literal("openActions"), windowId: id }),
-  /** Automatic opening and closing of the panel by the home page (not an action of the user). */
-  z.object({ type: z.literal("homeAgentPanel"), windowId: id, open: z.boolean() }),
   /** `custom`: the user's own address (https, `%s` for the words); `engine: "custom"` without it reuses the one kept. */
   z.object({ type: z.literal("chooseEngine"), engine: engine, custom: z.string().max(CUSTOM_ENGINE_MAX).refine((u) => !customEngineError(u)).optional() }),
   z.object({ type: z.literal("chooseAgentProfile"), profile: z.string().regex(/^[\w-]+$/).max(64) }),

@@ -3,57 +3,20 @@
   import { untrack } from "svelte";
   import AgentPanel from "./components/AgentPanel.svelte";
   import { focusAgent } from "./components/agent.svelte";
-  import { aiOn, api, appState, currentWindow } from "./state.svelte";
+  import { api, appState, currentWindow } from "./state.svelte";
   import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN } from "../shared/model";
 
   const win = window.parent.ressacWindow!;
   const winState = $derived(currentWindow());
   const agentPanelOpen = $derived(winState?.agentPanelOpen ?? false);
-  const activeTab = $derived.by(() => {
-    const id = winState?.active[winState.activeSpace];
-    return id ? appState.value?.tabs[id] : undefined;
-  });
   $effect(() => api.onShortcut((r) => r === "agent" && focusAgent.n++));
 
-  // The panel is open by default on the home page (the agent's session starts there), and closes
-  // when leaving it if it opened only for it. Closed by the user on the home page, it stays closed there until next launch.
-  let panelClosedOnHome = false;
-  /** Opening asked by the home page, not back in the state yet (null: none). */
-  let expected: boolean | null = null;
-  let openedByHome = false;
+  // The panel opens only on the user's request (✦, ⌘J, ⌘T, or left open at the last quit), never on its own: the
+  // window's session starts with it. Opening it gives the terminal the keyboard.
   let openedBefore = false;
   $effect(() => {
-    const isOpen = agentPanelOpen;
-    const f = winState;
-    if (!f) return;
-    const onHome = !activeTab;
-    if (isOpen !== openedBefore) {
-      // A change from elsewhere (⌘J, ✦ button): the panel now belongs to the user.
-      const ofUser = isOpen !== expected;
-      // Opened by the user: the terminal takes the keyboard. Opened again by the home page: it does not.
-      if (ofUser && isOpen) untrack(() => focusAgent.n++);
-      if (ofUser) openedByHome = false;
-      if (ofUser && onHome && !isOpen) panelClosedOnHome = true;
-      expected = null;
-    }
-    openedBefore = isOpen;
-    // A tab showed before the opening went through: it was refused (see panneauAgentAccueil).
-    if (!onHome && !isOpen) {
-      expected = null;
-      openedByHome = false;
-    }
-    // The action is idempotent: sending it again until the state reflects it toggles nothing.
-    const ask = (v: boolean) => {
-      expected = v;
-      api.dispatch({ type: "homeAgentPanel", windowId: f.id, open: v });
-    };
-    if (onHome && !isOpen && !panelClosedOnHome && aiOn()) {
-      openedByHome = true;
-      ask(true);
-    } else if (!onHome && isOpen && openedByHome) {
-      openedByHome = false;
-      ask(false);
-    }
+    if (agentPanelOpen && !openedBefore) untrack(() => focusAgent.n++);
+    openedBefore = agentPanelOpen;
   });
 
   /** Width of this iframe when the drag started. */

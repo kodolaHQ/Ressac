@@ -450,7 +450,7 @@ describe("engine change (Réglages › Agents)", () => {
   });
 });
 
-test("touched: only a session the user sent something to (Enter, a text put in for them); kept by Relancer, not by a workshop restart", async () => {
+test("touched: only a session a message was sent to (Enter, a submitted text; not a draft); kept by Relancer, not by a workshop restart", async () => {
   const { management: manager, sessions } = prepare();
   await manager.start("F", size);
   await manager.start("G", size);
@@ -463,11 +463,13 @@ test("touched: only a session the user sent something to (Enter, a text put in f
   expect(manager.touched()).toBe(true);
   await manager.relaunchAll();
   expect(manager.touched()).toBe(false);
-  manager.prefill("G", "résume la page");
+  manager.prefill("G", "[contexte : Page A] ");
+  expect(manager.touched()).toBe(false);
+  vi.useFakeTimers();
+  manager.prefill("G", "résume la page", undefined, true);
+  vi.advanceTimersByTime(SUBMIT_DELAY_MS);
+  vi.useRealTimers();
   expect(manager.touched()).toBe(true);
   await manager.closeWindow("G");
-  expect(manager.touched()).toBe(false);
-  for (const x of sessions) x.finish(0);
-  manager.prefill("F", "x"); // an ended session counts no more, until the next one starts
   expect(manager.touched()).toBe(false);
 });

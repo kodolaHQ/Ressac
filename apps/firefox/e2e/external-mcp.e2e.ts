@@ -13,7 +13,7 @@ import { waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { connectClient, declareProject, mcpClient, modified, openApplications, projectDir, rawStatus, readNotifications, textOf, writeAppJs } from "./review";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inUi, missingApi, startAgentSession, waitUi } from "./ui";
 
 // Plan 34 Task 3: the Applications page's « Projets externes » section and
 // one test per guarantee of the external MCP server (spec §5.2, §7).
@@ -216,7 +216,8 @@ it("a foreign Host, an Origin header, no token, the kernel's main token and a se
   const mainConfig = path.join(space, ".ressac", "mcp.json");
   await expect.poll(() => existsSync(mainConfig), { timeout: 20_000 }).toBe(true);
   expect(await rawStatus(port, { Host: host, Authorization: auth(mainConfig) })).toBe(401);
-  // The open agent panel's session (as agent-panel.e2e.ts:73): its config path, /workspace being <dataDir>/espace.
+  // The agent panel's session (as agent-panel.e2e.ts:73): its config path, /workspace being <dataDir>/espace.
+  await startAgentSession(m);
   const args = path.join(space, "fake-agent-args.json");
   await expect.poll(() => existsSync(args), { timeout: 20_000 }).toBe(true);
   const sessionConfig = (JSON.parse(readFileSync(args, "utf8")) as string[]).at(-1)!;

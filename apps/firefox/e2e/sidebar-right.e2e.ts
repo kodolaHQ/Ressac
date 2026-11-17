@@ -114,6 +114,9 @@ describe("the sidebar on the right", () => {
     const buttons = () => m.execute<{ left: number; right: number }>("const r = document.getElementById('ressac-window-buttons').getBoundingClientRect(); return { left: r.left, right: r.right };");
     const sidebarLeft = () => m.execute<number>("return document.getElementById('ressac-sidebar').getBoundingClientRect().left");
     // The back, forward and reload buttons sit right of the buttons, on the navigation row above the field.
+    // A page shown: the sidebar is a column, not the whole window.
+    await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/a.html` });
+    await waitFor(m, "return !document.getElementById('ressac-sidebar').hasAttribute('full')", (v) => v === true);
     await setSide("right");
     await waitFor(m, "return document.getElementById('ressac-sidebar').getBoundingClientRect().left", (v: number) => v > 0);
     const b = await buttons();

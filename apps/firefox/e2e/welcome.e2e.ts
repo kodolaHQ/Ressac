@@ -281,16 +281,17 @@ describe("welcome", () => {
     await forward(1, 7);
     await press("welcome-finish");
     await layerGone();
-    // The home page opens the agent panel: its note takes the keyboard.
+    // The agent panel stays closed: the tip shows.
+    await shown("tip-card");
+    // The user opens the panel: its note takes the keyboard, the tip waits for it.
+    await click(m, '[data-testid="agent-button"]');
     await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="first-time-agent"]'], 10_000, "agent");
-    expect(await m.execute<string>("return document.activeElement?.id;")).toBe("ressac-agent");
-    expect(await inUi(m, "return doc.activeElement?.dataset.testid;", [], "agent")).toBe("first-time-ok");
-    expect(await inUi(m, `return !!doc.querySelector('[data-testid="tip-card"]')`)).toBe(false);
+    await waitUi(m, "return document.activeElement?.id === 'ressac-agent' && doc.activeElement?.dataset.testid === 'first-time-ok'", [], 10_000, "agent");
+    await waitUi(m, `return !doc.querySelector('[data-testid="tip-card"]')`);
     await click(m, '[data-testid="first-time-ok"]', { frame: "agent" });
     await waitUi(m, "return !doc.querySelector(arguments[0])", ['[data-testid="first-time-agent"]'], 10_000, "agent");
-    // The tip takes its turn, and the keyboard is back where it was: the empty page's field.
+    // The tip takes its turn.
     await shown("tip-card");
-    await waitUi(m, "return document.activeElement?.id === 'ressac-sidebar' && doc.activeElement?.dataset.testid === 'empty-page-input'");
   });
 
   it("later skips the AI pages, and nothing reaches Docker or Ollama", async () => {

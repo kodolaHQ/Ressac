@@ -8,7 +8,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { inBrowser } from "./sites";
-import { click, inUi, waitUi } from "./ui";
+import { click, inUi, startAgentSession, waitUi } from "./ui";
 
 // Agent app helpers.
 
@@ -80,10 +80,11 @@ export const inAppView = <T>(m: Marionette, folder: string, script: string, o: {
   inBrowser<T>(m, `${appWindowExpr(folder)}.gBrowser.selectedBrowser`, script, o);
 
 /**
- * The window's agent session opens at launch, after a sweep that stops every app and refuses agent launches while it
- * runs: tests launch their apps after it.
+ * Starts the window's agent session (the panel never opens on its own); its first one runs a sweep that stops every app
+ * and refuses agent launches while it runs: tests launch their apps after it.
  */
-export async function waitFirstSweep(dataDir: string): Promise<void> {
+export async function waitFirstSweep(m: Marionette, dataDir: string): Promise<void> {
+  await startAgentSession(m);
   for (const end = Date.now() + 15_000; !stopsLog(dataDir).includes("kill -KILL -1"); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > end) throw new Error("the first session's sweep did not run");
 }
@@ -155,7 +156,7 @@ export async function openAppsPage(
   await waitReady(m);
   await expect.poll(() => existsSync(join(dataDir, "workspace", ".ressac", "mcp.json")), { timeout: 15_000 }).toBe(true);
   // Docker absent or slow: no session opens before the tests, so no sweep to wait for.
-  if (!o.env?.FAKE_DOCKER_ABSENT && !o.env?.FAKE_DOCKER_SLOW) await waitFirstSweep(dataDir);
+  if (!o.env?.FAKE_DOCKER_ABSENT && !o.env?.FAKE_DOCKER_SLOW) await waitFirstSweep(m, dataDir);
   if (o.page ?? true) {
     await dispatch(m, { type: "openApps", windowId: (await state(m)).windows[0]!.id });
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-applications\"]')");

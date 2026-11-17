@@ -74,6 +74,7 @@ it("switching on wakes the kernel", async () => {
 
 it("switching off live stops the agent and nothing runs docker afterwards", { timeout: 150_000 }, async () => {
   await launch(true);
+  await click(m, '[data-testid="agent-button"]');
   await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
   await waitUi(m, "return (doc.querySelector('.xterm-rows')?.textContent ?? '').includes('fake agent ready>')", [], 20_000, "agent");
   const pid = Number(readFileSync(join(w!.dataDir, "workspace", "fake-agent-pid"), "utf8"));
@@ -178,7 +179,7 @@ it("off: after « Activer l'IA » and the AI setup, the agent panel attaches the
 });
 
 // « Plus tard » at the welcome, AI turned on from Réglages, then back to the home page.
-it("on from Réglages, then home: the panel the home opens shows the agent, not the card", async () => {
+it("on from Réglages, then home: the panel stays closed; opened, it shows the agent, not the card", async () => {
   await launch(false);
   const windowId = (await state(m)).windows[0]!.id;
   const before = new Set(Object.keys((await state(m)).tabs));
@@ -187,7 +188,10 @@ it("on from Réglages, then home: the panel the home opens shows the agent, not 
   await dispatch(m, { type: "finishAiSetup" });
   await waitUi(m, `return !doc.querySelector('${tid("welcome-layer")}')`);
   await dispatch(m, { type: "closeTab", id: settings });
-  // Back on home, AI on: the home page opens the panel itself.
+  // Back on home, AI on: the panel opens only when asked.
+  await new Promise((r) => setTimeout(r, 1000));
+  expect(await m.execute("return document.getElementById('ressac-agent').hidden")).toBe(true);
+  await click(m, '[data-testid="agent-button"]');
   await panelShown(true);
   await waitUi(m, "return (doc.querySelector('.xterm-rows')?.textContent ?? '').includes('fake agent ready>')", [], 20_000, "agent");
   // The card's fade-out started while the panel was hidden: it must not stay on screen.
@@ -197,6 +201,7 @@ it("on from Réglages, then home: the panel the home opens shows the agent, not 
 
 it("off then on without relaunch: ⌘J shows a fresh agent session, no click", { timeout: 90_000 }, async () => {
   await launch(true);
+  await click(m, '[data-testid="agent-button"]');
   await panelShown(true);
   const xterm = "return (doc.querySelector('.xterm-rows')?.textContent ?? '')";
   await waitUi(m, `${xterm}.includes('fake agent ready>')`, [], 20_000, "agent");

@@ -31,7 +31,12 @@ const terminalText = () => inUi<string>(m, TERMINAL, [], "agent");
 const toggleWithButton = () => click(m, '[data-testid="agent-button"]');
 const shown = () => waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
 const hidden = () => waitFor(m, "return document.getElementById('ressac-agent').hidden", (v) => v === true);
-/** Opens a tab and waits for its page; the panel the home page opened closes. */
+/** Opens the window's panel with ✦ (it never opens on its own); its session starts with it. */
+async function openPanel(): Promise<void> {
+  if (await m.execute("return document.getElementById('ressac-agent').hidden")) await toggleWithButton();
+  await shown();
+}
+/** Opens a tab and waits for its page. */
 async function openTab(path: string): Promise<void> {
   await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}${path}` });
   await waitFor(
@@ -39,11 +44,10 @@ async function openTab(path: string): Promise<void> {
     `return gBrowser.selectedBrowser.currentURI.spec.endsWith(${JSON.stringify(path)}) && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`,
     (v) => v === true,
   );
-  await hidden();
 }
-/** The home page's panel: its agent ready, the terminal clicked to type in it. */
+/** The panel opened: its agent ready, the terminal clicked to type in it. */
 async function homeAgent(): Promise<void> {
-  await shown();
+  await openPanel();
   await terminalShows("fake agent ready>");
   await click(m, ".xterm-screen", { frame: "agent" });
 }
@@ -52,9 +56,12 @@ async function send(text: string): Promise<void> {
   await pressKeys(m, "Enter");
 }
 
-it("the home page opens the panel, which runs the fake agent", async () => {
+it("the panel stays closed on the home page and no session starts; ✦ opens it, which runs the fake agent", async () => {
   await launch();
-  await shown();
+  await new Promise((r) => setTimeout(r, 1500));
+  expect(await m.execute("return document.getElementById('ressac-agent').hidden")).toBe(true);
+  expect(existsSync(join(w!.dataDir, "workspace", "fake-agent-pid"))).toBe(false);
+  await openPanel();
   await terminalShows("fake agent ready>");
   expect(await inUi(m, "return [...(ui.ressacMissingApi ?? [])]", [], "agent")).toEqual([]);
 });
@@ -70,9 +77,9 @@ it("without Docker, browsing works", async () => {
   await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (v) => v === "Page A");
 });
 
-it("the home page's panel runs the real CLI with the session's MCP config", async () => {
+it("the panel runs the real CLI with the session's MCP config", async () => {
   await launch();
-  await shown();
+  await openPanel();
   await terminalShows("fake agent ready>");
   expect(JSON.parse(read(join(w!.dataDir, "workspace", "fake-agent-args.json")))).toEqual([
     "claude",
@@ -97,13 +104,13 @@ it("the home page's panel runs the real CLI with the session's MCP config", asyn
 
 it("« Atelier » relaunches the agent with its shell, the choice is saved, another window offers « Relancer »", async () => {
   await launch();
-  await shown();
+  await openPanel();
   await terminalShows("fake agent ready>");
   const args = () => read(join(w!.dataDir, "workspace", "fake-agent-args.json"));
   const first = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
   const second = await newWindow(m);
   await inWindow(m, second, async () => {
-    await shown();
+    await openPanel();
     await terminalShows("fake agent ready>");
   });
   expect(args()).toContain("Bash");
@@ -121,7 +128,7 @@ it("« Atelier » relaunches the agent with its shell, the choice is saved, anot
 
 it("« Navigateur » relaunches the Atelier session of another window in Navigateur too", async () => {
   await launch();
-  await shown();
+  await openPanel();
   await terminalShows("fake agent ready>");
   const root = join(w!.dataDir, "workspace");
   /** Every agent session the fake docker started, in order: its id and whether it runs in Navigateur (no shell). */
@@ -136,7 +143,7 @@ it("« Navigateur » relaunches the Atelier session of another window in Navigat
   const before = sessions().length;
   const second = await newWindow(m);
   await inWindow(m, second, async () => {
-    await shown();
+    await openPanel();
     await terminalShows("fake agent ready>");
   });
   await expect.poll(() => sessions().length, { timeout: 20_000 }).toBeGreaterThan(before);
@@ -172,7 +179,7 @@ it("a huge output does not freeze the UI", async () => {
 
 it("a container that cannot start → error and Réessayer", async () => {
   await launch({ FAKE_DOCKER_FAILURE: "1" });
-  await shown();
+  await openPanel();
   await panelShows("L'agent n'a pas pu démarrer :");
   await panelShows("simulated failure");
   await retryButton();
@@ -187,7 +194,7 @@ it("a second profile in .ressac/profiles appears in the panel; choosing it resta
       JSON.stringify({ id: "autre", name: "Autre", interactive: ["autre-agent", "--mcp", "{mcpConfig}"], nonInteractive: ["autre-agent", "-p", "{consigne}"], mcpConfig: "claude-json" }),
     );
     await launch(undefined, dataDir);
-    await shown();
+    await openPanel();
     await terminalShows("fake agent ready>");
     const pidFile = join(dataDir, "workspace", "fake-agent-pid");
     const first = read(pidFile);
@@ -215,7 +222,7 @@ it("a second profile in .ressac/profiles appears in the panel; choosing it resta
 
 it("the built-in profiles: Claude Code and Codex in the menu, signed-out ones marked (the fake docker has no account)", async () => {
   await launch();
-  await shown();
+  await openPanel();
   await terminalShows("fake agent ready>");
   expect(await waitUi(m, "const o = [...(doc.querySelector('[data-testid=\"agent-profile\"]')?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [], 10_000, "agent")).toEqual([
     "Claude Code (non connecté)",
@@ -225,9 +232,9 @@ it("the built-in profiles: Claude Code and Codex in the menu, signed-out ones ma
 
 it("Claude on Ollama is not marked signed out in the menu: its subscription is not needed", async () => {
   await launch();
-  await shown();
+  await openPanel();
   await dispatch(m, { type: "chooseClaudeEngine", engine: { kind: "ollama", ollamaUrl: "http://host.docker.internal:11434", ollamaModel: "ornith:35b", apiUrl: "", apiModel: "" } });
-  expect(await waitUi(m, "const o = [...(doc.querySelector('[data-testid=\"agent-profile\"]')?.options ?? [])].map((x) => x.textContent.trim()); return o[0] === 'Claude Code' && o", [], 10_000, "agent")).toEqual([
+  expect(await waitUi(m, "const o = [...(doc.querySelector('[data-testid=\"agent-profile\"]')?.options ?? [])].map((x) => x.textContent.trim()); return o[0] === 'Claude Code' && o[1] === 'Codex (non connecté)' && o", [], 10_000, "agent")).toEqual([
     "Claude Code",
     "Codex (non connecté)",
   ]);
@@ -236,7 +243,7 @@ it("Claude on Ollama is not marked signed out in the menu: its subscription is n
 it("a starting machine: the panel says « L'atelier démarre… » instead of « Préparation »", async () => {
   // Docker answers after 8 s: the panel stays on its preparation long enough to be read.
   await launch({ RESSAC_TEST_MACHINE: "starting", FAKE_DOCKER_SLOW: "1" });
-  await shown();
+  await openPanel();
   await panelShows("L'atelier démarre…");
   expect(await inUi(m, "return doc.querySelector('[data-testid=\"agent-panel\"]').textContent", [], "agent")).not.toContain("Préparation");
 });
@@ -250,12 +257,12 @@ describe("the agent selector", () => {
 
   it("switching to Codex opens a new conversation in this window only; switching back resumes; new windows take the last choice", async () => {
     await launch();
-    await shown();
+    await openPanel();
     await terminalShows("fake agent ready>");
     const a = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     const second = await newWindow(m);
     await inWindow(m, second, async () => {
-      await shown();
+      await openPanel();
       await terminalShows("fake agent ready>");
       await click(m, ".xterm-screen", { frame: "agent" });
       await send("avant");
@@ -284,14 +291,14 @@ describe("the agent selector", () => {
     const third = (await waitWindowCount(m, 3)).find((h) => h !== a && h !== second)!;
     await inWindow(m, third, () => waitReady(m));
     await inWindow(m, third, async () => {
-      await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
+      await openPanel();
       await waitUi(m, `return doc.querySelector(${JSON.stringify(SELECT)})?.value === "codex"`, [], 20_000, "agent");
     });
   });
 
   it("Codex not signed in: a line and a button to Settings", async () => {
     await launch();
-    await shown();
+    await openPanel();
     await terminalShows("fake agent ready>");
     await pick("codex");
     await panelShows("Codex n'est pas connecté à votre compte ChatGPT.");
@@ -363,7 +370,7 @@ it("a keypress after a keydown the terminal consumed is not sent again (macOS, p
 
 it("after Réessayer, each key still reaches the agent once and shows once", async () => {
   await launch({ FAKE_DOCKER_NO_CONTAINER: "1", FAKE_DOCKER_RUN_FAILED: "1" });
-  await shown();
+  await openPanel();
   await click(m, "button", { text: "Réessayer", frame: "agent" });
   await homeAgent();
   const input = join(w!.dataDir, "workspace", "fake-agent-input.txt");
@@ -400,9 +407,6 @@ it("closing and reopening the panel keeps the conversation", async () => {
 
 it("⌘T › « Panneau de l'agent » on home opens the panel with the terminal focused, not the home field", async () => {
   await launch();
-  await terminalShows("fake agent ready>");
-  await pressKeys(m, "Meta+j");
-  await hidden();
   await pressKeys(m, "Meta+t");
   await waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input'");
   await inUi(m, `const f = doc.activeElement; f.value = "agent"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`);
@@ -419,7 +423,7 @@ it("⌘T › « Panneau de l'agent » on home opens the panel with the terminal 
 
 it("Docker absent → message and Réessayer", async () => {
   await launch({ FAKE_DOCKER_ABSENT: "1" });
-  await shown();
+  await openPanel();
   await waitUi(
     m,
     "return doc.querySelector('[data-testid=\"agent-panel\"]').textContent.includes(\"Docker n'est pas lancé. La navigation fonctionne ; seul l'agent est indisponible.\")",
@@ -435,7 +439,6 @@ it.each([
   ["the slide", 0],
 ])("⌘J opens the panel and focuses the terminal (%s)", async (_, reduced) => {
   await launch(undefined, undefined, { "ui.prefersReducedMotion": reduced });
-  await terminalShows("fake agent ready>");
   await openTab("/a.html");
   await m.execute("gBrowser.selectedBrowser.focus()");
   await pressKeys(m, "Meta+j");
@@ -478,13 +481,12 @@ it("with the sidebar on the right, the panel opens on the left and the page sits
   expect(await rect("ressac-agent")).toEqual({ left: 0, right: 420 });
 });
 
-it("opening the panel on a tab shares it: current_page reads without asking", async () => {
+it("opening the panel on a tab shares it, a first opening too (its new session takes accesses back): current_page reads without asking", async () => {
   await launch();
-  // The session started on the home page: a new one would take the access back.
-  await terminalShows("fake agent ready>");
   await openTab("/texte.html");
   await toggleWithButton();
   await shown();
+  await terminalShows("fake agent ready>");
   expect((await callTool(w!.dataDir, "current_page")).text).toContain("Le chat dort");
 });
 
@@ -512,7 +514,7 @@ describe("one agent session per window", () => {
 
   it("⌘W on the empty page of the last window closes it and stops its agent", async () => {
     await launch();
-    await shown();
+    await openPanel();
     await terminalShows("fake agent ready>");
     const pid = Number(read(pidFile()));
     await pressClosing(m, "Meta+w");
@@ -522,7 +524,7 @@ describe("one agent session per window", () => {
 
   it("⇧⌘W on the last window with a tab stops its agent; reopening it (Dock) starts a new one", async () => {
     await launch();
-    await shown();
+    await openPanel();
     await terminalShows("fake agent ready>");
     const pid = Number(read(pidFile()));
     await openTab("/a.html");
@@ -539,8 +541,7 @@ describe("one agent session per window", () => {
     const reopened = (await waitWindowCount(m, 1, 20_000)).find((h) => h !== old)!;
     await m.command("WebDriver:SwitchToWindow", { handle: reopened, focus: false });
     await waitReady(m);
-    await toggleWithButton();
-    await shown();
+    await openPanel();
     await terminalShows("fake agent ready>");
     const next = Number(read(pidFile()));
     expect(next).not.toBe(pid);
@@ -550,12 +551,12 @@ describe("one agent session per window", () => {
   it("closing a window stops its agent", async () => {
     await launch();
     // The first window's agent first: fake-agent-pid then becomes the second's.
-    await shown();
+    await openPanel();
     await terminalShows("fake agent ready>");
     const first = Number(read(pidFile()));
     const second = await newWindow(m);
     const pid = await inWindow(m, second, async () => {
-      await shown();
+      await openPanel();
       await terminalShows("fake agent ready>");
       await waitFor(m, "return 1", () => Number(read(pidFile())) !== first);
       return Number(read(pidFile()));
@@ -568,7 +569,7 @@ describe("one agent session per window", () => {
 
   it("focusing another window moves the agent there at once: current_page reads its public tab, not the other's private one", async () => {
     await launch();
-    await shown();
+    await openPanel();
     await terminalShows("fake agent ready>");
     const a = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     const second = await newWindow(m);
@@ -583,8 +584,10 @@ describe("one agent session per window", () => {
     };
     // B: its session up, then a public tab shared through the panel.
     const b = await inWindow(m, second, async () => {
-      await shown();
+      await openPanel();
       await terminalShows("fake agent ready>");
+      await toggleWithButton();
+      await hidden();
       return m.execute<string>("return window.ressacWindow.windowId");
     });
     await dispatch(m, { type: "openTab", windowId: b, url: `${server.url}/texte.html` });
@@ -668,7 +671,6 @@ it("a link the agent prints (OSC 8, Claude Code's sign-in address) opens in a ta
 
 it("⌘J: the terminal takes the keyboard back when the window's focus is lost during the slide", async () => {
   await launch(undefined, undefined, { "ui.prefersReducedMotion": 0 });
-  await terminalShows("fake agent ready>");
   await openTab("/a.html");
   await m.execute("gBrowser.selectedBrowser.focus()");
   // The loss, without a race against the panel's retries (100 and 500 ms): for 150 ms from the first request, the
@@ -693,7 +695,7 @@ it("⌘J: the terminal takes the keyboard back when the window's focus is lost d
 
 it("the first build shows its step and the elapsed minutes in the panel", async () => {
   await launch({ FAKE_DOCKER_NO_CONTAINER: "1", FAKE_DOCKER_BUILD_STEP_MS: "2000" });
-  await shown();
+  await openPanel();
   await waitUi(m, "return (doc.querySelector('[data-testid=agent-build-step]')?.textContent ?? '').includes(arguments[0])", ["étape 2/3 : Outils système… (moins d'une min)"], 20_000, "agent");
   await terminalShows("fake agent ready>", 30_000);
 });

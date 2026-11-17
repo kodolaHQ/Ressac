@@ -129,3 +129,12 @@ export async function pixel(m: Marionette, x: number, y: number): Promise<[numbe
     [png, x, y],
   );
 }
+
+/** Opens the window's agent panel (✦: it never opens on its own) until its session is ready, then closes it: the session goes on. */
+export async function startAgentSession(m: Marionette): Promise<void> {
+  await click(m, '[data-testid="agent-button"]');
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  await click(m, '[data-testid="agent-button"]');
+  for (const end = Date.now() + 10_000; !(await m.execute<boolean>("return document.getElementById('ressac-agent').hidden")); await new Promise((r) => setTimeout(r, 100)))
+    if (Date.now() > end) throw new Error("the agent panel did not close");
+}

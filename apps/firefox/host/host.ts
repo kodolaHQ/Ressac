@@ -917,8 +917,10 @@ const rpc = createRpc({
     "agent.send": (p: { tab: TabInfo | null }) => void (p.tab && kernel?.policy.userInteraction(p.tab)),
     // Opening the panel on a tab gives it to the agent and pre-fills the context, without sending it.
     "agent.panelOpened": (p: { window: string; tab: TabInfo }) => {
-      kernel?.policy.userInteraction(p.tab);
-      if (sessions.active(p.window)) sessions.write(p.window, contextPrefix(p.tab.title, p.tab.url));
+      const share = () => kernel?.policy.userInteraction(p.tab);
+      share();
+      // A session still starting (the panel's first opening) gets the context once active, and the tab again: its start takes the accesses back.
+      sessions.prefill(p.window, contextPrefix(p.tab.title, p.tab.url), share);
     },
     // Sent by the chrome on each host start, with the about:addons changes seen while no host ran (applied first:
     // never reinstalled); answered when every granted extension is handled. A failed start is retried by the next one.

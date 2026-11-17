@@ -622,13 +622,6 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       return openRecap(d, genId, a);
     case "openActions":
       return openInternalPage(d, genId, a.windowId, URL_ACTIONS, "Actions");
-    // Opening the panel on a tab gives it to the agent: the home page opens it only if it is still displayed.
-    case "homeAgentPanel": {
-      const f = win(d, a.windowId);
-      if (!f || f.agentPanelOpen === a.open || (a.open && f.active[f.activeSpace])) return false;
-      f.agentPanelOpen = a.open;
-      return true;
-    }
     case "chooseEngine": {
       const custom = a.custom?.trim() ?? d.settings.customEngine;
       // Checked here too: the chrome dispatches actions without parsing them.

@@ -121,7 +121,6 @@ describe.skipIf(!process.env.RESSAC_README_SHOTS)("README shots", () => {
     await waitReady(m);
     const windowId = (await state(m)).windows[0]!.id;
     await dispatch(m, { type: "setHintsEnabled", enabled: false });
-    await dispatch(m, { type: "homeAgentPanel", windowId, open: false });
 
     // Home: the starter widgets harvest the real web, then the local models sort and write.
     for (const end = Date.now() + 180_000; Date.now() < end; await sleep(3000))

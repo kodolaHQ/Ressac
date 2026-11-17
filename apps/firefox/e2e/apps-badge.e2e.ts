@@ -67,7 +67,7 @@ describe("one Ressac, essai and autre launched in each test", () => {
     // Not expect.poll: run from beforeAll.
     for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "workspace", ".ressac", "mcp.json")); await sleep(100))
       if (Date.now() > end) throw new Error("the MCP server did not start");
-    await waitFirstSweep(dataDir);
+    await waitFirstSweep(m, dataDir);
   }, 90_000);
   afterAll(() => closeAppsPage(p));
   afterEach(async () => {

@@ -11,7 +11,7 @@ import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
 import { resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
-import { click, inUi, keyDown, keyUp, pressKeys, typeText, waitUi } from "./ui";
+import { click, inUi, keyDown, keyUp, pressKeys, startAgentSession, typeText, waitUi } from "./ui";
 import { openBuilder, writeWidget } from "./workflows";
 
 /**
@@ -75,8 +75,8 @@ describe("aura tour", () => {
       await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
       await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
       const windowId = (await state(m)).windows[0]!.id;
-      // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
-      await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+      // Opening the panel starts the agent's session, which takes back every access: tools are called after it.
+      await startAgentSession(m);
       for (const p of ["/notes", "/recette", "/vols"]) await dispatch(m, { type: "openTab", windowId, url: server.url + p });
       await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (u: string) => u.endsWith("/vols"));
       await waitUi(m, "return doc.querySelectorAll('[data-testid^=\"tab-\"][role=\"tab\"]').length === 3");

@@ -7,7 +7,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
+import { click, inUi, missingApi, pressKeys, startAgentSession, typeText, waitUi } from "./ui";
 
 // The agent's « Read permission » questions, and the dev tools' access badge.
 const REFUSED = "Accès refusé par l'utilisateur à cet onglet.";
@@ -26,15 +26,17 @@ beforeEach(async () => {
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  // Opening the panel starts the agent's session, which takes back every access: tools are called after it.
+  await startSession();
 });
+
+const startSession = () => startAgentSession(m);
 afterEach(() => w?.close());
 
-/** A new window whose home panel has started its agent session: that start takes back every access, a card asked before it falls. */
+/** A new window whose panel has started its agent session: that start takes back every access, a card asked before it falls. */
 async function windowWithSession(): Promise<string> {
   const h = await newWindow(m);
-  await inWindow(m, h, () => waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent"));
+  await inWindow(m, h, startSession);
   return h;
 }
 
@@ -182,8 +184,7 @@ it("a tab visited without talking to the agent: current_page asks", async () => 
 });
 
 it("sending a message from a tab shares it", async () => {
-  // Closed then opened again on the home page (no tab, so no context): it stays open on the tab opened next.
-  await togglePanel();
+  // Opened on the home page (no tab, so no context): it stays open on the tab opened next.
   await togglePanel();
   await openTab("/texte.html");
   expect(await m.execute("return !document.getElementById('ressac-agent').hidden")).toBe(true);

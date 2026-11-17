@@ -89,10 +89,16 @@ async function typeInTerminal(text: string): Promise<void> {
   await typeText(m, text);
   await pressKeys(m, "Enter");
 }
-/** The home page's panel shows the agent ready. */
+/** The panel, opened with ✦ (it never opens on its own), shows the agent ready. */
 async function homeAgent(): Promise<void> {
+  if (!(await panelShown())) await click(m, '[data-testid="agent-button"]');
   await shown();
   await terminalShows("fake agent ready>");
+}
+/** ✦ closes the panel; the session goes on. */
+async function closePanel(): Promise<void> {
+  await click(m, '[data-testid="agent-button"]');
+  await hidden();
 }
 const newTab = () => click(m, '[data-testid="new-tab"]');
 
@@ -128,8 +134,9 @@ describe("the builder's Agent tab", () => {
     await homeAgent();
     await typeInTerminal("premier");
     await terminalShows("received: premier");
+    await closePanel();
 
-    // In the builder, the panel the home page opened closes; its Agent tab opens it again, with the same conversation.
+    // In the builder, its Agent tab opens the panel again, with the same conversation.
     await builder("veille");
     await hidden();
     await click(m, '[data-testid="palette-list.keep"]');
@@ -161,6 +168,7 @@ describe("the builder's Agent tab", () => {
   it("⌘J and ✦ in the builder open the Agent tab and the agent panel, without pre-filled context", async () => {
     await launch();
     await homeAgent();
+    await closePanel();
     await builder("veille");
     await hidden();
     expect(await agentTabSelected()).toBe("false");
@@ -182,6 +190,7 @@ describe("the builder's Agent tab", () => {
   it("unreadable workflow.json: no canvas, but ⌘J still opens the Agent tab", async () => {
     await launch();
     await homeAgent();
+    await closePanel();
     await openBuilder(m, "casse");
     await waitCount("workflow-unreadable", 1);
     await hidden();
@@ -194,17 +203,16 @@ describe("the builder's Agent tab", () => {
   it("entering the builder then leaving it does not give the keyboard to the agent's terminal; ✦ gives it", async () => {
     await launch();
     await homeAgent();
+    await closePanel();
     await builder("veille");
     await sleep(300);
     expect(await terminalFocused()).toBe(false);
-    // Back on the home page, which opens the panel again: it shows without taking the keyboard.
+    // Back on the home page: the panel stays closed, the keyboard elsewhere.
     await newTab();
-    await shown();
     await sleep(300);
+    expect(await panelShown()).toBe(false);
     expect(await terminalFocused()).toBe(false);
     // Opened by the user (✦): then the terminal takes the keyboard.
-    await click(m, '[data-testid="agent-button"]');
-    await hidden();
     await click(m, '[data-testid="agent-button"]');
     await shown();
     for (const end = Date.now() + 10_000; !(await terminalFocused()); await sleep(100)) if (Date.now() > end) throw new Error("the terminal did not take the keyboard");
@@ -236,6 +244,7 @@ describe("the builder's Agent tab", () => {
   it("history laid over the builder: ⌘J closes it and opens the Agent tab", async () => {
     await launch();
     await homeAgent();
+    await closePanel();
     await builder("veille");
     await pressKeys(m, "Meta+y");
     await waitCount("history", 1);
@@ -301,6 +310,7 @@ describe("open_workflow", () => {
     let session = lastSessionConfig();
     const open = () => workflowOpen(session);
     await poll(open, NO_WORKFLOW_OPEN);
+    await closePanel();
 
     await builder("veille");
     await poll(open, '{"widget":"veille","block":null}');
@@ -327,6 +337,7 @@ describe("open_workflow", () => {
     await launch();
     await homeAgent();
     const a = lastSessionConfig();
+    await closePanel();
     await builder("veille");
     await click(m, '[data-testid="node-tri"]');
 
@@ -335,6 +346,7 @@ describe("open_workflow", () => {
       await homeAgent();
       await waitFor(m, "return 1", () => lastSessionConfig() !== a);
       const config = lastSessionConfig();
+      await closePanel();
       await builder("autre");
       await click(m, '[data-testid="node-liens"]');
       return config;

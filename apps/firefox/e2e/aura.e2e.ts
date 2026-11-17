@@ -7,7 +7,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { waitUi } from "./ui";
+import { startAgentSession, waitUi } from "./ui";
 
 let w: LaunchedRessac | undefined;
 let server: Awaited<ReturnType<typeof startServer>> | undefined;
@@ -168,8 +168,8 @@ describe("the window's aura", () => {
     const config = path.join(w!.dataDir, "workspace", ".ressac", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-    // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
-    await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+    // Opening the panel starts the agent's session, which takes back every access: tools are called after it.
+    await startAgentSession(m);
     const call = async (name: string, args: Record<string, unknown>) => {
       const r = await callTool(w!.dataDir, name, args);
       expect(r.error, r.text).toBe(false);

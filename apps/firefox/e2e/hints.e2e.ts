@@ -97,12 +97,14 @@ describe("hints", () => {
 
 const noteIn = (id: string, frame: Frame) => waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="first-time-${id}"]`], 10_000, frame);
 const noNoteIn = (id: string, frame: Frame) => waitUi(m, "return !doc.querySelector(arguments[0])", [`[data-testid="first-time-${id}"]`], 10_000, frame);
+/** ✦: the panel never opens on its own. */
+const openAgent = () => click(m, '[data-testid="agent-button"]');
 
 describe("first-time notes", () => {
   beforeAll(() => void (notes = true));
   afterAll(() => void (notes = false));
   it("agent first time", async () => {
-    // The panel is open by default on the home page.
+    await openAgent();
     await noteIn("agent", "agent");
     expect(await inUi<string>(m, 'return doc.querySelector(\'[data-testid="first-time-agent"] h2\').textContent;', [], "agent")).toBe("L'agent");
     await click(m, '[data-testid="first-time-ok"]', { frame: "agent" });
@@ -115,6 +117,7 @@ describe("first-time notes", () => {
   });
 
   it("Escape is Compris", async () => {
+    await openAgent();
     await noteIn("agent", "agent");
     // The key goes to the agent frame itself: which frame has the keyboard in a headless window is not what is tested.
     await inUi(m, "doc.defaultView.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));", [], "agent");
@@ -123,21 +126,21 @@ describe("first-time notes", () => {
   });
 
   it("the tip waits for the agent note", async () => {
+    await cardShows("⌃Tab"); // the panel closed: no agent note to wait for
+    await openAgent();
     await noteIn("agent", "agent");
+    await noCard();
     expect(await inUi(m, `return !!doc.querySelector('${CARD}')`)).toBe(false);
     await click(m, '[data-testid="first-time-ok"]', { frame: "agent" });
     await cardShows("⌃Tab");
   });
 
   it("the actions note waits for the agent note", async () => {
-    await noteIn("agent", "agent");
     await click(m, '[data-testid="actions-button"]');
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-actions\"]')");
-    // The panel the home page opened closed on the tab; the user opens it: the agent note takes the front, the actions note leaves.
-    const panelOpen = (want: boolean) => expect.poll(async () => (await state(m)).windows[0]!.agentPanelOpen, { timeout: 15_000 }).toBe(want);
-    await panelOpen(false);
+    await noteIn("actions", "sidebar");
+    // The user opens the panel (the actions note's veil covers ✦): the agent note takes the front, the actions note leaves.
     await dispatch(m, { type: "toggleAgentPanel", windowId: (await state(m)).windows[0]!.id });
-    await panelOpen(true);
     await noteIn("agent", "agent");
     await noNoteIn("actions", "sidebar");
     await click(m, '[data-testid="first-time-ok"]', { frame: "agent" });
@@ -156,6 +159,8 @@ describe("first-time notes", () => {
   });
 
   it("switch off", async () => {
+    await openAgent();
+    await noteIn("agent", "agent");
     await dispatch(m, { type: "setHintsEnabled", enabled: false });
     await noNoteIn("agent", "agent");
     await click(m, '[data-testid="actions-button"]');

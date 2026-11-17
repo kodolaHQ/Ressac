@@ -641,21 +641,6 @@ test("chooseAgentProfile changes the setting (claude by default)", () => {
   expect(e.settings.agentProfile).toBe("autre");
 });
 
-test("homeAgentPanel: opens only on the home page (otherwise the tab would be given to the agent); always closes", () => {
-  open("https://a.test/");
-  const before = e;
-  ag({ type: "homeAgentPanel", windowId: F, open: true });
-  expect(e).toBe(before);
-  ag({ type: "showBlankPage", windowId: F });
-  ag({ type: "homeAgentPanel", windowId: F, open: true });
-  expect(fen().agentPanelOpen).toBe(true);
-  ag({ type: "homeAgentPanel", windowId: F, open: true });
-  expect(fen().agentPanelOpen).toBe(true);
-  open("https://b.test/");
-  ag({ type: "homeAgentPanel", windowId: F, open: false });
-  expect(fen().agentPanelOpen).toBe(false);
-});
-
 test("agentPanelWidth: 420 by default, kept, clamped between 280 and 1000", () => {
   expect(e.settings.agentPanelWidth).toBe(420);
   ag({ type: "agentPanelWidth", width: 612.4 });
