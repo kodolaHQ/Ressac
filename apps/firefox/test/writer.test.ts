@@ -36,9 +36,9 @@ describe("writer choice", () => {
   it("is null when both are signed out", async () => {
     expect(await setup("demarre", {}).choice.agent()).toBeNull();
   });
-  it("is null without exec when the workshop is not running", async () => {
+  it("says the workshop is stopped, without exec, when it is not running", async () => {
     const s = setup("arrete", { claude: true });
-    expect(await s.choice.agent()).toBeNull();
+    expect(await s.choice.agent()).toBe("workshop-stopped");
     expect(s.calls).toEqual([]);
   });
   it("does not keep a failed check, and shares one exec between parallel calls", async () => {

@@ -111,7 +111,7 @@
   let pulling = $state<PullProgress | null>(null);
   let pullError = $state<string | null>(null);
   const reloadAi = () => void api.ai.state().then((r) => (ai = r));
-  let writer = $state<"claude" | "codex" | null | undefined>(undefined);
+  let writer = $state<"claude" | "codex" | "workshop-stopped" | null | undefined>(undefined);
   // Read when Réglages opens and after each agents refresh (a login or a logout): the host re-checks the accounts then.
   $effect(() => {
     if (aiOn()) void agents, void s.writer().then((r) => (writer = r.agent));

@@ -226,7 +226,11 @@ export class LlamaModel {
       throw new Error(this.say("kernel-ai-download-failed", { error: (e as Error).message }));
     }
     const hash = createHash("sha256");
-    for await (const chunk of createReadStream(part)) hash.update(chunk as Buffer);
+    // Checked per chunk: hashing 1.4 GB takes seconds, and the slot stays taken until the cancel lands.
+    for await (const chunk of createReadStream(part)) {
+      if (signal.aborted) throw cancelled();
+      hash.update(chunk as Buffer);
+    }
     if (signal.aborted) throw cancelled();
     if (hash.digest("hex") !== (this.o.sha256Override ?? this.spec.sha256)) {
       await rm(part, { force: true });

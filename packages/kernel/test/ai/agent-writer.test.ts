@@ -7,7 +7,7 @@ const ok = (stdout: string, code = 0, stderr = "") => ({ code, stdout, stderr })
 const claudeOut = (result: string, is_error = false) =>
   JSON.stringify({ type: "result", is_error, result, usage: { input_tokens: 3, cache_read_input_tokens: 18000, output_tokens: 40 } });
 
-function make(res: ReturnType<typeof ok>, agent: WriterAgent | null = "claude") {
+function make(res: ReturnType<typeof ok>, agent: WriterAgent | "workshop-stopped" | null = "claude") {
   const exec = vi.fn(async () => res);
   const signedOut = vi.fn();
   const log = vi.fn();
@@ -68,7 +68,12 @@ describe("claude", () => {
     await expect(w({ prompt: "P" })).rejects.toThrow(NONE);
     expect(exec).not.toHaveBeenCalled();
   });
-  it("images are refused", async () => {
+  it("workshop stopped: its own error, exec never called", async () => {
+    const { w, exec } = make(ok(""), "workshop-stopped");
+    await expect(w({ prompt: "P" })).rejects.toThrow("L'atelier de l'agent n'est pas démarré");
+    expect(exec).not.toHaveBeenCalled();
+  });
+    it("images are refused", async () => {
     const { w, exec } = make(ok(""));
     await expect(w({ prompt: "P", images: ["x"] })).rejects.toThrow("Les images ne sont pas prises en charge");
     expect(exec).not.toHaveBeenCalled();

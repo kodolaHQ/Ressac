@@ -393,6 +393,50 @@ describe("settings host", () => {
     expect(await h["ai.state"]!({})).not.toHaveProperty("decisionError");
   });
 
+  it("pulls queued behind the background download are dropped when AI goes off meanwhile, without a failure notification", async () => {
+    const { h, o } = setup();
+    let fail!: (e: Error) => void;
+    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
+    o.ai.cancelInstall.mockImplementation(() => fail(new Error("Installation annulée")));
+    h.downloadModels(["d1-2B"]);
+    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
+    const queued = h["settings.pullModel"]!({ name: "embeddinggemma-300m" });
+    expect(await h["settings.pullInBackground"]!({ names: ["embeddinggemma-300m"] })).toEqual({ ok: true });
+    h.cancelDownloads();
+    expect(await queued).toEqual({ ok: false, error: "Installation annulée" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(o.ai.embed.install).not.toHaveBeenCalled();
+    expect(o.ai.installDecisionModel).toHaveBeenCalledTimes(1);
+    expect(o.notify).not.toHaveBeenCalled();
+  });
+
+  it("AI off then on again while the cancelled download still ends: the new start's downloads run after it", async () => {
+    const { h, o, calls } = setup();
+    let fail!: (e: Error) => void;
+    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
+    h.downloadModels(["d1-2B"]);
+    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
+    h.cancelDownloads();
+    h.downloadModels(["d1-2B"]);
+    fail(new Error("Installation annulée"));
+    await vi.waitFor(() => expect(calls).toEqual(["installDecisionModel"]));
+    expect(o.ai.installDecisionModel).toHaveBeenCalledTimes(2);
+  });
+
+  it("a start queued behind a cancelled download is dropped by a second AI off", async () => {
+    const { h, o } = setup();
+    let fail!: (e: Error) => void;
+    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
+    h.downloadModels(["d1-2B"]);
+    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
+    h.cancelDownloads();
+    h.downloadModels(["d1-2B"]);
+    h.cancelDownloads();
+    fail(new Error("Installation annulée"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(o.ai.installDecisionModel).toHaveBeenCalledTimes(1);
+  });
+
   it("AI on with both models missing: d1 then the search model, one after the other in the background slot", async () => {
     const { h, o, calls } = setup();
     let finish!: () => void;

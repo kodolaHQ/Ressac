@@ -82,6 +82,7 @@ kernel-network-failed = Le réseau de l'agent n'a pas pu être sécurisé : { $e
 kernel-network-open = l'accès direct n'est pas fermé (sonde : code { $code })
 
 kernel-writer-none = Connectez Claude Code ou Codex dans Réglages › Agents pour les résumés
+kernel-writer-workshop-stopped = L'atelier de l'agent n'est pas démarré : les résumés reprendront à son démarrage
 kernel-writer-limit = Limite de votre abonnement atteinte : les résumés reprendront plus tard
 kernel-writer-images = Les images ne sont pas prises en charge par la rédaction
 kernel-writer-failed-badge = La rédaction par l'IA a échoué : voir le journal du widget

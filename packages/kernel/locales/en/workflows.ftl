@@ -81,8 +81,8 @@ workflows-warn-config = config.{ $key } is missing from the widget's configurati
 # Run.
 
 # Blocks: names and descriptions.
-workflows-block-ai-sort = Sort with Kev
-workflows-block-ai-sort-desc = Scores each item with Kev and keeps those that pass the threshold.
+workflows-block-ai-sort = Sort with the local AI
+workflows-block-ai-sort-desc = Scores each item with the local AI and keeps those that pass the threshold.
 workflows-block-ai-write = Write with AI
 workflows-block-ai-write-desc = Has the AI write a text from an instruction.
 workflows-block-code = Code
@@ -116,7 +116,7 @@ workflows-field-reuse = Reuse a previous result
 workflows-field-reuse-help = Path of the key that identifies the item.
 workflows-field-keep-days = Keep (days)
 workflows-field-question = Question
-workflows-field-question-help = What Kev must judge, for example « Is it interesting? ».
+workflows-field-question-help = What the local AI must judge, for example « Is it interesting? ».
 workflows-field-judged-text = Text to judge
 workflows-field-threshold = Threshold
 workflows-field-score-field = Score field

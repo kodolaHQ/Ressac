@@ -523,8 +523,8 @@ export interface SettingsApi {
   pullModel(name: string): Promise<SettingsResult>;
   /** The pull in progress (from any window), null when none. */
   pullProgress(): Promise<PullProgress | null>;
-  /** The agent that writes for the AI (its account signed in, workshop running), or null. */
-  writer(): Promise<{ agent: "claude" | "codex" | null }>;
+  /** The agent that writes for the AI (its account signed in, workshop running), "workshop-stopped", or null (no account). */
+  writer(): Promise<{ agent: "claude" | "codex" | "workshop-stopped" | null }>;
   /** Downloads the given models one after the other without waiting; a system notification says the end. */
   pullInBackground(names: string[]): Promise<SettingsResult>;
   ollamaModels(url: string): Promise<{ ok: true; models: { name: string; size?: string }[] } | { ok: false; error: string }>;

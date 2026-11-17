@@ -3,7 +3,7 @@ import { AGENT_ACCOUNTS } from "./settings.ts";
 
 const TTL_MS = 5 * 60_000;
 
-/** Which agent writes: the preferred one if signed in, else the other, else none. Never starts the workshop. */
+/** Which agent writes: the preferred one if signed in, else the other, else none; "workshop-stopped" when its accounts cannot be read. Never starts the workshop. */
 export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec">; preferred(): WriterAgent; now?(): number }) {
   const now = o.now ?? Date.now;
   // The in-flight promise is cached, so parallel cold calls share one status exec; a failed check is not kept.
@@ -20,8 +20,8 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
   };
   return {
     /** `exclude`: agents whose call answered "not signed in" while their status still says signed in (a dead token). */
-    async agent(exclude?: ReadonlySet<WriterAgent>): Promise<WriterAgent | null> {
-      if ((await o.workshop.state()) !== "demarre") return null;
+    async agent(exclude?: ReadonlySet<WriterAgent>): Promise<WriterAgent | "workshop-stopped" | null> {
+      if ((await o.workshop.state()) !== "demarre") return "workshop-stopped";
       const first = o.preferred();
       for (const a of [first, first === "claude" ? "codex" : "claude"] as const) if (!exclude?.has(a) && (await signedIn(a))) return a;
       return null;

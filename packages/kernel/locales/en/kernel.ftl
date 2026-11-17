@@ -82,6 +82,7 @@ kernel-network-failed = The agent's network could not be secured: { $error }
 kernel-network-open = direct access is not closed (probe code { $code })
 
 kernel-writer-none = Connect Claude Code or Codex in Settings › Agents for summaries
+kernel-writer-workshop-stopped = The agent's workshop is not started: summaries will resume once it starts
 kernel-writer-limit = Your subscription limit is reached: summaries will resume later
 kernel-writer-images = Images are not supported by writing
 kernel-writer-failed-badge = AI writing failed: see the widget log

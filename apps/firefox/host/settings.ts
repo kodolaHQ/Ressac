@@ -88,7 +88,7 @@ const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork">;
   /** Who writes (the account check is cached): reset whenever an account may have changed. */
-  writer: { agent(): Promise<WriterAgent | null>; reset(): void };
+  writer: { agent(): Promise<WriterAgent | "workshop-stopped" | null>; reset(): void };
   ai: Pick<LocalAi, "state" | "check" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
   docker: DockerRuntime;
   stopApps(): Promise<void>;
@@ -119,9 +119,9 @@ const LOGIN_WAIT_MS = 120_000;
 export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & {
   stopLogins(): void;
   loginEnded(maxMs?: number): Promise<void>;
-  /** Starts Ressac's own model downloads (d1, the search model), one after the other in the pull slot, unless a pull already runs (AI start, models missing). */
+  /** Starts Ressac's own model downloads (d1, the search model), one after the other in the pull slot, after any pull in progress (AI start, models missing). */
   downloadModels(names: string[]): void;
-  /** Cancels those downloads (AI off); their partial files stay for the next try. */
+  /** Cancels those downloads and every pull still waiting for the slot (AI off); their partial files stay for the next try. */
   cancelDownloads(): void;
 } {
   /** The sign-in by code in progress; one at a time. */
@@ -137,15 +137,16 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
   let pull: PullProgress | null = null;
   /** The last failed download of each llama-server model, cleared by a success; a cancel (AI off) is not a failure. */
   const modelErrors = new Map<string, string>();
-  let cancelled = false;
+  /** Bumped by each AI off: a pull started or queued before it is cancelled. */
+  let generation = 0;
   const installModel = async (name: string, install: (onPercent: (percent: number | null) => void) => Promise<void>) => {
-    cancelled = false;
+    const g = generation;
     try {
       await install((percent) => (pull = { name, percent, status: "" }));
       modelErrors.delete(name);
       o.modelInstalled?.(name);
     } catch (e) {
-      if (!cancelled) modelErrors.set(name, failure(e));
+      if (generation === g) modelErrors.set(name, failure(e));
       throw e;
     }
   };
@@ -173,6 +174,15 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
   let ressacPulls: Promise<void> | undefined;
   const afterRessac = async () => {
     while (ressacPulls || (pull && ressacModel(pull.name))) await (ressacPulls ?? pulled);
+  };
+  // A failure is kept in modelErrors (shown in Réglages) and the chain goes on to the next model. Busy (a quick AI off → on
+  // while the cancelled download still ends), it starts after the current pull, unless AI went off again meanwhile.
+  const downloadModels = (names: string[], g = generation): void => {
+    if (generation !== g) return;
+    if (pull || ressacPulls) return void (ressacPulls ?? pulled).then(() => downloadModels(names, g));
+    ressacPulls = (async () => {
+      for (const n of names) if (generation === g) await pullOne(n).catch(() => {});
+    })().finally(() => (ressacPulls = undefined));
   };
   /** The restart or rebuild in progress, whatever page or window asked for it. */
   let operation: WorkshopOperation = null;
@@ -244,16 +254,9 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       clearTimeout(timer);
       if (signIn === s) stopLogins();
     },
-    // A failure is kept in modelErrors (shown in Réglages) and the chain goes on to the next model.
-    downloadModels: (names: string[]) => {
-      if (pull || ressacPulls) return;
-      cancelled = false;
-      ressacPulls = (async () => {
-        for (const n of names) if (!cancelled) await pullOne(n).catch(() => {});
-      })().finally(() => (ressacPulls = undefined));
-    },
+    downloadModels,
     cancelDownloads: () => {
-      cancelled = true;
+      generation++;
       o.ai.cancelInstall();
     },
     "settings.agents": agents,
@@ -370,8 +373,10 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     },
     "settings.pullModel": async (p: { name?: unknown }): Promise<SettingsResult> => {
       try {
+        const g = generation;
         // Rechecked after the wait: of two d1 callers resuming together, the second finds the slot taken by the first and waits again.
         do await afterRessac(); while (ressacModel(String(p?.name)) && (ressacPulls || (pull && ressacModel(pull.name))));
+        if (generation !== g) throw new Error(hostSay("kernel-ai-install-cancelled"));
         await pullOne(String(p?.name));
         return { ok: true };
       } catch (e) {
@@ -382,14 +387,19 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     "settings.pullInBackground": (p: { names?: unknown }): SettingsResult => {
       const names = Array.isArray(p?.names) ? p.names.map(String) : [];
       if (!names.length || names.some((n) => !ressacModel(n))) return { ok: false, error: UNSUPPORTED_MODEL() };
+      const g = generation;
       void (async () => {
         try {
           // A model of Ressac's installed meanwhile is a no-op for LocalAi; one that failed is tried again here.
           await afterRessac();
-          for (const n of names) await pullOne(n);
+          for (const n of names) {
+            if (generation !== g) return;
+            await pullOne(n);
+          }
           o.notify({ title: hostSay("host-ai-ready-title"), text: hostSay("host-ai-ready-text") });
         } catch (e) {
-          o.notify({ title: hostSay("host-ai-failed-title"), text: hostSay("host-ai-failed-text", { reason: failure(e) }) });
+          // AI off cancelled it: not a failure to tell.
+          if (generation === g) o.notify({ title: hostSay("host-ai-failed-title"), text: hostSay("host-ai-failed-text", { reason: failure(e) }) });
         }
       })();
       return { ok: true };

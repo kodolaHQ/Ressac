@@ -44,6 +44,7 @@ settings-ai-writer = Rédaction
 settings-ai-writer-claude = Claude Haiku, avec votre compte Claude Code
 settings-ai-writer-codex = Codex, avec votre compte ChatGPT
 settings-ai-writer-none = Aucun compte connecté
+settings-ai-writer-workshop-stopped = L'atelier n'est pas démarré
 settings-ai-writer-connect = Connecter un compte
 
 settings-pill-installed = installé
