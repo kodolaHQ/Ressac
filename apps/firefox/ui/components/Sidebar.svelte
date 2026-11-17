@@ -125,8 +125,8 @@
   </div>
   <UpdateCard />
   <CallBar window={win} />
-  <SiteBar />
   <footer>
+    <SiteBar />
     <SpaceSelector window={win} />
     {#snippet tools()}
     <button
