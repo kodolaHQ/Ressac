@@ -1,6 +1,20 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.9",
+    date: "novembre 2026",
+    items: [
+      "L'IA locale n'a plus besoin d'Ollama : Ressac télécharge lui-même ses deux petits modèles (environ 1,4 Go) quand vous activez l'IA. ⌘T › « Demander » retrouve une page de votre historique par son sens, même si vous posez la question en français sur une page en anglais.",
+      "Les textes des widgets sont rédigés par votre agent (Claude ou Codex) ; Réglages › IA indique lequel.",
+      "Ressac fonctionne dès macOS 13.3. Si le modèle local ne démarre pas sur la carte graphique de votre Mac, il passe sur le processeur.",
+      "Importer depuis un autre navigateur demande d'abord à macOS l'accès à ses données, au lieu d'échouer sans rien dire.",
+      "Ressac › Réglages… et « À propos de Ressac » ouvrent les Réglages de Ressac depuis n'importe quelle fenêtre, et plus ceux de Firefox.",
+      "Sécurité : la relecture montre tout le code que l'agent écrit dans une appli ou une appli de site, même celui qu'il tenterait de cacher, et la première relecture d'une nouvelle appli liste tous ses fichiers. La surveillance des recherches de l'agent tient sur les longues recherches.",
+      "Vie privée : effacer l'historique ne laisse plus aucun mot des pages effacées sur le disque, et oublie aussi les onglets fermés récemment. Au premier lancement de cette version, l'index de recherche se reconstruit une fois : ⌘T et l'agent peuvent mettre quelques secondes à répondre.",
+      "Effacer la dernière heure d'historique ne fige plus Ressac.",
+    ],
+  },
+  {
     version: "0.1.8",
     date: "novembre 2026",
     items: [
