@@ -16,6 +16,7 @@ export const SHORTCUTS = {
   command: { label: "sidebar-shortcut-command", default: b("t"), run: { type: "shortcut", r: "command" } },
   address: { label: "sidebar-shortcut-address", default: b("l"), run: { type: "shortcut", r: "address" } },
   closeTab: { label: "sidebar-shortcut-closeTab", default: b("w"), run: { type: "shortcut", r: "closeTab" } },
+  jumpTab: { label: "sidebar-shortcut-jumpTab", default: b("e"), run: { type: "shortcut", r: "jumpTab" } },
   back: { label: "sidebar-shortcut-back", default: b("["), run: { type: "navigate", c: "back" } },
   forward: { label: "sidebar-shortcut-forward", default: b("]"), run: { type: "navigate", c: "forward" } },
   reload: { label: "sidebar-shortcut-reload", default: b("r"), run: { type: "navigate", c: "reload" } },

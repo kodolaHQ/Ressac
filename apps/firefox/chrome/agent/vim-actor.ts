@@ -6,6 +6,7 @@
 // takes never reaches the page. Packaged: a change here needs build:ui.
 
 import { FRENCH_VIM_TEXTS, VIM_KEYS, type VimTexts } from "../../shared/vim-keys";
+import { HINT_KEYS, hintLabels } from "../../shared/hint-labels";
 
 const { setTimeout, clearTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
 
@@ -13,8 +14,6 @@ const { setTimeout, clearTimeout } = ChromeUtils.importESModule("resource://gre/
 const PREFIX_MS = 1000;
 /** One line of j / k / h / l, in CSS pixels (Vimium's). */
 const LINE = 60;
-/** The letters of the link hints: the home row. */
-const HINT_KEYS = "asdfghjkl";
 /** The labels' and the pill's fade out, in ms (none under reduced motion). */
 const FADE_MS = 150;
 /** The labels' and the pill's font (the UI's woff2), under a name of our own in the page's font set. */
@@ -51,16 +50,6 @@ kbd { font: 500 11px/1.45 "Ressac Geist Mono", "Geist Mono", ui-monospace, monos
 /** The window's tokens the labels paint with. */
 const HINT_TOKENS = ["--accent", "--sheet", "--border", "--text", "--text-muted", "--float"];
 
-/** `n` labels over HINT_KEYS, breadth-first: as short as possible, and none is the start of another. */
-function hintLabels(n: number): string[] {
-  const labels = [""];
-  let next = 0;
-  while (labels.length - next < n || next === 0) {
-    const stem = labels[next++]!;
-    for (const c of HINT_KEYS) labels.push(stem + c);
-  }
-  return labels.slice(next, next + n);
-}
 
 /**
  * A web process is untrusted: the parent reads only the message's name. What it acts on (the tab, its window) comes from
@@ -102,6 +91,7 @@ export class RessacVimParent extends JSWindowActorParent {
     else if (m.name === "vim:reopen") t.controller.shortcut({ type: "reopen" });
     else if (m.name === "vim:command") t.controller.shortcut({ type: "shortcut", r: "command" });
     else if (m.name === "vim:address") t.controller.shortcut({ type: "shortcut", r: "address" });
+    else if (m.name === "vim:jumpTab") t.controller.shortcut({ type: "shortcut", r: "jumpTab" });
     else if (m.name === "vim:tab") {
       // The window's own ⌘1 / ⌘9 for the ends; the sidebar's neighbour for next / previous.
       const to = (m.data as { to?: unknown } | undefined)?.to;
@@ -155,6 +145,7 @@ const ONE_KEYS: Record<string, [string, unknown?]> = {
   J: ["vim:tab", { to: "previous" }],
   K: ["vim:tab", { to: "next" }],
   t: ["vim:command"],
+  T: ["vim:jumpTab"],
   o: ["vim:address"],
 };
 /** The same after a `g` (gg scrolls, in the child). */

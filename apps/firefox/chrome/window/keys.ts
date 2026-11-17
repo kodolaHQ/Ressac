@@ -2,7 +2,7 @@ import type { Panel, ShortcutAction } from "../../shared/api";
 import { effectiveBindings, SHORTCUT_IDS, SHORTCUTS, type Bindings } from "../../shared/shortcuts";
 
 export type Shortcut =
-  | { type: "shortcut"; r: Extract<ShortcutAction, "command" | "address" | "closeTab"> }
+  | { type: "shortcut"; r: Extract<ShortcutAction, "command" | "address" | "closeTab" | "jumpTab"> }
   | { type: "reopen" }
   | { type: "nth"; n: number }
   | { type: "space"; n: number }

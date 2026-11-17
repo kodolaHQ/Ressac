@@ -1,3 +1,4 @@
+import { SHORTCUT_IDS } from "../shared/shortcuts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
@@ -84,7 +85,7 @@ describe("Settings › Raccourcis", () => {
   it("shows the fixed shortcuts without a way to change them, and the vim switch off", async () => {
     const page = await text('[data-testid="settings-shortcuts"]');
     for (const keys of ["⌘1–9", "⌃1–9", "⌃Tab / ⌃⇧Tab"]) expect(page).toContain(keys);
-    expect(await inUi<number>(m, "return doc.querySelectorAll('[data-testid^=\"shortcut-\"][data-testid$=\"-edit\"]').length")).toBe(17);
+    expect(await inUi<number>(m, "return doc.querySelectorAll('[data-testid^=\"shortcut-\"][data-testid$=\"-edit\"]').length")).toBe(SHORTCUT_IDS.length);
     expect(await inUi<boolean>(m, "return doc.querySelector('[data-testid=\"vim-mode\"]').checked")).toBe(false);
     await click(m, '[data-testid="vim-mode"]');
     expect((await state(m)).settings.vimMode).toBe(true);

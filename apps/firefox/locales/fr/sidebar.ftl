@@ -203,6 +203,7 @@ sidebar-next-tomorrow = demain { $time }
 
 sidebar-shortcut-command = Barre de commande
 sidebar-shortcut-address = Barre d'adresse
+sidebar-shortcut-jumpTab = Aller à un onglet
 sidebar-shortcut-closeTab = Fermer l'onglet
 sidebar-shortcut-back = Page précédente
 sidebar-shortcut-forward = Page suivante

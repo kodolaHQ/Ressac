@@ -198,7 +198,7 @@ export type Panel = "history" | "downloads";
  * Menu shortcuts meant for the UI (the web page often has focus). `closeTab`: ⌘W on the builder,
  * which first asks whether some code is unsaved.
  */
-export type ShortcutAction = "search" | "searchNext" | "searchPrevious" | "address" | "command" | "agent" | "closeTab";
+export type ShortcutAction = "search" | "searchNext" | "searchPrevious" | "address" | "command" | "agent" | "closeTab" | "jumpTab";
 export interface SearchResult {
   tabId: TabId;
   active: number;

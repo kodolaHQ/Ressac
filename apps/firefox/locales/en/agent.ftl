@@ -223,6 +223,7 @@ agent-vim-2-2 = First / last tab of the space
 agent-vim-2-3 = New tab (command bar)
 agent-vim-2-4 = Close the tab
 agent-vim-2-5 = Reopen the closed tab
+agent-vim-2-7 = Letters on the sidebar's tabs: type them to go there
 agent-vim-2-6 = Next / previous space, wrapping around
 agent-vim-3-title = Links and search
 agent-vim-3-0 = Letters on the visible links: type them to open the link

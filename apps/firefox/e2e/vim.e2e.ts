@@ -369,6 +369,22 @@ describe("vim mode: tabs and spaces", () => {
     for (const e of (await state(m)).spaces.slice(1)) await dispatch(m, { type: "deleteSpace", id: e.id });
   });
 
+  it("T puts a letter on each of the sidebar's tabs; typing one shows that tab", async () => {
+    const [a] = await threeTabs();
+    await pressKeys(m, "T");
+    const label = await waitUi<string>(m, "return [...doc.querySelectorAll('[data-testid=\"jump-hint\"]')].find((h) => h.dataset.row === 'tab-' + arguments[0])?.textContent", [a]);
+    await typeText(m, label);
+    await expect.poll(shown).toBe(a);
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"jump-tabs\"]')");
+    // T then Escape: the keyboard goes back to the page, its vim keys work again.
+    await backToPage();
+    await pressKeys(m, "T");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"jump-hint\"]')");
+    await pressKeys(m, "Escape");
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"jump-tabs\"]')");
+    await waitFor(m, `return document.activeElement === ${B}`, (v) => v === true);
+  });
+
   it("J / K and gT / gt walk the sidebar's order, wrapping; g0 / g$ go to the ends", async () => {
     const [a, b, c] = await threeTabs();
     await pressKeys(m, "J");

@@ -28,6 +28,7 @@ export const VIM_KEYS: readonly { title: string; rows: readonly { keys: readonly
       { keys: ["x"], action: "Fermer l'onglet" },
       { keys: ["X"], action: "Rouvrir l'onglet fermé" },
       { keys: ["gs", "gS"], action: "Espace suivant / précédent, en boucle" },
+      { keys: ["T"], action: "Des lettres sur les onglets de la barre : tapez-les pour y aller" },
     ],
   },
   {

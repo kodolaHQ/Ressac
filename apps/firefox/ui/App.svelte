@@ -21,6 +21,7 @@
   import TabsPanel from "./components/TabsPanel.svelte";
   import Review from "./components/Review.svelte";
   import Settings from "./components/Settings.svelte";
+  import JumpTabs from "./components/JumpTabs.svelte";
   import ReleaseNotes from "./components/ReleaseNotes.svelte";
   import Welcome from "./components/Welcome.svelte";
   import { welcomeStep } from "./components/welcome-step.svelte";
@@ -183,7 +184,7 @@
       } else if (r === "agent") {
         markSeen("cmd-j");
         if (builderTarget) builderAgent();
-      }
+      } else if (r === "jumpTab" && !modalOpen && winState) jumping = true;
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
@@ -208,7 +209,13 @@
   let armed = INITIAL_REVEAL.armed;
   let zone: LeftZone = "far";
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const barVisible = $derived(!compact || revealed);
+  /** Letters on the sidebar's tabs (⌘E, vim's T): in compact mode the sidebar shows while they are up. */
+  let jumping = $state(false);
+  // ⌘T, ⌘L or ⌃Tab (taken by the chrome window, never seen by the letters) close them: the overlay's keys are its own.
+  $effect(() => {
+    if (modalOpen) untrack(() => (jumping = false));
+  });
+  const barVisible = $derived(!compact || revealed || jumping);
 
   function onMouseZone(z: LeftZone) {
     zone = z;
@@ -280,6 +287,7 @@
     {#if winState}
       <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
       <Sidebar window={winState} togglePanel={togglePanel} builderAgent={() => win.openAgent()} />
+      {#if jumping}<JumpTabs close={() => (jumping = false)} />{/if}
     {:else}
       <aside data-testid="sidebar"></aside>
     {/if}

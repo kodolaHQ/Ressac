@@ -223,6 +223,7 @@ agent-vim-2-2 = Premier / dernier onglet de l'espace
 agent-vim-2-3 = Nouvel onglet (barre de commande)
 agent-vim-2-4 = Fermer l'onglet
 agent-vim-2-5 = Rouvrir l'onglet fermé
+agent-vim-2-7 = Des lettres sur les onglets de la barre : tapez-les pour y aller
 agent-vim-2-6 = Espace suivant / précédent, en boucle
 agent-vim-3-title = Liens et recherche
 agent-vim-3-0 = Des lettres sur les liens visibles : tapez-les pour ouvrir le lien

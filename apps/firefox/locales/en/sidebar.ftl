@@ -203,6 +203,7 @@ sidebar-next-tomorrow = tomorrow { $time }
 
 sidebar-shortcut-command = Command bar
 sidebar-shortcut-address = Address bar
+sidebar-shortcut-jumpTab = Jump to a tab
 sidebar-shortcut-closeTab = Close tab
 sidebar-shortcut-back = Previous page
 sidebar-shortcut-forward = Next page

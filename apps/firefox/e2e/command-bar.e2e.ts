@@ -234,6 +234,31 @@ describe("Command bar", () => {
     await waitFor(m, `return document.getElementById("ressac-command-compact").label`, (l) => l === "Mode compact (⇧⌘K)");
   });
 
+  it("⌘E: a letter on each tab of the sidebar, typing it shows the tab; in compact mode the sidebar shows until Escape", async () => {
+    const a = await withPageA();
+    await open("/b.html");
+    await pressKeys(m, "Meta+e");
+    const label = await waitUi<string>(m, "return [...doc.querySelectorAll('[data-testid=\"jump-hint\"]')].find((h) => h.dataset.row === 'tab-' + arguments[0])?.textContent", [a]);
+    await typeText(m, label);
+    await expect.poll(activeId).toBe(a);
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"jump-tabs\"]')");
+    // ⌘T over the letters closes them: the field gets every key typed next.
+    await pressKeys(m, "Meta+e");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"jump-hint\"]')");
+    await pressKeys(m, "Meta+t");
+    await type("gsd");
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"jump-tabs\"]')");
+    expect(await fieldValue()).toBe("gsd");
+    await pressKeys(m, "Escape");
+    await waitBar(false);
+    await dispatch(m, { type: "toggleCompact", windowId: (await win()).id });
+    await waitUi(m, "return doc.querySelector('.column').inert");
+    await pressKeys(m, "Meta+e");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"jump-hint\"]') && !doc.querySelector('.column').inert");
+    await pressKeys(m, "Escape");
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"jump-tabs\"]') && doc.querySelector('.column').inert");
+  });
+
   it("⌘L fills in the active URL, all selected; Enter loads in the same tab", async () => {
     const a = await withPageA();
     await pressKeys(m, "Meta+l");
