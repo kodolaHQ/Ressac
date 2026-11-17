@@ -472,3 +472,156 @@ describe("site favicons", () => {
     expect(h.recents()[0]!.favicon).toBeNull();
   });
 });
+
+describe("page vectors", () => {
+  let h: History;
+  let path: string;
+  const d = (day: number) => new Date(2026, 10, day, 12);
+  const v = (...xs: number[]) => Float32Array.from(xs);
+  beforeEach(() => {
+    path = join(mkdtempSync(join(tmpdir(), "ressac-vec-")), "history.sqlite");
+    h = new History(path);
+  });
+  afterEach(() => h.close());
+  const visit = (url: string, title: string, o: { text?: string; date?: Date; spaceId?: string; priv?: boolean } = {}) => {
+    h.note({ url, title, spaceId: o.spaceId ?? "s", private: o.priv ?? false, date: o.date ?? d(10) });
+    if (o.text !== undefined) h.keep({ url, spaceId: o.spaceId ?? "s", title, text: o.text, date: o.date ?? d(10) });
+  };
+  /** Gives every pending page the same vector. */
+  const indexAll = (vec = v(1, 0)) => h.saveVectors(h.pendingVectors(1000).map((r) => ({ ...r, vec })));
+  const pending = () => h.pendingVectors(1000).map((r) => r.url);
+  const vectored = () => {
+    h.close();
+    const db = new DatabaseSync(path);
+    const rows = (db.prepare("SELECT url FROM vectors ORDER BY url").all() as { url: string }[]).map((r) => r.url);
+    db.close();
+    h = new History(path);
+    return rows;
+  };
+
+  test("pending: non-private pages without a vector, most recent first, with title, host without www and a 300-char excerpt", () => {
+    visit("https://www.old.fr/a", "Old", { text: "x".repeat(400), date: d(1) });
+    visit("https://new.fr/b", "New", { date: d(5) });
+    visit("https://priv.fr/", "Privé", { priv: true, date: d(6) });
+    expect(h.pendingVectors(10)).toEqual([
+      { url: "https://new.fr/b", spaceId: "s", title: "New", host: "new.fr", excerpt: "" },
+      { url: "https://www.old.fr/a", spaceId: "s", title: "Old", host: "old.fr", excerpt: "x".repeat(300) },
+    ]);
+    expect(h.pendingVectors(1).map((r) => r.url)).toEqual(["https://new.fr/b"]);
+    indexAll();
+    expect(pending()).toEqual([]);
+  });
+
+  test("a private space is never pending, and turning a space private drops its vectors", () => {
+    visit("https://a.fr/", "A", { spaceId: "x" });
+    indexAll();
+    h.makePrivate("x");
+    expect(vectored()).toEqual([]);
+    expect(pending()).toEqual([]);
+  });
+
+  test("a vector is kept per URL and per space, and survives a restart", () => {
+    visit("https://a.fr/", "A", { spaceId: "x" });
+    visit("https://a.fr/", "A", { spaceId: "y" });
+    indexAll();
+    expect(vectored()).toEqual(["https://a.fr/", "https://a.fr/"]);
+    expect(pending()).toEqual([]);
+  });
+
+  test("a changed title or excerpt drops the vector (re-embedded); a revisit with the same ones keeps it", () => {
+    visit("https://a.fr/", "A", { text: "texte" });
+    visit("https://b.fr/", "B", { text: "texte" });
+    visit("https://c.fr/", "C");
+    indexAll();
+    visit("https://a.fr/", "A", { text: "texte" });
+    expect(pending()).toEqual([]);
+    h.updateTitle("https://a.fr/", "s", "A2");
+    h.keep({ url: "https://b.fr/", spaceId: "s", title: "B", text: "autre texte" });
+    h.keep({ url: "https://c.fr/", spaceId: "s", title: "C", text: "premier texte" });
+    expect(pending().sort()).toEqual(["https://a.fr/", "https://b.fr/", "https://c.fr/"]);
+  });
+
+  test("a vector computed before its page changed is not saved", () => {
+    visit("https://a.fr/", "A");
+    const [row] = h.pendingVectors(1);
+    h.updateTitle("https://a.fr/", "s", "A2");
+    h.saveVectors([{ ...row!, vec: v(1, 0) }]);
+    expect(pending()).toEqual(["https://a.fr/"]);
+  });
+
+  describe("every erase removes the matching vectors", () => {
+    test("erase() (everything)", () => {
+      visit("https://a.fr/", "A", { text: "t" });
+      indexAll();
+      h.erase();
+      expect(vectored()).toEqual([]);
+    });
+
+    test("erase(since)", () => {
+      visit("https://old.fr/", "O", { date: d(1) });
+      visit("https://new.fr/", "N", { text: "t", date: d(5) });
+      indexAll();
+      h.erase(d(4));
+      expect(vectored()).toEqual(["https://old.fr/"]);
+    });
+
+    test("forgetText (one URL): its vector goes, re-embedded without the text", () => {
+      visit("https://a.fr/", "A", { text: "t" });
+      indexAll();
+      h.forgetText("https://a.fr/", "s");
+      expect(vectored()).toEqual([]);
+      expect(h.pendingVectors(1)[0]!.excerpt).toBe("");
+    });
+
+    test("purge (retention)", () => {
+      const now = new Date();
+      visit("https://old.fr/", "O", { text: "t", date: new Date(now.getTime() - 184 * DAY) });
+      visit("https://new.fr/", "N", { date: now });
+      indexAll();
+      h.purge(now);
+      expect(vectored()).toEqual(["https://new.fr/"]);
+    });
+
+    test("purge (byte cap)", () => {
+      h.close();
+      h = new History(path, { byteCap: 15 });
+      visit("https://1.fr/", "1", { text: "a".repeat(10), date: d(1) });
+      visit("https://2.fr/", "2", { text: "b".repeat(10), date: d(2) });
+      indexAll();
+      h.purge(d(3));
+      expect(vectored()).toEqual(["https://2.fr/"]);
+    });
+  });
+
+  describe("findSimilar", () => {
+    const save = (url: string, vec: Float32Array) => {
+      const row = h.pendingVectors(1000).find((r) => r.url === url)!;
+      h.saveVectors([{ ...row, vec }]);
+    };
+    test("orders by cosine, returns the score, one hit per URL with its excerpt", () => {
+      visit("https://near.fr/", "Near", { text: "proche", date: d(3) });
+      visit("https://far.fr/", "Far", { date: d(4) });
+      visit("https://mid.fr/", "Mid", { spaceId: "a", date: d(2) });
+      visit("https://mid.fr/", "Mid", { spaceId: "b", date: d(5) });
+      save("https://near.fr/", v(1, 0));
+      save("https://far.fr/", v(0, 1));
+      save("https://mid.fr/", v(0.6, 0.8));
+      const hits = h.findSimilar(v(1, 0), { limit: 10 });
+      expect(hits.map((x) => [x.url, Math.round(x.score * 100) / 100])).toEqual([["https://near.fr/", 1], ["https://mid.fr/", 0.6], ["https://far.fr/", 0]]);
+      expect(hits[0]).toMatchObject({ title: "Near", excerpt: "proche", visits: 1, favicon: null });
+      expect(h.findSimilar(v(1, 0), { limit: 1 })).toHaveLength(1);
+    });
+
+    test("honours the period and the sites, never a private visit", () => {
+      visit("https://a.fr/", "A", { date: d(1) });
+      visit("https://www.youtube.com/w", "Y", { date: d(5) });
+      visit("https://b.fr/", "B", { date: d(6) });
+      indexAll();
+      visit("https://b.fr/", "B", { priv: true, date: d(6) }); // the same page seen again in private
+      const urls = (q: Partial<Parameters<History["findSimilar"]>[1]>) => h.findSimilar(v(1, 0), { limit: 10, ...q }).map((x) => x.url).sort();
+      expect(urls({ since: d(4), until: d(5) })).toEqual(["https://www.youtube.com/w"]);
+      expect(urls({ sites: ["youtube.com"] })).toEqual(["https://www.youtube.com/w"]);
+      expect(urls({})).toEqual(["https://a.fr/", "https://www.youtube.com/w"]);
+    });
+  });
+});

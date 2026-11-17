@@ -32,6 +32,22 @@ const hostOf = (url: string) => {
   }
 };
 
+/** On one of `sites` (a host or its subdomains); every URL when there are none. */
+const onSites = (url: string, sites: string[]) => {
+  if (!sites.length) return true;
+  try {
+    const host = new URL(url).hostname;
+    return sites.some((s) => host === s || host.endsWith(`.${s}`));
+  } catch {
+    return false;
+  }
+};
+
+/** Characters of kept text a page's vector is computed from. */
+export const VECTOR_EXCERPT = 300;
+/** A page waiting for its vector: what its document text is made of (see page-indexer's pageDocument). */
+export type PendingPage = { url: string; spaceId: string; title: string; host: string; excerpt: string };
+
 /** Lowercase without accents: « Été » and « ete » find each other (SQLite's LIKE only folds ASCII). */
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
@@ -42,7 +58,8 @@ export class History {
     | "note" | "updateTitle" | "search" | "recents" | "eraseSince" | "clearAll" | "makePrivate"
     | "keep" | "updateTitleText" | "isPrivate" | "forgetText" | "forgetSpaceTexts" | "eraseTextsSince"
     | "eraseOrphanTexts" | "clearAllTexts" | "purgeBefore" | "purgeVisitsBefore" | "totalBytes" | "oldTexts" | "forgetTextId"
-    | "keptText" | "visitsOf" | "excerpt" | "importVisit" | "noteIcon" | "icon" | "clearIcons" | "eraseOrphanIcons",
+    | "keptText" | "visitsOf" | "excerpt" | "importVisit" | "noteIcon" | "icon" | "clearIcons" | "eraseOrphanIcons"
+    | "pendingVectors" | "saveVector" | "similar",
     StatementSync
   >;
   private byteCap: number;
@@ -109,6 +126,22 @@ export class History {
         DELETE FROM icons WHERE NOT EXISTS (SELECT 1 FROM visits v WHERE
           v.url LIKE 'https://' || icons.host || '/%' OR v.url LIKE 'http://' || icons.host || '/%' OR
           v.url LIKE 'https://' || icons.host || ':%' OR v.url LIKE 'http://' || icons.host || ':%')`),
+      pendingVectors: this.db.prepare(`
+        SELECT v.url, v.space_id AS spaceId, v.title, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt FROM visits v
+        LEFT JOIN texts t ON t.url = v.url AND t.space_id = v.space_id
+        WHERE v.private = 0 AND NOT EXISTS (SELECT 1 FROM vectors x WHERE x.url = v.url AND x.space_id = v.space_id)
+        ORDER BY v.last_visit DESC LIMIT ?`),
+      // Saved only if the page is still as it was embedded (its title or text may have changed meanwhile) and not private.
+      saveVector: this.db.prepare(`
+        INSERT INTO vectors (url, space_id, vec) SELECT :url, :spaceId, :vec
+        WHERE EXISTS (SELECT 1 FROM visits v WHERE v.url = :url AND v.space_id = :spaceId AND v.private = 0 AND v.title = :title)
+          AND COALESCE((SELECT substr(text, 1, ${VECTOR_EXCERPT}) FROM texts WHERE url = :url AND space_id = :spaceId), '') = :excerpt
+        ON CONFLICT (url, space_id) DO UPDATE SET vec = excluded.vec`),
+      similar: this.db.prepare(`
+        SELECT v.url, v.title, v.last_visit AS lastVisit, v.visits, x.vec, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt
+        FROM vectors x JOIN visits v ON v.url = x.url AND v.space_id = x.space_id
+        LEFT JOIN texts t ON t.url = x.url AND t.space_id = x.space_id
+        WHERE v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until`),
       excerpt: this.db.prepare(
         `SELECT snippet(texts_fts, 2, '', '', '…', ${SNIPPET_WORDS}) AS excerpt FROM texts_fts WHERE texts_fts MATCH ? AND rowid = ?`,
       ),
@@ -168,6 +201,27 @@ export class History {
         END;`);
       // The last favicon seen per site: the UI has no network, so the ⌘T rows show this data: URL.
       this.db.exec("CREATE TABLE IF NOT EXISTS icons (host TEXT PRIMARY KEY, icon TEXT NOT NULL, date TEXT NOT NULL)");
+      // A page's vector (⌘T Demander), computed from its title, host and text excerpt. The triggers erase it whichever
+      // statement erases its visit or text, makes it private, or changes what it was computed from: it is then recomputed.
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS vectors (url TEXT NOT NULL, space_id TEXT NOT NULL, vec BLOB NOT NULL, PRIMARY KEY (url, space_id));
+        CREATE TRIGGER IF NOT EXISTS visits_delete_vector AFTER DELETE ON visits BEGIN
+          DELETE FROM vectors WHERE url = old.url AND space_id = old.space_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS visits_update_vector AFTER UPDATE OF title, private ON visits
+        WHEN new.title <> old.title OR new.private <> 0 BEGIN
+          DELETE FROM vectors WHERE url = old.url AND space_id = old.space_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS texts_insert_vector AFTER INSERT ON texts BEGIN
+          DELETE FROM vectors WHERE url = new.url AND space_id = new.space_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS texts_delete_vector AFTER DELETE ON texts BEGIN
+          DELETE FROM vectors WHERE url = old.url AND space_id = old.space_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS texts_update_vector AFTER UPDATE OF text ON texts
+        WHEN substr(new.text, 1, ${VECTOR_EXCERPT}) <> substr(old.text, 1, ${VECTOR_EXCERPT}) BEGIN
+          DELETE FROM vectors WHERE url = old.url AND space_id = old.space_id;
+        END;`);
       this.db.exec("COMMIT");
     } catch (e) {
       this.db.exec("ROLLBACK");
@@ -338,15 +392,6 @@ export class History {
     if (!groups.length) return [];
     const period = { since: q.since?.toISOString() ?? "", until: q.until?.toISOString() ?? "￿" };
     const sites = (q.sites ?? []).map((s) => s.toLowerCase());
-    const onSites = (url: string) => {
-      if (!sites.length) return true;
-      try {
-        const host = new URL(url).hostname;
-        return sites.some((s) => host === s || host.endsWith(`.${s}`));
-      } catch {
-        return false;
-      }
-    };
     const escape = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const patterns = groups.map((g) => new RegExp(`(?:^|[^\\p{L}\\p{N}])(?:${g.map(escape).join("|")})`, "u"));
     const fts = groups.map((g) => `(${g.map((w) => `"${w.replaceAll('"', '""')}"`).join(" OR ")})`).join(" AND ");
@@ -377,7 +422,7 @@ export class History {
       return patterns.filter((p) => p.test(s)).length;
     };
     const ranked = rows
-      .filter((r) => onSites(r.url))
+      .filter((r) => onSites(r.url, sites))
       .map((r) => ({ r, title: inTitle(r) }))
       .map((x) => ({ ...x, title: x.title >= needed ? x.title : 0 }))
       .filter((x) => x.title || x.r.id !== null)
@@ -391,6 +436,63 @@ export class History {
       excerpt: r.id === null ? "" : ((this.req.excerpt.get(fts, r.id) as { excerpt: string } | undefined)?.excerpt ?? ""),
       favicon: this.favicon(r.url),
     }));
+  }
+
+  /** Non-private pages without a vector, most recent first. */
+  pendingVectors(limit: number): PendingPage[] {
+    if (!this.db.isOpen) return [];
+    return (this.req.pendingVectors.all(limit) as Omit<PendingPage, "host">[]).map((r) => {
+      let host = "";
+      try {
+        host = new URL(r.url).hostname.replace(/^www\./, "");
+      } catch { /* no host */ }
+      return { url: r.url, spaceId: r.spaceId, title: r.title, host, excerpt: r.excerpt };
+    });
+  }
+
+  /** Keeps the vectors (L2-normalised) of pages read by pendingVectors; a page changed or erased since is skipped. */
+  saveVectors(rows: (PendingPage & { vec: Float32Array })[]): void {
+    if (!this.db.isOpen) return;
+    this.transaction(() => {
+      for (const r of rows) {
+        // Raw Float32 in the platform's order: little-endian on every machine Ressac runs on.
+        const vec = new Uint8Array(r.vec.buffer, r.vec.byteOffset, r.vec.byteLength);
+        this.req.saveVector.run({ url: r.url, spaceId: r.spaceId, title: r.title, excerpt: r.excerpt, vec });
+      }
+    });
+  }
+
+  /**
+   * The pages nearest to `vec` (L2-normalised: the dot product is the cosine), one per URL with its best score, with
+   * findPages's semantics: non-private visits only, within [since, until], optionally on `sites`.
+   * shortcut: every vector in the period is read and compared in JS (about 3 KB and a few µs per page), fine for tens of
+   * thousands of pages; past that, keep the vectors in memory or use a vector index.
+   */
+  findSimilar(vec: Float32Array, q: { since?: Date; until?: Date; sites?: string[]; limit: number }): (PageHit & { score: number })[] {
+    if (!this.db.isOpen) return [];
+    const sites = (q.sites ?? []).map((s) => s.toLowerCase());
+    const rows = this.req.similar.all({ since: q.since?.toISOString() ?? "", until: q.until?.toISOString() ?? "\uffff" }) as {
+      url: string; title: string; lastVisit: string; visits: number; vec: Uint8Array; excerpt: string;
+    }[];
+    const best = new Map<string, PageHit & { score: number }>();
+    for (const r of rows) {
+      if (!onSites(r.url, sites)) continue;
+      const page = new Float32Array(r.vec.buffer.slice(r.vec.byteOffset, r.vec.byteOffset + r.vec.byteLength));
+      let score = 0;
+      for (let i = 0; i < Math.min(page.length, vec.length); i++) score += page[i]! * vec[i]!;
+      const hit = best.get(r.url);
+      if (!hit) {
+        best.set(r.url, { url: r.url, title: r.title, lastVisit: r.lastVisit, visits: r.visits, excerpt: r.excerpt, favicon: null, score });
+        continue;
+      }
+      hit.visits += r.visits;
+      if (r.lastVisit > hit.lastVisit) Object.assign(hit, { title: r.title, lastVisit: r.lastVisit });
+      if (score > hit.score) Object.assign(hit, { score, excerpt: r.excerpt });
+    }
+    return [...best.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, q.limit)
+      .map((x) => ({ ...x, favicon: this.favicon(x.url) }));
   }
 
   /** Substring insensitive to case and accents on the URL and title; `%`, `_` and `\` are literal. */

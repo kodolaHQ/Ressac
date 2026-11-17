@@ -30,6 +30,7 @@ const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites } = await import("./sites.ts");
 const { copyComponentRequest, copyHomeRequest } = await import("./home-copy.ts");
 const { createAsk } = await import("./ask.ts");
+const { createPageIndexer, llamaEmbed } = await import("./page-indexer.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createWriterChoice } = await import("./writer.ts");
@@ -188,6 +189,11 @@ const ai = new LocalAi({
 
 // The ⌘T bar's Demander mode: calls Gemma directly, outside the workflows' dispatcher queue.
 const ask = createAsk({ ai, history: () => hist ?? null });
+// The pages' vectors for ⌘T Demander, computed in the background while AI is on and the search model is installed.
+const indexer = hist && createPageIndexer({ history: hist, embed: llamaEmbed(() => ai.embed.ready()) });
+const startIndexer = () => {
+  if (aiOn && ai.embed.installed()) indexer?.start();
+};
 
 // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
 // Another address imposed (a remote Ollama, a test): Ressac then starts and installs nothing.
@@ -354,6 +360,7 @@ const stop = () =>
       console.error("[ressac] the apps did not stop:", e),
     );
     extensions.stop();
+    indexer?.stop();
     settings.stopLogins();
     await sessions.stopAll();
     await relay.stop();
@@ -391,6 +398,7 @@ type StartParams = { agentProfile: string; locale?: string; aiEnabled?: boolean 
 const applyAi = async () => {
   if (aiOn) {
     wakeAi();
+    startIndexer();
     apps.wake();
     if (!kernelLaunched || !(await ready)) {
       kernelLaunched = true;
@@ -399,6 +407,8 @@ const applyAi = async () => {
     await ready;
     return;
   }
+  indexer?.stop();
+  await ai.stopServers();
   if (!aiWoken && !kernelLaunched) return;
   aiWoken = false;
   kernelLaunched = false;
@@ -1042,6 +1052,7 @@ const settings = createSettingsHandlers({
   amoKeychain: amoKeychain(),
   forgetKey,
   notify,
+  modelInstalled: (name) => name === SEARCH_MODEL && startIndexer(),
 });
 // The chrome may not answer yet (its handlers come up later): it calls "sites.ready" once it does.
 void sites.resync().catch(() => {});

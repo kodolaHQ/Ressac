@@ -299,6 +299,20 @@ describe("LocalAi", () => {
     await ai.access().kev({ state: "", questions: {} });
     expect(launched).toBe(2);
   });
+
+  it("stopServers (AI off) stops the decision server and the search model's", async () => {
+    const kev = keep(await fakeKev());
+    let stopped = 0;
+    const launch = (): AiProcess => ({ stop() { stopped++; }, onOutput() {} });
+    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: Number(new URL(kev.url).port), ...fast });
+    toStop.push(ai);
+    const embedStop = vi.spyOn(ai.embed, "stop");
+    await ai.kev({ state: "", questions: {} });
+    await ai.stopServers();
+    expect(stopped).toBe(1);
+    expect(embedStop).toHaveBeenCalledOnce();
+    expect(ai.state().state).toBe("stopped");
+  });
 });
 
 describe("LocalAi: the models' downloads", () => {

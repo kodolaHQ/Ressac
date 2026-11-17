@@ -285,4 +285,9 @@ export class LocalAi {
   stop(): Promise<void> {
     return this.d1.stop();
   }
+
+  /** AI off: stops both servers (a later call starts them again). */
+  async stopServers(): Promise<void> {
+    await Promise.all([this.d1.stop(), this.embed.stop()]);
+  }
 }

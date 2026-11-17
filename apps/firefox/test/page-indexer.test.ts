@@ -1,0 +1,135 @@
+import { mkdtempSync } from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { History } from "../core/history";
+import { createPageIndexer, llamaEmbed, pageDocument } from "../host/page-indexer";
+
+let path: string;
+let h: History;
+let indexer: ReturnType<typeof createPageIndexer> | undefined;
+beforeEach(() => {
+  path = join(mkdtempSync(join(tmpdir(), "ressac-index-")), "history.sqlite");
+  h = new History(path);
+});
+afterEach(() => {
+  indexer?.stop();
+  h.close();
+});
+
+const fill = (n: number) => {
+  const now = Date.now();
+  h.importVisits(Array.from({ length: n }, (_, i) => ({ url: `https://p${i}.fr/`, title: `Page ${i}`, date: new Date(now - i * 1000) })));
+};
+const fake = () => {
+  const docs: string[] = [];
+  const embed = vi.fn(async (texts: string[]) => (docs.push(...texts), texts.map(() => Float32Array.from([1, 0]))));
+  return { docs, embed };
+};
+const done = () => vi.waitFor(() => expect(h.pendingVectors(1)).toEqual([]), { timeout: 30_000, interval: 20 });
+
+test("the document text: title (or « none »), host without www, then the excerpt", () => {
+  expect(pageDocument({ title: "Rust", host: "youtube.com", excerpt: "Une vidéo" })).toBe("title: Rust | text: youtube.com Une vidéo");
+  expect(pageDocument({ title: "", host: "a.fr", excerpt: "" })).toBe("title: none | text: a.fr");
+});
+
+test("10 000 pages are indexed in batches of 32, most recent first, and a timer fires between batches", async () => {
+  fill(10_000);
+  let fired = 0;
+  let calls = 0;
+  const sizes: number[] = [];
+  const firstDocs: string[] = [];
+  const embed = async (texts: string[]) => {
+    expect(fired).toBe(calls); // the timer set during the previous batch already fired
+    calls++;
+    setTimeout(() => fired++, 0);
+    sizes.push(texts.length);
+    if (firstDocs.length === 0) firstDocs.push(texts[0]!);
+    return texts.map(() => Float32Array.from([1, 0]));
+  };
+  indexer = createPageIndexer({ history: h, embed, pauseMs: 0 });
+  indexer.start();
+  await done();
+  expect(sizes.length).toBe(Math.ceil(10_000 / 32));
+  expect(Math.max(...sizes)).toBe(32);
+  expect(firstDocs[0]).toBe("title: Page 0 | text: p0.fr");
+}, 60_000);
+
+test("resumes after a restart without embedding a page twice (vectors persisted)", async () => {
+  fill(200);
+  const first = fake();
+  indexer = createPageIndexer({ history: h, embed: first.embed, batch: 10, pauseMs: 0 });
+  indexer.start();
+  await vi.waitFor(() => expect(first.embed.mock.calls.length).toBeGreaterThanOrEqual(3));
+  indexer.stop();
+  await new Promise((r) => setTimeout(r, 20));
+  h.close();
+  h = new History(path);
+  const saved = 200 - h.pendingVectors(1000).length;
+  expect(saved).toBeGreaterThan(0);
+  const second = fake();
+  indexer = createPageIndexer({ history: h, embed: second.embed, batch: 10, pauseMs: 0 });
+  indexer.start();
+  await done();
+  expect(second.docs).toHaveLength(200 - saved);
+  expect(new Set([...first.docs.slice(0, saved), ...second.docs]).size).toBe(200);
+});
+
+test("stop (AI off): the batch in flight is dropped and nothing more is embedded; start resumes", async () => {
+  fill(100);
+  let release!: () => void;
+  const embed = vi.fn((texts: string[]) => new Promise<Float32Array[]>((ok) => (release = () => ok(texts.map(() => Float32Array.from([1, 0]))))));
+  indexer = createPageIndexer({ history: h, embed, batch: 10, pauseMs: 0 });
+  indexer.start();
+  await vi.waitFor(() => expect(embed).toHaveBeenCalledTimes(1));
+  indexer.stop();
+  release();
+  await new Promise((r) => setTimeout(r, 30));
+  expect(embed).toHaveBeenCalledTimes(1);
+  expect(h.pendingVectors(1000)).toHaveLength(100);
+  indexer = createPageIndexer({ history: h, embed: fake().embed, batch: 10, pauseMs: 0 });
+  indexer.start();
+  await done();
+});
+
+test("an error stops the loop; it retries later", async () => {
+  fill(5);
+  const embed = vi.fn(async (texts: string[]) => texts.map(() => Float32Array.from([1, 0])));
+  embed.mockRejectedValueOnce(new Error("server down"));
+  indexer = createPageIndexer({ history: h, embed, pauseMs: 0, retryMs: 30 });
+  indexer.start();
+  await done();
+  expect(embed).toHaveBeenCalledTimes(2);
+});
+
+test("a page whose title changes is embedded again with its new title", async () => {
+  h.note({ url: "https://www.a.fr/x", spaceId: "s", title: "A", private: false });
+  const { docs, embed } = fake();
+  indexer = createPageIndexer({ history: h, embed, pauseMs: 0, idleMs: 20 });
+  indexer.start();
+  await done();
+  h.updateTitle("https://www.a.fr/x", "s", "A2");
+  await vi.waitFor(() => expect(docs).toEqual(["title: A | text: a.fr", "title: A2 | text: a.fr"]));
+});
+
+describe("llamaEmbed", () => {
+  let server: ReturnType<typeof createServer>;
+  afterEach(() => server.close());
+
+  test("posts the batch to /v1/embeddings and returns L2-normalised vectors in input order", async () => {
+    const bodies: unknown[] = [];
+    server = createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c)).on("end", () => {
+        bodies.push({ url: req.url, ...JSON.parse(body) });
+        res.end(JSON.stringify({ data: [{ index: 1, embedding: [0, 2] }, { index: 0, embedding: [3, 4] }] }));
+      });
+    });
+    await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const out = await llamaEmbed(async () => base)(["a", "b"]);
+    expect(bodies).toEqual([{ url: "/v1/embeddings", input: ["a", "b"] }]);
+    expect(out.map((x) => Array.from(x).map((n) => Math.round(n * 100) / 100))).toEqual([[0.6, 0.8], [0, 1]]);
+  });
+});

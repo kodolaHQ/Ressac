@@ -438,6 +438,17 @@ describe("settings host", () => {
     await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toBeNull());
   });
 
+  it("each model that finishes downloading is told to modelInstalled, a failed one is not", async () => {
+    const { o } = setup();
+    const installed: string[] = [];
+    const h = createSettingsHandlers({ ...o, modelInstalled: (n: string) => void installed.push(n) });
+    o.ai.installDecisionModel.mockImplementationOnce(async () => {
+      throw new Error("HTTP 503");
+    });
+    h.downloadModels(["d1-2B", "embeddinggemma-300m"]);
+    await vi.waitFor(() => expect(installed).toEqual(["embeddinggemma-300m"]));
+  });
+
   it("a welcome pull waits behind both background downloads, never refused busy", async () => {
     const { h, o, calls } = setup();
     let finish!: () => void;

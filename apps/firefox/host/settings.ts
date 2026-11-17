@@ -112,6 +112,8 @@ export interface SettingsOptions {
   forgetKey(kind: "codex" | "claude"): void;
   /** A system notification (the end of a background model download). */
   notify(n: { title: string; text: string }): void;
+  /** One of Ressac's own models finished downloading. */
+  modelInstalled?(name: string): void;
 }
 
 /** How long a first agent session waits for a sign-in by code in progress. */
@@ -144,6 +146,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     try {
       await install((percent) => (pull = { name, percent, status: "" }));
       modelErrors.delete(name);
+      o.modelInstalled?.(name);
     } catch (e) {
       if (!cancelled) modelErrors.set(name, failure(e));
       throw e;
