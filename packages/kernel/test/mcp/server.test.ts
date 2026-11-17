@@ -2419,7 +2419,7 @@ test("a composed address gets the watcher's opinion on its card, and the card st
   }, { watcher: ok.watcher, address: true });
 });
 
-test("search_history, search_bookmarks, read_history and read_tab on a user tab are judged while a search runs, and not without one", async () => {
+test("search_history, search_bookmarks, read_history, read_tab and capture_screen on a user tab are judged while a search runs, and not without one", async () => {
   const { watcher, asked } = fakeWatcher(() => false);
   await withSearch(async ({ call }) => {
     const user = async () => {
@@ -2427,6 +2427,7 @@ test("search_history, search_bookmarks, read_history and read_tab on a user tab 
       await call("search_bookmarks", { query: "b" });
       await call("read_history", { url: "https://a.fr/" });
       await call("read_tab", { id: "github" });
+      await call("capture_screen", { id: "github" });
     };
     await user();
     expect(asked).toHaveLength(0);
@@ -2438,6 +2439,7 @@ test("search_history, search_bookmarks, read_history and read_tab on a user tab 
       { tool: "search_bookmarks", query: "b" },
       { tool: "read_history", url: "https://a.fr/" },
       { tool: "read_tab", url: github.url },
+      { tool: "capture_screen", url: github.url },
     ]);
     expect(asked[3]!.past.map((x) => x.tool)).toEqual(["search_web", "search_history", "search_bookmarks", "read_history"]);
   }, { watcher, withUserData: true, allow: true });

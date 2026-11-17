@@ -798,10 +798,15 @@ function createToolsServer(
   server.registerTool(
     "capture_screen",
     { description: "Capture d'écran PNG d'un onglet.", inputSchema: { id: z.string() } },
-    protect(async ({ id }) => {
+    protect(async ({ id }, extra) => {
       // shortcut: the kernel does not know a tab's window, so any capture waits while this window's search is the user's; refine if it annoys.
       if (handing(id) || handing(searching?.sessions.current(win ?? MAIN_WINDOW)?.tabId)) return text(HANDING_TEXT, true);
       const o = await tab(id);
+      // As read_tab: during a search, the judge sees a capture of any tab but the search's own.
+      if (!searching?.sessions.owns(id)) {
+        const other = await watch({ tool: "capture_screen", url: o.url.slice(0, 500) }, "capture d'un autre onglet", extra?.signal);
+        if (other) return text(other);
+      }
       if (!(await access(o))) return text(DENIAL_TEXT);
       const png = await working(id, () => bridge.capture(id, { expect: o.url }), `Regarde ${siteOf(o.url)}`);
       return { content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }] };

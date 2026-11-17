@@ -156,7 +156,7 @@ home-devtools-performance = Performances et mémoire
 home-devtools-performance-detail = Profilage, instantanés mémoire
 home-devtools-act = Agir sur la page
 home-devtools-act-detail = Exécuter du JavaScript, modifier le DOM, recharger
-home-devtools-act-sensitive = l'agent peut agir en ton nom sur ce site
+home-devtools-act-sensitive = l'agent peut lire tout ce que contient la page, l'envoyer ailleurs sans te demander, et agir en ton nom sur ce site
 home-devtools-allow = Autoriser la sélection
 home-devtools-note = Valable pour cette conversation · tombe si l'onglet change de site
 
