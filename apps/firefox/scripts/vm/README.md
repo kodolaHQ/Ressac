@@ -81,9 +81,11 @@ It starts the machine from `dist/vm/ressac-vm-*.raw.zst` (or `RESSAC_VM_IMAGE_UR
 failure; it never touches `~/.ressac-vm`, `~/.lima`, `~/Ressac` or Docker. `security-check.ts` then runs the kernel's
 `workshop` and `session` integration tests on the machine (`RESSAC_REAL_ENGINE=machine`), starts the kernel's `Workshop`
 on it with the allowlist rules, and prints one PASS/FAIL line per check: mounts (Ressac root and engine folder only, no
-`/Users` in the workshop), `.ressac` read-only, web only through the proxy (example.com refused, api.anthropic.com
+`/Users` in the workshop), `.ressac` read-only, web only through the proxy (example.com refused with 403, a literal IP refused by
+iptables, api.anthropic.com
 reached), the Mac's localhost only on the relay port, harvests with no network and a read-only root, the 2.5g and 1024
-pids caps (3 GB allocation killed, a 1500-process fork bomb stopped), a real `npm install`, the forward of
+pids caps (a 2.64 GiB allocation killed by the container's own OOM, `memory.events` oom and oom_kill up; a
+1500-process fork bomb stopped, `pids.events` max up), a real `npm install`, the forward of
 127.0.0.1:5300 and none outside the range, and the idle stop. Exits 1 on any FAIL.
 
 Measured 2026-11-17 (M5 Pro, macOS 27, Lima 2.3.0, image `3.24.4-5.8.10-20062535e787`, 3 GiB, 9 CPUs). Memory: the

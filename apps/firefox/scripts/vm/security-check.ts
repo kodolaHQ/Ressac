@@ -17,6 +17,7 @@ const kernelDir = join(import.meta.dirname, "..", "..", "..", "..", "packages", 
 const ports = env("RESSAC_CONTAINER_PORTS").split("-").map(Number) as [number, number];
 
 let failed = 0;
+let skipped = 0;
 const line = (ok: boolean, what: string, detail = "") => {
   if (!ok) failed++;
   console.log(`${ok ? "PASS" : "FAIL"}  ${what}${detail ? `  [${detail.replace(/\s+/g, " ").trim().slice(0, 300)}]` : ""}`);
@@ -66,7 +67,8 @@ try {
   mkdirSync(join(root, "tmp"), { recursive: true });
   // Else the forward check would reach whatever already holds the port (a Docker workshop publishes the same range).
   const busy = spawnSync("lsof", ["-nP", `-iTCP:${ports[0]}-${ports[1]}`, "-sTCP:LISTEN"], { encoding: "utf8" }).stdout.trim();
-  line(busy === "", `Mac: 127.0.0.1:${ports.join("-")} free before the machine starts`, busy);
+  if (busy) (skipped++, console.log(`SKIP  Mac: 127.0.0.1:${ports.join("-")} is held by another program, the forward checks will not run  [${busy.replace(/\s+/g, " ")}]`));
+  else line(true, `Mac: 127.0.0.1:${ports.join("-")} free before the machine starts`);
   // 1. The machine, from the image, through the shipped install path.
   let t = Date.now();
   await machine.install();
@@ -100,7 +102,7 @@ try {
   line(JSON.stringify(mounted) === JSON.stringify([root, engineDir].sort()), "machine: only the Ressac root and the engine folder are mounted", mounted.join(", "));
   const homeDir = process.env.HOME!;
   const leaks = vm(`for f in ${homeDir}/.ssh ${homeDir}/Library ${homeDir}/Desktop ${homeDir}/.zshrc; do [ -e "$f" ] && echo "$f"; done; ls /Users`);
-  line(leaks.stdout.trim() === homeDir.split("/")[2] || leaks.stdout.trim() === "", "machine: no home folder content (ls /Users, ~/.ssh, ~/Library)", out(leaks));
+  line(leaks.status === 0 && leaks.stdout.trim() === homeDir.split("/")[2], "machine: no home folder content (ls /Users, ~/.ssh, ~/Library)", out(leaks));
   const users = await x("ls /Users 2>&1; echo code=$?");
   line(/No such file/.test(users.stdout) && !/code=0/.test(users.stdout), "workshop: ls /Users shows nothing (absent)", users.stdout);
   const whoami = await x("id -un");
@@ -114,9 +116,9 @@ try {
 
   // Web: allowlist proxy only.
   const ex = await x("curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://example.com; echo \" code=$?\"");
-  line(!/code=0\b/.test(ex.stdout), "workshop: curl https://example.com fails (proxy refuses)", out(ex));
-  const exDirect = await x("curl -sS -o /dev/null --noproxy '*' --max-time 10 https://example.com; echo \" code=$?\"");
-  line(!/code=0\b/.test(exDirect.stdout), "workshop: curl --noproxy https://example.com fails (iptables)", out(exDirect));
+  line(/^000 code=56$/.test(ex.stdout.trim()) && /response 403/.test(ex.stderr), "workshop: curl https://example.com is refused by the proxy (CONNECT 403)", out(ex));
+  const exDirect = await x("curl -sS -o /dev/null --noproxy '*' --max-time 10 https://93.184.215.14; echo \" code=$?\"");
+  line(/code=7$/.test(exDirect.stdout.trim()), "workshop: a direct connection to a literal IP is refused (iptables, curl exit 7)", out(exDirect));
   const an = await x("curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://api.anthropic.com/; echo \" code=$?\"");
   line(/^\d{3} code=0/.test(an.stdout.trim()) && !an.stdout.startsWith("000"), "workshop: curl https://api.anthropic.com reaches it through the proxy", out(an));
 
@@ -133,8 +135,10 @@ try {
   mkdirSync(files, { recursive: true });
   writeFileSync(join(files, "widget.mjs"), "");
   const argv = workshop.harvestCommand("probe", files, engineDir, 30);
-  const harvest = spawnSync(argv[0]!, [...argv.slice(1, argv.indexOf(IMAGE) + 1), "sh", "-c", "ls /sys/class/net; touch /x 2>&1 || echo readonly"], { encoding: "utf8", timeout: 120_000 });
-  line(harvest.stdout.trim().split("\n")[0] === "lo" && /readonly/.test(harvest.stdout), "harvest: no network (only lo) and read-only root", out(harvest));
+  const harvest = spawnSync(argv[0]!, [...argv.slice(1, argv.indexOf(IMAGE) + 1), "sh", "-c", "echo \"net=$(ls /sys/class/net | tr '\\n' ' ')\"; touch /x 2>/dev/null && echo rw=yes || echo rw=no"], { encoding: "utf8", timeout: 120_000 });
+  const hLines = harvest.stdout.split("\n");
+  line(hLines.includes("net=lo "), "harvest: no network (interfaces: exactly lo)", out(harvest));
+  line(hLines.includes("rw=no"), "harvest: read-only root", out(harvest));
 
   // A real npm install, through the proxy, under the 2.5g cap.
   const project = join(root, "projects", "npm-probe");
@@ -150,41 +154,51 @@ try {
   // Caps, inside the workshop container only.
   const limits = pod(["inspect", "-f", "{{.HostConfig.Memory}} {{.HostConfig.PidsLimit}} {{.HostConfig.SecurityOpt}}", containerName()]);
   line(limits.stdout.startsWith(`${2.5 * 2 ** 30} 1024 `) && limits.stdout.includes("no-new-privileges"), "workshop: --memory 2.5g, --pids-limit 1024, no-new-privileges", limits.stdout);
-  const mem = await x("node -e \"const a=[];for(let i=0;i<30;i++)a.push(Buffer.alloc(100*2**20,1));console.log('alive with 3 GB')\"; echo code=$?");
-  line(!/alive/.test(mem.stdout) && /code=137/.test(mem.stdout), "workshop: node allocating 3 GB is killed (2.5g cap)", out(mem));
+  // 2.64 GiB: above the container's 2.5 GiB but under what the 3 GiB machine has free, so the cgroup's own OOM must be the
+  // killer: its memory.events `oom` (limit reached) and `oom_kill` counters must both go up.
+  const events = "while read k v; do printf '%s=%s ' $k $v; done < /sys/fs/cgroup/memory.events; echo";
+  const mem = await x(`read m < /sys/fs/cgroup/memory.max; echo "max=$m"; grep MemAvailable /proc/meminfo; echo "before $(${events})"; node -e "const a=[];for(let i=0;i<27;i++)a.push(Buffer.alloc(100*2**20,1));console.log('alive')"; echo code=$?; echo "after $(${events})"`);
+  const counter = (when: string, k: string) => Number(new RegExp(`^${when} .*\\b${k}=(\\d+)`, "m").exec(mem.stdout)?.[1] ?? NaN);
+  line(
+    /^max=2684354560$/m.test(mem.stdout) && !/^alive$/m.test(mem.stdout) && /code=137/.test(mem.stdout) && counter("after", "oom") > counter("before", "oom") && counter("after", "oom_kill") > counter("before", "oom_kill"),
+    "workshop: node allocating 2.64 GiB is killed by the container's 2.5g cap (memory.events oom and oom_kill up)",
+    out(mem),
+  );
   // A fork bomb, bounded: node spawns 1500 sleeps, then reads the cgroup counters with no fork, and kills them all.
   const bomb = `const cp=require('child_process'),fs=require('fs'),kids=[];let failed=0;
 for(let i=0;i<1500;i++){try{const k=cp.spawn('sleep',['60']);k.on('error',()=>failed++);kids.push(k)}catch{failed++}}
 setTimeout(()=>{const r=(f)=>fs.readFileSync('/sys/fs/cgroup/'+f,'utf8').trim();console.log(r('pids.current'),r('pids.max'),failed,r('pids.events').replace(/\\n/g,' '));for(const k of kids)try{k.kill('SIGKILL')}catch{};setTimeout(()=>process.exit(0),1000)},3000)`;
   const fork = await workshop.exec(["node", "-e", bomb]);
   const [current, max, refused] = fork.stdout.trim().split(" ");
-  line(max === "1024" && Number(current) <= 1024 && Number(refused) > 0, "workshop: a fork bomb (1500 processes) stops at 1024 pids", `pids.current ${current}, pids.max ${max}, refused spawns ${refused}, ${fork.stdout.trim().split(" ").slice(3).join(" ")} ${fork.stderr.slice(0, 200)}`);
+  line(max === "1024" && Number(current) <= 1024 && Number(refused) > 0 && Number(/max (\d+)/.exec(fork.stdout)?.[1] ?? 0) > 0, "workshop: a fork bomb (1500 processes) stops at 1024 pids", `pids.current ${current}, pids.max ${max}, refused spawns ${refused}, ${fork.stdout.trim().split(" ").slice(3).join(" ")} ${fork.stderr.slice(0, 200)}`);
   let alive = await x("echo still-up");
   for (let i = 0; i < 10 && alive.stdout.trim() !== "still-up"; i++) (await sleep(2000), (alive = await x("echo still-up")));
   line(alive.stdout.trim() === "still-up", "workshop: still answers after the memory and pid checks", out(alive));
 
-  // Ports: a server in the workshop on the range's first port reaches the Mac's 127.0.0.1; a guest port outside does not.
-  const held = spawnSync("lsof", ["-nP", `-iTCP:${first}`, "-sTCP:LISTEN", "-Fc"], { encoding: "utf8" }).stdout.split("\n").filter((l) => l.startsWith("c")).map((l) => l.slice(1));
-  line(held.length > 0 && held.every((c) => c === "limactl"), `Mac: 127.0.0.1:${first} is held by Lima's forward only`, held.join(", "));
-  pod(["exec", "-d", containerName(), "node", "-e", `require('http').createServer((q,s)=>s.end('from-workshop')).listen(${first},'0.0.0.0')`]);
-  // A container on 0.0.0.0:5400, a guest process on 127.0.0.1:5401: neither in the range.
-  pod(["run", "-d", "--rm", "--name", "ressac-probe-out", "-p", "5400:5400", IMAGE, "node", "-e", "require('http').createServer((q,s)=>s.end('outside')).listen(5400,'0.0.0.0')"]);
-  vm("nohup nc -lk -s 127.0.0.1 -p 5401 -e echo outside >/dev/null 2>&1 &");
-  await sleep(5000); // Lima's port watcher polls
-  const guestListens = vm("netstat -ltn").stdout;
-  line(/127\.0\.0\.1:5401\b/.test(guestListens), "machine: probe listeners outside the range are up (5401 guest process)", guestListens.split("\n").filter((l) => /:540[01]\b/.test(l)).join(" | "));
-  const curl = (port: number) => spawnSync("curl", ["-sS", "--max-time", "5", `http://127.0.0.1:${port}/`], { encoding: "utf8" });
-  let fwd = curl(first);
-  for (let i = 0; i < 5 && fwd.stdout !== "from-workshop"; i++) (await sleep(1000), (fwd = curl(first)));
-  line(fwd.stdout === "from-workshop", `Mac: curl 127.0.0.1:${first} reaches a server in the workshop`, out(fwd));
-  for (const p of [5400, 5401]) {
-    const macBusy = spawnSync("lsof", ["-nP", `-iTCP:${p}`, "-sTCP:LISTEN"], { encoding: "utf8" }).stdout.trim();
-    const c = curl(p);
-    line(macBusy === "" && !c.stdout.includes("outside"), `Mac: guest port ${p} (outside ${ports.join("-")}) is not forwarded`, macBusy || out(c));
+  if (!busy) {
+    // Ports: a server in the workshop on the range's first port reaches the Mac's 127.0.0.1; a guest port outside does not.
+    const held = spawnSync("lsof", ["-nP", `-iTCP:${first}`, "-sTCP:LISTEN", "-Fc"], { encoding: "utf8" }).stdout.split("\n").filter((l) => l.startsWith("c")).map((l) => l.slice(1));
+    line(held.length > 0 && held.every((c) => c === "limactl"), `Mac: 127.0.0.1:${first} is held by Lima's forward only`, held.join(", "));
+    pod(["exec", "-d", containerName(), "node", "-e", `require('http').createServer((q,s)=>s.end('from-workshop')).listen(${first},'0.0.0.0')`]);
+    // A container on 0.0.0.0:5400, a guest process on 127.0.0.1:5401: neither in the range.
+    const outside = pod(["run", "-d", "--rm", "--name", "ressac-probe-out", "-p", "5400:5400", IMAGE, "node", "-e", "require('http').createServer((q,s)=>s.end('outside')).listen(5400,'0.0.0.0')"]);
+    vm("nohup nc -lk -s 127.0.0.1 -p 5401 -e echo outside >/dev/null 2>&1 &");
+    await sleep(5000); // Lima's port watcher polls
+    const guestListens = vm("netstat -ltn").stdout;
+    line(outside.status === 0 && /0\.0\.0\.0:5400\b/.test(guestListens) && /127\.0\.0\.1:5401\b/.test(guestListens), "machine: probe listeners outside the range are up (5400 container, 5401 guest process)", guestListens.split("\n").filter((l) => /:540[01]\b/.test(l)).join(" | "));
+    const curl = (port: number) => spawnSync("curl", ["-sS", "--max-time", "5", `http://127.0.0.1:${port}/`], { encoding: "utf8" });
+    let fwd = curl(first);
+    for (let i = 0; i < 5 && fwd.stdout !== "from-workshop"; i++) (await sleep(1000), (fwd = curl(first)));
+    line(fwd.stdout === "from-workshop", `Mac: curl 127.0.0.1:${first} reaches a server in the workshop`, out(fwd));
+    for (const p of [5400, 5401]) {
+      const macBusy = spawnSync("lsof", ["-nP", `-iTCP:${p}`, "-sTCP:LISTEN"], { encoding: "utf8" }).stdout.trim();
+      const c = curl(p);
+      line(macBusy === "" && !c.stdout.includes("outside"), `Mac: guest port ${p} (outside ${ports.join("-")}) is not forwarded`, macBusy || out(c));
+    }
+    pod(["rm", "-f", "ressac-probe-out"]);
+    const forwards = spawnSync("grep", ["-hiE", "forward|ignor", join(home, "ressac", "ha.stderr.log")], { encoding: "utf8" }).stdout.split("\n").filter((l) => /540[01]|53\d\d/.test(l)).slice(-6);
+    console.log(`      Lima's forward decisions:\n${forwards.map((l) => `        ${l.slice(0, 220)}`).join("\n")}`);
   }
-  pod(["rm", "-f", "ressac-probe-out"]);
-  const forwards = spawnSync("grep", ["-hiE", "forward|ignor", join(home, "ressac", "ha.stderr.log")], { encoding: "utf8" }).stdout.split("\n").filter((l) => /540[01]|53\d\d/.test(l)).slice(-6);
-  console.log(`      Lima's forward decisions:\n${forwards.map((l) => `        ${l.slice(0, 220)}`).join("\n")}`);
 
   // Cold start → « exec répond », three times, through the same path as a session.
   for (let i = 1; i <= 3; i++) {
@@ -208,6 +222,6 @@ setTimeout(()=>{const r=(f)=>fs.readFileSync('/sys/fs/cgroup/'+f,'utf8').trim();
 
 console.log("\nMeasurements:");
 for (const m of report) console.log(`  ${m}`);
-console.log(failed ? `\n${failed} FAIL` : "\nall PASS");
+console.log(failed ? `\n${failed} FAIL` : skipped ? `\nall PASS, ${skipped} SKIP` : "\nall PASS");
 process.exit(failed ? 1 : 0);
 
