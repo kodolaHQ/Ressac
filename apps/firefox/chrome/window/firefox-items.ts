@@ -89,10 +89,10 @@ export function hideFirefoxItems(win: Window): () => void {
 
 /**
  * Items that open Réglages. macOS sends the app menu's items to the window in front whatever their "disabled"
- * (nsMenuBarX menuItemHit), so browser-menubar.js would open about:preferences or Firefox's about dialog (and its
- * Firefox update) from any window Ressac does not route.
+ * (nsMenuBarX menuItemHit), so browser-menubar.js would open about:preferences from any window Ressac does not route.
+ * « À propos de Ressac » keeps Firefox's About window: Ressac's branding, version and update (Ressac's own feed).
  */
-const SETTINGS_ITEMS = ["menu_preferences", "menu_settings", "aboutName"];
+const SETTINGS_ITEMS = ["menu_preferences", "menu_settings"];
 
 type RessacWindow = Window & { ressacWindow?: WindowController };
 

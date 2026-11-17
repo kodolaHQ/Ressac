@@ -71,7 +71,8 @@ const REVIEWED: Record<string, string> = {
   "cmd:cmd_minimizeWindow": "minimize",
   "cmd:zoomWindow": "zoom the window",
   helpMenu: "Aide",
-  aboutName: "Ressac's Réglages (app menu « À propos de Ressac »)",
+  // Firefox's About window in Ressac's branding (version, update): kept, Thomas likes it. Its menu bar is neutralized.
+  aboutName: "Ressac's About window (app menu « À propos de Ressac »)",
   // The app menu (nsMenuBarX takes these out of the bar, whatever their "disabled").
   menu_settings: "Ressac's Réglages",
   menu_preferences: "Ressac's Réglages",
@@ -103,7 +104,7 @@ const EXPECTED: Record<string, { tab?: RegExp; window?: RegExp }> = {
   menu_newNavigator: { window: /browser\.xhtml \[main\]/ },
   menu_settings: { tab: /^ressac:\/\/settings$/ },
   menu_preferences: { tab: /^ressac:\/\/settings$/ },
-  aboutName: { tab: /^ressac:\/\/settings$/ },
+  aboutName: { window: /aboutDialog/ },
 };
 
 /** The app menu's items: nsMenuBarX sends them whatever their "disabled"; it skips only the `collapsed` ones. */
