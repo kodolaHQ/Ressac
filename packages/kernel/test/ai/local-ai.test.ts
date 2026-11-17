@@ -165,7 +165,7 @@ describe("LocalAi", () => {
     expect(kev.requests.filter((r) => r.url === "/v1/systemone")).toHaveLength(1);
     expect(launches).toEqual([{
       cmd: LLAMA,
-      args: ["-m", join(folder, "d1", D1_FILE), "--host", "127.0.0.1", "--port", String(port), "-ngl", "99", "-np", "4", "-c", "16384"],
+      args: ["-m", join(folder, "d1", D1_FILE), "--host", "127.0.0.1", "--port", String(port), "-ngl", "99", "-np", "4", "-c", "16384", "-ub", "4096", "-b", "4096"],
       cwd: join(folder, "d1"),
     }]);
     expect(states).toEqual(["starting", "active"]);

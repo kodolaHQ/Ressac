@@ -8,10 +8,17 @@ export const ACCESS_DENIED = "accès refusé";
 export const BINARY_FILE = "fichier binaire";
 export const FILE_TOO_BIG = "fichier trop gros pour la relecture";
 export const LINE_CHANGED = "la ligne a changé";
+export const NESTED_REPO = "dépôt git imbriqué";
 export const BYTES_LIMIT = 1024 * 1024;
 export const DIFF_LINES_LIMIT = 5000;
 export const DIFF_CONTEXT = 3;
+/** Left out of a declared project's snapshot (with its own .gitignore): the user's project, not the agent's. */
 export const EXCLUSIONS = [".git", "node_modules", ".DS_Store", "dist", "build", ".next"];
+/**
+ * Left out of an agent-writable folder's snapshot, as pathspecs: there `add --force` ignores every .gitignore and
+ * info/exclude, since the agent can write one that hides its own code. Git never adds a nested `.git` folder.
+ */
+export const AGENT_EXCLUSIONS = [":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.DS_Store"];
 
 const REF = "refs/ressac/relu";
 /** Read (never written) for projects reviewed before the rename to Ressac. */
@@ -19,7 +26,7 @@ const LEGACY_REF = "refs/webaios/relu";
 const PATHS_BATCH = 200;
 
 export class ReviewError extends Error {
-  constructor(readonly reason: typeof GIT_REQUIRED | typeof ACCESS_DENIED, detail?: string) {
+  constructor(readonly reason: typeof GIT_REQUIRED | typeof ACCESS_DENIED | typeof NESTED_REPO, detail?: string) {
     super(detail ? `${reason} : ${detail}` : reason);
     this.name = "ReviewError";
   }
@@ -62,7 +69,11 @@ export class ReviewStore {
   private readonly root: string | undefined;
   private readonly git: string;
 
-  /** `root`: the folder `folder` must be a real direct child of (an agent-writable one, where links can be swapped in). */
+  /**
+   * `root`: the folder `folder` must be a real direct child of (an agent-writable one, where links can be swapped in).
+   * Such a folder hides nothing from the review: no .gitignore, .gitattributes nor nested repository, and its first
+   * review starts from the empty tree.
+   */
   constructor(o: { repo: string; folder: string; root?: string; git?: string }) {
     this.repo = o.repo;
     this.folder = o.folder;
@@ -103,6 +114,8 @@ export class ReviewStore {
       GIT_DIR: this.repo,
       GIT_WORK_TREE: workTree,
       GIT_INDEX_FILE: join(this.repo, "index-ressac"),
+      // A .gitattributes the agent writes (`* -diff`) showed its code as binary: attributes come from the empty tree.
+      ...(this.emptyTree ? { GIT_ATTR_SOURCE: this.emptyTree } : {}),
       GIT_AUTHOR_NAME: "Ressac", GIT_AUTHOR_EMAIL: "ressac@localhost",
       GIT_COMMITTER_NAME: "Ressac", GIT_COMMITTER_EMAIL: "ressac@localhost",
     };
@@ -113,6 +126,8 @@ export class ReviewStore {
   }
 
   private gitVerified: Promise<boolean> | null = null;
+  /** The empty tree, for an agent-writable folder only (written by `prepare()`). */
+  private emptyTree: string | undefined;
 
   private async prepare(): Promise<void> {
     this.gitVerified ??= gitAvailable(this.git);
@@ -126,6 +141,7 @@ export class ReviewStore {
       throw e;
     }
     if (!(await exists(join(this.repo, "HEAD")))) {
+      this.emptyTree = undefined;
       await mkdir(dirname(this.repo), { recursive: true, mode: 0o700 });
       const env = { ...this.env() };
       delete env.GIT_DIR; delete env.GIT_WORK_TREE; delete env.GIT_INDEX_FILE;
@@ -133,6 +149,7 @@ export class ReviewStore {
       await mkdir(join(this.repo, "info"), { recursive: true });
       await writeFile(join(this.repo, "info", "exclude"), EXCLUSIONS.join("\n") + "\n");
     }
+    if (this.root !== undefined) this.emptyTree ??= (await this.g(["hash-object", "-t", "tree", "-w", "/dev/null"])).trim();
   }
 
   private async internalSnapshot(): Promise<string> {
@@ -141,7 +158,8 @@ export class ReviewStore {
     for (let attempt = 0; ; attempt++) {
       try {
         const av = { text: "" };
-        await launch(this.git, ["add", "-A"], this.env(before.real), before.real, av);
+        const add = this.root !== undefined ? ["add", "-A", "--force", "--", ".", ...AGENT_EXCLUSIONS] : ["add", "-A"];
+        await launch(this.git, add, this.env(before.real), before.real, av);
         if (/could not open directory|Permission denied|Operation not permitted/i.test(av.text)) throw new ReviewError(ACCESS_DENIED, av.text.trim());
         break;
       } catch (e) {
@@ -150,10 +168,16 @@ export class ReviewStore {
         if (/Operation not permitted|Permission denied/i.test(s)) throw new ReviewError(ACCESS_DENIED, this.folder);
         // A subfolder that is a repository without a commit cannot become a link: we exclude it.
         const nested = /'(.+)\/' does not have a commit checked out/.exec(s);
+        // In an agent's folder it would hide its files: the review is refused rather than blind.
+        if (nested && this.root !== undefined) throw new ReviewError(NESTED_REPO, nested[1]);
         if (!nested || attempt >= 50) throw e;
         const pattern = "/" + nested[1]!.replace(/[\\*?[\]!#]/g, "\\$&") + "/\n";
         await appendFile(join(this.repo, "info", "exclude"), pattern);
       }
+    }
+    if (this.root !== undefined) {
+      const gitlink = /^160000 \S+ \S+\t(.*)$/m.exec(await this.g(["ls-files", "-s"]));
+      if (gitlink) throw new ReviewError(NESTED_REPO, gitlink[1]);
     }
     if ((await this.identity().catch(() => null))?.marks !== before.marks) {
       // What the index took may be anything: dropped, never written as a tree.
@@ -183,7 +207,8 @@ export class ReviewStore {
     return this.series(async () => {
       await this.prepare();
       if (await this.reviewedRef()) return false;
-      await this.keepInternal(await this.internalSnapshot());
+      const current = await this.internalSnapshot();
+      await this.keepInternal(this.emptyTree ?? current);
       return true;
     });
   }
@@ -200,7 +225,7 @@ export class ReviewStore {
     return this.series(async () => {
       await this.prepare();
       const current = await this.internalSnapshot();
-      if (!(await this.reviewedRef())) await this.keepInternal(current);
+      if (!(await this.reviewedRef())) await this.keepInternal(this.emptyTree ?? current);
       const reviewed = (await this.g(["rev-parse", `${await this.reviewedRef()}^{tree}`])).trim();
       if (reviewed === current) return { reviewedTree: reviewed, currentTree: current, files: [] };
 
@@ -268,7 +293,7 @@ export class ReviewStore {
   }
 
   delete(): Promise<void> {
-    return this.series(() => rm(this.repo, { recursive: true, force: true }));
+    return this.series(() => ((this.emptyTree = undefined), rm(this.repo, { recursive: true, force: true })));
   }
 }
 

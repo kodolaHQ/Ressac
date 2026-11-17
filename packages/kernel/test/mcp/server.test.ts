@@ -253,6 +253,27 @@ test("private space during the question: « Autoriser » does not deliver the ta
   expect(bridge.calls.some((a) => a.method === "readText")).toBe(false);
 });
 
+test("a pending tab card is withdrawn by a new conversation; its late « Autoriser » grants nothing, the next read asks again", async () => {
+  const signals: AbortSignal[] = [];
+  let reply!: (yes: boolean) => void;
+  bridge.askPermission = (o, signal) => {
+    bridge.calls.push({ method: "askPermission", args: [o.id] });
+    signals.push(signal!);
+    return new Promise<boolean>((ok) => (reply = ok));
+  };
+  const call = client.callTool({ name: "read_tab", arguments: { id: "gmail" } });
+  await vi.waitFor(() => expect(signals).toHaveLength(1));
+  policy.reset();
+  expect(signals[0]!.aborted).toBe(true);
+  reply(true);
+  expect(text(await call)).toBe(DENIAL_TEXT);
+  expect(policy.canRead(gmail)).toBe(false);
+  const again = client.callTool({ name: "read_tab", arguments: { id: "gmail" } });
+  await vi.waitFor(() => expect(signals).toHaveLength(2));
+  reply(true);
+  expect(text(await again)).toContain("Gmail");
+});
+
 test("open_tab then read_tab on that tab → no request", async () => {
   const id = text(await client.callTool({ name: "open_tab", arguments: { url: "http://localhost:5280" } }));
   expect(bridge.calls.at(-1)).toEqual({ method: "openTab", args: ["http://localhost:5280", undefined] });

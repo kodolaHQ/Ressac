@@ -50,7 +50,8 @@ export const D1_MODEL: LlamaModelSpec = {
   url: D1_URL,
   sha256: D1_SHA256,
   bytes: D1_BYTES,
-  args: ["-ngl", "99", "-np", String(D1_SLOTS), "-c", String(D1_CONTEXT * D1_SLOTS)],
+  // The physical batch defaults to 512: any longer prompt got HTTP 500, so it spans a whole slot.
+  args: ["-ngl", "99", "-np", String(D1_SLOTS), "-c", String(D1_CONTEXT * D1_SLOTS), "-ub", String(D1_CONTEXT), "-b", String(D1_CONTEXT)],
   idleMs: 600_000,
 };
 const KEV_DELAY_MS = 60_000;

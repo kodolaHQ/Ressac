@@ -118,14 +118,19 @@ function filesOf(dir: string): string[] {
 }
 
 const SITE = { declaration: { name: "Essai", url: "https://essai.example/", domains: ["essai.example"] }, files: { "app.js": LINES.join("\n") + "\n" } };
-/** A site app « essai » (app.js, line 15 changed after its first photo), its Review page open on app.js. */
+/** A site app « essai » (its first review marked read, then app.js line 15 changed), its Review page open on app.js. */
 async function siteOnAppJs(): Promise<void> {
   await launch({ prepare: (d) => writeSite(d, "essai", SITE) });
   await expect.poll(() => existsSync(path.join(w!.dataDir, "design", "review", "site-essai.git", "refs", "ressac", "relu")), { timeout: 15_000 }).toBe(true);
-  writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
   await click(m, tid("site-essai-more"));
     await click(m, '[role="menuitem"]', { text: "Modifications" });
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
+  // A site app's first review shows every file it came with.
+  await waitCount(tid("review-file"), 2);
+  await click(m, tid("mark-read"));
+  await waitCount(tid("review-file"), 0);
+  writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
+  await refreshReview(m);
   await openFile("app.js");
   await waitCount(ADDED, 1);
 }

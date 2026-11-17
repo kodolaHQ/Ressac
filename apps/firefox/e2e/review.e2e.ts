@@ -254,11 +254,17 @@ it("at start the site app's first photo exists under <dataDir>/design/review/sit
     prepare: (d) => writeSite(d, "essai", { declaration: { name: "Essai", url: "https://essai.example/", domains: ["essai.example"] }, files: { "app.js": LINES.join("\n") + "\n" } }),
   });
   await expect.poll(() => existsSync(reviewedRef(w!.dataDir, "site-essai")), { timeout: 15_000 }).toBe(true);
-  writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
   await click(m, tid("site-essai-more"));
     await click(m, '[role="menuitem"]', { text: "Modifications" });
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
   expect((await reviewTabs("site-essai")).map((o) => o.title)).toEqual(["Relecture — Essai"]);
+  // The first review starts from nothing: the code the site app came with is shown.
+  await waitCount(tid("review-file"), 2);
+  expect(await fileRow("app.js")).toContain("+");
+  await click(m, tid("mark-read"));
+  await waitCount(tid("review-file"), 0);
+  writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
+  await refreshReview(m);
   await waitCount(tid("review-file"), 1);
   expect(await fileRow("app.js")).toContain("~");
   await openFile("app.js");

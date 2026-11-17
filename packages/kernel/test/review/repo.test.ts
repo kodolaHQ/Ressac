@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmod, mkdir, readdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { ACCESS_DENIED, ReviewStore, ReviewError, GIT_REQUIRED, gitAvailable } from "../../src/review/repo.js";
+import { ACCESS_DENIED, NESTED_REPO, ReviewStore, ReviewError, GIT_REQUIRED, gitAvailable } from "../../src/review/repo.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const GIT = process.env.RESSAC_GIT ?? "/usr/bin/git";
@@ -207,6 +207,47 @@ describe("the project's repo is never touched", () => {
     expect(c.files.every((f) => !f.path.includes(".git/") && f.path !== "sous")).toBe(true);
     await r.keep();
     expect([...(await hash(join(sub, ".git"))), ...(await hash(join(withCommit, ".git")))]).toEqual(before);
+  });
+});
+
+describe("an agent-writable folder (root given) hides nothing", () => {
+  const agent = () => new ReviewStore({ repo, folder, root });
+  test("its first review shows every file it already had", async () => {
+    await write("a.txt", "a\n");
+    expect(await agent().ensureReference()).toBe(true);
+    expect((await agent().compare()).files).toMatchObject([{ path: "a.txt", status: "added" }]);
+    const fresh = new ReviewStore({ repo: join(root, "prive", "q.git"), folder, root });
+    expect((await fresh.compare()).files).toMatchObject([{ path: "a.txt", status: "added" }]);
+  });
+  test("a self-ignoring .gitignore, a nested dist or build: shown; node_modules and .DS_Store left out", async () => {
+    for (const d of ["node_modules", "tweaks/node_modules", "tweaks/dist", "build"]) {
+      await mkdir(join(folder, d), { recursive: true });
+      await write(join(d, "x.js"), "x");
+    }
+    await write(".DS_Store", "x");
+    await write("tweaks/.DS_Store", "x");
+    await write(".gitignore", "*\n");
+    const c = await agent().compare();
+    expect(c.files.map((f) => f.path)).toEqual([".gitignore", "build/x.js", "tweaks/dist/x.js"]);
+  });
+  test("its .gitattributes cannot show its code as binary", async () => {
+    await write(".gitattributes", "* -diff\n");
+    await write("a.js", "evil()\n");
+    const r2 = agent();
+    const c = await r2.compare();
+    expect(c.files.map((f) => f.displayable)).toEqual([true, true]);
+    expect((await r2.file(c, "a.js")).blocks[0]!.lines).toMatchObject([{ mark: "+", text: "evil()" }]);
+  });
+  test("a nested repository, with or without a commit, refuses the review (its files would be hidden)", async () => {
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" };
+    const sub = join(folder, "sous");
+    await mkdir(sub);
+    execFileSync(GIT, ["-C", sub, "init", "-q"], { env });
+    await writeFile(join(sub, "f.txt"), "f\n");
+    await expect(agent().compare()).rejects.toMatchObject({ reason: NESTED_REPO });
+    execFileSync(GIT, ["-C", sub, "add", "f.txt"], { env });
+    execFileSync(GIT, ["-C", sub, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"], { env });
+    await expect(agent().compare()).rejects.toMatchObject({ reason: NESTED_REPO });
   });
 });
 
