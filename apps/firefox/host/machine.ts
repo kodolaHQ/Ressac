@@ -395,6 +395,13 @@ export function createMachine(o: {
     },
     install: () => guarded(() => installInner("user")),
     stop: () => serial(stopInner),
+    /** AI off: the image download in flight stops (its part is kept for the next try); a machine booting or running stops once up. */
+    cancel(): Promise<void> {
+      downloads?.abort();
+      return serial(async () => {
+        if ((await instance()) === "Running") await stopInner();
+      });
+    },
     /**
      * Keeps the logins: exports them first (unless an export is still waiting to be imported), then deletes the instance.
      * A damaged instance is started for that; when it cannot be, or the export fails, the instance is kept. `force`
@@ -482,6 +489,7 @@ export function fakeMachine(spec: string, log: string, delayMs = 0): ReturnType<
     onStatus: () => () => {},
     install: () => note("install"),
     stop: async () => {},
+    cancel: async () => {},
     remove: (r = {}) => note(r.force ? "remove --force" : "remove"),
     close: async () => {},
     usage: async () => (kind === "running" || kind === "stopped" ? { memoryMB: kind === "running" ? 614 : 0, diskMB: 1843 } : null),

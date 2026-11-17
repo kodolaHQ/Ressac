@@ -262,10 +262,11 @@ const wakeAi = () => {
   void ai.check().then((v) => aiOn && settings.downloadModels([!v.decision && DECISION_MODEL, !v.embed && SEARCH_MODEL].filter((n) => n !== false)), () => {});
   if (testMachine) return;
   void machine.install().then(
-    () => engines.settle().catch((e) => console.error("[ressac] the logins did not move to the machine:", e)),
+    // AI turned off meanwhile (machine.cancel): no hand-over, nor Docker start, until it is on again.
+    () => (aiOn ? engines.settle() : Promise.resolve()).catch((e) => console.error("[ressac] the logins did not move to the machine:", e)),
     (e) => {
       console.error("[ressac] the machine is not ready:", e);
-      if (engines.current().kind === "docker")
+      if (aiOn && engines.current().kind === "docker")
         void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
     },
   );
@@ -467,6 +468,7 @@ const applyAi = async () => {
   aiWoken = false;
   kernelLaunched = false;
   settings.cancelDownloads();
+  void machine.cancel().catch((e) => console.error("[ressac] the machine did not stop:", e));
   // The kernel first: its widget scheduler must not start a harvest while the sessions and apps stop. Its stop only
   // drops the sessions' MCP tokens (idempotent with their own end); the sessions themselves stop below.
   ready = ready.then(async (n) => (await stopKernel(n), null));

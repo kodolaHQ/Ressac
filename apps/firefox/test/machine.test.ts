@@ -353,6 +353,42 @@ describe("the workshop machine", () => {
     await vi.waitFor(() => expect(stops(w)).toBe(1));
   });
 
+  it("cancel (AI off) aborts the image download in flight: nothing is created", async () => {
+    const { createServer } = await import("node:http");
+    const server = createServer((_q, res) => {
+      res.writeHead(200, { "content-length": "1000000" });
+      res.write(Buffer.alloc(1000)); // then hangs
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const w = world();
+      const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/ressac-vm-x.raw.zst`;
+      const m = machine(w, { image: { version: "x", url, sha256: "0".repeat(64), bytes: 1_000_000 } });
+      const installing = m.install();
+      await vi.waitFor(() => expect(m.status().kind).toBe("downloading"));
+      await m.cancel();
+      await expect(installing).rejects.toThrow();
+      expect(limactl(w).some((l) => l.startsWith("create"))).toBe(false);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
+  });
+
+  it("cancel (AI off) during a boot stops the machine once it is up; a machine never created stays absent", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    const m = machine(w, { idleMs: 60_000 });
+    const waking = m.wake("user");
+    await m.cancel();
+    await waking;
+    expect(stops(w)).toBe(1);
+    expect(m.status().kind).toBe("stopped");
+    const none = machine(world());
+    await vi.waitFor(() => expect(none.status().kind).toBe("absent"));
+    await none.cancel();
+    expect(none.status().kind).toBe("absent");
+  });
+
   it("two wakes at once start once", async () => {
     const w = world({ instance: { status: "Stopped" } });
     const m = machine(w);
