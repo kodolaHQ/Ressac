@@ -16,6 +16,7 @@ import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDesign, type DesignService } from "./design";
 import { createOverlays } from "../window/design-overlays";
+import { neutralizeFirefoxWindow } from "../window/firefox-items";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
@@ -313,6 +314,25 @@ async function start(): Promise<RessacStore> {
     safeForUntrustedWebProcess: true,
   });
   installCallPlayer();
+  // Windows with Firefox's menu bar that are not Ressac's (browser.xhtml windows do this in window/index.ts): the hidden
+  // one, whose menu bar macOS shows with no window open, and Page Info, the Library, Firefox's About…
+  const hidden = Services.appShell.hiddenDOMWindow;
+  const hiddenMenus = (tries = 50) => {
+    if (hidden.document.getElementById("main-menubar")) neutralizeFirefoxWindow(hidden);
+    else if (tries > 0) setTimeout(() => hiddenMenus(tries - 1), 200);
+  };
+  hiddenMenus();
+  Services.ww.registerNotification((subject: unknown, topic: string) => {
+    if (topic !== "domwindowopened") return;
+    const win = subject as unknown as Window;
+    win.addEventListener(
+      "DOMContentLoaded",
+      () => {
+        if (win.document.documentURI !== "chrome://browser/content/browser.xhtml" && win.document.getElementById("main-menubar")) neutralizeFirefoxWindow(win);
+      },
+      { once: true },
+    );
+  });
   // The vim mode (vim-actor.ts): top http(s) documents of tab browsers; the parent decides whether keys are taken there.
   // Registered only while the setting is on: off, no page pays for it. Unregistering destroys the actors (didDestroy
   // drops their listeners and layer); registering reaches the pages already open through `tell`.

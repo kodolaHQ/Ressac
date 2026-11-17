@@ -5,7 +5,7 @@
 import type { RessacStore } from "../store";
 import { appFolderOf, closeAppPopup, setupAppWindow } from "./app-window";
 import { createController } from "./controller";
-import { hideFirefoxItems } from "./firefox-items";
+import { hideFirefoxItems, routeAddonsToMain, routeSettingsItems } from "./firefox-items";
 import { cutFrameNetwork } from "./frame-network";
 import { setupPopup } from "./popup";
 import { mountSiteMenu } from "./site-menu";
@@ -40,6 +40,8 @@ window.addEventListener(
   () => {
     // Every window, Ressac's or not: its menu bar is the app's while it is in front.
     hideFirefoxItems(window);
+    routeSettingsItems(window);
+    routeAddonsToMain(window);
     // Every full browser window is Ressac; popups (window.open with dimensions) stay plain Firefox windows, and a
     // private window (Dock, ⇧⌘P) stays Firefox's: it must not take the session's windows into private browsing.
     if (PrivateBrowsingUtils.isWindowPrivate(window)) return;

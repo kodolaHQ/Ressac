@@ -1,4 +1,5 @@
 import type { TabId } from "../../shared/model";
+import { FIREFOX_COMMANDS } from "./keys";
 
 /**
  * The Ressac tab behind a popup: its opener's tab, or, for a popup opened by a popup (the steps of a sign-in),
@@ -39,4 +40,7 @@ export function setupPopup(win: Window): void {
   // Firefox sends a popup's new tabs to its most recent full window, with no opener tab: that window's TabSync reads
   // the source here (its addTab is given the popup's browser as openerBrowser).
   win.ressacPopupSource = popupSource(win);
+  // Still Firefox's window (sign-in pages), but never a way to Firefox's own windows and pages; ⌘W still closes it.
+  for (const id of [...FIREFOX_COMMANDS.filter((c) => c !== "cmd_close"), "View:PageSource"])
+    win.document.getElementById(id)?.setAttribute("disabled", "true");
 }

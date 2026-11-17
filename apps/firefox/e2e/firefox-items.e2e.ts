@@ -47,7 +47,12 @@ describe("Firefox features in conflict", () => {
       [FIREFOX_HIDDEN_ITEMS],
     );
     expect(shown).toEqual([]);
-    const missing = await m.execute<string[]>(`return arguments[0].filter((id) => !document.getElementById(id));`, [FIREFOX_HIDDEN_ITEMS]);
+    // Some exist only in the hidden window's menu bar (the one macOS shows with no window open).
+    const missing = await m.execute<string[]>(
+      `const hidden = Services.appShell.hiddenDOMWindow.document;
+       return arguments[0].filter((id) => !document.getElementById(id) && !hidden.getElementById(id));`,
+      [FIREFOX_HIDDEN_ITEMS],
+    );
     expect(missing).toEqual([]);
     expect(await m.execute(`return document.getElementById("aboutName").hidden;`)).toBe(false);
     expect(await m.execute(`return Services.appShell.hiddenDOMWindow.document.getElementById("macDockMenuNewPrivateWindow")?.hidden;`)).toBe(true);

@@ -99,9 +99,6 @@ export const FIREFOX_KEYS = [
   "goHome",
 ];
 
-/** The native Settings menu items: kept in FIREFOX_COMMANDS (site and app windows keep them off), re-enabled in main windows. */
-export const SETTINGS_MENU_ITEMS = ["menu_preferences", "menu_settings"];
-
 /**
  * Firefox's <command>s (and macOS menu items) that open or close tabs and windows behind the store's back: disabling a
  * <key> leaves the native menu bar running them. ⌘T, ⌘W and ⇧⌘T keep working through shortcutFor. New Window and Close
@@ -118,9 +115,6 @@ export const FIREFOX_COMMANDS = [
   "History:UndoCloseTab",
   "History:UndoCloseWindow",
   "History:RestoreLastClosedTabOrWindowOrSession",
-  // ⌘, (Settings): opens about:preferences as a Firefox tab.
-  "menu_preferences",
-  "menu_settings",
   // The native menu items for history, bookmarks and downloads (all open Places' library window).
   "Browser:ShowAllHistory",
   "Browser:ShowAllBookmarks",
@@ -138,4 +132,12 @@ export const FIREFOX_COMMANDS = [
   "cmd_file_importFromAnotherBrowser",
   // Customize mode works on a toolbox Ressac hides.
   "cmd_CustomizeToolbars",
+  // The keys of menu items firefox-items.ts hides: ⌘I Page Info, ⇧Esc about:processes, ⌥⌘R the developer restart
+  // (built after delayed startup: main windows only), about:pdf, Firefox's address bar searches.
+  "View:PageInfo",
+  "View:AboutProcesses",
+  "cmd_quickRestart",
+  "cmd_editPDF",
+  "Browser:SearchTabs",
+  "History:SearchHistory",
 ];

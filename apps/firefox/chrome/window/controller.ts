@@ -20,7 +20,7 @@ import { mountSiteBanner } from "./site-banner";
 import { mountSearchBand } from "./search-band";
 import { mountAgentPill } from "./agent-pill";
 import { visibleFrame } from "./frame";
-import { FIREFOX_COMMANDS, FIREFOX_KEYS, SETTINGS_MENU_ITEMS, shortcutFor, type Shortcut } from "./keys";
+import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
 import { trackVisits } from "./visits";
 
@@ -423,18 +423,6 @@ export function createController(
     }),
   );
   for (const id of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS]) document.getElementById(id)?.setAttribute("disabled", "true");
-  // The Settings menu items open our page: stopPropagation keeps browser-menubar.js from opening about:preferences.
-  for (const id of SETTINGS_MENU_ITEMS) {
-    const item = document.getElementById(id);
-    if (!item) continue;
-    item.removeAttribute("disabled");
-    const onCommand = (e: Event) => {
-      e.stopPropagation();
-      if (!welcome) store.dispatch({ type: "openSettings", windowId: windowId });
-    };
-    item.addEventListener("command", onCommand);
-    unsubscribe.push(() => item.removeEventListener("command", onCommand));
-  }
   // The macOS menu bar fires View › Sidebar items by their own key (⇧⌘H) even with the <key> disabled; Ressac has
   // no native sidebar, so every item is off, including the ones SidebarController adds or re-enables later.
   const sidebarMenu = document.getElementById("viewSidebarMenu");

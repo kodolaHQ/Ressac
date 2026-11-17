@@ -31,6 +31,13 @@ beforeEach(async () => {
 });
 afterEach(() => w?.close());
 
+/** A new window whose home panel has started its agent session: that start takes back every access, a card asked before it falls. */
+async function windowWithSession(): Promise<string> {
+  const h = await newWindow(m);
+  await inWindow(m, h, () => waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent"));
+  return h;
+}
+
 const call = (name: string, args: Record<string, unknown> = {}) => callTool(w.dataDir, name, args);
 /** Opens a user tab (not the agent's) and returns its id once its page is loaded. */
 async function openTab(path: string, enable = true): Promise<string> {
@@ -191,7 +198,7 @@ it("sending a message from a tab shares it", async () => {
 describe("several windows", () => {
   it("a read question shows only in the active window", async () => {
     const id = await openTab("/a.html");
-    await newWindow(m);
+    await windowWithSession();
     const handles = await handlesById();
     const active = await activeId();
     const other = Object.keys(handles).find((x) => x !== active)!;
@@ -208,8 +215,7 @@ describe("several windows", () => {
     if (!(await state(m)).windows[0]!.agentPanelOpen) await dispatch(m, { type: "toggleAgentPanel", windowId: (await state(m)).windows[0]!.id });
     await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
     expect((await call("read_tab", { id })).text).toContain("Le chat dort");
-    const second = await newWindow(m);
-    await inWindow(m, second, () => waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent"));
+    const second = await windowWithSession();
     const reading = call("read_tab", { id });
     const handles = Object.values(await handlesById());
     // One window at a time: Marionette has a single current window.
@@ -225,7 +231,7 @@ describe("several windows", () => {
   });
 
   it("closing the window that shows a question moves the card to the other window; closing the last one refuses it at once", async () => {
-    await newWindow(m);
+    await windowWithSession();
     const handles = await handlesById();
     const active = await activeId();
     const other = Object.keys(handles).find((x) => x !== active)!;
