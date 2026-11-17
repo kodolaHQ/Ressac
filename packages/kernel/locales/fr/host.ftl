@@ -48,3 +48,4 @@ host-machine-download-failed = Le téléchargement de la machine de l'atelier a 
 host-machine-cancelled = Téléchargement de la machine de l'atelier annulé
 host-machine-start-failed = La machine de l'atelier n'a pas démarré : { $detail }
 host-machine-export-failed = Les connexions de l'atelier n'ont pas pu être sauvegardées, la machine est gardée : { $detail }
+host-machine-damaged = La machine de l'atelier est dans un état inattendu. Ses données sont gardées : redémarrez le Mac, ou supprimez-la dans Réglages › Atelier.

@@ -58,13 +58,14 @@ export function createMachine(o: {
   const podman = join(o.resources, "podman");
   const tar = join(home, `${VOLUME_HOME}.tar`);
   const raw = join(home, `ressac-vm-${image.version}.raw`);
-  const tooLong = socket.length > SOCKET_MAX;
+  const tooLong = Buffer.byteLength(socket) > SOCKET_MAX;
 
   const lima = (args: string[], x: { delayMs?: number; input?: string } = {}) => run(limactl, args, { delayMs: 120_000, ...x, env: { LIMA_HOME: home } });
   const shell = (args: string[], x: { delayMs?: number; input?: string } = {}) => lima(["shell", "--workdir", "/", NAME, ...args], x);
   const pod = (args: string[], delayMs = 60_000) => run(podman, ["--url", `unix://${socket}`, ...args], { delayMs });
   const detail = (r: RunResult) => (r.stderr || r.stdout).trim().split("\n").at(-1) ?? "";
   const startFailed = (d: string) => new Error(hostSay("host-machine-start-failed", { detail: d }));
+  const damaged = () => new Error(hostSay("host-machine-damaged"));
 
   let status: MachineStatus = tooLong ? { kind: "error", message: hostSay("host-machine-socket-too-long", { path: socket }) } : { kind: "absent" };
   const listeners = new Set<(s: MachineStatus) => void>();
@@ -91,8 +92,11 @@ export function createMachine(o: {
     throw new Error(hostSay("host-machine-unsupported"));
   }
 
-  /** The instance as Lima lists it; "broken" when a create or first start did not finish. */
-  async function instance(): Promise<"absent" | "broken" | "Stopped" | "Running"> {
+  /**
+   * The instance as Lima lists it. "empty": listed with no disk at all (a create or first start that did not finish), safe
+   * to delete. "damaged": a disk but neither Running nor Stopped; it may hold the logins, so it is never deleted unasked.
+   */
+  async function instance(): Promise<"absent" | "empty" | "damaged" | "Stopped" | "Running"> {
     const r = await lima(["list", "--json"]);
     if (r.code !== 0) throw startFailed(detail(r));
     const found = r.stdout
@@ -101,8 +105,9 @@ export function createMachine(o: {
       .map((l) => JSON.parse(l) as { name: string; status: string })
       .find((i) => i.name === NAME);
     if (!found) return "absent";
-    // Lima 2.3 renames the image to `disk` at the first start.
-    return (found.status === "Running" || found.status === "Stopped") && existsSync(join(dir, "disk")) ? found.status : "broken";
+    // Lima 2.3 renames the image to `disk` at the first start; the older names count too, should that change again.
+    if (!["disk", "diffdisk", "basedisk"].some((f) => existsSync(join(dir, f)))) return "empty";
+    return found.status === "Running" || found.status === "Stopped" ? found.status : "damaged";
   }
 
   /** Paths go inside double-quoted YAML (and Lima templates some fields): refuse any that could escape them. */
@@ -242,12 +247,16 @@ export function createMachine(o: {
     timer = undefined;
   };
 
+  /** On failure the poll stays armed and tries again. */
   async function stopInner(): Promise<void> {
-    unwatch();
     if ((await instance()) === "Running") {
       await shell(["sudo", "fstrim", "-a"], { delayMs: 60_000 }); // gives freed blocks back to the Mac's disk
-      if ((await lima(["stop", NAME], { delayMs: 60_000 })).code !== 0) await lima(["stop", "--force", NAME]);
+      if ((await lima(["stop", NAME], { delayMs: 60_000 })).code !== 0) {
+        const f = await lima(["stop", "--force", NAME]);
+        if (f.code !== 0) throw startFailed(detail(f));
+      }
     }
+    unwatch();
     set({ kind: "stopped" });
   }
 
@@ -255,7 +264,8 @@ export function createMachine(o: {
     await usable();
     const was = await instance();
     if (was === "Running" || was === "Stopped") return;
-    if (was === "broken") await lima(["delete", "--force", NAME]);
+    if (was === "damaged") throw damaged();
+    if (was === "empty") await lima(["delete", "--force", NAME]);
     await fetchImage();
     const yaml = join(home, `${NAME}.yaml`);
     await writeFile(yaml, await render());
@@ -284,7 +294,7 @@ export function createMachine(o: {
       if (!(await supported())) return set({ kind: "unsupported" });
       const was = await instance();
       if (was === "Running") watch("user");
-      set({ kind: was === "Running" ? "running" : was === "Stopped" ? "stopped" : "absent" });
+      set(was === "damaged" ? { kind: "error", message: damaged().message } : { kind: was === "Running" ? "running" : was === "Stopped" ? "stopped" : "absent" });
     }).catch(() => {});
 
   return {
@@ -300,7 +310,7 @@ export function createMachine(o: {
       guarded(async () => {
         await usable();
         const was = await instance();
-        if (was === "absent" || was === "broken") return installInner(reason);
+        if (was === "absent" || was === "empty" || was === "damaged") return installInner(reason);
         if (was === "Stopped" || status.kind !== "running") await start(was === "Running");
         watch(reason);
         set({ kind: "running" });
@@ -312,15 +322,21 @@ export function createMachine(o: {
     },
     install: () => guarded(() => installInner("user")),
     stop: () => serial(stopInner),
-    /** Keeps the logins: exports them first (unless an export is still waiting to be imported), then deletes the instance. */
+    /**
+     * Keeps the logins: exports them first (unless an export is still waiting to be imported), then deletes the instance.
+     * A damaged instance is started for that; when it cannot be, or the export fails, the instance is kept.
+     */
     remove: () =>
       guarded(async () => {
         if (tooLong) return;
         unwatch();
         const was = await instance();
-        if (was !== "absent" && was !== "broken" && !existsSync(tar)) {
+        if (was !== "absent" && was !== "empty" && !existsSync(tar)) {
           await start(was === "Running");
-          if ((await pod(["volume", "exists", VOLUME_HOME])).code === 0) {
+          const exists = await pod(["volume", "exists", VOLUME_HOME]);
+          // 1 is "no such volume"; any other failure (125, timeout) must not pass for it.
+          if (exists.code !== 0 && exists.code !== 1) throw new Error(hostSay("host-machine-export-failed", { detail: detail(exists) }));
+          if (exists.code === 0) {
             const e = await pod(["volume", "export", VOLUME_HOME, "--output", `${tar}.part`], 10 * 60_000);
             if (e.code !== 0) throw new Error(hostSay("host-machine-export-failed", { detail: detail(e) }));
             await rename(`${tar}.part`, tar);

@@ -23,7 +23,7 @@ interface Call {
 }
 
 /** A fake world: one Lima instance, a Podman that answers when it runs, the guest's version file and the logins volume. */
-function world(o: { instance?: { status: string; disk?: boolean } | null; guestVersion?: string; volume?: boolean; home?: string } = {}) {
+function world(o: { instance?: { status: string; disk?: boolean } | null; guestVersion?: string; volume?: boolean; volumeExistsCode?: number; failStops?: number; home?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), "m-"));
   dirs.push(root);
   const home = o.home ?? join(root, "h");
@@ -31,7 +31,7 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
   mkdirSync(resources, { recursive: true });
   writeFileSync(join(resources, "lima.yaml"), TEMPLATE);
   const dir = join(home, "ressac");
-  const s = { instance: o.instance === undefined ? null : o.instance, guestVersion: o.guestVersion ?? VM_IMAGE.version, volume: o.volume ?? false, calls: [] as Call[], starts: 0, imageSeen: null as Buffer | null };
+  const s = { instance: o.instance === undefined ? null : o.instance, guestVersion: o.guestVersion ?? VM_IMAGE.version, volume: o.volume ?? false, calls: [] as Call[], starts: 0, failStops: o.failStops ?? 0, imageSeen: null as Buffer | null };
   if (s.instance) {
     mkdirSync(dir, { recursive: true });
     if (s.instance.disk !== false) writeFileSync(join(dir, "disk"), "");
@@ -57,7 +57,10 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
         s.instance!.status = "Running";
         return ok();
       }
-      if (args[0] === "stop") return (s.instance!.status = "Stopped"), ok();
+      if (args[0] === "stop") {
+        if (s.failStops > 0) return s.failStops--, { code: 1, stdout: "", stderr: "stop failed" };
+        return (s.instance!.status = "Stopped"), ok();
+      }
       if (line === "delete --force ressac") return rmSync(dir, { recursive: true, force: true }), (s.instance = null), ok();
       if (line.endsWith("cat /etc/ressac-vm-version")) return ok(s.guestVersion + "\n");
       if (line.endsWith("sudo tee /etc/ressac-vm-version")) return (s.guestVersion = String(opts.input).trim()), ok();
@@ -66,7 +69,7 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
     if (cmd.endsWith("podman")) {
       const running = s.instance?.status === "Running";
       if (args.includes("info")) return { code: running ? 0 : 125, stdout: "", stderr: "" };
-      if (args.includes("exists")) return { code: s.volume ? 0 : 1, stdout: "", stderr: "" };
+      if (args.includes("exists")) return { code: o.volumeExistsCode ?? (s.volume ? 0 : 1), stdout: "", stderr: "socket hiccup" };
       if (args.includes("export")) return writeFileSync(args[args.indexOf("--output") + 1] as string, "logins"), ok();
       return ok();
     }
@@ -162,7 +165,7 @@ describe("the workshop machine", () => {
 
   it("interrupted create is recreated", async () => {
     const { image } = localImage(mkdtempSync(join(tmpdir(), "i-")));
-    for (const instance of [{ status: "Broken" }, { status: "Stopped", disk: false }]) {
+    for (const instance of [{ status: "Broken", disk: false }, { status: "Stopped", disk: false }]) {
       const w = world({ instance });
       const m = machine(w, { image });
       await m.install();
@@ -199,7 +202,33 @@ describe("the workshop machine", () => {
     expect(m.status().kind).toBe("error");
   });
 
-  it("socket path too long", async () => {
+  it("a damaged instance (disk present, neither Running nor Stopped) is never deleted unasked", async () => {
+    const w = world({ instance: { status: "Broken" } });
+    const m = machine(w);
+    await expect(m.wake("user")).rejects.toThrow();
+    await expect(m.install()).rejects.toThrow();
+    expect(m.status().kind).toBe("error");
+    expect(limactl(w).some((l) => l.startsWith("delete") || l.startsWith("create"))).toBe(false);
+  });
+
+  it("remove keeps the machine when Podman cannot say whether the logins volume exists", async () => {
+    const w = world({ instance: { status: "Stopped" }, volumeExistsCode: 125 });
+    const m = machine(w);
+    await expect(m.remove()).rejects.toThrow();
+    expect(limactl(w).some((l) => l.startsWith("delete"))).toBe(false);
+    expect(m.status().kind).toBe("error");
+  });
+
+  it("a failed stop keeps the poll armed and the next poll tries again", async () => {
+    const w = world({ instance: { status: "Stopped" }, failStops: 2 });
+    const m = machine(w);
+    await m.wake("harvest");
+    await vi.waitFor(() => expect(m.status().kind).toBe("stopped"));
+    expect(limactl(w).filter((l) => l.startsWith("stop")).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("socket path too long, counted in bytes", async () => {
+    expect(machine(world({ home: "/tmp/" + "é".repeat(45) })).status().kind).toBe("error");
     const w = world({ home: "/tmp/" + "x".repeat(90) });
     const m = machine(w);
     const s = m.status();
