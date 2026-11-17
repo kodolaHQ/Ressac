@@ -137,7 +137,7 @@ export class LlamaModel {
   private lastUsage = 0;
   private generation = 0;
   private closed = false;
-  /** Set once a server died at start on the GPU: from then on this model runs on the CPU (see start()). */
+  /** Set once a CPU relaunch started after a death at start on the GPU: from then on this model runs on the CPU. */
   private cpuOnly = false;
   /** Install in progress: its cancellation and its end (successful or not). */
   private installation?: { controller: AbortController; end: Promise<unknown> };
@@ -288,7 +288,7 @@ export class LlamaModel {
     await this.stop();
   }
 
-  private async start(): Promise<string> {
+  private async start(cpu = this.cpuOnly): Promise<string> {
     if (this.o.serverUrl) {
       this.change("active");
       return this.baseUrl;
@@ -318,7 +318,7 @@ export class LlamaModel {
     const lines: string[] = [];
     let output: number | null | undefined;
     // A later -ngl wins in llama-server's parser: "-ngl 0" puts every layer on the CPU.
-    const args = ["-m", this.modelFile, "--host", "127.0.0.1", "--port", String(port), ...this.spec.args, ...(this.cpuOnly ? ["-ngl", "0"] : [])];
+    const args = ["-m", this.modelFile, "--host", "127.0.0.1", "--port", String(port), ...this.spec.args, ...(cpu ? ["-ngl", "0"] : [])];
     const p = this.launch(this.o.llamaServer, args, { cwd: this.folder });
     this.process = p;
     p.onLine?.((l) => { lines.push(l); if (lines.length > 20) lines.shift(); });
@@ -338,10 +338,7 @@ export class LlamaModel {
       if (gen !== this.generation) throw new Error(AI_CLOSED_ERROR); // stop() came through here
       if (dead) {
         // A GPU llama.cpp cannot use (a macOS 13 VM's paravirtual GPU aborts at load): one more try on the CPU.
-        if (!this.cpuOnly) {
-          this.cpuOnly = true;
-          return this.start();
-        }
+        if (!cpu) return this.start(true);
         const msg = this.say("kernel-ai-llama-start-failed", { detail: lines.slice(-5).join("\n") || `code ${output}` });
         this.change("error", msg);
         throw new Error(msg);
@@ -352,6 +349,7 @@ export class LlamaModel {
         // Ready only if our process is alive and the answer names our model (a foreign server may hold the port).
         if (r.ok && !dead && (await r.text()).includes(this.spec.file)) {
           this.lastUsage = this.clock();
+          if (cpu) this.cpuOnly = true; // kept only once it works: a passing failure does not cost the GPU for good
           this.change("active");
           this.watchIdle();
           return this.baseUrl;

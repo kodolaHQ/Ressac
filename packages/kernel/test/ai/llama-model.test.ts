@@ -124,7 +124,7 @@ describe("LlamaModel: the server", () => {
     expect(m.state().state).toBe("error");
   });
 
-  it("a server that dies at start is tried once more on the CPU, then rejects with its last lines; the next call launches again on the CPU", async () => {
+  it("a server that dies at start is tried once more on the CPU, then rejects with its last lines; the next call tries the GPU again", async () => {
     const launched: string[][] = [];
     const launch = (_cmd: string, args: string[]): AiProcess => {
       launched.push(args);
@@ -136,6 +136,23 @@ describe("LlamaModel: the server", () => {
     expect(Date.now() - start).toBeLessThan(1000);
     expect(m.state().state).toBe("error");
     await expect(m.ready()).rejects.toThrow("bind: address already in use");
+    expect(launched.map((a) => a.slice(-2))).toEqual([["99", "--x"], ["-ngl", "0"], ["99", "--x"], ["-ngl", "0"]]);
+  });
+
+  it("a GPU death at start: the CPU relaunch answers, and later launches stay on the CPU", async () => {
+    const kev = keep(await fakeKev());
+    const launched: string[][] = [];
+    const exits: ((c: number | null) => void)[] = [];
+    const launch = (_cmd: string, args: string[]): AiProcess => {
+      launched.push(args);
+      // The GPU launch dies before the port answers... except fakeKev answers at once: it dies on its first poll.
+      return launched.length === 1 ? { stop() {}, onOutput(r) { r(134); } } : { stop() {}, onOutput(r) { exits.push(r); } };
+    };
+    const m = model({ folder: await installed(), launch }, { port: portOf(kev) });
+    expect(await m.ready()).toBe(kev.url.replace(/\/$/, ""));
+    expect(m.state().state).toBe("active");
+    exits[0]!(139);
+    await m.ready();
     expect(launched.map((a) => a.slice(-2))).toEqual([["99", "--x"], ["-ngl", "0"], ["-ngl", "0"]]);
   });
 
