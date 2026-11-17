@@ -1,5 +1,5 @@
 import type { Workshop, WriterAgent } from "../../../packages/kernel/src/index.ts";
-import { AGENT_ACCOUNTS } from "./settings.ts";
+import { AGENT_ACCOUNTS, startedWithin } from "./settings.ts";
 
 const TTL_MS = 5 * 60_000;
 
@@ -30,7 +30,7 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
       return null;
     },
     async wakeAgent(exclude?: ReadonlySet<WriterAgent>): Promise<WriterAgent | "workshop-stopped" | null> {
-      if ((await o.workshop.state()) === "machine-stopped") await o.workshop.ensureStarted().catch(() => {}); // still stopped: agent says so
+      if ((await o.workshop.state()) === "machine-stopped") await startedWithin(o.workshop.ensureStarted(), null); // still stopped: agent says so
       return choice.agent(exclude);
     },
     reset: () => cache.clear(),

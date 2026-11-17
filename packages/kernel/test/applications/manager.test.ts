@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spacePaths, type SpacePaths } from "../../src/paths.js";
 import { Workshop } from "../../src/container/workshop.js";
+import type { ContainerEngine } from "../../src/container/engine.js";
 import { createServer as httpServer } from "node:http";
 import { createServer as tcpServer, type AddressInfo, type Server } from "node:net";
 import { ApplicationManager, probeByDefault, type AppState, type Launcher } from "../../src/applications/manager.js";
@@ -56,13 +57,14 @@ function prepare(o: {
   inspect?: Response;
   info?: Response;
   log?: Response;
+  engine?: ContainerEngine;
 }) {
   const { run, calls } = fakeRunner([
     [/ info$/, o.info ?? { code: 0 }],
     [/ inspect /, o.inspect ?? { code: 0, stdout: "true\n" }],
     [/ tail -n /, o.log ?? { code: 1 }],
   ]);
-  const workshop = new Workshop({ paths: o.paths, docker: "docker", run: run });
+  const workshop = new Workshop({ paths: o.paths, ...(o.engine ? { engine: () => o.engine! } : { docker: "docker" }), run: run });
   const { launcher, process } = fakeLauncher();
   const states: AppState[] = [];
   const g: ApplicationManager = new ApplicationManager({
@@ -313,6 +315,14 @@ test("docker absent: error Docker n'est pas lancé", async () => {
   const c = await space();
   const { g, process } = prepare({ paths: c, info: { code: 1 } });
   expect(await g.launch("todo")).toMatchObject({ state: "error", error: "Docker n'est pas lancé." });
+  expect(process).toHaveLength(0);
+});
+
+test("a machine still stopped after its wake: its own message, never Docker's", async () => {
+  const c = await space();
+  const engine: ContainerEngine = { kind: "machine", binary: () => "podman", args: () => [], hostAddress: () => "192.168.5.2", up: async () => false, wake: async () => {} };
+  const { g, process } = prepare({ paths: c, engine });
+  expect(await g.launch("todo")).toMatchObject({ state: "error", error: "La machine de l'atelier n'est pas démarrée : réessayez, ou voyez pourquoi dans Réglages › Atelier." });
   expect(process).toHaveLength(0);
 });
 

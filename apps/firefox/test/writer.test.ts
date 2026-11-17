@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createWriterChoice } from "../host/writer";
 
 const setup = (state: string, loggedIn: Record<string, boolean>, preferred: "claude" | "codex" = "claude") => {
@@ -52,6 +52,20 @@ describe("writer choice", () => {
     expect(s.calls).toEqual([]);
     expect(await s.choice.wakeAgent()).toBe("claude");
     expect(s.calls).toEqual(["ensureStarted", "claude"]);
+  });
+  it("a write waits at most a minute for the machine (a first image build takes minutes), then says it is stopped", async () => {
+    vi.useFakeTimers();
+    try {
+      const choice = createWriterChoice({
+        workshop: { state: async () => "machine-stopped" as never, ensureStarted: () => new Promise(() => {}), exec: async () => ({ code: 1, stdout: "", stderr: "" }) },
+        preferred: () => "claude",
+      });
+      const answer = choice.wakeAgent();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(await answer).toBe("workshop-stopped");
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("a write on a stopped Docker workshop does not start it", async () => {
     const s = setup("arrete", { claude: true });

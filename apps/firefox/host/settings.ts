@@ -89,6 +89,12 @@ const tail = (s: string) => s.trim().split("\n").slice(-3).join("\n").slice(-300
 const PULL_BUSY = () => hostSay("host-pull-busy");
 const UNSUPPORTED_MODEL = () => hostSay("host-unsupported-model");
 const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/**
+ * A call that wakes Ressac's machine for the user waits at most this long: the workshop's first image build takes minutes
+ * and goes on in the background; meanwhile the call answers that the workshop is not started.
+ */
+export const startedWithin = <T>(start: Promise<T>, otherwise: T, ms = 60_000): Promise<T> =>
+  Promise.race([start.catch(() => otherwise), new Promise<T>((r) => setTimeout(() => r(otherwise), ms).unref?.())]);
 
 export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork" | "ensureStarted">;
@@ -272,7 +278,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       if (!a) return { kind: "error", error: hostSay("host-unknown-agent") };
       if (a.login.kind === "panel") return { kind: "panel" };
       let state = await o.workshop.state();
-      if (state === "machine-stopped") state = await o.workshop.ensureStarted().catch(() => state);
+      if (state === "machine-stopped") state = await startedWithin(o.workshop.ensureStarted(), state);
       if (state !== "demarre") return { kind: "error", error: hostSay("host-workshop-not-started") };
       stopLogins();
       try {

@@ -225,6 +225,20 @@ describe("settings host", () => {
     expect(still.o.deviceCommand).not.toHaveBeenCalled();
   });
 
+  it("login waits at most a minute for a machine that is still starting (a first image build), then says it is not started", async () => {
+    const { h, o } = setup({ state: "machine-stopped" });
+    o.workshop.ensureStarted.mockImplementation(() => new Promise(() => {}));
+    vi.useFakeTimers();
+    try {
+      const answer = h["settings.login"]!({ id: "codex" });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(await answer).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Conteneur." });
+      expect(o.deviceCommand).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("logout codex", async () => {
     const { h, exec, o } = setup();
     await h["settings.logout"]!({ id: "codex" });

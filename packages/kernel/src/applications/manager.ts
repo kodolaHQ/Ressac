@@ -204,8 +204,8 @@ export class ApplicationManager {
         state = await this.workshop.ensureStarted();
         if (l.stop) return this.view(project);
       }
-      // A machine still stopped after its wake: the same message until the machine has its own (later).
-      if (state === "docker-absent" || state === "machine-stopped") return end({ state: "error", error: say(this.locale(), "kernel-app-docker-not-running") });
+      if (state === "machine-stopped") return end({ state: "error", error: say(this.locale(), "kernel-err-machine-stopped") });
+      if (state === "docker-absent") return end({ state: "error", error: say(this.locale(), "kernel-app-docker-not-running") });
       // The app runs agent-written code as `node`: never before the network rules are in place (also when already running).
       await this.workshop.secureNetwork();
       if (l.stop) return this.view(project);
