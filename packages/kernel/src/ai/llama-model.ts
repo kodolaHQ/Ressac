@@ -306,12 +306,12 @@ export class LlamaModel {
     try {
       port = this.spec.port ?? (await freePort());
     } catch (e) {
-      if (gen !== this.generation) return this.baseUrl;
+      if (gen !== this.generation) throw new Error(AI_CLOSED_ERROR);
       const msg = this.say("kernel-ai-llama-start-failed", { detail: (e as Error).message });
       this.change("error", msg);
       throw new Error(msg);
     }
-    if (gen !== this.generation) return this.baseUrl; // stop() or close() came during the wait
+    if (gen !== this.generation) throw new Error(AI_CLOSED_ERROR); // stop() or close() came during the wait
     this.baseUrl = `http://127.0.0.1:${port}`;
     const lines: string[] = [];
     let output: number | null | undefined;
@@ -332,7 +332,7 @@ export class LlamaModel {
     const step = this.o.pollMs ?? 500;
     const end = Date.now() + STARTUP_DELAY_MS;
     while (Date.now() < end) {
-      if (gen !== this.generation) return this.baseUrl; // stop() came through here
+      if (gen !== this.generation) throw new Error(AI_CLOSED_ERROR); // stop() came through here
       if (dead) {
         const msg = this.say("kernel-ai-llama-start-failed", { detail: lines.slice(-5).join("\n") || `code ${output}` });
         this.change("error", msg);
@@ -340,7 +340,7 @@ export class LlamaModel {
       }
       try {
         const r = await fetch(`${this.baseUrl}/v1/models`, { signal: AbortSignal.timeout(2000) });
-        if (gen !== this.generation) return this.baseUrl;
+        if (gen !== this.generation) throw new Error(AI_CLOSED_ERROR);
         // Ready only if our process is alive and the answer names our model (a foreign server may hold the port).
         if (r.ok && !dead && (await r.text()).includes(this.spec.file)) {
           this.lastUsage = this.clock();
@@ -351,7 +351,7 @@ export class LlamaModel {
       } catch { /* not ready yet */ }
       await wait(step);
     }
-    if (gen !== this.generation) return this.baseUrl;
+    if (gen !== this.generation) throw new Error(AI_CLOSED_ERROR);
     p.stop();
     this.process = undefined;
     const msg = this.say("kernel-ai-llama-start-timeout", { detail: lines.slice(-5).join("\n") }).trim();

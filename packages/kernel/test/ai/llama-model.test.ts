@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { EMBED_MODEL, LlamaModel, launchAiProcess, type AiProcess, type LlamaModelOptions, type LlamaModelSpec } from "../../src/ai/llama-model.js";
+import { AI_CLOSED_ERROR, EMBED_MODEL, LlamaModel, launchAiProcess, type AiProcess, type LlamaModelOptions, type LlamaModelSpec } from "../../src/ai/llama-model.js";
 import { tempFolder } from "../helpers/temp.js";
 import { fakeForeign, fakeKev, unreachableUrl, type FakeServer } from "../helpers/fake-ai.js";
 
@@ -166,7 +166,7 @@ describe("LlamaModel: the server", () => {
     expect(m.state().state).toBe("starting");
   });
 
-  it("stop() during startup: state stopped, no error, no timer", async () => {
+  it("stop() during startup: state stopped, the waiting call abandoned (not a dead URL), no timer", async () => {
     let output!: (c: number | null) => void;
     const launch = (): AiProcess => ({ stop() { setTimeout(() => output(null), 1); }, onOutput(r) { output = r; } });
     const m = model({ folder: await installed(), launch });
@@ -174,7 +174,7 @@ describe("LlamaModel: the server", () => {
     await new Promise((r) => setTimeout(r, 40));
     expect(m.state().state).toBe("starting");
     await m.stop();
-    await call;
+    expect(await call).toMatchObject({ message: AI_CLOSED_ERROR });
     await new Promise((r) => setTimeout(r, 40));
     expect(m.state()).toEqual({ state: "stopped" });
     expect((m as any).timeout).toBeUndefined();
