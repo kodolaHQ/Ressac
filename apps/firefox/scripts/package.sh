@@ -165,8 +165,8 @@ fi
 # 8. Signature. RESSAC_SIGN_IDENTITY (a "Developer ID Application: …" in the keychain) signs for real; unset, ad hoc.
 step "Signing"
 plutil -replace CFBundleShortVersionString -string $version $app/Contents/Info.plist
-# Ressac asks for macOS 14: the Ollama it can install for the local AI does not run below (Firefox itself says 10.15).
-plutil -replace LSMinimumSystemVersion -string 14.0 $app/Contents/Info.plist
+# Ressac asks for macOS 13.3: the shipped llama-server (d1, search model) is built for it (Node needs 11, Firefox 10.15).
+plutil -replace LSMinimumSystemVersion -string 13.3 $app/Contents/Info.plist
 identity=${RESSAC_SIGN_IDENTITY:-}
 if [[ -z $identity ]]; then
   print -ru2 -- "warning: RESSAC_SIGN_IDENTITY is empty, ad hoc signature (Gatekeeper will block the app)"

@@ -10,7 +10,7 @@
   <a href="README.md">Read in English</a>
 </p>
 
-<p align="center"><sub>Bêta fermée · macOS 14+ · Apple Silicon · Open source</sub><br><a href="https://getressac.app/fr/#invite"><b>Rejoindre la bêta</b></a></p>
+<p align="center"><sub>Bêta fermée · macOS 13.3+ · Apple Silicon · Open source</sub><br><a href="https://getressac.app/fr/#invite"><b>Rejoindre la bêta</b></a></p>
 
 <p align="center"><img src="docs/images/overview-fr.jpg" alt="Ressac : une page calme, la barre latérale avec ses onglets et ses espaces"></p>
 
@@ -75,7 +75,7 @@ Pendant la bêta, Ressac envoie à son développeur les plantages et les erreurs
 
 Ressac est en bêta fermée, avec un petit groupe de testeurs. Ils reçoivent un DMG signé et notarisé par Apple, puis Ressac se met à jour tout seul. **Pour en faire partie, demandez une invitation sur [getressac.app](https://getressac.app/fr/#invite).**
 
-- **Pour naviguer** : macOS 14 ou plus récent, puce Apple.
+- **Pour naviguer** : macOS 13.3 ou plus récent, puce Apple.
 - **Pour l'agent** : Docker ([OrbStack](https://orbstack.dev) ou Docker Desktop) et un compte Claude ou ChatGPT (ou une clé d'API). Ressac démarre lui-même l'app de conteneurs si elle est installée.
 - **Pour l'IA locale** : [Ollama](https://ollama.com). Ressac le démarre, ou le télécharge pour toi (190 Mo). Les résumés des widgets et les pages d'actions sont écrits par ton compte Claude Code ou Codex, il faut donc que l'un des deux soit connecté.
 
