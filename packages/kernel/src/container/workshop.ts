@@ -64,7 +64,8 @@ export function parseBuildStep(line: string, locale: string): Pick<BuildProgress
 const CODEX_REQUIREMENTS = "/etc/codex/requirements.toml";
 /** Codex's managed requirements (root-owned): the URL must match exactly, port included, so it is written per session. */
 export function codexRequirements(url: string): string {
-  return `allow_managed_hooks_only = true\n\n[mcp_servers.ressac.identity]\nurl = ${JSON.stringify(url)}\n`;
+  // No web search: with the sandbox off Codex would use OpenAI's live search, which fetches pages past the browser's rules and the proxy.
+  return `allow_managed_hooks_only = true\nallowed_web_search_modes = ["disabled"]\n\n[mcp_servers.ressac.identity]\nurl = ${JSON.stringify(url)}\n`;
 }
 
 /**
@@ -376,7 +377,7 @@ export class Workshop {
     return r;
   }
 
-  /** Before each Codex session: only managed hooks, and no MCP server but Ressac's at `url` (a stdio server runs a command). */
+  /** Before each Codex session: only managed hooks, no web search, and no MCP server but Ressac's at `url` (a stdio server runs a command). */
   async restrictCodex(url: string): Promise<void> {
     // umask: docker exec runs with 000, which would leave the file writable by the agent.
     const r = await this.launch(

@@ -58,7 +58,7 @@ const codex = Profile.parse(JSON.parse(await readFile(join(import.meta.dirname, 
 
 test("a codex-toml profile with resume loads; buildCommand resume uses it", () => {
   expect(codex.mcpConfig).toBe("codex-toml");
-  expect(buildCommand(codex, "resume", { mcpConfig: "X" })).toEqual(["codex", "resume", "--last", "--dangerously-bypass-approvals-and-sandbox", "-c", "X"]);
+  expect(buildCommand(codex, "resume", { mcpConfig: "X" })).toEqual(["codex", "resume", "--last", "--dangerously-bypass-approvals-and-sandbox", "-c", "web_search=\"disabled\"", "-c", "X"]);
 });
 
 test("buildCommand resume without a resume command throws; an unknown mcpConfig is refused", () => {
