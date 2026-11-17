@@ -21,7 +21,7 @@ process.env.RESSAC_CONTAINER_PORTS ||= "5300-5319";
 
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");
-const { appendFileSync, readFileSync } = await import("node:fs");
+const { appendFileSync, cpSync, readFileSync, rmSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
 const { ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE } = await import("../../../packages/kernel/src/index.ts");
@@ -161,12 +161,21 @@ const vmTools = (() => {
 // Tests never touch a real machine. RESSAC_TEST_MACHINE (e2e): a fake one with a fixed status, that never takes over
 // from the fake Docker (no install at AI start, no hand-over, its own marker).
 const testMachine = process.env.RESSAC_TEST_MACHINE;
+// The machine mounts the engine folder by its path, and the harvests name that path: a translocated app (opened from
+// the DMG or Downloads) moves at each launch, so the packaged one runs a copy at a path that stays (outside the workspace).
+const engineFolder = (() => {
+  const shipped = join(DEFAULT_DOCKER_FOLDER, "engine");
+  if (!process.env.RESSAC_KERNEL_RESOURCES) return shipped;
+  const stable = join(dataDir, "engine");
+  rmSync(stable, { recursive: true, force: true });
+  cpSync(shipped, stable, { recursive: true });
+  return stable;
+})();
 const machine: ReturnType<typeof createMachine> = testMachine
   ? fakeMachine(testMachine, join(root, "fake-machine-calls.log"), Number(process.env.RESSAC_TEST_MACHINE_DELAY_MS) || 0)
   : createMachine({
       ...vmTools,
-      // The kernel's own engine folder (kernel.ts: no `resources` is passed to it).
-      engine: join(DEFAULT_DOCKER_FOLDER, "engine"),
+      engine: engineFolder,
       ressacRoot: root,
       run: runTool,
       busy: () => workshop.busy(machine),
@@ -182,7 +191,7 @@ const engines = createEngines({
     const r = await runTool(dockerContainers.binary()!, ["stop", "-t", "10", containerName()], { delayMs: 60_000 });
     if (r.code !== 0 && !/no such container/i.test(r.stderr)) throw new Error(`docker stop: ${r.stderr.trim()}`);
   },
-  copyLogins: () => copyLogins({ docker: dockerContainers.binary()!, podman: machine.binary(), podmanArgs: machine.args() }),
+  copyLogins: () => copyLogins({ docker: dockerContainers.binary()!, podman: machine.binary(), podmanArgs: machine.args(), run: runTool }),
   marker: join(testMachine ? dataDir : MACHINE_HOME, "logins-copied"),
 });
 const workshop = new Workshop({ paths: paths, locale: () => hostLocale(), engine: () => engines.current(), network: () => ({ ports: [kernel?.mcpPort, relay.port].filter((p): p is number => typeof p === "number"), domains: agentDomains }) });
@@ -298,6 +307,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     bridge: bridge,
     profileId: profileId,
     locale: () => hostLocale(),
+    engine: engineFolder,
     root: root,
     widgetsFolder: widgetsFolder,
     actionsFolder: actionsFolder,

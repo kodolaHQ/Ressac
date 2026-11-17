@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { IMAGE, VOLUME_HOME, type ContainerEngine } from "../../../packages/kernel/src/index.ts";
+import { IMAGE, VOLUME_HOME, createRunner, type ContainerEngine, type Runner } from "../../../packages/kernel/src/index.ts";
 import type { MachineStatus } from "./machine.ts";
 
 type Machine = ContainerEngine & { status(): MachineStatus };
@@ -20,18 +20,28 @@ export function createEngines(o: {
   /** Stops Docker's workshop container (never removes it, its image or the logins volume): it holds the apps' ports. */
   stopDocker: () => Promise<void>;
   copyLogins: () => Promise<void>;
-  /** Written once the machine serves: its logins are never overwritten by a later copy. */
+  /**
+   * Written once the machine serves: empty once the logins came over (or Docker had none), `pending` while the copy is
+   * owed (Docker silent, a copy that failed or was cut): tried again at a later launch, once Docker answers on its own.
+   */
   marker: string;
   idlePollMs?: number;
 }) {
-  let settled = existsSync(o.marker);
+  const read = () => {
+    try {
+      return readFileSync(o.marker, "utf8");
+    } catch {
+      return null;
+    }
+  };
+  let mark = read();
   let settling: Promise<void> | undefined;
   /** From the idle check to the hand-over: Docker's workshop must not start again meanwhile. */
   let switching: Promise<void> | undefined;
-  const handOver = async () => {
+  const handOver = async (copied: boolean) => {
+    mark = copied ? "" : PENDING;
     await mkdir(dirname(o.marker), { recursive: true });
-    await writeFile(o.marker, "");
-    settled = true;
+    await writeFile(o.marker, mark);
   };
   const docker: ContainerEngine = {
     ...o.docker,
@@ -42,29 +52,38 @@ export function createEngines(o: {
       return e === docker ? o.docker.wake(reason) : e.wake(reason);
     },
   };
-  const current = (): ContainerEngine => (!o.docker.binary() || (settled && o.machine.status().kind !== "unsupported") ? o.machine : docker);
+  const current = (): ContainerEngine => (!o.docker.binary() || (mark !== null && o.machine.status().kind !== "unsupported") ? o.machine : docker);
 
   return {
     current,
     /**
      * Called once the machine is installed. A failure to stop Docker's workshop or wake the machine leaves Docker serving
-     * (tried again at the next AI wake or launch); a failed copy still hands over (Docker's volume stays as it was).
+     * (tried again at the next AI wake or launch). A failed copy still hands over, the copy owed (Docker's volume stays
+     * as it was); a later copy never overwrites a whole logins volume on the machine (copyLogins).
      */
     settle: (): Promise<void> =>
       (settling ??= (async () => {
-        if (settled) return;
-        if (!o.docker.binary()) return handOver(); // never had Docker: nothing to copy
+        if (mark === "") return;
+        if (!o.docker.binary()) return handOver(true); // never had Docker: nothing to copy
+        if (mark === PENDING) {
+          if (!(await o.docker.up())) return; // never started for it: the user may have left Docker for good
+          await o.machine.wake("user");
+          await o.copyLogins();
+          return handOver(true);
+        }
         if (!(await o.docker.up())) await o.docker.start().catch(() => {});
-        if (!(await o.docker.up())) return handOver(); // Docker cannot serve either: the logins are signed in again
+        if (!(await o.docker.up())) return handOver(false); // Docker cannot serve either: the machine takes over, the copy waits
         while (!(await o.workshopIdle())) await new Promise((r) => setTimeout(r, o.idlePollMs ?? 30_000).unref());
         // shortcut: a session opened between the last idle check and here is cut by the stop; a lock on session open if it shows.
         switching = (async () => {
           await o.stopDocker();
           await o.machine.wake("user");
+          let copied = false;
           try {
             await o.copyLogins();
+            copied = true;
           } finally {
-            await handOver();
+            await handOver(copied);
           }
         })();
         await switching;
@@ -75,13 +94,7 @@ export function createEngines(o: {
   };
 }
 
-const exec = (cmd: string, args: string[]) =>
-  new Promise<{ code: number | null; stderr: string }>((ok) => {
-    let stderr = "";
-    const p = spawn(cmd, args, { stdio: ["ignore", "ignore", "pipe"] });
-    p.stderr.on("data", (d) => (stderr += d));
-    p.on("close", (code) => ok({ code, stderr })).on("error", (e) => ok({ code: -1, stderr: e.message }));
-  });
+const PENDING = "pending";
 
 /** In the machine's logins volume while a copy runs: a copy cut short (quit) is done again at the next launch. */
 const COPYING = "/v/.ressac-copying";
@@ -90,7 +103,9 @@ const COPYING = "/v/.ressac-copying";
  * `docker run … tar -cf -` of the logins volume (read-only) piped into the machine's same volume. Copies nothing when
  * Docker has no such volume, or the machine already has a whole one (never overwritten). Both sides must succeed.
  */
-export async function copyLogins(o: { docker: string; podman: string; podmanArgs: string[]; timeoutMs?: number }): Promise<void> {
+export async function copyLogins(o: { docker: string; podman: string; podmanArgs: string[]; timeoutMs?: number; run?: Runner }): Promise<void> {
+  const run = o.run ?? createRunner();
+  const exec = (cmd: string, args: string[]) => run(cmd, args, { delayMs: 60_000 });
   const fail = (what: string, r: { code: number | null; stderr: string }) => new Error(`logins copy failed (${what} ${r.code}): ${r.stderr.trim().split("\n").at(-1) ?? ""}`);
   const source = await exec(o.docker, ["volume", "inspect", VOLUME_HOME]);
   if (source.code !== 0) {

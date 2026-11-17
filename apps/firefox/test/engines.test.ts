@@ -16,7 +16,7 @@ const tmp = () => {
   return d;
 };
 
-function world(o: { status?: MachineStatus["kind"]; docker?: boolean; dockerUp?: boolean; idle?: boolean[]; marker?: boolean; stopFails?: boolean; copyFails?: boolean } = {}) {
+function world(o: { status?: MachineStatus["kind"]; docker?: boolean; dockerUp?: boolean; idle?: boolean[]; marker?: boolean | string; markerPath?: string; stopFails?: boolean; copyFails?: boolean } = {}) {
   const log: string[] = [];
   let status = { kind: o.status ?? "running" } as MachineStatus;
   let releaseCopy: () => void = () => {};
@@ -40,8 +40,8 @@ function world(o: { status?: MachineStatus["kind"]; docker?: boolean; dockerUp?:
     start: async () => void log.push("docker start"),
   };
   const idle = [...(o.idle ?? [true])];
-  const marker = join(tmp(), "logins-copied");
-  if (o.marker) writeFileSync(marker, "");
+  const marker = o.markerPath ?? join(tmp(), "logins-copied");
+  if (o.marker !== undefined && o.marker !== false) writeFileSync(marker, o.marker === true ? "" : o.marker);
   const engines = createEngines({
     machine,
     docker,
@@ -94,7 +94,7 @@ describe("choosing the engine", () => {
     const w = world({ idle: [false, false, true] });
     await w.engines.settle();
     expect(w.log).toEqual(["idle false", "idle false", "idle true", "docker stop", "machine wake user", "copy"]);
-    expect(existsSync(w.marker)).toBe(true);
+    expect(readFileSync(w.marker, "utf8")).toBe("");
     expect(kind(w)).toBe("machine");
   });
 
@@ -111,12 +111,31 @@ describe("choosing the engine", () => {
     expect(existsSync(w.marker)).toBe(true);
   });
 
-  it("Docker installed but not answering: started once; still silent, the machine takes over (no copy later)", async () => {
+  it("Docker installed but not answering: started once; still silent, the machine takes over and the copy is owed", async () => {
     const w = world({ dockerUp: false });
     await w.engines.settle();
     expect(w.log).toEqual(["docker start"]);
-    expect(existsSync(w.marker)).toBe(true);
+    expect(readFileSync(w.marker, "utf8")).toBe("pending");
     expect(kind(w)).toBe("machine");
+  });
+
+  it("an owed copy waits while Docker is down: never started for it, the machine serves", async () => {
+    const w = world({ marker: "pending", dockerUp: false });
+    expect(kind(w)).toBe("machine");
+    await w.engines.settle();
+    expect(w.log).toEqual([]);
+    expect(readFileSync(w.marker, "utf8")).toBe("pending");
+  });
+
+  it("an owed copy is done at a later launch once Docker answers on its own, then never again", async () => {
+    const first = world({ dockerUp: false });
+    await first.engines.settle();
+    const later = world({ markerPath: first.marker });
+    await later.engines.settle();
+    expect(later.log).toEqual(["machine wake user", "copy"]);
+    expect(readFileSync(later.marker, "utf8")).toBe("");
+    await later.engines.settle();
+    expect(later.log).toHaveLength(2);
   });
 
   it("a failed Docker stop leaves Docker serving and no marker; the next settle tries again", async () => {
@@ -129,11 +148,15 @@ describe("choosing the engine", () => {
     expect(w.log.filter((l) => l === "docker stop")).toHaveLength(2);
   });
 
-  it("a failed copy still hands over: the marker keeps a later copy off the machine's logins", async () => {
+  it("a failed copy (AI off cutting it included) hands over for now; the copy is owed and done at the next launch", async () => {
     const w = world({ copyFails: true });
     await expect(w.engines.settle()).rejects.toThrow("tar failed");
-    expect(existsSync(w.marker)).toBe(true);
+    expect(readFileSync(w.marker, "utf8")).toBe("pending");
     expect(kind(w)).toBe("machine");
+    const later = world({ markerPath: w.marker });
+    await later.engines.settle();
+    expect(later.log).toEqual(["machine wake user", "copy"]);
+    expect(readFileSync(w.marker, "utf8")).toBe("");
   });
 
   it("a start asked during the switch waits for it, then goes to the machine", async () => {
