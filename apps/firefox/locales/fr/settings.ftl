@@ -70,6 +70,7 @@ settings-workshop-machine-downloading = Téléchargement de l'atelier : { $perce
 settings-workshop-machine-downloading-unknown = Téléchargement de l'atelier…
 settings-workshop-machine-error = Machine de l'atelier : en panne
 settings-workshop-machine-usage = { $memory } Go de mémoire · { $disk } Go sur le disque
+settings-workshop-machine-usage-disk = { $disk } Go sur le disque
 settings-workshop-machine-retry = Réessayer
 settings-workshop-machine-remove = Supprimer la machine
 settings-workshop-machine-confirm-remove = Vos connexions Claude et Codex sont gardées. Elle sera téléchargée de nouveau (environ 500 Mo).

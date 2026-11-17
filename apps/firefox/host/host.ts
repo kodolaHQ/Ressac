@@ -162,7 +162,7 @@ const vmTools = (() => {
 // from the fake Docker (no install at AI start, no hand-over, its own marker).
 const testMachine = process.env.RESSAC_TEST_MACHINE;
 const machine: ReturnType<typeof createMachine> = testMachine
-  ? fakeMachine(testMachine, join(root, "fake-machine-calls.log"))
+  ? fakeMachine(testMachine, join(root, "fake-machine-calls.log"), Number(process.env.RESSAC_TEST_MACHINE_DELAY_MS) || 0)
   : createMachine({
       ...vmTools,
       // The kernel's own engine folder (kernel.ts: no `resources` is passed to it).

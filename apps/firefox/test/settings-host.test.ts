@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSettingsHandlers } from "../host/settings";
 import type { AiState } from "../../../packages/kernel/src/index";
+import type { MachineStatus } from "../shared/settings";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -32,7 +33,7 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}
     },
     docker: { status: async () => ({ kind: "stopped", app: "OrbStack" }) as const, start: vi.fn(async () => void calls.push("docker.start")) },
     machine: {
-      status: () => ({ kind: "running" }) as const,
+      status: vi.fn((): MachineStatus => ({ kind: "running" })),
       usage: async () => ({ memoryMB: 614, diskMB: 1843 }),
       install: vi.fn(async () => void calls.push("machine.install")),
       remove: vi.fn(async (r?: { force?: boolean }) => void calls.push(r?.force ? "machine.remove --force" : "machine.remove")),
@@ -74,15 +75,18 @@ describe("settings host", () => {
     expect(o.deviceCommand).not.toHaveBeenCalled();
   });
 
-  it("the workshop machine: status, usage, retry, and a removal that stops the apps first; force only when asked", async () => {
+  it("the workshop machine: status, usage, retry, and a removal that stops the apps first; force only when asked and offered", async () => {
     const { h, o, calls } = setup();
     expect(await h["settings.machine"]!({})).toEqual({ kind: "running" });
     expect(await h["settings.machineUsage"]!({})).toEqual({ memoryMB: 614, diskMB: 1843 });
     expect(await h["settings.machineInstall"]!({})).toEqual({ ok: true });
     expect(await h["settings.machineRemove"]!({})).toEqual({ ok: true });
     expect(await h["settings.machineRemove"]!({ force: "yes" })).toEqual({ ok: true });
+    // A running machine: a forced removal is not offered, so a normal one runs (its logins exported).
     expect(await h["settings.machineRemove"]!({ force: true })).toEqual({ ok: true });
-    expect(calls).toEqual(["machine.install", "stopApps", "machine.remove", "stopApps", "machine.remove", "stopApps", "machine.remove --force"]);
+    o.machine.status.mockReturnValue({ kind: "error", message: "damaged", forceRemovable: true });
+    expect(await h["settings.machineRemove"]!({ force: true })).toEqual({ ok: true });
+    expect(calls).toEqual(["machine.install", "stopApps", "machine.remove", "stopApps", "machine.remove", "stopApps", "machine.remove", "stopApps", "machine.remove --force"]);
     o.machine.remove.mockRejectedValueOnce(new Error("kept"));
     expect(await h["settings.machineRemove"]!({})).toEqual({ ok: false, error: "kept" });
     o.machine.install.mockRejectedValueOnce(new Error("no download"));

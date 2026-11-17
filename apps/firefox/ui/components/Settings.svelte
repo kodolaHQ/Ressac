@@ -170,11 +170,17 @@
     m.kind === "downloading"
       ? m.percent === null ? t("settings-workshop-machine-downloading-unknown") : t("settings-workshop-machine-downloading", { percent: m.percent })
       : t(MACHINE_TEXT[m.kind as keyof typeof MACHINE_TEXT]);
+  /** A retry or removal in flight (minutes: a download, an export): the row's buttons wait, its state is polled. */
+  let machineBusy = $state(false);
   /** `f` is bound before the call: closing the confirmation changes what it shows. */
   async function machineAct(f: () => Promise<{ ok: true } | { ok: false; error: string }>) {
     askingMachine = null;
     workshopError = null;
-    const r = await f();
+    machineBusy = true;
+    const call = f();
+    void loadWorkshop();
+    const r = await call;
+    machineBusy = false;
     if (!r.ok) workshopError = r.error;
     void loadWorkshop();
   }
@@ -187,7 +193,7 @@
   }
   $effect(() => void (aiOn() && loadWorkshop()));
   $effect(() => {
-    if (!operation && !machineChanging) return;
+    if (!operation && !machineChanging && !machineBusy) return;
     const t = setInterval(() => void loadWorkshop(), 2_000);
     return () => clearInterval(t);
   });
@@ -435,18 +441,18 @@
                 <div class="grow">
                   <b data-testid="machine-state">{machineText(machine)}</b>
                   {#if machine.kind === "error"}<span class="muted alert">{machine.message}</span>{/if}
-                  {#if usage}<span class="muted" data-testid="machine-usage">{t("settings-workshop-machine-usage", { memory: gb(usage.memoryMB), disk: gb(usage.diskMB) })}</span>{/if}
+                  {#if usage}<span class="muted" data-testid="machine-usage">{machine.kind === "running" ? t("settings-workshop-machine-usage", { memory: gb(usage.memoryMB), disk: gb(usage.diskMB) }) : t("settings-workshop-machine-usage-disk", { disk: gb(usage.diskMB) })}</span>{/if}
                 </div>
                 {#if machine.kind === "error"}
-                  <button data-testid="machine-retry" onclick={() => void machineAct(s.machineInstall)}>{t("settings-workshop-machine-retry")}</button>
-                  {#if machine.damaged}<button data-testid="machine-force-remove" onclick={() => (askingMachine = "force")}>{t("settings-workshop-machine-force-remove")}</button>{/if}
+                  <button data-testid="machine-retry" disabled={machineBusy} onclick={() => void machineAct(s.machineInstall)}>{t("settings-workshop-machine-retry")}</button>
+                  {#if machine.forceRemovable}<button data-testid="machine-force-remove" disabled={machineBusy} onclick={() => (askingMachine = "force")}>{t("settings-workshop-machine-force-remove")}</button>{/if}
                 {:else if machine.kind === "running" || machine.kind === "stopped"}
-                  <button data-testid="machine-remove" disabled={!!operation} onclick={() => (askingMachine = "remove")}>{t("settings-workshop-machine-remove")}</button>
+                  <button data-testid="machine-remove" disabled={!!operation || machineBusy} onclick={() => (askingMachine = "remove")}>{t("settings-workshop-machine-remove")}</button>
                 {/if}
               </div>
             {/if}
           </div>
-          {#if askingMachine}
+          {#if askingMachine && !machineBusy}
             {@const force = askingMachine === "force"}
             <div class="confirmation" role="alertdialog" aria-label={t(force ? "settings-workshop-machine-force-remove" : "settings-workshop-machine-remove")} out:fade={{ duration: 150 }}>
               <p>{t(force ? "settings-workshop-machine-confirm-force-remove" : "settings-workshop-machine-confirm-remove")}</p>

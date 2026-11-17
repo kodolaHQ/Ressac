@@ -102,7 +102,9 @@ export function createMachine(o: {
   const pod = (args: string[], delayMs = 60_000) => run(podman, ["--url", `unix://${socket}`, ...args], { delayMs });
   const detail = (r: RunResult) => (r.stderr || r.stdout).trim().split("\n").at(-1) ?? "";
   const startFailed = (d: string) => new Error(hostSay("host-machine-start-failed", { detail: d }));
-  const damaged = () => Object.assign(new Error(hostSay("host-machine-damaged")), { damaged: true as const });
+  /** Errors after which only a forced removal is left: the status offers it. */
+  const forceable = (message: string) => Object.assign(new Error(message), { forceRemovable: true as const });
+  const damaged = () => forceable(hostSay("host-machine-damaged"));
 
   let status: MachineStatus = tooLong ? { kind: "error", message: hostSay("host-machine-socket-too-long", { path: socket }) } : { kind: "absent" };
   const listeners = new Set<(s: MachineStatus) => void>();
@@ -335,7 +337,7 @@ export function createMachine(o: {
       try {
         return await f();
       } catch (e) {
-        if (status.kind !== "unsupported") set({ kind: "error", message: (e as Error).message, ...((e as { damaged?: true }).damaged && { damaged: true as const }) });
+        if (status.kind !== "unsupported") set({ kind: "error", message: (e as Error).message, ...((e as { forceRemovable?: true }).forceRemovable && { forceRemovable: true as const }) });
         throw e;
       }
     });
@@ -346,7 +348,7 @@ export function createMachine(o: {
       if (!(await supported())) return set({ kind: "unsupported" });
       const was = await instance();
       if (was === "Running") watch("user");
-      set(was === "damaged" ? { kind: "error", message: damaged().message, damaged: true } : { kind: was === "Running" ? "running" : was === "Stopped" ? "stopped" : "absent" });
+      set(was === "damaged" ? { kind: "error", message: damaged().message, forceRemovable: true } : { kind: was === "Running" ? "running" : was === "Stopped" ? "stopped" : "absent" });
     }).catch(() => {});
 
   return {
@@ -377,7 +379,7 @@ export function createMachine(o: {
     /**
      * Keeps the logins: exports them first (unless an export is still waiting to be imported), then deletes the instance.
      * A damaged instance is started for that; when it cannot be, or the export fails, the instance is kept. `force`
-     * deletes without any export: the logins are lost (asked in Réglages › Atelier for a damaged instance).
+     * deletes without any export: the logins are lost (offered in Réglages › Atelier after a damaged instance or a failed export).
      */
     remove: (r: { force?: boolean } = {}) =>
       guarded(async () => {
@@ -391,10 +393,10 @@ export function createMachine(o: {
           });
           const exists = await pod(["volume", "exists", VOLUME_HOME]);
           // 1 is "no such volume"; any other failure (125, timeout) must not pass for it.
-          if (exists.code !== 0 && exists.code !== 1) throw new Error(hostSay("host-machine-export-failed", { detail: detail(exists) }));
+          if (exists.code !== 0 && exists.code !== 1) throw forceable(hostSay("host-machine-export-failed", { detail: detail(exists) }));
           if (exists.code === 0) {
             const e = await pod(["volume", "export", VOLUME_HOME, "--output", `${tar}.part`], 10 * 60_000);
-            if (e.code !== 0) throw new Error(hostSay("host-machine-export-failed", { detail: detail(e) }));
+            if (e.code !== 0) throw forceable(hostSay("host-machine-export-failed", { detail: detail(e) }));
             await rename(`${tar}.part`, tar);
           }
         }
@@ -426,18 +428,25 @@ export function createMachine(o: {
   } satisfies ContainerEngine & Record<string, unknown>;
 }
 
-/** e2e (RESSAC_TEST_MACHINE): a fixed status, `<kind>[:<percent>|damaged|<detail>]`; its actions only note themselves in `log`. */
-export function fakeMachine(spec: string, log: string): ReturnType<typeof createMachine> {
+/**
+ * e2e (RESSAC_TEST_MACHINE): a fixed status, `<kind>[:<percent>|damaged|<detail>]`; its actions only note themselves in
+ * `log`, and answer after `delayMs` (RESSAC_TEST_MACHINE_DELAY_MS).
+ */
+export function fakeMachine(spec: string, log: string, delayMs = 0): ReturnType<typeof createMachine> {
   const [kind, extra] = spec.split(":") as [MachineStatus["kind"], string | undefined];
   const status = (
     kind === "downloading" ? { kind, percent: extra ? Number(extra) : null }
-    : kind === "error" ? (extra === "damaged" ? { kind, message: hostSay("host-machine-damaged"), damaged: true } : { kind, message: hostSay("host-machine-start-failed", { detail: extra ?? "test" }) })
+    : kind === "error" ? (extra === "damaged" ? { kind, message: hostSay("host-machine-damaged"), forceRemovable: true } : { kind, message: hostSay("host-machine-start-failed", { detail: extra ?? "test" }) })
     : { kind }
   ) as MachineStatus;
-  const note = (line: string) => appendFile(log, `${line}\n`);
+  const note = async (line: string) => {
+    await appendFile(log, `${line}\n`);
+    await sleep(delayMs);
+  };
   return {
     kind: "machine",
-    binary: () => "podman",
+    // A path that cannot exist: no e2e ever reaches a real podman.
+    binary: () => "/nonexistent/ressac-fake-podman",
     args: () => [],
     hostAddress: () => HOST_ADDRESS,
     up: async () => false,
@@ -448,6 +457,6 @@ export function fakeMachine(spec: string, log: string): ReturnType<typeof create
     stop: async () => {},
     remove: (r = {}) => note(r.force ? "remove --force" : "remove"),
     close: async () => {},
-    usage: async () => (kind === "running" ? { memoryMB: 614, diskMB: 1843 } : null),
+    usage: async () => (kind === "running" || kind === "stopped" ? { memoryMB: kind === "running" ? 614 : 0, diskMB: 1843 } : null),
   };
 }

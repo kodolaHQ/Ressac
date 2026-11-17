@@ -110,8 +110,8 @@ export type DockerStatus = { kind: "ready" | "absent" | "unmanaged" } | { kind: 
 export type MachineStatus =
   | { kind: "unsupported" | "absent" | "stopped" | "starting" | "running" }
   | { kind: "downloading"; percent: number | null }
-  /** `damaged`: an instance that neither runs nor stops; only a forced removal (logins lost) clears it. */
-  | { kind: "error"; message: string; damaged?: true };
+  /** `forceRemovable`: a damaged instance, or one whose logins cannot be exported: only a forced removal (logins lost) clears it. */
+  | { kind: "error"; message: string; forceRemovable?: true };
 /** The name the decision model's download (d1-2B, run by llama-server) goes under. */
 export const DECISION_MODEL = "d1-2B";
 /** The name the search model's download (EmbeddingGemma, run by llama-server for ⌘T Demander) goes under. */

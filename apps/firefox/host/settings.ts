@@ -364,11 +364,13 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
         return { ok: false, error: failure(e) };
       }
     },
-    /** The apps in the machine stop first; `force` (a damaged machine, its logins lost) only when asked as such. */
+    /** The apps in the machine stop first. `force` (logins lost) only when asked and when the status offers it; else a normal removal. */
     "settings.machineRemove": async (p: { force?: unknown }): Promise<SettingsResult> => {
+      const s = o.machine.status();
+      const force = p?.force === true && s.kind === "error" && s.forceRemovable === true;
       try {
         await o.stopApps();
-        await o.machine.remove({ force: p?.force === true });
+        await o.machine.remove({ force });
         return { ok: true };
       } catch (e) {
         return { ok: false, error: failure(e) };

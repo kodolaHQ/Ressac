@@ -216,9 +216,9 @@ describe("the workshop machine", () => {
     const w = world({ instance: { status: "Broken" }, volume: true });
     const run: Runner = (cmd, args, o) => (args[0] === "start" ? Promise.resolve({ code: 1, stdout: "", stderr: "vz: boom" }) : w.run(cmd, args, o));
     const m = machine(w, { run });
-    await vi.waitFor(() => expect(m.status()).toMatchObject({ kind: "error", damaged: true }));
+    await vi.waitFor(() => expect(m.status()).toMatchObject({ kind: "error", forceRemovable: true }));
     await expect(m.remove()).rejects.toThrow();
-    expect(m.status()).toMatchObject({ kind: "error", damaged: true });
+    expect(m.status()).toMatchObject({ kind: "error", forceRemovable: true });
     expect(limactl(w).some((l) => l.startsWith("delete"))).toBe(false);
     await m.remove({ force: true });
     expect(limactl(w)).toContain("delete --force ressac");
@@ -231,7 +231,8 @@ describe("the workshop machine", () => {
     const m = machine(w);
     await expect(m.remove()).rejects.toThrow();
     expect(limactl(w).some((l) => l.startsWith("delete"))).toBe(false);
-    expect(m.status().kind).toBe("error");
+    // A failed export offers the forced removal too, never a dead end.
+    expect(m.status()).toMatchObject({ kind: "error", forceRemovable: true });
   });
 
   it("a failed stop keeps the poll armed and the next poll tries again", async () => {

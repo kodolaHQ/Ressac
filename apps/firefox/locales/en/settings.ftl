@@ -70,6 +70,7 @@ settings-workshop-machine-downloading = Downloading the workshop: { $percent } %
 settings-workshop-machine-downloading-unknown = Downloading the workshop…
 settings-workshop-machine-error = Workshop machine: failed
 settings-workshop-machine-usage = { $memory } GB of memory · { $disk } GB on disk
+settings-workshop-machine-usage-disk = { $disk } GB on disk
 settings-workshop-machine-retry = Try again
 settings-workshop-machine-remove = Remove the machine
 settings-workshop-machine-confirm-remove = Your Claude and Codex sign-ins are kept. It will be downloaded again (about 500 MB).

@@ -240,6 +240,24 @@ describe("Settings page", () => {
       await waitFor(m, "return true", () => calls().includes("remove --force"), 10_000);
     });
 
+    it("while « Réessayer » runs, the row's buttons are disabled; they come back once it answers", async () => {
+      await launch({ RESSAC_TEST_MACHINE: "error:damaged", RESSAC_TEST_MACHINE_DELAY_MS: "3000" });
+      await openPage();
+      await go("workshop");
+      await click(m, '[data-testid="machine-retry"]');
+      await waitUi(m, `return ["machine-retry", "machine-force-remove"].every((id) => doc.querySelector('[data-testid="' + id + '"]').disabled)`);
+      await waitFor(m, "return true", () => calls().includes("install"), 10_000);
+      await waitUi(m, `return !doc.querySelector('[data-testid="machine-retry"]').disabled`, [], 10_000);
+    });
+
+    it("stopped: the disk only, no memory line", async () => {
+      await launch({ RESSAC_TEST_MACHINE: "stopped" });
+      await openPage();
+      await go("workshop");
+      await shows("machine-usage", "1,8 Go sur le disque");
+      expect(await text("machine-usage")).not.toContain("mémoire");
+    });
+
     it("unsupported, Docker stopped: today's Docker texts, no machine row", async () => {
       await launch({ RESSAC_TEST_MACHINE: "unsupported", FAKE_DOCKER_ABSENT: "1", RESSAC_TEST_DOCKER_KIND: "stopped" });
       await openPage();
