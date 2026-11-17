@@ -10,7 +10,7 @@ export interface RunResult {
 }
 
 /** `signal`: cancels the command (its whole process group is killed), the result then has the code CODE_CANCELLED. */
-export type Runner = (command: string, args: string[], opts?: { delayMs?: number; signal?: AbortSignal; input?: string; onStderr?: (chunk: string) => void }) => Promise<RunResult>;
+export type Runner = (command: string, args: string[], opts?: { delayMs?: number; signal?: AbortSignal; input?: string; onStderr?: (chunk: string) => void; onStdout?: (chunk: string) => void }) => Promise<RunResult>;
 
 /** Code returned when the timeout is exceeded (same convention as timeout(1)). */
 export const CODE_TIMEOUT_EXCEEDED = 124;
@@ -77,10 +77,11 @@ export const createRunner = (locale: () => string = () => "en"): Runner => (comm
         resolve({ code: typeof e.code === "number" ? e.code : 1, stdout, stderr });
       },
     );
-    // shortcut: streamed only on this path (the cancellable one has no streaming caller), extend when one needs it.
+    // shortcut: streamed (stderr, stdout) only on this path (the cancellable one has no streaming caller), extend when one needs it.
     // shortcut: stdin only on this path, like onStderr.
     if (opts.input !== undefined) child.stdin?.end(opts.input);
     if (opts.onStderr) child.stderr?.on("data", (d) => opts.onStderr!(String(d)));
+    if (opts.onStdout) child.stdout?.on("data", (d) => opts.onStdout!(String(d)));
   });
 };
 

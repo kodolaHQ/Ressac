@@ -7,6 +7,7 @@ import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
 import { say } from "../i18n.js";
 import { portRange } from "./ports.js";
+import { dockerEngine, type ContainerEngine } from "./engine.js";
 import { CODE_TIMEOUT_EXCEEDED, createRunner, type RunResult, type Runner } from "./runner.js";
 import { inFolder, listFolder, readFiles, type ReadFiles } from "../workspace/confined.js";
 import { realInternal } from "../workspace/initialize.js";
@@ -48,9 +49,9 @@ export interface BuildProgress {
   since: number;
 }
 
-/** What a BuildKit plain-progress line says (`#5 [2/3] RUN apt-get …`), or null for any other line. */
+/** What a BuildKit plain-progress line (`#5 [2/3] RUN apt-get …`) or a Podman one (`STEP 2/3: RUN apt-get …`) says, or null for any other line. */
 export function parseBuildStep(line: string, locale: string): Pick<BuildProgress, "step" | "of" | "label"> | null {
-  const m = /^#\d+ \[(?:[\w-]+ )?(\d+)\/(\d+)\] (FROM|RUN) (.*)$/.exec(line.trim());
+  const m = /^#\d+ \[(?:[\w-]+ )?(\d+)\/(\d+)\] (FROM|RUN) (.*)$/.exec(line.trim()) ?? /^STEP (\d+)\/(\d+): (FROM|RUN) (.*)$/.exec(line.trim());
   if (!m) return null;
   const label =
     m[3] === "FROM" ? say(locale, "kernel-build-base-image")
@@ -70,13 +71,13 @@ export function codexRequirements(url: string): string {
  * Bumped with any change to RUN_FLAGS or to the `docker run` mounts: it goes into the image hash, so the container is
  * recreated (the fake docker of the e2e tests repeats it).
  */
-export const RUN_FLAGS_VERSION = "4";
+export const RUN_FLAGS_VERSION = "5";
 /** The network, memory and proxy flags of `docker run` (the part after the ports). */
 export const RUN_FLAGS = [
   "--cap-add", "NET_ADMIN",
   // No setuid route to root for the agent: root alone (docker exec -u root) applies the network rules.
   "--security-opt", "no-new-privileges",
-  "--memory", "4g",
+  "--memory", "2.5g",
   "--pids-limit", "1024",
   "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
   ...["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"].flatMap((k) => ["-e", `${k}=http://127.0.0.1:3128`]),
@@ -144,22 +145,10 @@ export interface AgentNetwork {
   domains: string[];
 }
 
-export type WorkshopState = "docker-absent" | "absent" | "arrete" | "demarre";
+/** `machine-stopped`: the engine is Ressac's machine and it is not running (startable); `docker-absent`: the same for Docker. */
+export type WorkshopState = "docker-absent" | "machine-stopped" | "absent" | "arrete" | "demarre";
 
-/** Looks for the docker CLI in the PATH then at known locations (Finder does not have the shell's PATH). */
-export function findDocker(
-  env: NodeJS.ProcessEnv = process.env,
-  exists: (path: string) => boolean = existsSync,
-): string | null {
-  const candidates = [
-    ...(env.PATH ?? "").split(":").filter(Boolean).map((d) => join(d, "docker")),
-    "/usr/local/bin/docker",
-    "/opt/homebrew/bin/docker",
-    ...(env.HOME ? [join(env.HOME, ".orbstack", "bin", "docker"), join(env.HOME, ".docker", "bin", "docker")] : []),
-    "/Applications/Docker.app/Contents/Resources/bin/docker",
-  ];
-  return candidates.find((c) => exists(c)) ?? null;
-}
+export { findDocker } from "./engine.js";
 
 function sessionFile(id: string): string {
   if (!/^[a-z0-9]+$/.test(id)) throw new Error(`id de session invalide : ${id}`);
@@ -214,11 +203,10 @@ export const VARIABLE_APPLICATION = "RESSAC_APP";
 export class Workshop {
   private readonly paths: SpacePaths;
   private readonly run: Runner;
-  private found: string | null = null;
-  private readonly lookup: () => string | null;
-  /** Looked up again while absent: Docker installed after the app started is found without a restart. */
+  /** Called per command, so the host can switch engines. */
+  private readonly engine: () => ContainerEngine;
   private get docker(): string | null {
-    return (this.found ??= this.lookup());
+    return this.engine().binary();
   }
   private readonly dockerFolder: string;
   private readonly locale: () => string;
@@ -236,17 +224,27 @@ export class Workshop {
   private progress: BuildProgress | null = null;
   private readonly listeners = new Set<(p: BuildProgress) => void>();
 
-  constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; findDocker?: () => string | null; dockerFolder?: string; locale?: () => string; network?: () => AgentNetwork }) {
+  /** `docker` / `findDocker`: shorthands for a Docker engine. */
+  constructor(o: { paths: SpacePaths; run?: Runner; engine?: () => ContainerEngine; docker?: string | null; findDocker?: () => string | null; dockerFolder?: string; locale?: () => string; network?: () => AgentNetwork }) {
     this.network = o.network;
     this.locale = o.locale ?? (() => "en");
     this.dockerFolder = o.dockerFolder ?? DEFAULT_DOCKER_FOLDER;
     this.paths = o.paths;
     this.run = o.run ?? createRunner(this.locale);
-    this.lookup = o.docker === undefined ? (o.findDocker ?? findDocker) : () => o.docker ?? null;
+    const docker = dockerEngine({ find: o.docker === undefined ? o.findDocker : () => o.docker ?? null, run: this.run });
+    this.engine = o.engine ?? (() => docker);
+  }
+
+  /** The engine's state when it cannot run commands now, null when it can. */
+  private async down(): Promise<WorkshopState | null> {
+    const e = this.engine();
+    if (e.binary() && (await e.up())) return null;
+    return e.kind === "machine" ? "machine-stopped" : "docker-absent";
   }
 
   private launch(args: string[], delayMs?: number, input?: string, signal?: AbortSignal) {
-    return this.run(this.docker!, args, { ...(delayMs ? { delayMs } : {}), ...(input !== undefined ? { input } : {}), ...(signal ? { signal } : {}) });
+    const e = this.engine();
+    return this.run(e.binary()!, [...e.args(), ...args], { ...(delayMs ? { delayMs } : {}), ...(input !== undefined ? { input } : {}), ...(signal ? { signal } : {}) });
   }
 
   /** Every window waiting on the shared start hears the build's steps. Returns the unsubscribe. */
@@ -256,29 +254,34 @@ export class Workshop {
     return () => this.listeners.delete(listener);
   }
 
-  /** The build streams its stderr (BuildKit plain progress) instead of waiting for the end. */
+  /** The build streams its output (BuildKit or Podman steps) instead of waiting for the end. */
   private async build(args: string[]): Promise<RunResult> {
     const since = Date.now();
-    let pending = "";
-    const onStderr = (chunk: string) => {
-      const lines = (pending + chunk).split("\n");
-      pending = lines.pop()!;
-      for (const line of lines) {
-        const step = parseBuildStep(line, this.locale());
-        if (!step) continue;
-        this.progress = { ...step, since };
-        for (const l of this.listeners) l(this.progress);
-      }
+    const reader = () => {
+      let pending = "";
+      return (chunk: string) => {
+        const lines = (pending + chunk).split("\n");
+        pending = lines.pop()!;
+        for (const line of lines) {
+          const step = parseBuildStep(line, this.locale());
+          if (!step) continue;
+          this.progress = { ...step, since };
+          for (const l of this.listeners) l(this.progress);
+        }
+      };
     };
+    const e = this.engine();
     try {
-      return await this.run(this.docker!, args, { delayMs: BUILD_DELAY_MS, onStderr });
+      // BuildKit prints its steps on stderr, Podman on stdout.
+      return await this.run(e.binary()!, [...e.args(), ...args], { delayMs: BUILD_DELAY_MS, onStderr: reader(), onStdout: reader() });
     } finally {
       this.progress = null;
     }
   }
 
   async state(): Promise<WorkshopState> {
-    if (!this.docker || (await this.launch(["info"], PROBE_DELAY_MS)).code !== 0) return "docker-absent";
+    const down = await this.down();
+    if (down) return down;
     const r = await this.launch(["inspect", "-f", "{{.State.Running}}", containerName()], PROBE_DELAY_MS);
     if (r.code !== 0) return "absent";
     return r.stdout.trim() === "true" ? "demarre" : "arrete";
@@ -304,20 +307,24 @@ export class Workshop {
   }
 
   ensureStarted(): Promise<WorkshopState> {
-    this.startup ??= this.start().finally(() => (this.startup = null));
+    this.startup ??= this.engine().wake("user").then(() => this.start()).finally(() => (this.startup = null));
     return this.startup;
   }
 
   /** Stops the container (volumes kept) and starts it again. */
   async restart(): Promise<WorkshopState> {
-    if (!this.docker || (await this.launch(["info"], PROBE_DELAY_MS)).code !== 0) return "docker-absent";
+    await this.engine().wake("user");
+    const down = await this.down();
+    if (down) return down;
     await this.launch(["stop", "-t", "2", containerName()], PROBE_DELAY_MS);
     return this.ensureStarted();
   }
 
   /** Deletes the container and rebuilds the image from scratch; /workspace and the home volume are kept. */
   async rebuild(): Promise<WorkshopState> {
-    if (!this.docker || (await this.launch(["info"], PROBE_DELAY_MS)).code !== 0) return "docker-absent";
+    await this.engine().wake("user");
+    const down = await this.down();
+    if (down) return down;
     this.rebuilding ??= (async () => {
       // A plain startup in progress (an agent opening) ends first: the rebuild never rides on it.
       while (this.startup) await this.startup.catch(() => {});
@@ -423,7 +430,7 @@ export class Workshop {
 
   private async startContainer(o: { fresh?: boolean }): Promise<WorkshopState> {
     let state = await this.state();
-    if (state === "docker-absent") return state;
+    if (state === "docker-absent" || state === "machine-stopped") return state;
     const hash = dockerfileHash(this.dockerFolder);
     // A container created on another folder or with an old Dockerfile is recreated; /workspace and
     // the credentials volume are kept, only the container layer is lost.
@@ -453,7 +460,7 @@ export class Workshop {
     const run = await this.launch([
       "run", "-d",
       "--name", containerName(),
-      "--add-host", "host.docker.internal:host-gateway",
+      "--add-host", `host.docker.internal:${this.engine().hostAddress()}`,
       "-v", `${this.paths.root}:${CONTAINER_PATH}`,
       // .ressac holds what restricts the agent (launch profiles, MCP configs): read-only, and a mount point cannot be renamed
       // away. Only the logs, which the apps write from the container, are writable (both folders are made just above).
@@ -484,11 +491,12 @@ export class Workshop {
    * output (`-i`). `delayS`: the container is stopped after this delay (+5 s to finish).
    */
   harvestCommand(owner: string | Owner, filesFolder: string, engine: string, delayS: number = HARVEST_DELAY_S): string[] {
-    if (!this.docker) throw new Error("Docker introuvable");
+    const e = this.engine();
+    if (!e.binary()) throw new Error("Docker introuvable");
     // « : » would change the meaning of -v (target, options): such a path cannot be mounted safely.
     for (const c of [filesFolder, engine]) if (c.includes(":")) throw new Error(`chemin non montable : ${c}`);
     return [
-      this.docker, "run", "-i", "--rm",
+      e.binary()!, ...e.args(), "run", "-i", "--rm",
       "--name", harvestName(owner),
       "--network", "none",
       "--read-only",
@@ -514,6 +522,7 @@ export class Workshop {
    * it, even of the real path, would leave that race open.
    */
   async stageHarvest(owner: string | Owner, filesFolder: string): Promise<string> {
+    await this.engine().wake("harvest");
     const names = relative(this.paths.root, filesFolder).split(sep);
     if (names.some((n) => n === "" || n === "..")) throw new Error(say(this.locale(), "kernel-harvest-folder-refused"));
     const listed = await inFolder<string[]>(this.paths.root, names, listFolder, []);
@@ -600,8 +609,9 @@ export class Workshop {
 
   /** `passEnv`: names only (`-e NAME`), the value comes from the caller's environment, so a token never shows in the arguments. */
   execCommand(argv: string[], o: { interactive: boolean; env?: Record<string, string>; passEnv?: string[]; folder?: string }): string[] {
-    if (!this.docker) throw new Error("Docker introuvable");
+    const e = this.engine();
+    if (!e.binary()) throw new Error("Docker introuvable");
     const env = Object.entries(o.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]).concat((o.passEnv ?? []).flatMap((k) => ["-e", k]));
-    return [this.docker, "exec", ...(o.interactive ? ["-it"] : []), ...env, "-w", o.folder ?? CONTAINER_PATH, containerName(), ...argv];
+    return [e.binary()!, ...e.args(), "exec", ...(o.interactive ? ["-it"] : []), ...env, "-w", o.folder ?? CONTAINER_PATH, containerName(), ...argv];
   }
 }

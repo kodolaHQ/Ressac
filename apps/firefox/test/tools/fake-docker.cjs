@@ -56,7 +56,7 @@ if (args[0] === "inspect") {
   const dockerfile = join(__dirname, "..", "..", "..", "..", "packages", "kernel", "docker", "workshop.Dockerfile");
   // Same recipe as the kernel's dockerfileHash: Dockerfile, network module, run-flags version.
   const network = join(dirname(dockerfile), "ressac-network.mjs");
-  const hash = createHash("sha256").update(readFileSync(dockerfile)).update(readFileSync(network)).update("flags-4").digest("hex").slice(0, 12);
+  const hash = createHash("sha256").update(readFileSync(dockerfile)).update(readFileSync(network)).update("flags-5").digest("hex").slice(0, 12);
   quit(0, `${env.RESSAC_ROOT}|${hash}\n`);
 }
 /** PID of the `run` client of a harvest in progress, by container name. */

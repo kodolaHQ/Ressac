@@ -174,8 +174,9 @@
     arrete: "settings-workshop-stopped",
     absent: "settings-workshop-absent",
     "docker-absent": "settings-workshop-docker-absent",
+    "machine-stopped": "settings-workshop-stopped",
   };
-  const WORKSHOP_TONE: Record<WorkshopState, string> = { demarre: "ok", arrete: "off", absent: "off", "docker-absent": "warn" };
+  const WORKSHOP_TONE: Record<WorkshopState, string> = { demarre: "ok", arrete: "off", absent: "off", "docker-absent": "warn", "machine-stopped": "off" };
   const CONFIRM = { restart: "settings-workshop-confirm-restart", rebuild: "settings-workshop-confirm-rebuild" };
   async function operate(kind: "restart" | "rebuild") {
     asking = null;

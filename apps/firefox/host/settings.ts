@@ -192,7 +192,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     // On every row, errors and a failed Docker probe included: one failed check does not end the sign-in, so the code stays shown.
     const signing = (a: (typeof AGENT_ACCOUNTS)[number]) => (a.login.kind === "device" && signIn ? { signingIn: true as const } : {});
     const state = await o.workshop.state();
-    if (state === "docker-absent" || state === "absent" || state === "arrete")
+    if (state === "docker-absent" || state === "machine-stopped" || state === "absent" || state === "arrete")
       return AGENT_ACCOUNTS.map((a) => ({ id: a.id, name: a.name, login: a.login.kind, state: state === "docker-absent" ? "docker-absent" : "no-container", ...signing(a) }));
     return Promise.all(
       AGENT_ACCOUNTS.map(async (a): Promise<AgentAccount> => {

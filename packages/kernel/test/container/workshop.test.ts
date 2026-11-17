@@ -8,6 +8,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { TOOLS_FOLDERS } from "../../src/container/runner.js";
 import { fakeRunner } from "../helpers/fake-runner.js";
+import type { ContainerEngine, WakeReason } from "../../src/container/engine.js";
 
 const ROOT = mkdtempSync(join(tmpdir(), "ressac-workshop-"));
 const paths = spacePaths(ROOT);
@@ -659,7 +660,7 @@ describe("agent network", () => {
     const args = calls.find((a) => a.args[0] === "run")!.args;
     const count = (x: string) => args.filter((a) => a === x).length;
     for (const f of ["--cap-add", "--memory", "--pids-limit", "--sysctl"]) expect(count(f)).toBe(1);
-    expect(args.join(" ")).toContain("--cap-add NET_ADMIN --security-opt no-new-privileges --memory 4g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1");
+    expect(args.join(" ")).toContain("--cap-add NET_ADMIN --security-opt no-new-privileges --memory 2.5g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1");
     for (const e of [
       "HTTPS_PROXY=http://127.0.0.1:3128", "https_proxy=http://127.0.0.1:3128", "HTTP_PROXY=http://127.0.0.1:3128", "http_proxy=http://127.0.0.1:3128",
       "NO_PROXY=localhost,127.0.0.1,host.docker.internal", "no_proxy=localhost,127.0.0.1,host.docker.internal",
@@ -670,8 +671,8 @@ describe("agent network", () => {
   test("the image hash covers the network module and the run flags version", async () => {
     const { RUN_FLAGS, RUN_FLAGS_VERSION } = await import("../../src/container/workshop.js");
     // Changing a flag must bump RUN_FLAGS_VERSION (and the fake docker's copy of it).
-    expect(RUN_FLAGS_VERSION).toBe("4");
-    expect(RUN_FLAGS.join(" ")).toMatchInlineSnapshot(`"--cap-add NET_ADMIN --security-opt no-new-privileges --memory 4g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1 -e HTTPS_PROXY=http://127.0.0.1:3128 -e https_proxy=http://127.0.0.1:3128 -e HTTP_PROXY=http://127.0.0.1:3128 -e http_proxy=http://127.0.0.1:3128 -e NO_PROXY=localhost,127.0.0.1,host.docker.internal -e no_proxy=localhost,127.0.0.1,host.docker.internal -e NODE_USE_ENV_PROXY=1 -e DISABLE_AUTOUPDATER=1 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"`);
+    expect(RUN_FLAGS_VERSION).toBe("5");
+    expect(RUN_FLAGS.join(" ")).toMatchInlineSnapshot(`"--cap-add NET_ADMIN --security-opt no-new-privileges --memory 2.5g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1 -e HTTPS_PROXY=http://127.0.0.1:3128 -e https_proxy=http://127.0.0.1:3128 -e HTTP_PROXY=http://127.0.0.1:3128 -e http_proxy=http://127.0.0.1:3128 -e NO_PROXY=localhost,127.0.0.1,host.docker.internal -e no_proxy=localhost,127.0.0.1,host.docker.internal -e NODE_USE_ENV_PROXY=1 -e DISABLE_AUTOUPDATER=1 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"`);
   });
 
   test("secureNetwork applies the rules with valid domains only, then probes", async () => {
@@ -847,5 +848,71 @@ describe("execWrite", () => {
   test("no Docker: code 1", async () => {
     const r = await new Workshop({ paths: paths, docker: null }).execWrite(["x"], { input: "", signal: ac().signal, delayMs: 1 });
     expect(r.code).toBe(1);
+  });
+});
+
+describe("container engine", () => {
+  const machine = (up: () => Promise<boolean> = async () => true, wake: (r: WakeReason) => Promise<void> = async () => {}): ContainerEngine => ({
+    kind: "machine", binary: () => "/b/podman", args: () => ["--url", "unix:///s"], hostAddress: () => "192.168.5.2", up, wake,
+  });
+  const started = () => {
+    let launched = false;
+    return fakeRunner([
+      [/ image inspect /, { code: 1 }],
+      [/ inspect /, () => ({ code: launched ? 0 : 1, stdout: "true\n" })],
+      [/ run /, () => ((launched = true), { code: 0 })],
+    ]);
+  };
+
+  test("machine engine: every command is the podman binary with --url first", async () => {
+    const { run, calls } = started();
+    expect(await new Workshop({ paths, run, engine: () => machine() }).ensureStarted()).toBe("demarre");
+    expect(calls.length).toBeGreaterThan(0);
+    for (const c of calls) {
+      expect(c.command).toBe("/b/podman");
+      expect(c.args.slice(0, 2)).toEqual(["--url", "unix:///s"]);
+    }
+  });
+
+  test("machine engine: run uses its host address", async () => {
+    const { run, calls } = started();
+    await new Workshop({ paths, run, engine: () => machine() }).ensureStarted();
+    const args = calls.find((c) => c.args[2] === "run")!.args;
+    expect(args[args.indexOf("--add-host") + 1]).toBe("host.docker.internal:192.168.5.2");
+  });
+
+  test("machine down: state is machine-stopped without running anything", async () => {
+    const { run, calls } = fakeRunner([]);
+    expect(await new Workshop({ paths, run, engine: () => machine(async () => false) }).state()).toBe("machine-stopped");
+    expect(calls).toEqual([]);
+  });
+
+  test("ensureStarted wakes the engine for the user, stageHarvest for a harvest", async () => {
+    const reasons: WakeReason[] = [];
+    const root = mkdtempSync(join(tmpdir(), "ressac-engine-"));
+    mkdirSync(join(root, "w"));
+    writeFileSync(join(root, "w", "a.mjs"), "x");
+    const workshop = new Workshop({ paths: spacePaths(root), run: started().run, engine: () => machine(undefined, async (r) => void reasons.push(r)) });
+    await workshop.ensureStarted();
+    await workshop.stageHarvest("w", join(root, "w"));
+    expect(reasons).toEqual(["user", "harvest"]);
+  });
+
+  test("harvestCommand and execCommand start with the engine binary and args", () => {
+    const workshop = new Workshop({ paths, run: fakeRunner([]).run, engine: () => machine() });
+    expect(workshop.harvestCommand("meteo", "/d", "/e").slice(0, 3)).toEqual(["/b/podman", "--url", "unix:///s"]);
+    expect(workshop.execCommand(["ls"], { interactive: false }).slice(0, 4)).toEqual(["/b/podman", "--url", "unix:///s", "exec"]);
+  });
+
+  test("RUN_FLAGS caps the workshop at 2.5g", async () => {
+    const { RUN_FLAGS, RUN_FLAGS_VERSION } = await import("../../src/container/workshop.js");
+    expect(RUN_FLAGS.join(" ")).toContain("--memory 2.5g");
+    expect(RUN_FLAGS_VERSION).toBe("5");
+  });
+
+  test("parseBuildStep reads Podman steps", () => {
+    expect(parseBuildStep("STEP 2/6: RUN apt-get update && apt-get install …", "fr")).toEqual({ step: 2, of: 6, label: "Outils système" });
+    expect(parseBuildStep("STEP 1/6: FROM node:22-bookworm", "fr")).toEqual({ step: 1, of: 6, label: "Téléchargement de l'image de base" });
+    expect(parseBuildStep("#5 [2/3] RUN apt-get update", "fr")).toEqual({ step: 2, of: 3, label: "Outils système" });
   });
 });

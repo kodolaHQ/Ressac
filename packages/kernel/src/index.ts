@@ -18,6 +18,7 @@ export * from "./profiles/profile.js";
 export * from "./profiles/config-mcp.js";
 export * from "./container/runner.js";
 export * from "./container/workshop.js";
+export * from "./container/engine.js";
 export * from "./pty/context.js";
 export * from "./pty/session.js";
 export * from "./mcp/bridge.js";
