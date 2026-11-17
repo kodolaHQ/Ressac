@@ -44,7 +44,8 @@ const LIMIT = /usage limit|rate limit|limit reached|quota/i;
 
 export function createAgentWriter(o: {
   exec(argv: string[], x: { input: string; signal: AbortSignal; delayMs: number }): Promise<RunResult>;
-  agent(): Promise<WriterAgent | null>;
+  /** The agent to write with, skipping `exclude` (agents that already answered "not signed in" for this request). */
+  agent(exclude?: ReadonlySet<WriterAgent>): Promise<WriterAgent | null>;
   /** Called when a call answers "not signed in": the host drops its cached state. */
   signedOut?(agent: WriterAgent): void;
   log?(line: string): void;
@@ -57,7 +58,7 @@ export function createAgentWriter(o: {
     const signal = r.signal ?? new AbortController().signal;
     const seen = new Set<WriterAgent>();
     for (;;) {
-      const agent = await o.agent();
+      const agent = await o.agent(seen);
       if (!agent || seen.has(agent)) throw t("kernel-writer-none");
       const outcome = await runOnce(agent);
       if (outcome !== "signed-out") return outcome.value;

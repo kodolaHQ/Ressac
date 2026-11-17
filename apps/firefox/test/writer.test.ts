@@ -28,6 +28,11 @@ describe("writer choice", () => {
   it("falls back to the other agent", async () => {
     expect(await setup("demarre", { claude: false, codex: true }).choice.agent()).toBe("codex");
   });
+  it("skips the excluded agents even when their status says signed in (a dead token)", async () => {
+    const s = setup("demarre", { claude: true, codex: true });
+    expect(await s.choice.agent(new Set(["claude"]))).toBe("codex");
+    expect(await s.choice.agent(new Set(["claude", "codex"]))).toBeNull();
+  });
   it("is null when both are signed out", async () => {
     expect(await setup("demarre", {}).choice.agent()).toBeNull();
   });

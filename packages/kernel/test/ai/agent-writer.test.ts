@@ -117,9 +117,10 @@ describe("claude timeout and switching", () => {
   });
   it("signed out: switches once to the other agent", async () => {
     const exec = vi.fn(async (argv: string[]) => (argv[0] === "claude" ? ok(claudeOut("Not logged in", true), 1) : ok("Via codex")));
-    const agents: WriterAgent[] = ["claude", "codex"];
     const log = vi.fn();
-    const w = createAgentWriter({ exec, agent: async () => agents.shift() ?? null, signedOut: vi.fn(), log, locale: () => "fr" });
+    // Like the host's choice: claude's status still says signed in (dead token), so only the exclusion skips it.
+    const agent = async (exclude?: ReadonlySet<WriterAgent>) => (["claude", "codex"] as const).find((a) => !exclude?.has(a)) ?? null;
+    const w = createAgentWriter({ exec, agent, signedOut: vi.fn(), log, locale: () => "fr" });
     expect(await w({ prompt: "P" })).toBe("Via codex");
     expect(exec).toHaveBeenCalledTimes(2);
     expect(log).toHaveBeenCalledTimes(2);
