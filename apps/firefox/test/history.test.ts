@@ -481,6 +481,20 @@ describe("page vectors", () => {
     expect(pending()).toEqual([]);
   });
 
+  test("titles and texts stored with a NUL before the fix are cleaned once at open, the full-text index too", () => {
+    h.close();
+    const db = new DatabaseSync(path);
+    db.exec("PRAGMA user_version = 0"); // a database from before the cleanup
+    db.prepare("INSERT INTO visits (url, space_id, title, last_visit, url_fold, title_fold) VALUES (?, 's', ?, ?, ?, ?)").run("https://a.fr/", "a\0b", d(1).toISOString(), "https://a.fr/", "a\0b");
+    db.prepare("INSERT INTO texts (url, space_id, title, date, text, bytes) VALUES (?, 's', ?, ?, ?, 4)").run("https://a.fr/", "a\0b", d(1).toISOString(), "x\0yzorg");
+    db.close();
+    h = new History(path);
+    expect(h.pendingVectors(10).map((r) => [r.title, r.excerpt])).toEqual([["ab", "xyzorg"]]);
+    expect(h.search("ab").map((r) => r.title)).toEqual(["ab"]);
+    expect(h.searchForAgent({ query: "xyzorg" }).map((r) => r.url)).toEqual(["https://a.fr/"]);
+    expect(h.saveVectors(h.pendingVectors(10).map((r) => ({ ...r, vec: v(1, 0) })))).toBe(1);
+  });
+
   test("vectors of another search model are dropped at open; the same model keeps them", () => {
     h.close();
     h = new History(path, { vectorModel: "m1.gguf" });

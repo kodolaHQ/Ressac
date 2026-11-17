@@ -89,7 +89,11 @@ test.each([
   ["le marché du mardi", null, null],
   ["les crêpes de mardi gras", null, null],
   ["mardi gras", null, null],
-  ["le dimanche", null, null],
+  // After « de » or « le » it is a period: « de lundi », « lu le mardi ».
+  ["l'article de lundi", "2026-11-09", "2026-11-09"],
+  ["lu le mardi", "2026-11-10", "2026-11-10"],
+  ["la page lue le mardi", "2026-11-10", "2026-11-10"],
+  ["le dimanche", "2026-11-15", "2026-11-15"],
   // Alone, or marked, it stays a period.
   ["mardi", "2026-11-10", "2026-11-10"],
   ["la page vue le dimanche", "2026-11-15", "2026-11-15"],

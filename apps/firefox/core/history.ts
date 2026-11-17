@@ -230,6 +230,10 @@ export class History {
           DELETE FROM vectors WHERE url = old.url AND space_id = old.space_id;
         END;
         CREATE TABLE IF NOT EXISTS vector_model (name TEXT NOT NULL);`);
+      // Rows written with a NUL before noNul existed, cleaned once (user_version 1: the scan reads every text). Read as
+      // blobs: node:sqlite and SQLite's replace() both stop at the NUL; a 0 byte is never inside a UTF-8 sequence.
+      // texts_update keeps the full-text index in sync.
+      if ((this.db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version < 1) this.dropNul();
       const model = this.db.prepare("SELECT name FROM vector_model").get() as { name: string } | undefined;
       if (vectorModel !== undefined && model?.name !== vectorModel) {
         this.db.exec("DELETE FROM vectors; DELETE FROM vector_model;");
@@ -240,6 +244,22 @@ export class History {
       this.db.exec("ROLLBACK");
       throw e;
     }
+  }
+
+  /** Removes the NUL bytes of every title and text (createTables, once). */
+  private dropNul(): void {
+    const clean = (b: Uint8Array) => Buffer.from(b.filter((x) => x !== 0)).toString("utf8");
+    const nul = (c: string) => `instr(CAST(${c} AS BLOB), X'00') > 0`;
+    const visits = this.db.prepare(`SELECT rowid AS id, CAST(title AS BLOB) AS title FROM visits WHERE ${nul("title")}`).all();
+    const setVisit = this.db.prepare("UPDATE visits SET title = ?, title_fold = ? WHERE rowid = ?");
+    for (const r of visits as { id: number; title: Uint8Array }[]) setVisit.run(clean(r.title), fold(clean(r.title)), r.id);
+    const texts = this.db.prepare(`SELECT id, CAST(title AS BLOB) AS title, CAST(text AS BLOB) AS text FROM texts WHERE ${nul("title")} OR ${nul("text")}`).all();
+    const setText = this.db.prepare("UPDATE texts SET title = ?, text = ?, bytes = ? WHERE id = ?");
+    for (const r of texts as { id: number; title: Uint8Array; text: Uint8Array }[]) {
+      const text = clean(r.text);
+      setText.run(clean(r.title), text, Buffer.byteLength(text, "utf8"), r.id);
+    }
+    this.db.exec("PRAGMA user_version = 1");
   }
 
   note(v: { url: string; title: string; spaceId: string; private: boolean; date?: Date }): void {

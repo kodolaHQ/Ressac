@@ -65,9 +65,9 @@ const PERIODS: [RegExp, (d: Day, m: RegExpMatchArray) => [Day, Day | undefined]]
 ];
 const WEEKDAY = new RegExp(`\\b(${DAY_NAMES})( (dernier|passe|last))?\\b|\\blast (${DAY_NAMES})\\b`, "g");
 /** « vus mardi »: the day the page was seen, not one of its subject (« le dimanche »). */
-const SEEN_BEFORE = /\b(vus?|vues?|visitee?s?|regardee?s?|seen|visited|watched)( (le|on))? $/;
-/** « la recette du dimanche », « mardi gras »: a bare weekday that names the subject, not a period. */
-const SUBJECT_BEFORE = /\b(du|de|le|d') ?$/;
+const SEEN_BEFORE = /\b(vus?|vues?|lue?s?|ouverte?s?|consultee?s?|visitee?s?|regardee?s?|seen|read|opened|visited|watched)( (le|on))? $/;
+/** « la recette du dimanche », « mardi gras »: a bare weekday that names the subject, not a period (« de lundi » is one). */
+const SUBJECT_BEFORE = /\bdu $/;
 const SUBJECT_AFTER = /^ gras\b/;
 
 function period(t: string, today: Day): { since: Day; until?: Day; at: number; end: number } | null {
