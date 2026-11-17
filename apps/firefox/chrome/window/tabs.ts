@@ -291,7 +291,10 @@ export class TabSync {
       if (w.gBrowser === this.gBrowser) continue;
       const old = w.gBrowser?.tabs.find((t: any) => t.getAttribute(TAB_ID) === id);
       if (!old) continue;
+      const home = this.store.sites.wantsHome(old.linkedBrowser);
       const tab = this.gBrowser.adoptTab(old, { tabIndex: this.gBrowser.tabs.length, [OWN_ADOPT]: true });
+      // An app essential's tab keeps whether it showed its home (TabOpen attached the new browser already).
+      if (tab && home !== undefined) this.store.sites.wantsHome(tab.linkedBrowser, home);
       if (!tab) w.gBrowser.removeTab(old, { skipPermitUnload: true, animate: false });
       return tab ?? undefined;
     }

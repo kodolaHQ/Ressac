@@ -194,7 +194,11 @@ describe("an app essential's home", () => {
     // The site is loaded under the home.
     await expect.poll(() => tabUrl(tab), { timeout: 15_000 }).toBe(url("/", "maison-a.localhost"));
 
-    await homePage(tab, 'fw.adresse = "/serie"; return true;');
+    // An open the home posts without a real press (a scripted click) is refused: the tab stays where it is.
+    await homePage(tab, 'fw.adresse = "/serie"; fw.document.getElementById("ouvrir").click(); return true;');
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(await tabUrl(tab)).toBe(url("/", "maison-a.localhost"));
+    expect(await homeShown(tab)).toBe(true);
     await realClick(tab, "#ouvrir");
     await expect.poll(() => tabUrl(tab), { timeout: 15_000 }).toBe(url("/serie", "maison-a.localhost"));
     await expect.poll(() => m.execute<boolean>(`return !${homeOver(tab)};`), { timeout: 5_000 }).toBe(true);

@@ -13,7 +13,7 @@ export function installCallPlayer(): void {
     const context = msg.target.browsingContext;
     const browser = context.top.embedderElement;
     // A tab switch only: a hidden window keeps its videos where they are.
-    if (!browser || browser.ownerGlobal?.gBrowser?.selectedBrowser === browser) return undefined;
+    if (!browser || browser.ownerDocument?.defaultView?.gBrowser?.selectedBrowser === browser) return undefined;
     // As Firefox: a player the user closed does not come back until the tab was shown again.
     if (PictureInPicture.weakAutoPipBrowserClosedDeliberately.has(browser)) return void PictureInPicture.weakAutoPipBrowserClosedDeliberately.delete(browser);
     try {

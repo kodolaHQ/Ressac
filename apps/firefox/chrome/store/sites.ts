@@ -155,8 +155,12 @@ type TabSite = { id: string; s?: FrameSite; ready?: Promise<void>; home: boolean
 const served = new Map<string, Promise<string | null>>();
 const servedHome = (id: string): Promise<string | null> => {
   let p = served.get(id);
-  if (!p) served.set(id, (p = serveHome(dataDir, id, (id, token) => (host ? host.request<string[] | null>("sites.copyHome", { id, token }) : Promise.resolve(null)))));
-  return p;
+  if (p) return p;
+  const serving = serveHome(dataDir, id, (id, token) => (host ? host.request<string[] | null>("sites.copyHome", { id, token }) : Promise.resolve(null)));
+  served.set(id, serving);
+  // A refusal (host restarting, home half written) is not kept: the next homeUrl tries again.
+  void serving.then((u) => u === null && served.get(id) === serving && served.delete(id));
+  return serving;
 };
 
 /**
@@ -330,7 +334,8 @@ function isTabOfMainWindow(browser: any): boolean {
   if (!browser) return false;
   if (tabSites.has(browser)) return true;
   try {
-    return !!browser.ownerGlobal?.gBrowser?.getTabForBrowser(browser)?.hasAttribute("ressac-tab-id");
+    // Not ownerGlobal: undefined from this module (see gone()).
+    return !!browser.ownerDocument?.defaultView?.gBrowser?.getTabForBrowser(browser)?.hasAttribute("ressac-tab-id");
   } catch {
     return false;
   }
@@ -507,8 +512,8 @@ function guardHome(id: string, frame: HTMLIFrameElement): void {
 const TAB_HOME_SRC = "chrome://browser/content/ressac/sidebar.html?tabhome";
 /** The home's exit fade over a tab (window.css .ressac-tab-home[leaving]). */
 const TAB_HOME_FADE_MS = 150;
-/** The last real presses in each essential tab's home (one allows one open), by its <browser>. */
-const tabGestures = gestureGuard<any>();
+/** The last real presses in each essential tab's home (one allows one open), by its browserId: never holds a <browser>. */
+const tabGestures = gestureGuard<number>();
 
 /**
  * The home over an essential tab's page, as the tab wants it: shown in a frame of the tab's browser stack (it follows the
@@ -565,7 +570,7 @@ function tabHomeController(browser: any, t: TabSite): TabHomeController {
       const now = Date.now();
       const url = homeOpenUrl(address, s.site, t.lastHomeOpen, now, !!context(s).localAddresses);
       // Without a recent real press in this tab's home nothing opens, as in the window.
-      if (!url || !tabGestures.accept(browser, t.id)) return false;
+      if (!url || !tabGestures.accept(browser.browserId, t.id)) return false;
       t.lastHomeOpen = now;
       const uri = Services.io.newURI(url);
       browser.loadURI(uri, { triggeringPrincipal: Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: siteContainer(t.id) }) });
@@ -576,7 +581,7 @@ function tabHomeController(browser: any, t: TabSite): TabHomeController {
     image: async (url) => (live() && t.s && typeof url === "string" ? siteImage(siteContainer(t.id), url, t.s.site.domains) : null),
     homeUrl: () => (live() && t.s?.site.hasHome ? servedHome(t.id) : Promise.resolve(null)),
     homeGesture() {
-      if (shown()) tabGestures.gesture(browser, t.id);
+      if (shown()) tabGestures.gesture(browser.browserId, t.id);
     },
     guardHome: (frame) => guardHome(t.id, frame),
   };
@@ -848,6 +853,15 @@ export const sites = {
     if (!t) return;
     t.home = true;
     renderTab(browser, t);
+  },
+  /** Whether the essential tab of this <browser> wants its home; with `home`, sets it (a tab moved to another window keeps it). */
+  wantsHome(browser: any, home?: boolean): boolean | undefined {
+    const t = tabSites.get(browser);
+    if (t && home !== undefined) {
+      t.home = home;
+      renderTab(browser, t);
+    }
+    return t?.home;
   },
   /** Whether app `id`'s essential tabs can show its home (a home, no grant waiting), as last read. */
   tabHasHome(id: string): boolean {
