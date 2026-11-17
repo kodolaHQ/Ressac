@@ -28,6 +28,8 @@ export class TabSync {
   private readonly leaving = new Map<TabId, any>();
   private parking: any;
   private creating = false;
+  /** While create() makes an app essential's XUL tab: its app, registered with the site store before the first load. */
+  private siteApp: string | undefined;
   /** While a popup's link opens here: the Ressac tab behind the popup. */
   private fromPopup: TabId | undefined;
   /** While an add-on opens a tab here (tabs.create, its options page): they load with its principal. */
@@ -258,7 +260,9 @@ export class TabSync {
   private create(state: BrowserState, o: Tab): void {
     this.creating = true;
     try {
-      const userContextId = this.containerOf(state, o);
+      const profile = tabProfile(state, o);
+      const userContextId = this.store.containerFor(profile);
+      this.siteApp = profile.startsWith("site-") ? profile.slice("site-".length) : undefined;
       // The URL may come from the agent (open_tab, navigate on a tab without one): a web page is never loaded with the
       // system principal, whoever asked; internal pages (about:) need it.
       const triggeringPrincipal = /^https?:/i.test(o.url)
@@ -266,11 +270,14 @@ export class TabSync {
         : Services.scriptSecurityManager.getSystemPrincipal();
       const tab = this.adopt(o.id) ?? this.gBrowser.addTab(o.url, { triggeringPrincipal, userContextId, skipAnimation: true });
       tab.setAttribute(TAB_ID, o.id);
+      // Again once made: an adopted page may live in another <browser> than the one TabOpen saw (a no-op otherwise).
+      if (this.siteApp) void this.store.sites.attachTab(this.siteApp, tab.linkedBrowser);
       // Firefox never unloads an essential to free memory.
       if (o.link?.type === "essential") tab.undiscardable = true;
       this.tabs.set(o.id, tab);
     } finally {
       this.creating = false;
+      this.siteApp = undefined;
     }
   }
 
@@ -358,6 +365,7 @@ export class TabSync {
   }
 
   private onOpen(tab: any): void {
+    if (this.siteApp) void this.store.sites.attachTab(this.siteApp, tab.linkedBrowser);
     if (this.creating || tab.hasAttribute(TAB_ID)) return;
     // Firefox replaces a closing last tab: the replacement parks the window instead.
     if (this.parking.closing) {
@@ -385,6 +393,7 @@ export class TabSync {
   }
 
   private onClose(tab: any): void {
+    this.store.sites.detachTab(tab.linkedBrowser);
     if (tab === this.parking) {
       // Not the last tab, so Firefox opened no replacement: park on a new one.
       queueMicrotask(() => {

@@ -99,6 +99,8 @@ export interface SitesHost {
   list(): Promise<ShownSite[]>;
   agentList(): Promise<(ShownSite & { hash?: string })[]>;
   openById(id: string): Promise<boolean>;
+  /** What an app essential's tab gets (openById's site and tweaks, without a window), or null (unknown, being deleted). */
+  tabSite(id: string): Promise<{ site: SiteChrome; tweaks: TweaksRead } | null>;
   dispatch(id: string, action: ActionSite, win: string): Promise<void>;
   homeMemory(id: string): Promise<(MessageToHome & { type: "memory" }) | null>;
   note(id: string, x: { frame?: FrameBounds; favicon?: string }): void;
@@ -263,8 +265,10 @@ export function createSites(o: {
   /** Last failed action per app (« Supprimer » without trash…), shown as text on its row. */
   const actionErrors = new Map<string, string>();
 
-  // Checked again here, like memoireOp: only an open app whose tweaks are granted has positions.
-  const granted = (id: string) => openSites.get(id)?.grantRequired === false;
+  /** The apps as their essentials' tabs last read them (sites.tabSite): their grant counts like an open window's. */
+  const tabSites = new Map<string, SiteChrome>();
+  // Checked again here, like memoireOp: only an open app (window or essential's tab) whose tweaks are granted has positions.
+  const granted = (id: string) => (openSites.get(id) ?? tabSites.get(id))?.grantRequired === false;
   const positions = createPositions({ memory: (id) => (granted(id) ? memory(id) : Promise.reject(new Error("pas d'accord"))), granted: granted });
 
   const clearMemory = (id: string) =>
@@ -499,6 +503,7 @@ export function createSites(o: {
       await o.chrome.close(id);
       opened.delete(id);
       forget(id);
+      tabSites.delete(id);
       await o.chrome.erase(id);
       const m = memories.get(id);
       if (m) await m.then((x) => x.erase(), () => {});
@@ -589,6 +594,13 @@ export function createSites(o: {
     list: list,
     agentList: lines,
     openById: openById,
+    async tabSite(id) {
+      const startedList = startedDeletions.get(id) ?? 0;
+      const still = () => !deletions.has(id) && (startedDeletions.get(id) ?? 0) === startedList;
+      const p = still() ? await prepare(id, still) : null;
+      if (p) tabSites.set(id, p.site);
+      return p;
+    },
     async dispatch(id, a, win) {
       if (!ID_SITE.test(id)) return;
       actionErrors.delete(id);
@@ -690,11 +702,12 @@ export function createSites(o: {
     },
     async revokeGrant(id) {
       await removeSiteGrant(o.dataDir, id);
+      tabSites.delete(id);
       // Read again: grantRequired is recomputed and chrome.update brings the card back (afterGrant does nothing outside the card).
       await reread(id);
     },
     // Checked again here: only an open app whose tweaks are granted has a memory for its page.
-    memoryOp: (d) => memoryOp((id) => (openSites.get(id)?.grantRequired === false ? memory(id) : Promise.reject(new Error("pas d'accord"))), d),
+    memoryOp: (d) => memoryOp((id) => (granted(id) ? memory(id) : Promise.reject(new Error("pas d'accord"))), d),
     position: (d) => positions.position(d),
     resume: (d) => positions.resume(d),
     async resync() {

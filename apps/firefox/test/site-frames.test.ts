@@ -59,6 +59,14 @@ describe("frameInjection", () => {
     expect(frameInjection(small.frame("https://www.lecteur.example/v"), siteOfFrame(small.frame("x"), [s]), false)).toBeNull();
   });
 
+  it("an app essential's tab is found by its <browser> beside the window's view; an unregistered browser is not", () => {
+    const win = app();
+    const tab = app();
+    const other = browser(PAGE);
+    expect(siteOfFrame(tab.v.frame("https://www.lecteur.example/v"), [win.s, tab.s])).toBe(tab.s);
+    expect(siteOfFrame(other.main, [win.s, tab.s])).toBeUndefined();
+  });
+
   it("without the grant: null; about:blank and about:srcdoc get nothing; a page off the site gives its frames nothing", () => {
     const { v, s } = app({ grantRequired: true });
     expect(frameInjection(v.main, siteOfFrame(v.main, [s]), false)).toBeNull();

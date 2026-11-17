@@ -486,7 +486,7 @@ async function start(): Promise<RessacStore> {
   bindSites(agent, dataDir, openInTab, design, () => store.state.locale, () => {
     const s = store.state, w = s.windows.find((x) => x.id === windows.active());
     return s.spaces.find((x) => x.id === w?.activeSpace)?.aura ?? DEFAULT_AURA;
-  });
+  }, store.dispatch);
   design.overlays = createOverlays({ design, host: agent });
   // A remapped design shortcut: the windows re-read the label (a site app's « Mode design (⇧⌘D) » tooltip).
   store.subscribe((s, p) => {

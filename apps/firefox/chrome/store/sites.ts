@@ -1,7 +1,7 @@
 // Site app windows: the registry of open app windows, their containers, their bar's controller, and the guard that
 // keeps each app on its domains before any request leaves. The host (host/sites.ts) owns the data; this module owns
 // the windows.
-import type { DesignState } from "../../shared/api";
+import type { Action, DesignState } from "../../shared/api";
 import type { FrameBounds } from "../../shared/model";
 import { DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { INFO_NOTICE_DURATION_MS, HOME_OPEN_GAP_MS, ICON_MAX, type BarNotice, type SiteWindowState, type MessageToHome } from "../../shared/sites";
@@ -17,7 +17,7 @@ import type { DesignService } from "./design";
 import { apps } from "./apps";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
-import { frameError, frameInjection, frameMemory, framePosition, frameResume, siteOfFrame } from "./site-frames";
+import { frameError, frameInjection, frameMemory, framePosition, frameResume, siteOfFrame, type FrameSite } from "./site-frames";
 import { forgetHome, serveHome, servedHost, siteImage } from "./site-home";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
@@ -129,6 +129,15 @@ interface OpenSite {
 
 const open = new Map<string, OpenSite>();
 const byContainer = new Map<number, OpenSite>();
+/**
+ * App essentials' tabs, by their <browser> (registered at TabOpen, before their first load): their app, and once the
+ * host answered (attachTab), what the frame decisions need. They get the window's frame decisions, not its guard.
+ * shortcut: an app essential's tab keeps the tweaks read at attach; a site.json change applies at its next attach (tab re-created/restart), upgrade if Thomas edits apps while their tab is open.
+ */
+const tabSites = new Map<any, { id: string; s?: FrameSite; ready?: Promise<void> }>();
+/** Where the frame decisions look: the open windows' views and the attached essentials' tabs. */
+const frameSites = (): FrameSite[] => [...open.values(), ...[...tabSites.values()].flatMap((t) => (t.s ? [t.s] : []))];
+let dispatch: (a: Action) => void = () => {};
 let host: AgentHost | null = null;
 let dataDir = "";
 let openTab: (url: string) => void = () => {};
@@ -140,7 +149,7 @@ const memoryListeners = new Map<string, Set<(m: MessageToHome & { type: "memory"
 /** Told after an app's window closed (the agent's questions on `site:<id>` fall). */
 const closeListeners = new Set<() => void>();
 
-const context = (s: OpenSite): NavigationContext => ({
+const context = (s: { site: SiteChrome }): NavigationContext => ({
   domains: s.site.domains,
   login: s.site.declaration.login ?? [],
   localAddresses: Services.env.get("RESSAC_TEST_LOCAL_ADDRESSES") === "1",
@@ -209,6 +218,8 @@ const observer = {
     // An agent app's container: its own origin rule (store/apps.ts).
     if (apps.request(ch, li)) return;
     const userContextId = li.originAttributes.userContextId;
+    // An app essential's tab and the tabs it opens are ordinary tabs of a main window: the app window's rules are not theirs.
+    if (isTabOfMainWindow(li.browsingContext?.top?.embedderElement)) return;
     const s = byContainer.get(userContextId);
     if (!s) {
       if (isSiteContainer(userContextId)) ch.cancel(Cr.NS_BINDING_ABORTED);
@@ -265,7 +276,28 @@ export function installGuard(): void {
   Services.catMan.addCategoryEntry("content-policy", POLICY_CONTRACT, POLICY_CONTRACT, false, true);
 }
 
-const publishOpen = () => publishSiteFrames(new Map([...byContainer].map(([uc, s]) => [uc, s.site.id])));
+const publishOpen = () =>
+  publishSiteFrames(new Map([...[...tabSites.values()].map((t): [number, string] => [siteContainer(t.id), t.id]), ...[...byContainer].map(([uc, s]): [number, string] => [uc, s.site.id])]));
+
+/** A <browser> TabSync registered (an app essential's) or whose tab it adopted (opened by one): never a site window's. */
+function isTabOfMainWindow(browser: any): boolean {
+  if (!browser) return false;
+  if (tabSites.has(browser)) return true;
+  try {
+    return !!browser.ownerGlobal?.gBrowser?.getTabForBrowser(browser)?.hasAttribute("ressac-tab-id");
+  } catch {
+    return false;
+  }
+}
+
+/** A browser whose window closed (no TabClose then). */
+function gone(browser: any): boolean {
+  try {
+    return !browser.isConnected || browser.ownerGlobal.closed;
+  } catch {
+    return true;
+  }
+}
 
 /** The home's frame may show only a page (.html, so with the home's CSP) of the copy served now, or about:blank. */
 function homePage(id: string, uri: { spec: string } | null): boolean {
@@ -651,8 +683,39 @@ export const sites = {
   /** « Supprimer »: the app's container (cookies, storage) and its served home copies are wiped. */
   async erase(id: string): Promise<void> {
     if (typeof id !== "string" || !ID_SITE.test(id)) return;
+    // The page's « Supprimer » and the agent's both come through here: the app leaves the essentials and the bar, its
+    // essential's tab closing before its container is wiped.
+    dispatch({ type: "placeSite", id, placement: "none" });
     await removeSiteContainer(id);
     if (dataDir) await forgetHome(dataDir, id);
+  },
+  /**
+   * An app essential's tab: its container is published at once (the actor asks from its first document), its frame
+   * decisions wait for the host's reading. An unknown app or one being deleted gets nothing.
+   */
+  async attachTab(id: string, browser: any): Promise<void> {
+    if (typeof id !== "string" || !ID_SITE.test(id) || !browser || tabSites.get(browser)?.id === id) return;
+    for (const b of tabSites.keys()) if (gone(b)) tabSites.delete(b);
+    const t: { id: string; s?: FrameSite; ready?: Promise<void> } = { id };
+    tabSites.set(browser, t);
+    publishOpen();
+    const read = (host ? host.request<{ site: SiteChrome; tweaks: TweaksRead } | null>("sites.tabSite", { id }) : Promise.resolve(null)).catch((e) => {
+      console.warn(`[sites] ${id}: tab without its app:`, e);
+      return null;
+    });
+    t.ready = read.then((p) => {
+      if (tabSites.get(browser) !== t) return;
+      if (p) t.s = { site: p.site, tweaks: p.tweaks, view: browser, errors: [] };
+      else {
+        tabSites.delete(browser);
+        publishOpen();
+      }
+    });
+    await t.ready;
+  },
+  /** The essential's XUL tab closed. */
+  detachTab(browser: any): void {
+    if (tabSites.delete(browser)) publishOpen();
   },
   /**
    * Site.json or a tweak changed, or the app is opened again. The open app takes its new
@@ -720,29 +783,35 @@ export const sites = {
     return [...(open.get(id)?.errors ?? [])];
   },
   /** The site actor's "injection", for the frame of this WindowGlobalParent (site-frames.ts). */
-  frameInjection(wgp: any) {
-    const s = siteOfFrame(wgp, open.values());
+  async frameInjection(wgp: any) {
+    // A tab's first document asks before the host has answered attachTab.
+    let top: unknown;
+    try {
+      top = wgp.browsingContext.top.embedderElement;
+    } catch {}
+    await tabSites.get(top)?.ready;
+    const s = siteOfFrame(wgp, frameSites());
     return frameInjection(wgp, s, !!(s && context(s).localAddresses));
   },
   /** The site actor's "error": a tweak's error in the frame of this WindowGlobalParent. */
   frameError(wgp: any, e: unknown): void {
-    frameError(siteOfFrame(wgp, open.values()), e);
+    frameError(siteOfFrame(wgp, frameSites()), e);
   },
   /** The site actor's "memory", for the frame of this WindowGlobalParent: relayed to the host. */
   frameMemory(wgp: any, request: unknown) {
-    return frameMemory(wgp, siteOfFrame(wgp, open.values()), request, (p) => {
+    return frameMemory(wgp, siteOfFrame(wgp, frameSites()), request, (p) => {
       if (!host) return Promise.reject(new Error("no host"));
       return host.request("sites.memoryOp", p);
     });
   },
   /** The site actor's "position": a video's position, relayed to the host. */
   framePosition(wgp: any, p: unknown): void {
-    const s = siteOfFrame(wgp, open.values());
+    const s = siteOfFrame(wgp, frameSites());
     framePosition(wgp, s, p, !!(s && context(s).localAddresses), (q) => host?.notify("sites.position", q));
   },
   /** The site actor's "resume": the position to resume, from the host. */
   frameResume(wgp: any, duration: unknown): Promise<number | null> {
-    const s = siteOfFrame(wgp, open.values());
+    const s = siteOfFrame(wgp, frameSites());
     return frameResume(wgp, s, duration, !!(s && context(s).localAddresses), (q) => (host ? host.request<number | null>("sites.resume", q) : Promise.resolve(null)));
   },
   /** « Afficher le dossier »: the app's folder shown in the file manager. */
@@ -937,7 +1006,8 @@ export const sites = {
 export type SiteApps = typeof sites;
 
 /** Started with the store: the host the windows report to, and where the served home copies live. */
-export function bindSites(agent: AgentHost, dir: string, openInTab: (url: string) => void, d: NonNullable<typeof design>, locale: () => string, aura: () => AuraId): void {
+export function bindSites(agent: AgentHost, dir: string, openInTab: (url: string) => void, d: NonNullable<typeof design>, locale: () => string, aura: () => AuraId, act: (a: Action) => void): void {
+  dispatch = act;
   shownLocale = locale;
   activeAura = aura;
   host = agent;

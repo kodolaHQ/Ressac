@@ -333,6 +333,32 @@ describe("agir", () => {
   });
 });
 
+describe("tabSite", () => {
+  it("gives an app essential's tab what openById gives the window; null for an unknown id or one being deleted", async () => {
+    const m = mount();
+    const tab = await m.sites.tabSite("vidola");
+    await m.sites.openById("vidola");
+    expect(tab).toEqual({ site: m.calls.open[0]![0], tweaks: m.calls.open[0]![2] });
+    for (const id of ["absente", "casse", "MonSite"]) expect(await m.sites.tabSite(id)).toBeNull();
+    let release!: () => void;
+    m.keep(new Promise<void>((ok) => (release = ok)));
+    const deletion = m.sites.dispatch("vidola", "delete", "f1");
+    await vi.waitFor(() => expect(m.log).toContain("fermer vidola"));
+    expect(await m.sites.tabSite("vidola")).toBeNull();
+    release();
+    await deletion;
+  });
+
+  it("a granted app essential's tab has its memory without a window", async () => {
+    const m = mount();
+    await storeSiteGrant(m.dataDir, "vidola", DeclarationSite.parse(declaration));
+    const op = { id: "vidola", url: "/serie/x", op: "remember", key: "k", value: 1 };
+    expect(await m.sites.memoryOp(op)).toMatchObject({ ok: false });
+    await m.sites.tabSite("vidola");
+    expect(await m.sites.memoryOp(op)).toEqual({ ok: true });
+  });
+});
+
 describe("deleting while the chrome opens the window", () => {
   it("closes the window opened meanwhile and does not mark it open", async () => {
     let release!: () => void;
