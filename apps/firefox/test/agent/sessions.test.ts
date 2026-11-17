@@ -228,6 +228,20 @@ test("prefill before the start writes as soon as the session is active", async (
   expect(messages).toEqual([]);
 });
 
+test("a pending message to send (remarks, a ⌘T question) is not replaced by the panel's context; the context's tab share still runs", async () => {
+  let open!: (s: SessionLike) => void;
+  const session = new FakeSession();
+  const { management: manager } = prepare(() => new Promise((r) => (open = r)));
+  const shared: string[] = [];
+  manager.prefill("F", "[remarques] ", () => shared.push("remarques"), true);
+  manager.prefill("F", "[contexte] ", () => shared.push("onglet"));
+  const startup = manager.start("F", size);
+  open(session);
+  await startup;
+  expect(session.written[0]).toBe("[remarques] ");
+  expect(shared).toEqual(["remarques", "onglet"]);
+});
+
 test("prefill on an active session writes right away", async () => {
   const { management: manager, sessions, messages } = prepare();
   await manager.start("F", size);

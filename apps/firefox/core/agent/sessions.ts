@@ -239,6 +239,13 @@ export class SessionsAgent {
     let e = this.inputs.get(f);
     if (e?.session?.active) return this.writePrefill(f, e.session, p);
     e ??= this.entry(f, { cols: 80, rows: 24 });
+    const pending = e.prefill;
+    // A message waiting to be sent (remarks, a ⌘T question) wins over a mere pre-fill (the panel's context), whose share still runs.
+    if (pending?.submit && !submit) {
+      const before = pending.written;
+      pending.written = () => (before?.(), written?.());
+      return;
+    }
     e.prefill = p;
   }
 
