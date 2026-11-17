@@ -279,7 +279,10 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       if (a.login.kind === "panel") return { kind: "panel" };
       let state = await o.workshop.state();
       if (state === "machine-stopped") state = await startedWithin(o.workshop.ensureStarted(), state);
-      if (state !== "demarre") return { kind: "error", error: hostSay("host-workshop-not-started") };
+      if (state !== "demarre") {
+        const m = o.machine.status();
+        return { kind: "error", error: hostSay(state === "machine-stopped" && m.kind === "absent" && m.removed ? "host-machine-removed" : "host-workshop-not-started") };
+      }
       stopLogins();
       try {
         // The login runs the agent's CLI as node: never before the network rules are in place.

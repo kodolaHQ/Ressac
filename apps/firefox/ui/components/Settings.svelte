@@ -169,6 +169,7 @@
   const machineText = (m: MachineStatus) =>
     m.kind === "downloading"
       ? m.percent === null ? t("settings-workshop-machine-downloading-unknown") : t("settings-workshop-machine-downloading", { percent: m.percent })
+      : m.kind === "absent" && m.removed ? t("settings-workshop-machine-removed")
       : t(MACHINE_TEXT[m.kind as keyof typeof MACHINE_TEXT]);
   /** A retry or removal in flight (minutes: a download, an export): the row's buttons wait, its state is polled. */
   let machineBusy = $state(false);
@@ -446,6 +447,8 @@
                 {#if machine.kind === "error"}
                   <button data-testid="machine-retry" disabled={machineBusy} onclick={() => void machineAct(s.machineInstall)}>{t("settings-workshop-machine-retry")}</button>
                   {#if machine.forceRemovable}<button data-testid="machine-force-remove" disabled={machineBusy} onclick={() => (askingMachine = "force")}>{t("settings-workshop-machine-force-remove")}</button>{/if}
+                {:else if machine.kind === "absent" && machine.removed}
+                  <button class="appear" data-testid="machine-install" disabled={machineBusy} onclick={() => void machineAct(s.machineInstall)} out:fade={{ duration: 150 }}>{t("settings-workshop-machine-install")}</button>
                 {:else if machine.kind === "running" || machine.kind === "stopped"}
                   <button data-testid="machine-remove" disabled={!!operation || machineBusy} onclick={() => (askingMachine = "remove")}>{t("settings-workshop-machine-remove")}</button>
                 {/if}

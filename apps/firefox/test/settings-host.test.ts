@@ -239,6 +239,13 @@ describe("settings host", () => {
     }
   });
 
+  it("login on a machine the user removed says how to install it again, never « non démarré »", async () => {
+    const { h, o } = setup({ state: "machine-stopped", started: "machine-stopped" });
+    o.machine.status.mockReturnValue({ kind: "absent", removed: true });
+    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "La machine de l'atelier a été supprimée : installez-la dans Réglages › Atelier (« Installer la machine »)." });
+    expect(o.deviceCommand).not.toHaveBeenCalled();
+  });
+
   it("logout codex", async () => {
     const { h, exec, o } = setup();
     await h["settings.logout"]!({ id: "codex" });

@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { createWriterChoice } from "../host/writer";
 
-const setup = (state: string, loggedIn: Record<string, boolean>, preferred: "claude" | "codex" = "claude") => {
+const setup = (state: string, loggedIn: Record<string, boolean>, preferred: "claude" | "codex" = "claude", harvestReady = true) => {
   const calls: string[] = [];
   let t = 0;
   const choice = createWriterChoice({
     workshop: {
       state: async () => state as never,
+      harvestReady: async () => harvestReady,
       ensureStarted: async () => {
         calls.push("ensureStarted");
         state = "demarre";
@@ -53,11 +54,16 @@ describe("writer choice", () => {
     expect(await s.choice.wakeAgent()).toBe("claude");
     expect(s.calls).toEqual(["ensureStarted", "claude"]);
   });
+  it("a background write never reinstalls a removed machine nor boots a failing one: it says the workshop is stopped", async () => {
+    const s = setup("machine-stopped", { claude: true }, "claude", false);
+    expect(await s.choice.wakeAgent()).toBe("workshop-stopped");
+    expect(s.calls).toEqual([]);
+  });
   it("a write waits at most a minute for the machine (a first image build takes minutes), then says it is stopped", async () => {
     vi.useFakeTimers();
     try {
       const choice = createWriterChoice({
-        workshop: { state: async () => "machine-stopped" as never, ensureStarted: () => new Promise(() => {}), exec: async () => ({ code: 1, stdout: "", stderr: "" }) },
+        workshop: { state: async () => "machine-stopped" as never, harvestReady: async () => true, ensureStarted: () => new Promise(() => {}), exec: async () => ({ code: 1, stdout: "", stderr: "" }) },
         preferred: () => "claude",
       });
       const answer = choice.wakeAgent();
@@ -75,7 +81,7 @@ describe("writer choice", () => {
   it("does not keep a failed check, and shares one exec between parallel calls", async () => {
     let n = 0;
     const choice = createWriterChoice({
-      workshop: { state: async () => "demarre" as never, ensureStarted: async () => "demarre", exec: async (argv) => { if (argv[0] === "codex") return { code: 0, stdout: "Not logged in", stderr: "" }; n++; if (n === 1) throw new Error("boom"); return { code: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }; } },
+      workshop: { state: async () => "demarre" as never, harvestReady: async () => true, ensureStarted: async () => "demarre", exec: async (argv) => { if (argv[0] === "codex") return { code: 0, stdout: "Not logged in", stderr: "" }; n++; if (n === 1) throw new Error("boom"); return { code: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }; } },
       preferred: () => "claude",
     });
     expect(await choice.agent()).toBeNull();

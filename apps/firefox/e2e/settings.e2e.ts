@@ -31,9 +31,9 @@ afterEach(async () => {
 });
 
 /** Launches with `files` written under the workspace (RESSAC_ROOT). Model downloads go to a dead address unless the test points them elsewhere. */
-async function launch(env: Record<string, string> = {}, files: Record<string, string> = {}): Promise<void> {
+async function launch(env: Record<string, string> = {}, files: Record<string, string> = {}, dataDir?: string): Promise<void> {
   // The kernel's own decision-model address: an imposed one (RESSAC_KEV_URL) counts the model as installed.
-  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD, RESSAC_EMBED_URL: DEAD, ...env } });
+  w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD, RESSAC_EMBED_URL: DEAD, ...env } });
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(join(w.dataDir, "workspace"), { recursive: true });
     writeFileSync(join(w.dataDir, "workspace", name), text);
@@ -220,10 +220,31 @@ describe("Settings page", () => {
       await shows("machine-usage", "0,6 Go de mémoire · 1,8 Go sur le disque");
       expect(await inUi(m, `return ["workshop-restart", "workshop-rebuild", "machine-remove"].every((id) => doc.querySelector('[data-testid="' + id + '"]'))`)).toBe(true);
       await click(m, '[data-testid="machine-remove"]');
-      await shows("settings-workshop", "Les agents et les applis en cours s'arrêtent. Vos connexions Claude et Codex sont gardées. Elle sera téléchargée de nouveau (environ 500 Mo).");
+      await shows("settings-workshop", "Les agents et les applis en cours s'arrêtent. Vos connexions Claude et Codex sont gardées. Elle ne sera téléchargée de nouveau (environ 500 Mo) que si vous cliquez sur « Installer la machine ».");
       expect(calls()).toEqual([]);
       await click(m, '[data-testid="confirm-machine"]');
       await waitFor(m, "return true", () => calls().includes("remove"), 10_000);
+    });
+
+    it("removed: still absent at the next launch (AI on installs nothing) until « Installer la machine », which downloads it", async () => {
+      const dataDir = mkdtempSync(join(tmpdir(), "ressac-data-"));
+      onTestFinished(() => rmSync(dataDir, { recursive: true, force: true }));
+      await launch({ RESSAC_TEST_MACHINE: "running" }, {}, dataDir);
+      await openPage();
+      await go("workshop");
+      await click(m, '[data-testid="machine-remove"]');
+      await click(m, '[data-testid="confirm-machine"]');
+      await shows("machine-state", "Machine de l'atelier : supprimée. Elle ne revient que si vous l'installez (environ 500 Mo).");
+      await w!.close();
+      w = undefined;
+      await launch({ RESSAC_TEST_MACHINE: "running" }, {}, dataDir); // the next launch, AI on
+      await openPage();
+      await go("workshop");
+      await shows("machine-state", "Machine de l'atelier : supprimée.");
+      expect(calls()).toEqual(["remove"]);
+      await click(m, '[data-testid="machine-install"]');
+      await waitFor(m, "return true", () => calls().includes("install"), 10_000);
+      await shows("machine-state", "Téléchargement de l'atelier…");
     });
 
     it("damaged: the message, « Réessayer », and « Supprimer quand même » behind the logins warning", async () => {
