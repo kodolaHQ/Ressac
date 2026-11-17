@@ -12,7 +12,7 @@ const host = (url: string) => (URL.canParse(url) ? new URL(url).hostname : null)
 
 /**
  * The agent's research notebook, kept by the kernel in `.ressac` (read-only in the container). A lesson is written
- * only through `note_lesson`, once per `lost` hand-over, and the kernel stamps it with the date and the sites of that
+ * only through `note_lesson`, once right after a `lost` hand-over (any other tool closes the slot, mcp/server.ts), and the kernel stamps it with the date and the sites of that
  * hand-over: a page that steers the agent cannot leave a lesson at any other moment, nor fake where it comes from.
  */
 export class BrowsingNotes {

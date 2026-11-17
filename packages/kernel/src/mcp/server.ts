@@ -381,6 +381,10 @@ function createToolsServer(
   onActivity?: (a: AgentActivity) => void,
 ): McpServer {
   const server = new McpServer({ name: "ressac", version: "0.1.0" });
+  // Any tool but note_lesson closes the window's lesson slot: a lesson follows its hand-over, never a page read after it.
+  const registerTool = server.registerTool.bind(server);
+  server.registerTool = ((name: string, config: never, cb: (...a: unknown[]) => unknown) =>
+    registerTool(name, config, (name === "note_lesson" ? cb : (...a: unknown[]) => (searching?.notes?.forget(win ?? MAIN_WINDOW), cb(...a))) as never)) as unknown as typeof server.registerTool;
 
   async function tab(id: string): Promise<TabInfo> {
     const o = (await bridge.listTabs()).find((x) => x.id === id);
@@ -896,8 +900,8 @@ function createToolsServer(
               o = await search.open(win ?? undefined, { query }, o.id);
             }
           }
-          // A search's first query brings the notebook: given by the kernel, framed as data.
-          const notes = current ? "" : ((await searching.notes?.shown()) ?? "");
+          // A search's first search_web (the one that gives its goal) brings the notebook: given by the kernel, framed as data.
+          const notes = current?.goal ? "" : ((await searching.notes?.shown()) ?? "");
           return readSearch(key, o, true, `Recherche : ${query}`, [`Onglet : ${o.id}`, ...(notes ? [`${NOTES_PREFIX}\n${notes}`] : [])], { extra });
         });
         searching.chains.set(key, mine);
@@ -1048,8 +1052,8 @@ function createToolsServer(
         "note_lesson",
         {
           description:
-            "Ajoute une leçon générale à ton carnet de recherche, juste après un hand_over de type `lost` (une seule par hand_over) : comment reconnaître la situation et que faire la prochaine fois, en une phrase. " +
-            "Ressac la date et y joint les sites de ce hand_over. Le carnet te revient avec le search_web qui ouvre une recherche.",
+            "Ajoute une leçon générale à ton carnet de recherche, juste après un hand_over de type `lost` (une seule, et avant tout autre outil) : comment reconnaître la situation et que faire la prochaine fois, en une phrase. " +
+            "Ressac la date et y joint les sites de ce hand_over. Le carnet te revient avec le search_web qui donne son but à une recherche.",
           inputSchema: { lesson: z.string().min(1) },
         },
         async ({ lesson }) =>

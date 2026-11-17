@@ -95,6 +95,9 @@ export const OLD_AGENTS = new Set([
   // Before the kernel kept the browsing notes (note_lesson): fr, en.
   "2c2667b528edf83b2eb01334e3f9b22557480db6fbfdaf49a438f23520c28097",
   "5600b474da619c8ef707d20082156cdff61cf22e9929ffdddae09ee78ef04819",
+  // The first note_lesson wording, test builds only: fr, en.
+  "2e12aa2464b166636278b3838296c0619d6a21d113b5281f4ff7759de4e19000",
+  "efa0120ddf1ac7cb2d4a95c0a2b1eefcbdd3e4e5a11d9d8012af548cfeda69af",
 ]);
 
 const hash = (content: Buffer) => createHash("sha256").update(content).digest("hex");
@@ -257,7 +260,12 @@ async function swapWidget(c: SpacePaths, models: string, lang: string, langs: st
 }
 
 /** sha256 of the shipped `/workspace/browsing-notes.md` (fr, en), from before the kernel kept the notebook. */
-const OLD_NOTES: ReadonlySet<string> = new Set(["997a8211e65aae107d60266f0d3b5f94496ce55322908c37b0b5177f5dc7b913", "a9d905aaf30ca5127824c3da0e29860f7b392b9ffc9137bcc2a618a6124d0c67"]);
+const OLD_NOTES: ReadonlySet<string> = new Set([
+  "997a8211e65aae107d60266f0d3b5f94496ce55322908c37b0b5177f5dc7b913",
+  "a9d905aaf30ca5127824c3da0e29860f7b392b9ffc9137bcc2a618a6124d0c67",
+  // The fr text from before the Ressac name (0.1.3).
+  "cc3f0e98c07be7211b27e209c63123f881ecefed0e624c77d31f581af9ce5c90",
+]);
 
 /** sha256 of old shipped versions of the `CLAUDE.md` template: a copy left as shipped is replaced. */
 // The old ones only asked the agent to read AGENTS.md: it skipped it when the first message was a task.

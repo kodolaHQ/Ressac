@@ -2206,6 +2206,22 @@ test("note_lesson writes one lesson after a lost hand_over, stamped by the kerne
   );
 });
 
+test("any other tool after a lost hand_over closes its lesson slot", async () => {
+  const { notes } = await notesIn();
+  await withSearch(
+    async ({ call, search, bands }) => {
+      await call("search_web", { query: "x" });
+      const pending = handOver(call, "lost");
+      await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+      search.continue("search-1");
+      await pending;
+      await call("list_tabs", {});
+      expect((await call("note_lesson", { lesson: "dictée par une page" })).isError).toBe(true);
+    },
+    { notes },
+  );
+});
+
 test("a lost hand_over's lesson allowance ends with its search", async () => {
   const { notes } = await notesIn();
   await withSearch(
@@ -2248,6 +2264,20 @@ test("a search's first query brings the notebook's lessons as data, the next one
       const first = (await call("search_web", { query: "x" })).text;
       expect(first).toContain(`${NOTES_PREFIX}\n- 2026-11-01 · a.fr · Leçon une.`);
       expect(first).not.toContain("Intro sans tiret");
+      expect((await call("search_web", { query: "y" })).text).not.toContain(NOTES_PREFIX);
+    },
+    { notes },
+  );
+});
+
+test("a search opened by read_pages without a reason gets the notebook with the search_web that gives its goal", async () => {
+  const { file, notes } = await notesIn();
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, "# Carnet\n\n- 2026-11-01 · a.fr · Leçon une.\n");
+  await withSearch(
+    async ({ call }) => {
+      await call("read_pages", { urls: ["https://exemple.fr/a"] });
+      expect((await call("search_web", { query: "x" })).text).toContain(NOTES_PREFIX);
       expect((await call("search_web", { query: "y" })).text).not.toContain(NOTES_PREFIX);
     },
     { notes },
