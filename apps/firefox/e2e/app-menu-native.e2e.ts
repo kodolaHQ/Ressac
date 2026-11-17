@@ -5,7 +5,7 @@ import { launchRessac } from "./launch";
 // The real macOS menu bar, which headless Firefox has not: a visible window, and System Events needs the terminal's
 // Accessibility access. Run before a release (RESSAC_NATIVE_MENU=1): 0.1.9 crashed as soon as the app menu opened.
 describe.skipIf(!process.env.RESSAC_NATIVE_MENU)("the native app menu", () => {
-  it("opens, lists « À propos de Ressac », and Ressac keeps running", async () => {
+  it("opens, lists « À propos de Ressac » and the « Commandes » menu, and Ressac keeps running", async () => {
     const r = await launchRessac({ headed: true });
     try {
       await r.marionette.setContext("chrome");
@@ -18,7 +18,9 @@ describe.skipIf(!process.env.RESSAC_NATIVE_MENU)("the native app menu", () => {
         tell (first process whose unix id is ${pid})
           set frontmost to true
           delay 0.5
-          return name of every menu item of menu 1 of menu bar item 2 of menu bar 1
+          set appItems to name of every menu item of menu 1 of menu bar item 2 of menu bar 1
+          set commandItems to name of every menu item of menu 1 of menu bar item "Commandes" of menu bar 1
+          return (appItems as text) & " | " & (commandItems as text)
         end tell
       end tell`], { encoding: "utf8" });
       for (let i = 0; i < 10; i++) {
@@ -26,6 +28,8 @@ describe.skipIf(!process.env.RESSAC_NATIVE_MENU)("the native app menu", () => {
         await Promise.race([r.marionette.execute("return 1"), new Promise((_, no) => setTimeout(() => no(new Error(`Ressac stopped answering ${i} s after the app menu opened`)), 5000))]);
       }
       expect(items).toMatch(/Ressac/);
+      // Ressac's « Commandes » menu, read by AppKit the way the Help menu's search reads it.
+      expect(items).toMatch(/Mode compact \(⇧⌘S\)/);
     } finally {
       await r.close().catch(() => {});
     }

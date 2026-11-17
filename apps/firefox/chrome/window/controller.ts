@@ -541,7 +541,8 @@ export function createController(
       capturing = on;
     },
     shortcut(s) {
-      if (!welcome && !capturing) run(s);
+      // As the keys: ⇧⌘W still closes the window under the welcome screen.
+      if ((!welcome || s.type === "closeWindow") && !capturing) run(s);
     },
     setFullWindow(full) {
       frame.toggleAttribute("full", !!full);

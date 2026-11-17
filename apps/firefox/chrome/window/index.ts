@@ -11,6 +11,8 @@ import { setupPopup } from "./popup";
 import { mountSiteMenu } from "./site-menu";
 import { refuseSiteTabs, setupSiteSmallWindow, setupSiteWindow, siteIdOf, siteOfContainer } from "./site-window";
 import { format } from "../../shared/i18n";
+import { installCommandsMenu } from "./commands-menu";
+import type { WindowController } from "./controller";
 
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule("resource://gre/modules/PrivateBrowsingUtils.sys.mjs");
@@ -91,14 +93,16 @@ window.addEventListener(
     // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.
     void Promise.all([ready, window.delayedStartupPromise]).then(([store]) => {
       const { windowId, first } = store.windows.claim(window);
+      let controller: WindowController;
       try {
-        window.ressacWindow = createController(window.gBrowser, frame, agentFrame, store, windowId);
+        controller = window.ressacWindow = createController(window.gBrowser, frame, agentFrame, store, windowId);
       } catch (e) {
         // Not a Ressac window after all: unbound, but its state window and tabs stay for the next claim.
         store.windows.release(windowId, true);
         throw e;
       }
       mountSiteMenu(window, store, windowId);
+      installCommandsMenu(window, store, controller);
       // Once per start, in the first window only: the unreadable session was kept aside.
       if (first && store.setAside) {
         void window.gNotificationBox.appendNotification(

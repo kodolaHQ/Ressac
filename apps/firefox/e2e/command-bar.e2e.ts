@@ -217,6 +217,23 @@ describe("Command bar", () => {
     }
   });
 
+  it("the menu bar's « Commandes » lists the same commands with their keys, and runs them", async () => {
+    await withPageA();
+    const labels = () => m.execute<string[]>(`return [...document.querySelectorAll("#ressac-commands-menu menuitem")].map((i) => i.label)`);
+    expect(await m.execute("return document.getElementById('ressac-commands-menu').label")).toBe("Commandes");
+    expect(await labels()).toContain("Mode compact (⇧⌘S)");
+    expect(await labels()).toContain("Activer le mode vim");
+    const fire = (id: string) => m.execute(`document.getElementById(arguments[0]).doCommand()`, [id]);
+    await fire("ressac-command-compact");
+    await waitState((s) => s.windows[0]!.compact, (c) => c === true);
+    await fire("ressac-command-vim");
+    await waitState((s) => s.settings.vimMode, (v) => v === true);
+    await waitFor(m, `return document.getElementById("ressac-command-vim").label`, (l) => l === "Désactiver le mode vim");
+    // A binding changed in Réglages shows in the menu.
+    await dispatch(m, { type: "setShortcut", id: "compact", binding: { key: "k", shift: true, alt: false, ctrl: false, meta: true } });
+    await waitFor(m, `return document.getElementById("ressac-command-compact").label`, (l) => l === "Mode compact (⇧⌘K)");
+  });
+
   it("⌘L fills in the active URL, all selected; Enter loads in the same tab", async () => {
     const a = await withPageA();
     await pressKeys(m, "Meta+l");
