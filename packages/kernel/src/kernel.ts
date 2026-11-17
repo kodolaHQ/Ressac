@@ -656,7 +656,7 @@ export async function createKernel(o: {
       } finally {
         unsubscribe?.();
       }
-      if (state !== "demarre") throw new WorkshopError(state, say(loc(), "kernel-err-workshop-unavailable", { state }));
+      if (state !== "demarre") throw new WorkshopError(state, state === "machine-stopped" ? say(loc(), "kernel-err-machine-stopped") : say(loc(), "kernel-err-workshop-unavailable", { state }));
       // New conversation: no authorization any more. The sessions share the MCP server and therefore the policy:
       // a session of another window also loses its accesses (it will ask again), rather than inheriting them.
       try {

@@ -15,7 +15,7 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { DECISION_MODEL, SEARCH_MODEL, validAgentDomain, type DockerStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { DECISION_MODEL, SEARCH_MODEL, validAgentDomain, type DockerStatus, type MachineStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { updateStatusText } from "../../core/update";
   import { aiOn, api, appState } from "../state.svelte";
   import AiAsleep from "./AiAsleep.svelte";
@@ -152,10 +152,32 @@
   /** Set while Docker is missing: tells an installed app that is stopped from none at all. */
   let docker = $state<DockerStatus | null>(null);
   let startingDocker = $state(false);
+  /** Ressac's workshop machine; null where it cannot run (the Docker texts then). */
+  let machine = $state<MachineStatus | null>(null);
+  let usage = $state<{ memoryMB: number; diskMB: number } | null>(null);
+  let askingMachine = $state<"remove" | "force" | null>(null);
   const loadWorkshop = async () => {
-    [workshop, operation] = await Promise.all([s.workshop(), s.workshopOperation()]);
+    const [w, op, m] = await Promise.all([s.workshop(), s.workshopOperation(), s.machine()]);
+    machine = m && m.kind !== "unsupported" ? m : null;
+    usage = machine?.kind === "running" || machine?.kind === "stopped" ? await s.machineUsage() : null;
+    [workshop, operation] = [w, op];
     docker = workshop === "docker-absent" ? await s.docker() : null;
   };
+  const machineChanging = $derived(machine?.kind === "downloading" || machine?.kind === "starting");
+  const gb = (mb: number) => Math.round((mb / 1024) * 10) / 10;
+  const MACHINE_TEXT = { running: "settings-workshop-machine-running", stopped: "settings-workshop-machine-stopped", starting: "settings-workshop-machine-starting", absent: "settings-workshop-machine-absent", error: "settings-workshop-machine-error" };
+  const machineText = (m: MachineStatus) =>
+    m.kind === "downloading"
+      ? m.percent === null ? t("settings-workshop-machine-downloading-unknown") : t("settings-workshop-machine-downloading", { percent: m.percent })
+      : t(MACHINE_TEXT[m.kind as keyof typeof MACHINE_TEXT]);
+  /** `f` is bound before the call: closing the confirmation changes what it shows. */
+  async function machineAct(f: () => Promise<{ ok: true } | { ok: false; error: string }>) {
+    askingMachine = null;
+    workshopError = null;
+    const r = await f();
+    if (!r.ok) workshopError = r.error;
+    void loadWorkshop();
+  }
   async function startDocker() {
     startingDocker = true;
     const r = await s.startDocker();
@@ -165,7 +187,7 @@
   }
   $effect(() => void (aiOn() && loadWorkshop()));
   $effect(() => {
-    if (!operation) return;
+    if (!operation && !machineChanging) return;
     const t = setInterval(() => void loadWorkshop(), 2_000);
     return () => clearInterval(t);
   });
@@ -408,7 +430,32 @@
               <button data-testid="workshop-restart" disabled={!!operation} onclick={() => (asking = "restart")}>{t("settings-restart")}</button>
               <button data-testid="workshop-rebuild" disabled={!!operation} onclick={() => (asking = "rebuild")}>{t("settings-rebuild")}</button>
             </div>
+            {#if machine}
+              <div class="row" data-testid="machine">
+                <div class="grow">
+                  <b data-testid="machine-state">{machineText(machine)}</b>
+                  {#if machine.kind === "error"}<span class="muted alert">{machine.message}</span>{/if}
+                  {#if usage}<span class="muted" data-testid="machine-usage">{t("settings-workshop-machine-usage", { memory: gb(usage.memoryMB), disk: gb(usage.diskMB) })}</span>{/if}
+                </div>
+                {#if machine.kind === "error"}
+                  <button data-testid="machine-retry" onclick={() => void machineAct(s.machineInstall)}>{t("settings-workshop-machine-retry")}</button>
+                  {#if machine.damaged}<button data-testid="machine-force-remove" onclick={() => (askingMachine = "force")}>{t("settings-workshop-machine-force-remove")}</button>{/if}
+                {:else if machine.kind === "running" || machine.kind === "stopped"}
+                  <button data-testid="machine-remove" disabled={!!operation} onclick={() => (askingMachine = "remove")}>{t("settings-workshop-machine-remove")}</button>
+                {/if}
+              </div>
+            {/if}
           </div>
+          {#if askingMachine}
+            {@const force = askingMachine === "force"}
+            <div class="confirmation" role="alertdialog" aria-label={t(force ? "settings-workshop-machine-force-remove" : "settings-workshop-machine-remove")} out:fade={{ duration: 150 }}>
+              <p>{t(force ? "settings-workshop-machine-confirm-force-remove" : "settings-workshop-machine-confirm-remove")}</p>
+              <div class="buttons">
+                <button onclick={() => (askingMachine = null)}>{t("settings-cancel")}</button>
+                <button class="primary" data-testid="confirm-machine" onclick={() => void machineAct(s.machineRemove.bind(null, force))}>{t(force ? "settings-workshop-machine-force-remove" : "settings-workshop-machine-remove")}</button>
+              </div>
+            </div>
+          {/if}
           {#if workshopError}<p class="alert" role="status">{workshopError}</p>{/if}
           {#if asking && !operation}
             {@const kind = asking}
@@ -656,6 +703,7 @@
   .settings :global(b.version) { flex: 1 0 auto; white-space: nowrap; }
   .settings :global(.grow b), .settings :global(b.grow) { font-weight: 600; }
   .settings :global(.grow .muted) { font-size: 12px; }
+  .settings :global(.grow .muted.alert) { color: var(--in-error); }
   /* A state: a dot of its tone and the text. */
   .settings :global(.pill) { --tone: var(--stopped); display: inline-flex; align-items: center; gap: 6px; max-width: 300px; padding: 3px 9px; border-radius: 10px; background: color-mix(in srgb, var(--tone) 16%, transparent); font-size: 12px; line-height: 1.35; flex: none; }
   .settings :global(.pill::before) { content: ""; width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--tone); }

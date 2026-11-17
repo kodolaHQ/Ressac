@@ -233,6 +233,14 @@ it("Claude on Ollama is not marked signed out in the menu: its subscription is n
   ]);
 });
 
+it("a starting machine: the panel says « L'atelier démarre… » instead of « Préparation »", async () => {
+  // Docker answers after 8 s: the panel stays on its preparation long enough to be read.
+  await launch({ RESSAC_TEST_MACHINE: "starting", FAKE_DOCKER_SLOW: "1" });
+  await shown();
+  await panelShows("L'atelier démarre…");
+  expect(await inUi(m, "return doc.querySelector('[data-testid=\"agent-panel\"]').textContent", [], "agent")).not.toContain("Préparation");
+});
+
 describe("the agent selector", () => {
   const SELECT = '[data-testid="agent-profile"]';
   const argsFile = () => join(w!.dataDir, "workspace", "fake-agent-args.json");

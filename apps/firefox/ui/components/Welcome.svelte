@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
   import type { ImportSource, SettingsApi } from "../../shared/api";
-  import { DECISION_MODEL, SEARCH_MODEL, type DockerStatus } from "../../shared/settings";
+  import { DECISION_MODEL, SEARCH_MODEL, type DockerStatus, type MachineStatus } from "../../shared/settings";
   import { SEARCH_ENGINES, type SearchEngine } from "../../shared/search";
   import { APPEARANCES } from "../../shared/model";
   import { shortcutLabel } from "../../shared/shortcuts";
@@ -67,6 +67,19 @@
     await checkDocker();
     dockerError = r.ok ? null : r.error;
   }
+  /** Ressac's workshop machine; null where it cannot run (or the host is silent): the Docker texts. */
+  let machine = $state<MachineStatus | null>(null);
+  const loadMachine = async () => {
+    const m = await api.settings.machine();
+    machine = m && m.kind !== "unsupported" ? m : null;
+  };
+  $effect(() => void loadMachine());
+  // Followed while the agent or AI page shows it on its way.
+  $effect(() => {
+    if ((page !== 5 && page !== 6) || !machine || machine.kind === "running" || machine.kind === "stopped" || machine.kind === "error") return;
+    const timer = setInterval(() => void loadMachine(), 2_000);
+    return () => clearInterval(timer);
+  });
   async function checkModels() {
     models = undefined;
     const [ai, running] = await Promise.all([api.ai.state().catch(() => undefined), api.settings.pullProgress()]);
@@ -131,6 +144,16 @@
   <p class="status" data-testid={id} data-tone={tone} role="status">{text}</p>
 {/snippet}
 
+{#snippet machineLine(m: MachineStatus)}
+  {#if m.kind === "error"}
+    {@render status("welcome-machine", "warn", m.message)}
+  {:else if m.kind === "running" || m.kind === "stopped"}
+    {@render status("welcome-machine", "ok", t("home-welcome-machine-ready"))}
+  {:else}
+    {@render status("welcome-machine", "warn", m.kind === "downloading" && m.percent !== null ? t("home-welcome-machine-downloading", { percent: m.percent }) : t("home-welcome-machine-preparing"))}
+  {/if}
+{/snippet}
+
 <div class="welcome" style={Object.entries(auraVariables(aura)).map(([k, v]) => `${k}:${v}`).join(";")}>
   <div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
   <div class="panel" role="dialog" aria-modal="true" aria-label={t("home-welcome-label")}>
@@ -187,15 +210,17 @@
           <h2>{t("home-welcome-ai-ask-title")}</h2>
           <div class="ask" data-testid="welcome-ai">
             <p>{t("home-welcome-ai-ask-intro")}</p>
-            <p>{t("home-welcome-ai-ask-needs")}</p>
+            <p>{t(machine ? "home-welcome-ai-ask-needs-machine" : "home-welcome-ai-ask-needs")}</p>
             <p class="note">{t("home-welcome-ai-ask-later")}</p>
           </div>
           {@render actions(t("home-welcome-yes"), true, () => answer(true), () => answer(false))}
         {:else if page === 5}
           <h2>{t("home-welcome-agent-title")}</h2>
-          <p>{t("home-welcome-agent-intro")}</p>
+          <p>{t(machine ? "home-welcome-agent-intro-machine" : "home-welcome-agent-intro")}</p>
           <div class="check">
-            {#if docker === undefined}
+            {#if machine}
+              {@render machineLine(machine)}
+            {:else if docker === undefined}
               {@render status("welcome-docker", "warn", t("home-welcome-checking"))}
             {:else if docker === "docker-absent" && dockerApp?.kind === "stopped"}
               {@render status("welcome-docker", "warn", dockerError ?? t("home-welcome-docker-stopped", { app: dockerApp.app }))}
@@ -231,6 +256,7 @@
           </ul>
           <p>{t("home-welcome-ai-needs")}</p>
           <div class="check">
+            {#if machine && machine.kind !== "running" && machine.kind !== "stopped"}{@render machineLine(machine)}{/if}
             {#if models === undefined}
               {@render status("welcome-models", "warn", t("home-welcome-checking"))}
             {:else if !models}

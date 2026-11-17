@@ -540,7 +540,7 @@ describe("restart, rebuild, exec", () => {
     expect(await w.restart()).toBe("docker-absent");
     expect(await w.rebuild()).toBe("docker-absent");
     expect(calls.every((c) => c.args[0] === "info")).toBe(true);
-    expect(await new Workshop({ paths, docker: null }).exec(["ls"])).toEqual({ code: 1, stdout: "", stderr: "Docker introuvable" });
+    expect(await new Workshop({ paths, docker: null }).exec(["ls"])).toEqual({ code: 1, stdout: "", stderr: "The workshop has no engine: neither its machine nor Docker is available." });
   });
 
   test("exec", async () => {

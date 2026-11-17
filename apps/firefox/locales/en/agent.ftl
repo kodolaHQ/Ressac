@@ -120,6 +120,7 @@ agent-panel-signed-out = { $name } (signed out)
 agent-panel-codex-signed-out = Codex is not signed in to your ChatGPT account.
 agent-panel-login = Sign in
 agent-panel-preparing = Preparing the agent… (the first time, building the container takes a few minutes)
+agent-panel-machine-starting = The workshop is starting…
 agent-panel-build-step =
     Preparing the agent, step { $step }/{ $of }: { $label }… ({ $minutes ->
         [0] under 1

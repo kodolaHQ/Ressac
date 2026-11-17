@@ -37,7 +37,7 @@ const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./de
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createWriterChoice } = await import("./writer.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
-const { MACHINE_HOME, createMachine, vmImage } = await import("./machine.ts");
+const { MACHINE_HOME, createMachine, fakeMachine, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
@@ -158,18 +158,21 @@ const vmTools = (() => {
   const cache = join(app, "dist", "cache", "vm-tools");
   return { limactl: join(cache, `lima-${version("lima")}`, "bin", "limactl"), podman: join(cache, `podman-${version("podman")}`, "podman"), template: join(app, "scripts", "vm", "lima.yaml") };
 })();
-// Tests never touch a real machine. RESSAC_TEST_MACHINE: a fake machine for the e2e (its states come with the Settings).
-const noMachine = !!(process.env.RESSAC_TEST_NO_SYSTEM || process.env.RESSAC_TEST_MACHINE);
-const machine: ReturnType<typeof createMachine> = createMachine({
-  ...vmTools,
-  // The kernel's own engine folder (kernel.ts: no `resources` is passed to it).
-  engine: join(DEFAULT_DOCKER_FOLDER, "engine"),
-  ressacRoot: root,
-  run: runTool,
-  busy: () => workshop.busy(machine),
-  image: vmImage(),
-  ...(noMachine ? { supported: async () => false } : {}),
-});
+// Tests never touch a real machine. RESSAC_TEST_MACHINE (e2e): a fake one with a fixed status, that never takes over
+// from the fake Docker (no install at AI start, no hand-over, its own marker).
+const testMachine = process.env.RESSAC_TEST_MACHINE;
+const machine: ReturnType<typeof createMachine> = testMachine
+  ? fakeMachine(testMachine, join(root, "fake-machine-calls.log"))
+  : createMachine({
+      ...vmTools,
+      // The kernel's own engine folder (kernel.ts: no `resources` is passed to it).
+      engine: join(DEFAULT_DOCKER_FOLDER, "engine"),
+      ressacRoot: root,
+      run: runTool,
+      busy: () => workshop.busy(machine),
+      image: vmImage(),
+      ...(process.env.RESSAC_TEST_NO_SYSTEM ? { supported: async () => false } : {}),
+    });
 const engines = createEngines({
   machine,
   // Docker starts its app for the user, never for a background harvest.
@@ -180,7 +183,7 @@ const engines = createEngines({
     if (r.code !== 0 && !/no such container/i.test(r.stderr)) throw new Error(`docker stop: ${r.stderr.trim()}`);
   },
   copyLogins: () => copyLogins({ docker: dockerContainers.binary()!, podman: machine.binary(), podmanArgs: machine.args() }),
-  marker: join(MACHINE_HOME, "logins-copied"),
+  marker: join(testMachine ? dataDir : MACHINE_HOME, "logins-copied"),
 });
 const workshop = new Workshop({ paths: paths, locale: () => hostLocale(), engine: () => engines.current(), network: () => ({ ports: [kernel?.mcpPort, relay.port].filter((p): p is number => typeof p === "number"), domains: agentDomains }) });
 
@@ -257,6 +260,7 @@ const wakeAi = () => {
   if (aiWoken) return;
   aiWoken = true;
   void ai.check().then((v) => aiOn && settings.downloadModels([!v.decision && DECISION_MODEL, !v.embed && SEARCH_MODEL].filter((n) => n !== false)), () => {});
+  if (testMachine) return;
   void machine.install().then(
     () => engines.settle().catch((e) => console.error("[ressac] the logins did not move to the machine:", e)),
     (e) => {
@@ -434,6 +438,8 @@ const AI_SETTINGS = new Set<string>([
   "settings.docker",
   "settings.startDocker",
   "settings.restartWorkshop",
+  "settings.machineInstall",
+  "settings.machineRemove",
   "ai.state",
   "ai.writer",
   "settings.pullModel",
@@ -1083,6 +1089,16 @@ const settings = createSettingsHandlers({
   writer: writerChoice,
   ai,
   docker,
+  machine: {
+    status: machine.status,
+    usage: machine.usage,
+    remove: machine.remove,
+    // A retry from Réglages: once installed, the workshop moves over as at AI start (in the background, it waits for Docker's to idle).
+    install: async () => {
+      await machine.install();
+      if (!testMachine) void engines.settle().catch((e) => console.error("[ressac] the logins did not move to the machine:", e));
+    },
+  },
   stopApps: () => apps.manager.stopAll(),
   relaunchSessions: () => sessions.relaunchAll(),
   dataDir,

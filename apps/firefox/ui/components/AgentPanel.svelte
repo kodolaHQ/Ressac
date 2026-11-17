@@ -59,6 +59,16 @@
     return () => clearInterval(timer);
   });
 
+  /** While the panel prepares: Ressac's workshop machine is booting (asked every 2 s). */
+  let machineStarting = $state(false);
+  $effect(() => {
+    if (appState.state !== "preparing" || !aiOn()) return void (machineStarting = false);
+    const check = () => api.settings.machine().then((m) => (machineStarting = m?.kind === "starting"), () => {});
+    void check();
+    const timer = setInterval(check, 2_000);
+    return () => clearInterval(timer);
+  });
+
   let profiles = $state<{ id: string; name: string }[]>([]);
   let accounts = $state<AgentAccount[]>([]);
   /** The window's own agent (the host's), not the setting: switching only concerns this window. */
@@ -216,7 +226,7 @@
     {#if appState.step !== undefined && appState.since !== undefined}
       <p class="message" data-testid="agent-build-step">{t("agent-panel-build-step", { step: appState.step, of: appState.of ?? 0, label: appState.label ?? "", minutes: Math.max(0, Math.floor((now - appState.since) / 60_000)) })}</p>
     {:else}
-      <p class="message">{t("agent-panel-preparing")}</p>
+      <p class="message">{t(machineStarting ? "agent-panel-machine-starting" : "agent-panel-preparing")}</p>
     {/if}
   {:else if appState.state === "docker-absent"}
     <p class="message">{t("agent-panel-docker-absent")}</p>

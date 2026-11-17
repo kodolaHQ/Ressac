@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { cpus, homedir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { createZstdDecompress } from "node:zlib";
 import { HashMismatchError, VOLUME_HOME, createRunner, downloadVerified, type ContainerEngine, type RunResult, type Runner, type WakeReason } from "../../../packages/kernel/src/index.ts";
 import { hostLocale, hostSay } from "./locale.ts";
+import type { MachineStatus } from "../shared/settings.ts";
 
 /** The machine image, built by scripts/vm/build-image.sh and published by scripts/vm/publish-image.sh. */
 export const VM_IMAGE = {
@@ -31,10 +32,7 @@ export function vmImage(env: NodeJS.ProcessEnv = process.env): typeof VM_IMAGE {
   return { version, url, sha256, bytes: Number(env.RESSAC_VM_IMAGE_BYTES) || 4 * 2 ** 30 };
 }
 
-export type MachineStatus =
-  | { kind: "unsupported" | "absent" | "stopped" | "starting" | "running" }
-  | { kind: "downloading"; percent: number | null }
-  | { kind: "error"; message: string };
+export type { MachineStatus };
 
 const NAME = "ressac";
 export const MACHINE_HOME = join(homedir(), ".ressac-vm");
@@ -104,7 +102,7 @@ export function createMachine(o: {
   const pod = (args: string[], delayMs = 60_000) => run(podman, ["--url", `unix://${socket}`, ...args], { delayMs });
   const detail = (r: RunResult) => (r.stderr || r.stdout).trim().split("\n").at(-1) ?? "";
   const startFailed = (d: string) => new Error(hostSay("host-machine-start-failed", { detail: d }));
-  const damaged = () => new Error(hostSay("host-machine-damaged"));
+  const damaged = () => Object.assign(new Error(hostSay("host-machine-damaged")), { damaged: true as const });
 
   let status: MachineStatus = tooLong ? { kind: "error", message: hostSay("host-machine-socket-too-long", { path: socket }) } : { kind: "absent" };
   const listeners = new Set<(s: MachineStatus) => void>();
@@ -337,7 +335,7 @@ export function createMachine(o: {
       try {
         return await f();
       } catch (e) {
-        if (status.kind !== "unsupported") set({ kind: "error", message: (e as Error).message });
+        if (status.kind !== "unsupported") set({ kind: "error", message: (e as Error).message, ...((e as { damaged?: true }).damaged && { damaged: true as const }) });
         throw e;
       }
     });
@@ -348,7 +346,7 @@ export function createMachine(o: {
       if (!(await supported())) return set({ kind: "unsupported" });
       const was = await instance();
       if (was === "Running") watch("user");
-      set(was === "damaged" ? { kind: "error", message: damaged().message } : { kind: was === "Running" ? "running" : was === "Stopped" ? "stopped" : "absent" });
+      set(was === "damaged" ? { kind: "error", message: damaged().message, damaged: true } : { kind: was === "Running" ? "running" : was === "Stopped" ? "stopped" : "absent" });
     }).catch(() => {});
 
   return {
@@ -378,15 +376,19 @@ export function createMachine(o: {
     stop: () => serial(stopInner),
     /**
      * Keeps the logins: exports them first (unless an export is still waiting to be imported), then deletes the instance.
-     * A damaged instance is started for that; when it cannot be, or the export fails, the instance is kept.
+     * A damaged instance is started for that; when it cannot be, or the export fails, the instance is kept. `force`
+     * deletes without any export: the logins are lost (asked in Réglages › Atelier for a damaged instance).
      */
-    remove: () =>
+    remove: (r: { force?: boolean } = {}) =>
       guarded(async () => {
         if (tooLong) return;
         unwatch();
         const was = await instance();
-        if (was !== "absent" && was !== "empty" && !existsSync(tar)) {
-          await start(was === "Running");
+        if (!r.force && was !== "absent" && was !== "empty" && !existsSync(tar)) {
+          // A damaged instance that cannot start stays damaged: only the forced removal is left.
+          await start(was === "Running").catch((e) => {
+            throw was === "damaged" ? damaged() : e;
+          });
           const exists = await pod(["volume", "exists", VOLUME_HOME]);
           // 1 is "no such volume"; any other failure (125, timeout) must not pass for it.
           if (exists.code !== 0 && exists.code !== 1) throw new Error(hostSay("host-machine-export-failed", { detail: detail(exists) }));
@@ -422,4 +424,30 @@ export function createMachine(o: {
       return { memoryMB: Math.round(memoryKB / 1024), diskMB: Math.round(diskKB / 1024) };
     },
   } satisfies ContainerEngine & Record<string, unknown>;
+}
+
+/** e2e (RESSAC_TEST_MACHINE): a fixed status, `<kind>[:<percent>|damaged|<detail>]`; its actions only note themselves in `log`. */
+export function fakeMachine(spec: string, log: string): ReturnType<typeof createMachine> {
+  const [kind, extra] = spec.split(":") as [MachineStatus["kind"], string | undefined];
+  const status = (
+    kind === "downloading" ? { kind, percent: extra ? Number(extra) : null }
+    : kind === "error" ? (extra === "damaged" ? { kind, message: hostSay("host-machine-damaged"), damaged: true } : { kind, message: hostSay("host-machine-start-failed", { detail: extra ?? "test" }) })
+    : { kind }
+  ) as MachineStatus;
+  const note = (line: string) => appendFile(log, `${line}\n`);
+  return {
+    kind: "machine",
+    binary: () => "podman",
+    args: () => [],
+    hostAddress: () => HOST_ADDRESS,
+    up: async () => false,
+    wake: async () => {},
+    status: () => status,
+    onStatus: () => () => {},
+    install: () => note("install"),
+    stop: async () => {},
+    remove: (r = {}) => note(r.force ? "remove --force" : "remove"),
+    close: async () => {},
+    usage: async () => (kind === "running" ? { memoryMB: 614, diskMB: 1843 } : null),
+  };
 }

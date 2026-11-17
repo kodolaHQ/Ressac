@@ -212,6 +212,20 @@ describe("the workshop machine", () => {
     expect(limactl(w).some((l) => l.startsWith("delete") || l.startsWith("create"))).toBe(false);
   });
 
+  it("a damaged instance that cannot start: remove keeps it, remove({ force: true }) deletes it without start nor export", async () => {
+    const w = world({ instance: { status: "Broken" }, volume: true });
+    const run: Runner = (cmd, args, o) => (args[0] === "start" ? Promise.resolve({ code: 1, stdout: "", stderr: "vz: boom" }) : w.run(cmd, args, o));
+    const m = machine(w, { run });
+    await vi.waitFor(() => expect(m.status()).toMatchObject({ kind: "error", damaged: true }));
+    await expect(m.remove()).rejects.toThrow();
+    expect(m.status()).toMatchObject({ kind: "error", damaged: true });
+    expect(limactl(w).some((l) => l.startsWith("delete"))).toBe(false);
+    await m.remove({ force: true });
+    expect(limactl(w)).toContain("delete --force ressac");
+    expect(w.s.calls.some((c) => c.args.includes("export"))).toBe(false);
+    expect(m.status().kind).toBe("absent");
+  });
+
   it("remove keeps the machine when Podman cannot say whether the logins volume exists", async () => {
     const w = world({ instance: { status: "Stopped" }, volumeExistsCode: 125 });
     const m = machine(w);

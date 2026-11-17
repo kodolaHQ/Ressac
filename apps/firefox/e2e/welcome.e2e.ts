@@ -159,6 +159,16 @@ describe("welcome", () => {
     }
   });
 
+  it("the workshop machine downloading: the agent and AI steps show its progress", async () => {
+    await launch({ env: { RESSAC_TEST_MACHINE: "downloading:40" } });
+    await forward(1, 5);
+    await shows("welcome-machine", "Préparation de l'atelier… 40 %");
+    await press("welcome-next");
+    await shown("welcome-6");
+    await shows("welcome-machine", "Préparation de l'atelier… 40 %");
+    await shown("welcome-models");
+  });
+
   it("only the decision model missing: the welcome gives its own size", async () => {
     // A search server imposed by address counts its model as installed.
     await launch({ env: { FAKE_DOCKER_ABSENT: "1", RESSAC_EMBED_SERVER_URL: "http://127.0.0.1:9" } });

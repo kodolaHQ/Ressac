@@ -48,4 +48,4 @@ host-machine-download-failed = The workshop machine's download failed: { $detail
 host-machine-cancelled = Workshop machine download cancelled
 host-machine-start-failed = The workshop machine did not start: { $detail }
 host-machine-export-failed = The workshop's logins could not be saved, the machine is kept: { $detail }
-host-machine-damaged = The workshop machine is in an unexpected state. Its data is kept: restart the Mac, or remove it in Settings › Workshop.
+host-machine-damaged = The workshop machine is in an unexpected state. Restart the Mac; if it still does not start, remove it anyway in Settings › Workshop (Claude and Codex will need signing in again).

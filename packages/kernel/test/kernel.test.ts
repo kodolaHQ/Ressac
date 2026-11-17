@@ -60,6 +60,17 @@ test("Docker absent: createKernel succeeds, workshopState → docker-absent, ope
   expect(error.state).toBe("docker-absent");
 });
 
+test("a stopped machine: openAgentSession throws a WorkshopError that says so, not a container state", async () => {
+  const root = await tempFolder();
+  const machine = { kind: "machine" as const, binary: () => "/no/podman", args: () => [], hostAddress: () => "192.168.5.2", up: async () => false, wake: async () => {} };
+  const workshop = new Workshop({ paths: spacePaths(root), engine: () => machine });
+  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root, workshop });
+  const error = await kernel.openAgentSession({ cols: 80, rows: 24 }).catch((e) => e);
+  expect(error).toBeInstanceOf(WorkshopError);
+  expect(error.state).toBe("machine-stopped");
+  expect(error.message).toBe("La machine de l'atelier n'est pas démarrée : réessayez, ou voyez pourquoi dans Réglages › Atelier.");
+});
+
 test("the MCP server answers with the token, then arreter closes it", async () => {
   const n = await createWithoutDocker();
   const mcp = await readMcp(n);

@@ -120,6 +120,7 @@ agent-panel-signed-out = { $name } (non connecté)
 agent-panel-codex-signed-out = Codex n'est pas connecté à votre compte ChatGPT.
 agent-panel-login = Se connecter
 agent-panel-preparing = Préparation de l'agent… (la première fois, la construction du conteneur prend quelques minutes)
+agent-panel-machine-starting = L'atelier démarre…
 agent-panel-build-step =
     Préparation de l'agent, étape { $step }/{ $of } : { $label }… ({ $minutes ->
         [0] moins d'une

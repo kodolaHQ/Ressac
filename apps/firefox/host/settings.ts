@@ -6,6 +6,7 @@ import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
 import { DECISION_MODEL, SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
 import type { DockerRuntime } from "./docker-runtime.ts";
+import type { createMachine } from "./machine.ts";
 import { hostSay } from "./locale.ts";
 
 // The settings page's host side: agent accounts, workshop, local AI, durable grants, data backups.
@@ -67,6 +68,10 @@ export const SETTINGS_METHODS = [
   "settings.startDocker",
   "settings.restartWorkshop",
   "settings.workshopOperation",
+  "settings.machine",
+  "settings.machineUsage",
+  "settings.machineInstall",
+  "settings.machineRemove",
   "settings.grants",
   "settings.revoke",
   "settings.backups",
@@ -91,6 +96,8 @@ export interface SettingsOptions {
   writer: { agent(): Promise<WriterAgent | "workshop-stopped" | null>; reset(): void };
   ai: Pick<LocalAi, "state" | "check" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
   docker: DockerRuntime;
+  /** The workshop machine (host/machine.ts); `install` also hands the workshop over to it once installed. */
+  machine: Pick<ReturnType<typeof createMachine>, "status" | "usage" | "install" | "remove">;
   stopApps(): Promise<void>;
   relaunchSessions(): Promise<void>;
   dataDir: string;
@@ -347,6 +354,26 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
     },
     "settings.workshopOperation": () => operation,
+    "settings.machine": () => o.machine.status(),
+    "settings.machineUsage": () => o.machine.usage(),
+    "settings.machineInstall": async (): Promise<SettingsResult> => {
+      try {
+        await o.machine.install();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: failure(e) };
+      }
+    },
+    /** The apps in the machine stop first; `force` (a damaged machine, its logins lost) only when asked as such. */
+    "settings.machineRemove": async (p: { force?: unknown }): Promise<SettingsResult> => {
+      try {
+        await o.stopApps();
+        await o.machine.remove({ force: p?.force === true });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: failure(e) };
+      }
+    },
     "settings.grants": grants,
     "settings.revoke": async (p: { kind?: unknown; key?: unknown }): Promise<void> => {
       if (typeof p?.key !== "string" || !KEY.test(p.key)) return;

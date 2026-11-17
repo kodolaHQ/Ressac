@@ -1,7 +1,7 @@
 import type { Action, SettingsApi } from "../shared/api";
 import { format } from "../shared/i18n";
 import type { WindowId } from "../shared/model";
-import type { AgentAccount, Backup, GrantKind, LoginResult, GrantRow, SettingsResult, WorkshopOperation, PullProgress, DockerStatus } from "../shared/settings";
+import type { AgentAccount, Backup, GrantKind, LoginResult, GrantRow, SettingsResult, WorkshopOperation, PullProgress, DockerStatus, MachineStatus } from "../shared/settings";
 import type { AgentHost } from "../chrome/agent/host";
 import type { SettingsChrome } from "../chrome/store/settings";
 import type { SitePermissions } from "../chrome/store/site-permissions";
@@ -72,6 +72,10 @@ export function createSettingsApi(o: {
     pullProgress: () => ask<PullProgress | null>("settings.pullProgress", undefined, null),
     docker: () => ask<DockerStatus | null>("settings.docker", undefined, null),
     startDocker: () => ask<SettingsResult>("settings.startDocker", undefined, silent()),
+    machine: () => ask<MachineStatus | null>("settings.machine", undefined, null),
+    machineUsage: () => ask<{ memoryMB: number; diskMB: number } | null>("settings.machineUsage", undefined, null),
+    machineInstall: () => ask<SettingsResult>("settings.machineInstall", undefined, silent()),
+    machineRemove: (force) => ask<SettingsResult>("settings.machineRemove", { force }, silent()),
     writer: () => ask<{ agent: "claude" | "codex" | "workshop-stopped" | null }>("ai.writer", undefined, { agent: null }),
     pullInBackground: (names) => ask<SettingsResult>("settings.pullInBackground", { names }, silent()),
     ollamaModels: (url) => ask("settings.ollamaModels", { url }, { ok: false as const, error: say("agent-ollama-silent") }),

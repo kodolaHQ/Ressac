@@ -339,7 +339,7 @@ export class Workshop {
 
   /** One-off command in the container, not interactive. */
   async exec(argv: string[]): Promise<RunResult> {
-    if (!this.docker) return { code: 1, stdout: "", stderr: "Docker introuvable" };
+    if (!this.docker) return { code: 1, stdout: "", stderr: say(this.locale(), "kernel-workshop-no-engine") };
     // The agent CLIs run as the agent-writable user: never before the rules exist.
     if (!this.secured) await this.secureNetwork();
     return this.launch(["exec", containerName(), ...argv], PROBE_DELAY_MS);
@@ -350,7 +350,7 @@ export class Workshop {
    * shortcut: a killed run leaves its temp dir in /tmp, cleared with the container.
    */
   async execWrite(argv: string[], o: { input: string; signal: AbortSignal; delayMs: number }): Promise<RunResult> {
-    if (!this.docker) return { code: 1, stdout: "", stderr: "Docker introuvable" };
+    if (!this.docker) return { code: 1, stdout: "", stderr: say(this.locale(), "kernel-workshop-no-engine") };
     if (!this.secured) await this.secureNetwork();
     const id = randomUUID();
     const f = `/tmp/ressac-write-${id}.pid`;
@@ -492,9 +492,9 @@ export class Workshop {
    */
   harvestCommand(owner: string | Owner, filesFolder: string, engine: string, delayS: number = HARVEST_DELAY_S): string[] {
     const e = this.engine();
-    if (!e.binary()) throw new Error("Docker introuvable");
+    if (!e.binary()) throw new Error(say(this.locale(), "kernel-workshop-no-engine"));
     // « : » would change the meaning of -v (target, options): such a path cannot be mounted safely.
-    for (const c of [filesFolder, engine]) if (c.includes(":")) throw new Error(`chemin non montable : ${c}`);
+    for (const c of [filesFolder, engine]) if (c.includes(":")) throw new Error(say(this.locale(), "kernel-workshop-path-unmountable", { path: c }));
     return [
       e.binary()!, ...e.args(), "run", "-i", "--rm",
       "--name", harvestName(owner),
@@ -628,7 +628,7 @@ export class Workshop {
   /** `passEnv`: names only (`-e NAME`), the value comes from the caller's environment, so a token never shows in the arguments. */
   execCommand(argv: string[], o: { interactive: boolean; env?: Record<string, string>; passEnv?: string[]; folder?: string }): string[] {
     const e = this.engine();
-    if (!e.binary()) throw new Error("Docker introuvable");
+    if (!e.binary()) throw new Error(say(this.locale(), "kernel-workshop-no-engine"));
     const env = Object.entries(o.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]).concat((o.passEnv ?? []).flatMap((k) => ["-e", k]));
     return [e.binary()!, ...e.args(), "exec", ...(o.interactive ? ["-it"] : []), ...env, "-w", o.folder ?? CONTAINER_PATH, containerName(), ...argv];
   }

@@ -206,6 +206,49 @@ describe("Settings page", () => {
     await shows("docker-start", "Démarrer OrbStack");
   });
 
+  describe("the workshop machine (fake)", () => {
+    const calls = () => {
+      const file = join(w!.dataDir, "workspace", "fake-machine-calls.log");
+      return existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean) : [];
+    };
+
+    it("running: its state, memory and disk, restart and rebuild; « Supprimer la machine » asks, then removes", async () => {
+      await launch({ RESSAC_TEST_MACHINE: "running" });
+      await openPage();
+      await go("workshop");
+      await shows("machine-state", "Machine de l'atelier : démarrée");
+      await shows("machine-usage", "0,6 Go de mémoire · 1,8 Go sur le disque");
+      expect(await inUi(m, `return ["workshop-restart", "workshop-rebuild", "machine-remove"].every((id) => doc.querySelector('[data-testid="' + id + '"]'))`)).toBe(true);
+      await click(m, '[data-testid="machine-remove"]');
+      await shows("settings-workshop", "Vos connexions Claude et Codex sont gardées. Elle sera téléchargée de nouveau (environ 500 Mo).");
+      expect(calls()).toEqual([]);
+      await click(m, '[data-testid="confirm-machine"]');
+      await waitFor(m, "return true", () => calls().includes("remove"), 10_000);
+    });
+
+    it("damaged: the message, « Réessayer », and « Supprimer quand même » behind the logins warning", async () => {
+      await launch({ RESSAC_TEST_MACHINE: "error:damaged" });
+      await openPage();
+      await go("workshop");
+      await shows("machine", "La machine de l'atelier est dans un état inattendu.");
+      await click(m, '[data-testid="machine-retry"]');
+      await waitFor(m, "return true", () => calls().includes("install"), 10_000);
+      await click(m, '[data-testid="machine-force-remove"]');
+      await shows("settings-workshop", "La machine ne démarre plus, ses connexions Claude et Codex ne peuvent pas être sauvées. La supprimer quand même ? Il faudra vous reconnecter.");
+      expect(calls()).not.toContain("remove --force");
+      await click(m, '[data-testid="confirm-machine"]');
+      await waitFor(m, "return true", () => calls().includes("remove --force"), 10_000);
+    });
+
+    it("unsupported, Docker stopped: today's Docker texts, no machine row", async () => {
+      await launch({ RESSAC_TEST_MACHINE: "unsupported", FAKE_DOCKER_ABSENT: "1", RESSAC_TEST_DOCKER_KIND: "stopped" });
+      await openPage();
+      await go("workshop");
+      await shows("docker-start", "Démarrer OrbStack");
+      expect(await inUi(m, `return !!doc.querySelector('[data-testid="machine"]')`)).toBe(false);
+    });
+  });
+
   it("Rédaction: Claude when signed in, Codex with only Codex, none otherwise", async () => {
     for (const [files, wanted] of [
       [{ "fake-claude-auth.json": JSON.stringify({ loggedIn: true, email: "ami@example.com" }) }, "Claude Haiku, avec votre compte Claude Code"],

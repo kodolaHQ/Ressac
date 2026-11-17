@@ -31,6 +31,12 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}
       embed: { state: vi.fn((): { state: AiState; error?: string } => ({ state: "stopped" })), install: vi.fn(async (onPercent: (p: number | null) => void): Promise<void> => (onPercent(60), void calls.push("embed.install"))) },
     },
     docker: { status: async () => ({ kind: "stopped", app: "OrbStack" }) as const, start: vi.fn(async () => void calls.push("docker.start")) },
+    machine: {
+      status: () => ({ kind: "running" }) as const,
+      usage: async () => ({ memoryMB: 614, diskMB: 1843 }),
+      install: vi.fn(async () => void calls.push("machine.install")),
+      remove: vi.fn(async (r?: { force?: boolean }) => void calls.push(r?.force ? "machine.remove --force" : "machine.remove")),
+    },
     stopApps: vi.fn(async () => void calls.push("stopApps")),
     relaunchSessions: vi.fn(async () => void calls.push("relaunch")),
     dataDir,
@@ -66,6 +72,21 @@ describe("settings host", () => {
     expect(exec).not.toHaveBeenCalled();
     expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "error" });
     expect(o.deviceCommand).not.toHaveBeenCalled();
+  });
+
+  it("the workshop machine: status, usage, retry, and a removal that stops the apps first; force only when asked", async () => {
+    const { h, o, calls } = setup();
+    expect(await h["settings.machine"]!({})).toEqual({ kind: "running" });
+    expect(await h["settings.machineUsage"]!({})).toEqual({ memoryMB: 614, diskMB: 1843 });
+    expect(await h["settings.machineInstall"]!({})).toEqual({ ok: true });
+    expect(await h["settings.machineRemove"]!({})).toEqual({ ok: true });
+    expect(await h["settings.machineRemove"]!({ force: "yes" })).toEqual({ ok: true });
+    expect(await h["settings.machineRemove"]!({ force: true })).toEqual({ ok: true });
+    expect(calls).toEqual(["machine.install", "stopApps", "machine.remove", "stopApps", "machine.remove", "stopApps", "machine.remove --force"]);
+    o.machine.remove.mockRejectedValueOnce(new Error("kept"));
+    expect(await h["settings.machineRemove"]!({})).toEqual({ ok: false, error: "kept" });
+    o.machine.install.mockRejectedValueOnce(new Error("no download"));
+    expect(await h["settings.machineInstall"]!({})).toEqual({ ok: false, error: "no download" });
   });
 
   it("container stopped", async () => {
