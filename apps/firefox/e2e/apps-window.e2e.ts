@@ -563,7 +563,7 @@ describe("each with its own Ressac", () => {
     const port = await launchAttempt(i.dataDir);
     await viewAt(m, `http://localhost:${port}/`);
     const sweeps = () => stopsLog(i!.dataDir).split("\n").filter((l) => l.includes("kill -KILL -1")).length;
-    const essai = async () => (await list(m)).apps.find((a) => a.folder === "essai")?.state;
+    const appState = async () => (await list(m)).apps.find((a) => a.folder === "essai")?.state;
     expect(sweeps()).toBe(1);
     // The window's agent ends (its session config goes): the next session is a first one again.
     process.kill(Number(readFileSync(path.join(root, "fake-agent-pid"), "utf8")), "SIGKILL");
@@ -582,7 +582,7 @@ describe("each with its own Ressac", () => {
     // The user's click on the Applications page waits for the sweep's end, then launches.
     await dispatch(m, { type: "openApps", windowId: await win(m) });
     await rowButton(m, "essai", "Lancer");
-    expect(await essai()).toBe("stopped");
+    expect(await appState()).toBe("stopped");
     rmSync(hold);
     await expect.poll(essai, { timeout: 15_000 }).toBe("running");
   });
