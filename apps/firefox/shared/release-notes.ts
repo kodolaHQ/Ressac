@@ -1,6 +1,11 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.10",
+    date: "novembre 2026",
+    items: ["Ressac ne plante plus quand vous ouvrez le menu Ressac (« À propos de Ressac », « Réglages… »)."],
+  },
+  {
     version: "0.1.9",
     date: "novembre 2026",
     items: [
