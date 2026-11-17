@@ -276,27 +276,42 @@ async function askDataCard(
 ): Promise<boolean> {
   const ask = bridge.askWidgetData?.bind(bridge);
   if (!ask) return false;
-  let request = requests.get(key);
-  if (!request) {
-    const conversation = policy.conversation;
-    const removal = new AbortController();
-    const unsubscribe = policy.onChange(() => {
-      if (policy.conversation !== conversation || stale()) removal.abort();
+  return (await conversationCard(policy, requests, key, (signal) => ask(card, signal), giveGrant, stale)) && granted();
+}
+
+/**
+ * The pending card for `key` (one at a time), tied to its conversation: a new conversation or `stale()` takes it down,
+ * and a late « yes » grants nothing. `giveGrant` runs only on a « yes » of the same conversation.
+ */
+function conversationCard(
+  policy: AccessPolicy,
+  requests: Map<string, Promise<boolean>>,
+  key: string,
+  ask: (signal: AbortSignal) => Promise<boolean>,
+  giveGrant: () => void,
+  stale: () => boolean = () => false,
+): Promise<boolean> {
+  const pendingCard = requests.get(key);
+  if (pendingCard) return pendingCard;
+  const conversation = policy.conversation;
+  const removal = new AbortController();
+  const unsubscribe = policy.onChange(() => {
+    if (policy.conversation !== conversation || stale()) removal.abort();
+  });
+  const abandon = new Promise<boolean>((ok) => removal.signal.addEventListener("abort", () => ok(false), { once: true }));
+  const request: Promise<boolean> = Promise.race([ask(removal.signal), abandon])
+    .then((yes) => {
+      if (!yes || policy.conversation !== conversation || stale()) return false;
+      giveGrant();
+      return true;
+    })
+    .finally(() => {
+      unsubscribe();
+      // A newer conversation's card may already sit under this key.
+      if (requests.get(key) === request) requests.delete(key);
     });
-    const abandon = new Promise<boolean>((ok) => removal.signal.addEventListener("abort", () => ok(false), { once: true }));
-    request = Promise.race([ask(card, removal.signal), abandon])
-      .then((yes) => {
-        if (!yes || policy.conversation !== conversation || stale()) return false;
-        giveGrant();
-        return true;
-      })
-      .finally(() => {
-        unsubscribe();
-        requests.delete(key);
-      });
-    requests.set(key, request);
-  }
-  return (await request) && granted();
+  requests.set(key, request);
+  return request;
 }
 
 /** The agent's reason on an address card: plain text, bounded. */
@@ -396,28 +411,7 @@ function createToolsServer(
     if (policy.canRead(o)) return true;
     // Like for a tab: site.json may have been rewritten (window re-read) during the card; today's window counts.
     if (o.site !== undefined) return (await siteAccess(o.site, o.title, o.hash)) && policy.canRead(await tab(o.id));
-    let request = requests.get(o.id);
-    if (!request) {
-      // Like askDataCard: a new conversation takes the card down, and a late « Autoriser » grants nothing.
-      const conversation = policy.conversation;
-      const removal = new AbortController();
-      const unsubscribe = policy.onChange(() => {
-        if (policy.conversation !== conversation) removal.abort();
-      });
-      const abandon = new Promise<boolean>((ok) => removal.signal.addEventListener("abort", () => ok(false), { once: true }));
-      const pending: Promise<boolean> = Promise.race([bridge.askPermission(o, removal.signal), abandon])
-        .then((yes) => {
-          if (!yes || policy.conversation !== conversation) return false;
-          policy.grant(o);
-          return true;
-        })
-        .finally(() => {
-          unsubscribe();
-          if (requests.get(o.id) === pending) requests.delete(o.id);
-        });
-      requests.set(o.id, (request = pending));
-    }
-    if (!(await request)) return false;
+    if (!(await conversationCard(policy, requests, o.id, (signal) => bridge.askPermission(o, signal), () => policy.grant(o)))) return false;
     // The user may have changed site during the question: their grant is for the site they saw.
     return policy.canRead(await tab(o.id));
   }
