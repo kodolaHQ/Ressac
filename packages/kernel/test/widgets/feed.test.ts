@@ -17,5 +17,9 @@ test("20 000 unclosed items or titles are read in linear time", () => {
   const start = Date.now();
   expect(parseFeed("<rss>" + "<item>x".repeat(20_000) + "<item><title>ok</title></item>")).toMatchObject([{ title: "ok" }]);
   expect(parseFeed("<rss><item>" + "<title>x".repeat(20_000) + "<title>ok</title></item>")).toMatchObject([{ title: "ok" }]);
+  // Unclosed opening tags: the attribute scan stops at the next `<`.
+  expect(parseFeed("<rss>" + "<item a".repeat(20_000))).toEqual([]);
+  expect(parseFeed("<rss><item>" + "<title a".repeat(20_000) + "</item>")).toMatchObject([{ title: "" }]);
+  expect(parseFeed("<rss><item>" + "<link a".repeat(20_000) + "</item>")).toMatchObject([{ url: "" }]);
   expect(Date.now() - start).toBeLessThan(500);
 });

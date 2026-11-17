@@ -10,14 +10,14 @@ function decodeEntities(s) {
   });
 }
 function tagText(block, name) {
-  const m = new RegExp(`<${name}(?:\\s[^>]*)?>((?:(?!<${name}[\\s>])[\\s\\S])*?)</${name}>`, "i").exec(block);
+  const m = new RegExp(`<${name}(?:\\s[^<>]*)?>((?:(?!<${name}[\\s>])[\\s\\S])*?)</${name}>`, "i").exec(block);
   if (!m) return "";
   const inner = m[1].trim();
   const cdata = /^<!\[CDATA\[([\s\S]*?)\]\]>$/.exec(inner);
   return (cdata ? cdata[1] : decodeEntities(inner)).trim();
 }
 function blockLink(block) {
-  const links = [...block.matchAll(/<link\b([^>]*?)\/?>/gi)];
+  const links = [...block.matchAll(/<link\b([^<>]*?)\/?>/gi)];
   for (const [, attrs] of links) {
     const href = /href\s*=\s*["']([^"']+)["']/i.exec(attrs);
     const rel = /rel\s*=\s*["']([^"']+)["']/i.exec(attrs);
@@ -27,7 +27,7 @@ function blockLink(block) {
 }
 export function parseFeed(xml) {
   // A body stops at the next opening tag: unclosed ones (`<item>x` × 20 000) made the scan quadratic.
-  const blocks = [...xml.matchAll(/<(item|entry)\b[^>]*>((?:(?!<(?:item|entry)\b)[\s\S])*?)<\/\1>/gi)].map((m) => m[2]);
+  const blocks = [...xml.matchAll(/<(item|entry)\b[^<>]*>((?:(?!<(?:item|entry)\b)[\s\S])*?)<\/\1>/gi)].map((m) => m[2]);
   return blocks.map((b) => ({
     title: tagText(b, "title"),
     url: blockLink(b),

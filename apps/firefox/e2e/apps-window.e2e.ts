@@ -574,7 +574,7 @@ describe("each with its own Ressac", () => {
     writeFileSync(hold, "");
     await inStore(m, 'void store.agent.request("agent.relaunch", { window: arguments[0] });', [await win(m)]);
     await expect.poll(sweeps, { timeout: 15_000 }).toBe(2);
-    await expect.poll(essai, { timeout: 10_000 }).toBe("stopped");
+    await expect.poll(appState, { timeout: 10_000 }).toBe("stopped");
     await expect.poll(() => appWindows(m), { timeout: 10_000 }).toBe(0);
     expect(await answers(port)).toBe(false);
     const refused = await callTool(i.dataDir, "launch_app", { folder: "essai" });
@@ -584,7 +584,7 @@ describe("each with its own Ressac", () => {
     await rowButton(m, "essai", "Lancer");
     expect(await appState()).toBe("stopped");
     rmSync(hold);
-    await expect.poll(essai, { timeout: 15_000 }).toBe("running");
+    await expect.poll(appState, { timeout: 15_000 }).toBe("running");
   });
 
   it("host killed: the app window closes, the restarted host stops the orphan", async () => {
