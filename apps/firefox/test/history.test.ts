@@ -443,6 +443,30 @@ describe("site favicons", () => {
     h.note({ url: "https://vieux.fr/", title: "V", spaceId: "e", private: false });
     expect(h.recents()[0]!.favicon).toBeNull();
   });
+
+  test("the orphan icon sweep keeps hosts with a visit (http, https, port), drops the others", () => {
+    const old = date("2026-10-01T00:00:00Z");
+    // erase(from) erases the recent visits: the « gone » hosts only have recent ones.
+    for (const url of ["https://a.fr/x", "http://b.fr/", "https://c.fr:8443/y", "http://d.fr:80/", "https://gone.fr/", "https://gone.fr:1/"]) {
+      h.note({ url, title: url, spaceId: "e", private: false, date: url.includes("gone") ? new Date() : old });
+      h.noteIcon(url, "e", ICON);
+    }
+    h.note({ url: "https://a.fr.evil/", title: "x", spaceId: "e", private: false, date: old }); // not a visit of a.fr
+    h.note({ url: "https://e.fr/", title: "e", spaceId: "e", private: false });
+    h.noteIcon("https://e.fr/", "e", ICON);
+    h.note({ url: "https://e.fr.evil/", title: "x", spaceId: "e", private: false, date: old }); // keeps no icon of e.fr
+    for (let i = 0; i < 100; i++) {
+      h.note({ url: `https://s${i}.fr/${i % 2 ? "" : "p"}`, title: "s", spaceId: "e", private: false, date: i % 2 ? new Date() : old });
+      h.noteIcon(`https://s${i}.fr/`, "e", ICON);
+    }
+    h.erase(date("2026-10-02T00:00:00Z"));
+    const icons = new Map(h.recents(10_000).map((v) => [v.url, v.favicon]));
+    for (const url of ["https://a.fr/x", "http://b.fr/", "https://c.fr:8443/y", "http://d.fr:80/", "https://s42.fr/p"]) expect(icons.get(url)).toBe(ICON);
+    for (const url of ["https://gone.fr/", "https://e.fr/", "https://s43.fr/"]) {
+      h.note({ url, title: "g", spaceId: "e", private: false });
+      expect(h.recents(1)[0]!.favicon).toBeNull();
+    }
+  });
 });
 
 describe("page vectors", () => {

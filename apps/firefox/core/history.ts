@@ -126,11 +126,13 @@ export class History {
       ),
       icon: this.db.prepare("SELECT icon FROM icons WHERE host = ?"),
       clearIcons: this.db.prepare("DELETE FROM icons"),
-      // An http(s) URL's host ends at `/` or `:` (a port); `_` in LIKE may keep an icon too many, never drop one.
+      // An http(s) URL's host ends at `/` or `:` (a port). Ranges, not LIKE, so each test is a seek in the primary key's
+      // index (url first): `0` follows `/` and `;` follows `:`. 150k visits, 3000 icons: 41 s with LIKE.
       eraseOrphanIcons: this.db.prepare(`
-        DELETE FROM icons WHERE NOT EXISTS (SELECT 1 FROM visits v WHERE
-          v.url LIKE 'https://' || icons.host || '/%' OR v.url LIKE 'http://' || icons.host || '/%' OR
-          v.url LIKE 'https://' || icons.host || ':%' OR v.url LIKE 'http://' || icons.host || ':%')`),
+        DELETE FROM icons WHERE NOT EXISTS (SELECT 1 FROM visits WHERE url >= 'https://' || icons.host || '/' AND url < 'https://' || icons.host || '0')
+          AND NOT EXISTS (SELECT 1 FROM visits WHERE url >= 'http://' || icons.host || '/' AND url < 'http://' || icons.host || '0')
+          AND NOT EXISTS (SELECT 1 FROM visits WHERE url >= 'https://' || icons.host || ':' AND url < 'https://' || icons.host || ';')
+          AND NOT EXISTS (SELECT 1 FROM visits WHERE url >= 'http://' || icons.host || ':' AND url < 'http://' || icons.host || ';')`),
       pendingVectors: this.db.prepare(`
         SELECT v.url, v.space_id AS spaceId, v.title, v.last_visit AS lastVisit, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt
         FROM visits v LEFT JOIN texts t ON t.url = v.url AND t.space_id = v.space_id
