@@ -617,8 +617,12 @@ export class Workshop {
     const run = (args: string[]) => this.run(binary, [...e.args(), ...args], { delayMs: PROBE_DELAY_MS });
     const ps = await run(["ps", "-q", "--filter", "name=ressac-harvest-", "--filter", "name=ressac-action-"]);
     if (ps.code !== 0 || ps.stdout.trim()) return true; // a doubt stops nothing
-    const found = await run(["exec", containerName(), "sh", "-c", `${marks(`${VARIABLE_SESSION}=.*`)}; ${marks(`${VARIABLE_APPLICATION}=.*`)}`]);
-    return found.code === 0 && found.stdout.trim() !== "";
+    const running = await run(["inspect", "-f", "{{.State.Running}}", containerName()]);
+    if (running.code !== 0) return !/no such (container|object)/i.test(running.stderr); // a doubt stops nothing
+    if (running.stdout.trim() !== "true") return false; // no workshop running: nothing lives in it
+    // `; true`: the scan's for loop exits with its last grep's status; a failure now is the exec's own, a doubt.
+    const found = await run(["exec", containerName(), "sh", "-c", `${marks(`${VARIABLE_SESSION}=.*`)}; ${marks(`${VARIABLE_APPLICATION}=.*`)}; true`]);
+    return found.code !== 0 || found.stdout.trim() !== "";
   }
 
   /** `passEnv`: names only (`-e NAME`), the value comes from the caller's environment, so a token never shows in the arguments. */

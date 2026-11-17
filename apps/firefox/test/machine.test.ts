@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { zstdCompressSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Runner } from "../../../packages/kernel/src/index.ts";
-import { VM_IMAGE, createMachine, type MachineStatus } from "../host/machine";
+import { QUIT_STOP, VM_IMAGE, createMachine, type MachineStatus } from "../host/machine";
 
 const TEMPLATE = readFileSync(join(__dirname, "../scripts/vm/lima.yaml"), "utf8");
 const dirs: string[] = [];
@@ -79,7 +80,7 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
 }
 
 function machine(w: ReturnType<typeof world>, o: Partial<Parameters<typeof createMachine>[0]> = {}) {
-  const m = createMachine({ home: w.home, limactl: join(w.resources, "bin", "limactl"), podman: join(w.resources, "podman"), template: join(w.resources, "lima.yaml"), engine: join(w.resources, "docker", "engine"), ressacRoot: w.ressacRoot, run: w.run, busy: async () => false, supported: async () => true, pollMs: 5, ...o });
+  const m = createMachine({ home: w.home, limactl: join(w.resources, "bin", "limactl"), podman: join(w.resources, "podman"), template: join(w.resources, "lima.yaml"), engine: join(w.resources, "docker", "engine"), ressacRoot: w.ressacRoot, run: w.run, busy: async () => false, supported: async () => true, pollMs: 5, detach: () => {}, ...o });
   machines.push(m);
   return m;
 }
@@ -298,15 +299,40 @@ describe("the workshop machine", () => {
     expect(await machine(world()).usage()).toBeNull();
   });
 
-  it("close stops a running machine and its poll", async () => {
+  it("close hands the stop to a detached script, ends the poll and refuses any later start", async () => {
     const w = world({ instance: { status: "Stopped" } });
-    const m = machine(w, { idleMs: 10_000 });
+    const detach = vi.fn();
+    const m = machine(w, { idleMs: 10_000, detach });
     await m.wake("user");
     await m.close();
-    expect(stops(w)).toBe(1);
+    expect(detach).toHaveBeenCalledWith([QUIT_STOP, "ressac-vm-stop", join(w.resources, "bin", "limactl"), "ressac", "3", "0"], { LIMA_HOME: w.home });
     const n = w.s.calls.length;
     await new Promise((r) => setTimeout(r, 30));
     expect(w.s.calls.length).toBe(n);
+    await expect(m.wake("user")).rejects.toThrow();
+    expect(stops(w)).toBe(0);
+  });
+
+  it("close during a start: the script waits for it", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    const detach = vi.fn();
+    const m = machine(w, { detach });
+    const waking = m.wake("user").catch(() => {});
+    await m.close();
+    expect(detach.mock.calls[0]![0].at(-1)).toBe("1");
+    await waking;
+  });
+
+  it("the quit script stops a running instance, forced when the plain stop fails, and leaves a stopped one", async () => {
+    for (const [state, plain, expected] of [["Running", 0, "stop ressac\n"], ["Running", 1, "stop ressac\nstop --force ressac\n"], ["Stopped", 0, ""]] as const) {
+      const d = mkdtempSync(join(tmpdir(), "q-"));
+      dirs.push(d);
+      const l = join(d, "limactl");
+      writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo ${state}; exit 0; }\necho "$*" >> ${join(d, "log")}\n[ "$2" = --force ] || exit ${plain}\n`);
+      chmodSync(l, 0o755);
+      execFileSync("/bin/sh", ["-c", QUIT_STOP, "x", l, "ressac", "0", "0"]);
+      expect(existsSync(join(d, "log")) ? readFileSync(join(d, "log"), "utf8") : "").toBe(expected);
+    }
   });
 });
 

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -42,6 +43,16 @@ const SOCKET_MAX = 103;
 /** Lima's vz network: the Mac seen from the guest. */
 const HOST_ADDRESS = "192.168.5.2";
 const BLOCK = 4096;
+/** $1 limactl, $2 instance, $3 grace (s), $4 1 when a start may be in flight: waits up to 5 min for it to run. */
+export const QUIT_STOP = [
+  `L=$1 N=$2; sleep "$3"`,
+  `st() { "$L" list --format '{{.Status}}' "$N" 2>/dev/null; }`,
+  `if [ "$4" = 1 ]; then i=0; while [ $i -lt 300 ] && [ "$(st)" != Running ]; do sleep 1; i=$((i + 1)); done; fi`,
+  `[ "$(st)" = Running ] || exit 0`,
+  `"$L" stop "$N" || "$L" stop --force "$N"`,
+].join("\n");
+const detached = (args: string[], env: Record<string, string>) =>
+  spawn("/bin/sh", ["-c", ...args], { detached: true, stdio: "ignore", env: { ...process.env, ...env } }).unref();
 const ZERO = Buffer.alloc(BLOCK);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -65,6 +76,10 @@ export function createMachine(o: {
   idleMs?: number;
   pollMs?: number;
   supported?: () => Promise<boolean>;
+  /** Runs the quit stop script (`sh -c <script> <args>`) so that it outlives the host; tests replace it. */
+  detach?: (args: string[], env: Record<string, string>) => void;
+  /** Seconds the quit stop leaves the sessions and apps in the machine to stop cleanly. */
+  quitGraceS?: number;
   image?: { version: string; url: string; sha256: string; bytes: number };
 }) {
   const home = o.home ?? MACHINE_HOME;
@@ -95,8 +110,10 @@ export function createMachine(o: {
 
   // Every change of the machine runs one at a time: two wakes start once, a stop never cuts a start.
   let chain: Promise<unknown> = Promise.resolve();
+  let pending = 0;
   const serial = <T>(f: () => Promise<T>): Promise<T> => {
-    const p = chain.then(f);
+    pending++;
+    const p = chain.then(f).finally(() => pending--);
     chain = p.catch(() => {});
     return p;
   };
@@ -104,7 +121,9 @@ export function createMachine(o: {
   let hv: Promise<boolean> | undefined;
   const supported = () => (hv ??= o.supported ? o.supported() : run("sysctl", ["-n", "kern.hv_support"]).then((r) => r.stdout.trim() === "1"));
   /** Throws why the machine cannot run on this Mac. */
+  let closed = false;
   async function usable(): Promise<void> {
+    if (closed) throw new Error(hostSay("host-machine-cancelled"));
     if (tooLong) throw new Error((status as { message: string }).message);
     if (await supported()) return;
     set({ kind: "unsupported" });
@@ -364,13 +383,17 @@ export function createMachine(o: {
         if (was !== "absent") await lima(["delete", "--force", NAME]);
         set({ kind: "absent" });
       }),
+    /**
+     * At quit: nothing more starts, and a detached script stops the machine after a short grace, so the stop completes
+     * even once Firefox has killed the host. A change in flight (a start) is waited for, then stopped.
+     */
     async close() {
+      closed = true;
       unwatch();
       downloads?.abort();
       if (tooLong || !(await supported())) return;
-      await serial(async () => {
-        if ((await instance()) === "Running") await stopInner();
-      }).catch(() => {});
+      const inFlight = pending > 0 || status.kind === "starting";
+      (o.detach ?? detached)([QUIT_STOP, "ressac-vm-stop", limactl, NAME, String(o.quitGraceS ?? 3), inFlight ? "1" : "0"], { LIMA_HOME: home });
     },
     async usage(): Promise<{ memoryMB: number; diskMB: number } | null> {
       if (tooLong || (await instance().catch(() => "absent")) === "absent") return null;

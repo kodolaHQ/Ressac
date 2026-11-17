@@ -7,7 +7,7 @@ import { execFile, spawn } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { TOOLS_FOLDERS } from "../../src/container/runner.js";
-import { fakeRunner } from "../helpers/fake-runner.js";
+import { fakeRunner, type Response } from "../helpers/fake-runner.js";
 import type { ContainerEngine, WakeReason } from "../../src/container/engine.js";
 
 const ROOT = mkdtempSync(join(tmpdir(), "ressac-workshop-"));
@@ -928,12 +928,29 @@ describe("busy", () => {
 
   test("a session or app process in the workshop is busy; none is idle", async () => {
     for (const [stdout, expected] of [["42\n", true], ["", false]] as const) {
-      const { run, calls } = fakeRunner([[/ exec /, { code: 0, stdout }]]);
+      const { run, calls } = fakeRunner([[/ inspect /, { code: 0, stdout: "true\n" }], [/ exec /, { code: 0, stdout }]]);
       expect(await new Workshop({ paths, run }).busy(engine(true))).toBe(expected);
-      const script = calls[1]!.args.at(-1)!;
+      const script = calls[2]!.args.at(-1)!;
       expect(script).toContain("RESSAC_SESSION=.*");
       expect(script).toContain("RESSAC_APP=.*");
     }
+  });
+
+  test("the scan's own exit code does not hide a PID it printed", async () => {
+    // A `for` loop exits with its last iteration's status: the script must still say busy.
+    const sh = (script: string) => new Promise<Response>((ok) => execFile("sh", ["-c", script], (e, stdout) => ok({ code: e ? 1 : 0, stdout })));
+    const { run, calls } = fakeRunner([[/ inspect /, { code: 0, stdout: "true\n" }], [/ exec /, () => sh("echo 42; false")]]);
+    expect(await new Workshop({ paths, run }).busy(engine(true))).toBe(true);
+    // The real script ends with a success, whatever its last grep did.
+    const real = await sh(calls[2]!.args.at(-1)!);
+    expect(real.code).toBe(0);
+  });
+
+  test("a stopped workshop is idle; an exec that fails on a running one is busy", async () => {
+    expect(await new Workshop({ paths, run: fakeRunner([[/ inspect /, { code: 0, stdout: "false\n" }]]).run }).busy(engine(true))).toBe(false);
+    expect(await new Workshop({ paths, run: fakeRunner([[/ inspect /, { code: 1, stderr: "No such container" }]]).run }).busy(engine(true))).toBe(false);
+    expect(await new Workshop({ paths, run: fakeRunner([[/ inspect /, { code: 0, stdout: "true\n" }], [/ exec /, { code: 126, stderr: "boom" }]]).run }).busy(engine(true))).toBe(true);
+    expect(await new Workshop({ paths, run: fakeRunner([[/ inspect /, { code: 124, stderr: "timeout" }]]).run }).busy(engine(true))).toBe(true);
   });
 
   test("an engine that is down is idle and never woken", async () => {

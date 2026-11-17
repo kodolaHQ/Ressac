@@ -401,6 +401,8 @@ const stop = () =>
   (stopping ??= (async () => {
     // First: nothing else needs them, and a slow stop below must not leave them running when Firefox kills the host.
     void ai.stopServers().catch(() => {});
+    // Detached, after a short grace for the sessions and apps in it: the machine's stop outlives Firefox's kill.
+    void machine.close().catch((e) => console.error("[ressac] the machine did not stop:", e));
     // Started first (spike S8) but not awaited before the others: a slow docker must not eat the 5 s quit delay
     // before the history is closed. Settled alone:
     // its failure never skips the stops below. RESSAC_TEST_APPS_STOP_FAILS: tests only.
@@ -420,8 +422,6 @@ const stop = () =>
     clearInterval(purge);
     hist?.close();
     await appsStopped;
-    // Last, once the sessions and apps in it have stopped: the history is closed already, Firefox's kill bounds it.
-    await machine.close().catch((e) => console.error("[ressac] the machine did not stop:", e));
   })());
 
 // The settings handlers that reach Docker (the workshop, the agents' accounts) or Ollama.
