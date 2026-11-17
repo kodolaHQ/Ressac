@@ -425,16 +425,22 @@ describe("the workshop machine", () => {
     expect(w.s.starts).toBe(1);
   });
 
-  it("usage: memory of the processes holding the disk, real disk of the instance; null when absent", async () => {
+  it("usage: footprint (Activity Monitor's figure, not the RSS that counts the VM's memory twice) of the processes holding the disk, real disk of the instance; null when absent", async () => {
     const w = world({ instance: { status: "Running" } });
+    let asked: string[] = [];
     const run: Runner = async (cmd, args, opts) => {
       if (cmd === "du") return { code: 0, stdout: `1843200\t${w.dir}\n`, stderr: "" };
       if (cmd === "lsof") return { code: 0, stdout: "11\n22\n", stderr: "" };
-      if (cmd === "ps") return { code: 0, stdout: " 614400\n 10240\n", stderr: "" };
+      if (cmd === "footprint") {
+        asked = args;
+        const stdout = "com.apple.Virtualization.VirtualMachine [11]: 64-bit    Footprint: 2.5 GB (16384 bytes per page)\nlimactl [22]: 64-bit    Footprint: 115 MB (16384 bytes per page)\nSummary Footprint: 2675 MB\n";
+        return { code: 0, stdout, stderr: "" };
+      }
       return w.run(cmd, args, opts);
     };
     const m = machine(w, { run });
-    expect(await m.usage()).toEqual({ memoryMB: 610, diskMB: 1800 });
+    expect(await m.usage()).toEqual({ memoryMB: 2675, diskMB: 1800 });
+    expect(asked).toEqual(["11", "22"]);
     expect(await machine(world()).usage()).toBeNull();
   });
 

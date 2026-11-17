@@ -602,9 +602,11 @@ export function createMachine(o: {
       const diskKB = Number((await run("du", ["-sk", dir])).stdout.split(/\s/)[0]) || 0;
       // The vz process that holds the instance's disk open is the machine (plus Lima's own small host agent).
       const pids = (await run("lsof", ["-t", join(dir, "disk")])).stdout.split("\n").filter((p) => /^\d+$/.test(p));
-      const rss = pids.length ? (await run("ps", ["-o", "rss=", "-p", pids.join(",")])).stdout : "";
-      const memoryKB = rss.split(/\s+/).reduce((n, v) => n + (Number(v) || 0), 0);
-      return { memoryMB: Math.round(memoryKB / 1024), diskMB: Math.round(diskKB / 1024) };
+      // footprint, as Activity Monitor shows it: the RSS counts the VM's guest memory about twice.
+      const out = pids.length ? (await run("footprint", pids)).stdout : "";
+      const UNIT: Record<string, number> = { B: 1 / 1024 ** 2, KB: 1 / 1024, MB: 1, GB: 1024 };
+      const memoryMB = [...out.matchAll(/\[\d+\]:.*Footprint: ([\d.]+) (B|KB|MB|GB)/g)].reduce((n, m) => n + Number(m[1]) * UNIT[m[2]!]!, 0);
+      return { memoryMB: Math.round(memoryMB), diskMB: Math.round(diskKB / 1024) };
     },
   } satisfies ContainerEngine & Record<string, unknown>;
 }
