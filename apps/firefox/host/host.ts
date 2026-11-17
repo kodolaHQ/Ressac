@@ -21,10 +21,10 @@ process.env.RESSAC_CONTAINER_PORTS ||= "5300-5319";
 
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");
-const { appendFileSync } = await import("node:fs");
+const { appendFileSync, readFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE } = await import("../../../packages/kernel/src/index.ts");
+const { ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -37,6 +37,8 @@ const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./de
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createWriterChoice } = await import("./writer.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
+const { MACHINE_HOME, createMachine, vmImage } = await import("./machine.ts");
+const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
@@ -134,7 +136,53 @@ const idRecap = (v: unknown): v is string => typeof v === "string" && ID_RECAP.t
 let agentDomains: string[] = [];
 // An apply while the kernel is down leaves the MCP port closed on purpose: openAgentSession applies again before any session.
 // Without `network` the kernel applies no firewall: it must stay passed. The MCP port is known once the kernel is up, read at each apply.
-const workshop = new Workshop({ paths: paths, locale: () => hostLocale(), network: () => ({ ports: [kernel?.mcpPort, relay.port].filter((p): p is number => typeof p === "number"), domains: agentDomains }) });
+// The workshop's engines: Ressac's machine, Docker while the machine is not ready (or for good where it cannot run).
+const runTool = createRunner(() => hostLocale());
+const dockerContainers = dockerEngine({ run: runTool });
+// The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
+// RESSAC_TEST_DOCKER_KIND (e2e): a fixed status and a start that touches nothing.
+const fakeDocker = process.env.RESSAC_TEST_DOCKER_KIND;
+const docker = fakeDocker
+  ? { status: async () => ({ kind: fakeDocker, app: "OrbStack" }) as DockerStatus, start: async () => {} }
+  : createDockerRuntime({ running: () => dockerContainers.up(), managed: process.platform === "darwin" && !process.env.RESSAC_TEST_NO_SYSTEM });
+// Packaged: ressac-host/vm (Lima's bin/ and share/, podman, lima.yaml); dev: what scripts/vm-tools.sh caches.
+const vmTools = (() => {
+  const shipped = process.env.RESSAC_KERNEL_RESOURCES;
+  if (shipped) {
+    const vm = join(shipped, "..", "vm");
+    return { limactl: join(vm, "bin", "limactl"), podman: join(vm, "podman"), template: join(vm, "lima.yaml") };
+  }
+  const app = join(import.meta.dirname, "..");
+  const pins = readFileSync(join(app, "scripts", "vm-tools.sh"), "utf8");
+  const version = (tool: string) => new RegExp(`^${tool}_version=(\\S+)`, "m").exec(pins)?.[1];
+  const cache = join(app, "dist", "cache", "vm-tools");
+  return { limactl: join(cache, `lima-${version("lima")}`, "bin", "limactl"), podman: join(cache, `podman-${version("podman")}`, "podman"), template: join(app, "scripts", "vm", "lima.yaml") };
+})();
+// Tests never touch a real machine. RESSAC_TEST_MACHINE: a fake machine for the e2e (its states come with the Settings).
+const noMachine = !!(process.env.RESSAC_TEST_NO_SYSTEM || process.env.RESSAC_TEST_MACHINE);
+const machine: ReturnType<typeof createMachine> = createMachine({
+  ...vmTools,
+  // The kernel's own engine folder (kernel.ts: no `resources` is passed to it).
+  engine: join(DEFAULT_DOCKER_FOLDER, "engine"),
+  ressacRoot: root,
+  run: runTool,
+  busy: () => workshop.busy(machine),
+  image: vmImage(),
+  ...(noMachine ? { supported: async () => false } : {}),
+});
+const engines = createEngines({
+  machine,
+  // Docker starts its app for the user, never for a background harvest.
+  docker: { ...dockerContainers, start: () => docker.start(), wake: (reason) => (reason === "user" ? docker.start() : Promise.resolve()) },
+  workshopIdle: async () => !(await workshop.busy(dockerContainers)),
+  stopDocker: async () => {
+    const r = await runTool(dockerContainers.binary()!, ["stop", "-t", "10", containerName()], { delayMs: 60_000 });
+    if (r.code !== 0 && !/no such container/i.test(r.stderr)) throw new Error(`docker stop: ${r.stderr.trim()}`);
+  },
+  copyLogins: () => copyLogins({ docker: dockerContainers.binary()!, podman: machine.binary(), podmanArgs: machine.args() }),
+  marker: join(MACHINE_HOME, "logins-copied"),
+});
+const workshop = new Workshop({ paths: paths, locale: () => hostLocale(), engine: () => engines.current(), network: () => ({ ports: [kernel?.mcpPort, relay.port].filter((p): p is number => typeof p === "number"), domains: agentDomains }) });
 
 let kernel: Kernel | null = null;
 let error: string | null = null;
@@ -198,23 +246,25 @@ const startIndexer = () => {
   if (aiOn && ai.embed.installed()) indexer?.start();
 };
 
-// The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
-// RESSAC_TEST_DOCKER_KIND (e2e): a fixed status and a start that touches nothing.
-const fakeDocker = process.env.RESSAC_TEST_DOCKER_KIND;
-const docker = fakeDocker
-  ? { status: async () => ({ kind: fakeDocker, app: "OrbStack" }) as DockerStatus, start: async () => {} }
-  : createDockerRuntime({ running: async () => (await workshop.state()) !== "docker-absent", managed: process.platform === "darwin" && !process.env.RESSAC_TEST_NO_SYSTEM });
 // AI on (settings.aiEnabled, told by the chrome's `start` and `ai.enabled`): off, nothing below touches Docker or the local models.
 let aiOn = false;
 let aiWoken = false;
-// Once per off → on: an installed container app that is not running is started, and left running at quit (nothing of
-// it is downloaded without a click); Ollama, the agents' optional engine, is the user's to start. The decision model, needed by the agent's watch, then the search
+// Once per off → on: the machine is installed (downloaded once) and the logins move over from Docker; where it cannot
+// run, an installed container app that is not running is started, and left running at quit (nothing of it is downloaded
+// without a click); Ollama, the agents' optional engine, is the user's to start. The decision model, needed by the agent's watch, then the search
 // model (⌘T), both small, are downloaded at once when missing; a failure shows in Réglages and is retried at the next launch.
 const wakeAi = () => {
   if (aiWoken) return;
   aiWoken = true;
   void ai.check().then((v) => aiOn && settings.downloadModels([!v.decision && DECISION_MODEL, !v.embed && SEARCH_MODEL].filter((n) => n !== false)), () => {});
-  void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
+  void machine.install().then(
+    () => engines.settle().catch((e) => console.error("[ressac] the logins did not move to the machine:", e)),
+    (e) => {
+      console.error("[ressac] the machine is not ready:", e);
+      if (engines.current().kind === "docker")
+        void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
+    },
+  );
 };
 /** Wraps a handler that reaches Docker or Ollama: refused while AI is off, whatever the UI shows. */
 const aiOnly =
@@ -370,6 +420,8 @@ const stop = () =>
     clearInterval(purge);
     hist?.close();
     await appsStopped;
+    // Last, once the sessions and apps in it have stopped: the history is closed already, Firefox's kill bounds it.
+    await machine.close().catch((e) => console.error("[ressac] the machine did not stop:", e));
   })());
 
 // The settings handlers that reach Docker (the workshop, the agents' accounts) or Ollama.
@@ -428,8 +480,8 @@ const sessions = new SessionsAgent({
     if (!n) throw new Error(error ?? hostSay("host-kernel-not-started"));
     // AI turned off while waiting: no further docker command.
     if (!aiOn) throw new Error("ai-off");
-    // A container app Ressac is starting (or can start): the panel stays on « Préparation » until Docker answers.
-    await docker.start().catch(() => {});
+    // The machine or a container app Ressac is starting (or can start): the panel stays on « Préparation » until it answers.
+    await engines.current().wake("user").catch(() => {});
     if (!aiOn) throw new Error("ai-off");
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, mode: agentMode, onBuildProgress });
     const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token

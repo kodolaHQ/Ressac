@@ -607,6 +607,20 @@ export class Workshop {
     if (this.docker) await this.launch(["exec", containerName(), "sh", "-c", escalate(marks(`${VARIABLE_APPLICATION}=.*`)).join("\n")], PROBE_DELAY_MS);
   }
 
+  /**
+   * True while a harvest or action container runs, or a session or app process lives in the workshop. Never wakes the
+   * engine (a down one is idle). `e`: the engine to look at, the current one by default.
+   */
+  async busy(e: ContainerEngine = this.engine()): Promise<boolean> {
+    const binary = e.binary();
+    if (!binary || !(await e.up())) return false;
+    const run = (args: string[]) => this.run(binary, [...e.args(), ...args], { delayMs: PROBE_DELAY_MS });
+    const ps = await run(["ps", "-q", "--filter", "name=ressac-harvest-", "--filter", "name=ressac-action-"]);
+    if (ps.code !== 0 || ps.stdout.trim()) return true; // a doubt stops nothing
+    const found = await run(["exec", containerName(), "sh", "-c", `${marks(`${VARIABLE_SESSION}=.*`)}; ${marks(`${VARIABLE_APPLICATION}=.*`)}`]);
+    return found.code === 0 && found.stdout.trim() !== "";
+  }
+
   /** `passEnv`: names only (`-e NAME`), the value comes from the caller's environment, so a token never shows in the arguments. */
   execCommand(argv: string[], o: { interactive: boolean; env?: Record<string, string>; passEnv?: string[]; folder?: string }): string[] {
     const e = this.engine();

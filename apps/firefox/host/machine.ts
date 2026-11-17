@@ -17,12 +17,26 @@ export const VM_IMAGE = {
   bytes: 526076788,
 };
 
+/**
+ * VM_IMAGE, or another image (a local build, a trial) named by RESSAC_VM_IMAGE_URL (file:// allowed) and
+ * RESSAC_VM_IMAGE_SHA256. Its version comes from RESSAC_VM_IMAGE_VERSION, else its `ressac-vm-<version>.raw.zst` name;
+ * RESSAC_VM_IMAGE_BYTES caps the download (4 GiB by default).
+ */
+export function vmImage(env: NodeJS.ProcessEnv = process.env): typeof VM_IMAGE {
+  const url = env.RESSAC_VM_IMAGE_URL;
+  const sha256 = env.RESSAC_VM_IMAGE_SHA256;
+  if (!url || !sha256) return VM_IMAGE;
+  const version = env.RESSAC_VM_IMAGE_VERSION || /ressac-vm-([^/]+)\.raw\.zst$/.exec(url)?.[1] || sha256.slice(0, 16);
+  return { version, url, sha256, bytes: Number(env.RESSAC_VM_IMAGE_BYTES) || 4 * 2 ** 30 };
+}
+
 export type MachineStatus =
   | { kind: "unsupported" | "absent" | "stopped" | "starting" | "running" }
   | { kind: "downloading"; percent: number | null }
   | { kind: "error"; message: string };
 
 const NAME = "ressac";
+export const MACHINE_HOME = join(homedir(), ".ressac-vm");
 /** macOS's sun_path is 104 bytes with its final NUL. */
 const SOCKET_MAX = 103;
 /** Lima's vz network: the Mac seen from the guest. */
@@ -38,7 +52,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 export function createMachine(o: {
   home?: string;
-  resources: string;
+  /** Lima's own layout: `<prefix>/bin/limactl` finds its guest agent in `<prefix>/share/lima`. */
+  limactl: string;
+  podman: string;
+  /** scripts/vm/lima.yaml. */
+  template: string;
+  /** The workflow engine folder (the kernel's docker/engine), mounted read-only for the harvests. */
+  engine: string;
   ressacRoot: string;
   run?: Runner;
   busy: () => Promise<boolean>;
@@ -47,15 +67,14 @@ export function createMachine(o: {
   supported?: () => Promise<boolean>;
   image?: { version: string; url: string; sha256: string; bytes: number };
 }) {
-  const home = o.home ?? join(homedir(), ".ressac-vm");
+  const home = o.home ?? MACHINE_HOME;
   const run = o.run ?? createRunner(hostLocale);
   const image = o.image ?? VM_IMAGE;
   const idleMs = o.idleMs ?? 15 * 60_000;
   const pollMs = o.pollMs ?? 60_000;
   const dir = join(home, NAME);
   const socket = join(dir, "sock", "podman.sock");
-  const limactl = join(o.resources, "limactl");
-  const podman = join(o.resources, "podman");
+  const { limactl, podman } = o;
   const tar = join(home, `${VOLUME_HOME}.tar`);
   const raw = join(home, `ressac-vm-${image.version}.raw`);
   const tooLong = Buffer.byteLength(socket) > SOCKET_MAX;
@@ -119,10 +138,10 @@ export function createMachine(o: {
     const values: Record<string, string> = {
       IMAGE: safe(raw),
       RESSAC_ROOT: safe(o.ressacRoot),
-      ENGINE: safe(join(o.resources, "docker", "engine")),
+      ENGINE: safe(o.engine),
       CPUS: String(Math.max(1, Math.floor(cpus().length / 2))),
     };
-    return (await readFile(join(o.resources, "lima.yaml"), "utf8")).replace(/\{\{(IMAGE|RESSAC_ROOT|ENGINE|CPUS)\}\}/g, (_, k: string) => values[k]!);
+    return (await readFile(o.template, "utf8")).replace(/\{\{(IMAGE|RESSAC_ROOT|ENGINE|CPUS)\}\}/g, (_, k: string) => values[k]!);
   }
 
   let downloads: AbortController | undefined;

@@ -79,7 +79,7 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
 }
 
 function machine(w: ReturnType<typeof world>, o: Partial<Parameters<typeof createMachine>[0]> = {}) {
-  const m = createMachine({ home: w.home, resources: w.resources, ressacRoot: w.ressacRoot, run: w.run, busy: async () => false, supported: async () => true, pollMs: 5, ...o });
+  const m = createMachine({ home: w.home, limactl: join(w.resources, "bin", "limactl"), podman: join(w.resources, "podman"), template: join(w.resources, "lima.yaml"), engine: join(w.resources, "docker", "engine"), ressacRoot: w.ressacRoot, run: w.run, busy: async () => false, supported: async () => true, pollMs: 5, ...o });
   machines.push(m);
   return m;
 }
@@ -307,5 +307,25 @@ describe("the workshop machine", () => {
     const n = w.s.calls.length;
     await new Promise((r) => setTimeout(r, 30));
     expect(w.s.calls.length).toBe(n);
+  });
+});
+
+describe("vmImage", () => {
+  it("the pinned image unless RESSAC_VM_IMAGE_URL and RESSAC_VM_IMAGE_SHA256 are both set", async () => {
+    const { vmImage } = await import("../host/machine");
+    expect(vmImage({})).toBe(VM_IMAGE);
+    expect(vmImage({ RESSAC_VM_IMAGE_URL: "file:///x.raw.zst" })).toBe(VM_IMAGE);
+    expect(vmImage({ RESSAC_VM_IMAGE_URL: "file:///b/ressac-vm-3.24.4-5.8.10-abc.raw.zst", RESSAC_VM_IMAGE_SHA256: "ff" })).toEqual({
+      version: "3.24.4-5.8.10-abc",
+      url: "file:///b/ressac-vm-3.24.4-5.8.10-abc.raw.zst",
+      sha256: "ff",
+      bytes: 4 * 2 ** 30,
+    });
+    expect(vmImage({ RESSAC_VM_IMAGE_URL: "https://h/other.zst", RESSAC_VM_IMAGE_SHA256: "ee", RESSAC_VM_IMAGE_VERSION: "v9", RESSAC_VM_IMAGE_BYTES: "12" })).toEqual({
+      version: "v9",
+      url: "https://h/other.zst",
+      sha256: "ee",
+      bytes: 12,
+    });
   });
 });

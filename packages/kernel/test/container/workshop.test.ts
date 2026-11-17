@@ -916,3 +916,34 @@ describe("container engine", () => {
     expect(parseBuildStep("#5 [2/3] RUN apt-get update", "fr")).toEqual({ step: 2, of: 3, label: "Outils système" });
   });
 });
+
+describe("busy", () => {
+  const engine = (up: boolean): ContainerEngine => ({ kind: "machine", binary: () => "podman", args: () => ["--url", "unix:///s"], hostAddress: () => "192.168.5.2", up: async () => up, wake: async () => {} });
+
+  test("a running harvest or action container is busy", async () => {
+    const { run, calls } = fakeRunner([[/ ps /, { code: 0, stdout: "abc123\n" }]]);
+    expect(await new Workshop({ paths, run }).busy(engine(true))).toBe(true);
+    expect(calls[0]!.args).toEqual(["--url", "unix:///s", "ps", "-q", "--filter", "name=ressac-harvest-", "--filter", "name=ressac-action-"]);
+  });
+
+  test("a session or app process in the workshop is busy; none is idle", async () => {
+    for (const [stdout, expected] of [["42\n", true], ["", false]] as const) {
+      const { run, calls } = fakeRunner([[/ exec /, { code: 0, stdout }]]);
+      expect(await new Workshop({ paths, run }).busy(engine(true))).toBe(expected);
+      const script = calls[1]!.args.at(-1)!;
+      expect(script).toContain("RESSAC_SESSION=.*");
+      expect(script).toContain("RESSAC_APP=.*");
+    }
+  });
+
+  test("an engine that is down is idle and never woken", async () => {
+    const { run, calls } = fakeRunner([]);
+    expect(await new Workshop({ paths, run }).busy(engine(false))).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  test("a failing ps counts as busy: nothing is stopped on a doubt", async () => {
+    const { run } = fakeRunner([[/ ps /, { code: 125, stderr: "boom" }]]);
+    expect(await new Workshop({ paths, run }).busy(engine(true))).toBe(true);
+  });
+});

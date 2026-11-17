@@ -315,7 +315,7 @@ describe("Settings page", () => {
   });
 
   it("default browser: without the test guard, the row shows what macOS says (read only)", async () => {
-    await launch({ RESSAC_TEST_NO_SYSTEM: "" });
+    await launch({ RESSAC_TEST_NO_SYSTEM: "", RESSAC_TEST_MACHINE: "unsupported" }); // never the real machine
     const real = await m.execute<boolean>(`return ChromeUtils.importESModule(arguments[0]).ShellService.isDefaultBrowser(false)`, [SHELL_SERVICE]);
     await openPage();
     await go("privacy");
