@@ -564,14 +564,16 @@ export function createSites(o: {
         const actionError = actionErrors.get(s.id);
         // An id refused by ID_SITE (« MonSite ») can receive no action: the schema would reject them all.
         if ("error" in s)
-          return { id: s.id, name: s.id, description: "", domain: null, icon: favicon, open: opened.has(s.id), error: s.error, ...(ID_SITE.test(s.id) ? {} : { noActions: true as const }), ...(actionError ? { actionError: actionError } : {}) };
+          return { id: s.id, name: s.id, description: "", domain: null, start: null, icon: favicon, open: opened.has(s.id), error: s.error, ...(ID_SITE.test(s.id) ? {} : { noActions: true as const }), ...(actionError ? { actionError: actionError } : {}) };
         const state = ID_SITE.test(s.id) ? await readUrlState(sitesFolder, s.id) : null;
         const declared = s.declaration.icon ? await readIcon(s.folder, s.declaration.icon) : null;
+        const start = startUrl(s.declaration, state);
         return {
           id: s.id,
           name: s.declaration.name,
           description: s.declaration.description,
-          domain: host(startUrl(s.declaration, state)),
+          domain: host(start),
+          start,
           icon: declared ?? favicon,
           open: opened.has(s.id),
           ...(actionError ? { actionError: actionError } : {}),
@@ -613,6 +615,8 @@ export function createSites(o: {
         case "open":
           if (!(await openById(id))) console.warn(`[sites] ${id} cannot open`);
           return;
+        case "close":
+          return o.chrome.close(id);
         case "edit":
           o.prefill(win, editWithAgent(id));
           return;

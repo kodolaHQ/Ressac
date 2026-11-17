@@ -21,7 +21,9 @@
   >
     {#each menu.open.inputs as entry (entry.label)}
       <button
-        role="menuitem"
+        role={entry.checked === undefined ? "menuitem" : "menuitemradio"}
+        aria-checked={entry.checked}
+        disabled={entry.disabled}
         onclick={(e) => {
           e.stopPropagation();
           closeMenu();
@@ -61,4 +63,8 @@
   }
   button:hover { background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); }
   button:active { transform: scale(0.97); }
+  /* A radio item keeps room for its tick, ticked or not, so the labels line up. */
+  [role="menuitemradio"] { padding-left: 25px; width: calc(100% - 34px); position: relative; }
+  [aria-checked="true"]::before { content: "✓"; position: absolute; left: 9px; color: var(--accent); }
+  button:disabled { opacity: 0.45; pointer-events: none; }
 </style>

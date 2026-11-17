@@ -66,7 +66,7 @@ test("projectSiteApp", () => {
 });
 
 test("siteSiteApp", () => {
-  const s: ShownSite = { id: "s", name: "S", description: "", domain: null, icon: "i.png", open: false };
+  const s: ShownSite = { id: "s", name: "S", description: "", domain: null, start: null, icon: "i.png", open: false };
   expect(siteSiteApp(s)).toEqual({ kind: "site", id: "s", name: "S", action: "open", favicon: "i.png" });
 });
 

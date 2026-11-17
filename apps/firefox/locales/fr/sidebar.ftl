@@ -118,6 +118,9 @@ sidebar-badge-app = Appli
 sidebar-badge-history = Historique
 sidebar-badge-bookmark = Favori
 
+sidebar-site-bar = Applis de site
+sidebar-site-to-essentials = Mettre dans les essentiels
+sidebar-site-remove-bar = Retirer de la barre
 sidebar-call-running = Appel en cours : { $title }
 sidebar-call-back = Revenir à l'appel : { $title }
 sidebar-call-mic-off = Couper le micro

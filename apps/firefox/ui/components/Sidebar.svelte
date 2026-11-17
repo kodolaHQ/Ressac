@@ -10,6 +10,7 @@
   import TabList from "./TabList.svelte";
   import { openMenu } from "./menu.svelte";
   import CallBar from "./CallBar.svelte";
+  import SiteBar from "./SiteBar.svelte";
   import UpdateCard from "./UpdateCard.svelte";
   import SpaceSelector from "./SpaceSelector.svelte";
   import { spaceIcon } from "./spaceIcons";
@@ -124,6 +125,7 @@
   </div>
   <UpdateCard />
   <CallBar window={win} />
+  <SiteBar />
   <footer>
     <SpaceSelector window={win} />
     {#snippet tools()}

@@ -42,7 +42,7 @@
       class="cell"
       role="button"
       tabindex="0"
-      data-testid="favorite-{favorite.id}"
+      data-testid={favorite.site ? `essential-site-${favorite.site}` : `favorite-${favorite.id}`}
       class:active={favorite.id === active}
       class:over={favorite.id === over}
       class:unloaded={tabOf(favorite)?.unloaded}
@@ -65,11 +65,17 @@
       }}
       onclick={(e) => e.button === 0 && open(favorite)}
       onkeydown={(e) => (e.key === "Enter" || e.key === " ") && open(favorite)}
-      oncontextmenu={(e) =>
+      oncontextmenu={(e) => {
+        const site = favorite.site;
         openMenu(e, [
+          // A site app's essential: to its window (and the sidebar bar), or out of the essentials.
+          ...(site ? [{ label: t("chrome-ui-open-window"), dispatch: () => (api.dispatch({ type: "placeSite", id: site, placement: "bar" }), api.sites.act(site, "open")) }] : []),
           ...(tabOf(favorite) && !tabOf(favorite)?.unloaded ? [{ label: t("chrome-ui-unload"), dispatch: () => api.dispatch({ type: "unloadEssential", windowId: win.id, favoriteId: favorite.id }) }] : []),
-          { label: t("chrome-ui-remove"), dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) },
-        ])}
+          site
+            ? { label: t("chrome-ui-remove-essentials"), dispatch: () => api.dispatch({ type: "placeSite", id: site, placement: "none" }) }
+            : { label: t("chrome-ui-remove"), dispatch: () => api.dispatch({ type: "removeEssential", favoriteId: favorite.id }) },
+        ]);
+      }}
     >
       <SiteIcon favicon={tabOf(favorite)?.favicon ?? favorite.favicon} title={favorite.title} size={18} />
     </div>

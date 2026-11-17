@@ -109,6 +109,6 @@ export const tweakSource = (id: string, file: string) => `ressac-tweak://${id}/$
  */
 export type FrameInjection = { css: string[]; js: { code: string; name: string }[]; guard: string | null; hosts: string[]; bridge: boolean; resume: boolean };
 
-export type ShownSite = { id: string; name: string; description: string; domain: string | null; icon: string | null; open: boolean; error?: string; actionError?: string; noActions?: true };
+export type ShownSite = { id: string; name: string; description: string; domain: string | null; /** The start address, null on an invalid declaration. */ start: string | null; icon: string | null; open: boolean; error?: string; actionError?: string; noActions?: true };
 
-export type ActionSite = "open" | "edit" | "forget" | "folder" | "delete" | "review";
+export type ActionSite = "open" | "close" | "edit" | "forget" | "folder" | "delete" | "review";

@@ -2,6 +2,9 @@
 export interface MenuEntry {
   label: string;
   dispatch: () => void;
+  /** A choice among several (a radio item): ticked when it is the current one. */
+  checked?: boolean;
+  disabled?: boolean;
 }
 
 export const menu = $state<{ open: { x: number; y: number; inputs: MenuEntry[]; free: boolean } | null }>({ open: null });
