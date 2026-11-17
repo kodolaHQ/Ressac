@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -294,6 +294,65 @@ describe("the workshop machine", () => {
     expect(existsSync(tar)).toBe(false);
   });
 
+  it("a stale machine (Running, Podman gone after a Mac sleep) is force-stopped and started again", async () => {
+    const w = world({ instance: { status: "Running" } });
+    let stale = true;
+    const run: Runner = async (cmd, args, o) => {
+      if (cmd.endsWith("podman") && args.includes("info") && stale) return { code: 125, stdout: "", stderr: "connection refused" };
+      if (args.join(" ") === "stop --force ressac") stale = false;
+      return w.run(cmd, args, o);
+    };
+    const m = machine(w, { run, idleMs: 60_000 });
+    await vi.waitFor(() => expect(m.status().kind).toBe("running"));
+    await m.wake("user");
+    const l = limactl(w);
+    expect(l.indexOf("stop --force ressac")).toBeGreaterThan(-1);
+    expect(l.indexOf("stop --force ressac")).toBeLessThan(l.findIndex((x) => x.startsWith("start")));
+    expect(w.s.starts).toBe(1);
+    expect(m.status().kind).toBe("running");
+    // A healthy running machine is not restarted.
+    await m.wake("user");
+    expect(w.s.starts).toBe(1);
+  });
+
+  it("a Stopped instance that cannot boot: remove fails but offers the forced removal", async () => {
+    const w = world({ instance: { status: "Stopped" }, volume: true });
+    const run: Runner = (cmd, args, o) => (args[0] === "start" ? Promise.resolve({ code: 1, stdout: "", stderr: "vz: boom" }) : w.run(cmd, args, o));
+    const m = machine(w, { run });
+    await expect(m.remove()).rejects.toThrow();
+    expect(m.status()).toMatchObject({ kind: "error", forceRemovable: true });
+    expect(limactl(w).some((l) => l.startsWith("delete"))).toBe(false);
+  });
+
+  it("the machine folder is the user's alone, and so is the exported logins tar", async () => {
+    const w = world({ instance: { status: "Stopped" }, volume: true });
+    mkdirSync(w.home, { recursive: true, mode: 0o755 });
+    chmodSync(w.home, 0o755);
+    const m = machine(w);
+    await m.remove();
+    expect(statSync(w.home).mode & 0o777).toBe(0o700);
+    expect(statSync(join(w.home, "webaios-home.tar")).mode & 0o777).toBe(0o600);
+  });
+
+  it("a harvest that woke the machine just before a poll gets one poll of grace", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    let polls = 0;
+    const m = machine(w, { pollMs: 100, busy: async () => (polls++, false) });
+    await m.wake("harvest");
+    await m.wake("harvest"); // a second harvest, its podman run not started yet
+    await vi.waitFor(() => expect(polls).toBe(1));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(stops(w)).toBe(0);
+    await vi.waitFor(() => expect(stops(w)).toBe(1));
+  });
+
+  it("a failed removal leaves the machine running under the idle rule", async () => {
+    const w = world({ instance: { status: "Stopped" }, volumeExistsCode: 125 });
+    const m = machine(w, { idleMs: 10 });
+    await expect(m.remove()).rejects.toThrow();
+    await vi.waitFor(() => expect(stops(w)).toBe(1));
+  });
+
   it("two wakes at once start once", async () => {
     const w = world({ instance: { status: "Stopped" } });
     const m = machine(w);
@@ -385,6 +444,8 @@ describe("vmImage", () => {
     const { vmImage } = await import("../host/machine");
     expect(vmImage({})).toBe(VM_IMAGE);
     expect(vmImage({ RESSAC_VM_IMAGE_URL: "file:///x.raw.zst" })).toBe(VM_IMAGE);
+    // The packaged app (its host runs with RESSAC_KERNEL_RESOURCES) only ever takes the pinned image.
+    expect(vmImage({ RESSAC_KERNEL_RESOURCES: "/App/k", RESSAC_VM_IMAGE_URL: "file:///x.raw.zst", RESSAC_VM_IMAGE_SHA256: "ff" })).toBe(VM_IMAGE);
     expect(vmImage({ RESSAC_VM_IMAGE_URL: "file:///b/ressac-vm-3.24.4-5.8.10-abc.raw.zst", RESSAC_VM_IMAGE_SHA256: "ff" })).toEqual({
       version: "3.24.4-5.8.10-abc",
       url: "file:///b/ressac-vm-3.24.4-5.8.10-abc.raw.zst",

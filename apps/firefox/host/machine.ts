@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
-import { appendFile, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { cpus, homedir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -22,12 +22,13 @@ export const VM_IMAGE = {
 /**
  * VM_IMAGE, or another image (a local build, a trial) named by RESSAC_VM_IMAGE_URL (file:// allowed) and
  * RESSAC_VM_IMAGE_SHA256. Its version comes from RESSAC_VM_IMAGE_VERSION, else its `ressac-vm-<version>.raw.zst` name;
- * RESSAC_VM_IMAGE_BYTES caps the download (4 GiB by default).
+ * RESSAC_VM_IMAGE_BYTES caps the download (4 GiB by default). Dev only: the packaged host (RESSAC_KERNEL_RESOURCES set)
+ * always takes VM_IMAGE.
  */
 export function vmImage(env: NodeJS.ProcessEnv = process.env): typeof VM_IMAGE {
   const url = env.RESSAC_VM_IMAGE_URL;
   const sha256 = env.RESSAC_VM_IMAGE_SHA256;
-  if (!url || !sha256) return VM_IMAGE;
+  if (!url || !sha256 || env.RESSAC_KERNEL_RESOURCES) return VM_IMAGE;
   const version = env.RESSAC_VM_IMAGE_VERSION || /ressac-vm-([^/]+)\.raw\.zst$/.exec(url)?.[1] || sha256.slice(0, 16);
   return { version, url, sha256, bytes: Number(env.RESSAC_VM_IMAGE_BYTES) || 4 * 2 ** 30 };
 }
@@ -129,8 +130,13 @@ export function createMachine(o: {
   let closed = false;
   const token = randomUUID();
   /** This launch now owns the machine: an older launch's quit stop leaves it alone. */
+  /** The folder holds the exported logins (OAuth credentials): the user's alone, an older 0755 one included. */
+  const ownHome = async () => {
+    await mkdir(home, { recursive: true, mode: 0o700 });
+    await chmod(home, 0o700);
+  };
   const claim = async () => {
-    await mkdir(home, { recursive: true });
+    await ownHome();
     await writeFile(join(home, "launch"), token);
   };
   let claimed: Promise<void> | undefined;
@@ -183,7 +189,7 @@ export function createMachine(o: {
   /** The decompressed image at `raw`: downloaded (or read from a file:// URL) and checked against its SHA-256. */
   async function fetchImage(): Promise<void> {
     if (existsSync(raw)) return;
-    await mkdir(home, { recursive: true });
+    await ownHome();
     const local = image.url.startsWith("file:");
     const zst = local ? fileURLToPath(image.url) : `${raw}.zst`;
     try {
@@ -272,6 +278,8 @@ export function createMachine(o: {
   let mode: WakeReason = "user";
   let idle = 0;
   let wakes = 0;
+  /** `wakes` at the previous poll. */
+  let polled = 0;
   let polling = false;
   function watch(reason: WakeReason): void {
     if (!timer || reason === "user") mode = reason; // a harvest on a machine running for the user keeps the idle rule
@@ -285,8 +293,11 @@ export function createMachine(o: {
     polling = true;
     try {
       const seen = wakes;
+      // A harvest that woke the machine since the previous poll may not have started its container yet: one poll of grace.
+      const quiet = seen === polled;
+      polled = seen;
       if (await o.busy()) idle = 0;
-      else if (mode === "harvest" || (idle += pollMs) >= idleMs)
+      else if (mode === "harvest" ? quiet : (idle += pollMs) >= idleMs)
         await serial(async () => {
           if (wakes === seen && timer) await stopInner(); // a wake since the busy check wins
         });
@@ -365,7 +376,15 @@ export function createMachine(o: {
         await usable();
         const was = await instance();
         if (was === "absent" || was === "empty" || was === "damaged") return installInner(reason);
-        if (was === "Stopped" || status.kind !== "running") await start(was === "Running");
+        if (was === "Running" && status.kind === "running") {
+          // Running for Lima but Podman gone (a stale machine after the Mac slept): restarted. Asked twice, so one
+          // hiccup never cuts the sessions running in it.
+          const answers = async () => (await pod(["info"], 10_000)).code === 0;
+          if (!(await answers()) && !(await sleep(1000).then(answers))) {
+            await lima(["stop", "--force", NAME]);
+            await start(false);
+          }
+        } else await start(was === "Running");
         watch(reason);
         set({ kind: "running" });
       }),
@@ -386,19 +405,27 @@ export function createMachine(o: {
         if (tooLong) return;
         unwatch();
         const was = await instance();
-        if (!r.force && was !== "absent" && was !== "empty" && !existsSync(tar)) {
-          // A damaged instance that cannot start stays damaged: only the forced removal is left.
-          await start(was === "Running").catch((e) => {
-            throw was === "damaged" ? damaged() : e;
-          });
-          const exists = await pod(["volume", "exists", VOLUME_HOME]);
-          // 1 is "no such volume"; any other failure (125, timeout) must not pass for it.
-          if (exists.code !== 0 && exists.code !== 1) throw forceable(hostSay("host-machine-export-failed", { detail: detail(exists) }));
-          if (exists.code === 0) {
-            const e = await pod(["volume", "export", VOLUME_HOME, "--output", `${tar}.part`], 10 * 60_000);
-            if (e.code !== 0) throw forceable(hostSay("host-machine-export-failed", { detail: detail(e) }));
-            await rename(`${tar}.part`, tar);
+        try {
+          if (!r.force && was !== "absent" && was !== "empty" && !existsSync(tar)) {
+            // An instance that cannot start leaves only the forced removal.
+            await start(was === "Running").catch((e) => {
+              throw was === "damaged" ? damaged() : forceable((e as Error).message);
+            });
+            const exists = await pod(["volume", "exists", VOLUME_HOME]);
+            // 1 is "no such volume"; any other failure (125, timeout) must not pass for it.
+            if (exists.code !== 0 && exists.code !== 1) throw forceable(hostSay("host-machine-export-failed", { detail: detail(exists) }));
+            if (exists.code === 0) {
+              await ownHome();
+              const e = await pod(["volume", "export", VOLUME_HOME, "--output", `${tar}.part`], 10 * 60_000);
+              if (e.code !== 0) throw forceable(hostSay("host-machine-export-failed", { detail: detail(e) }));
+              await chmod(`${tar}.part`, 0o600); // Podman writes it 0644: it holds the logins
+              await rename(`${tar}.part`, tar);
+            }
           }
+        } catch (e) {
+          // Kept, maybe running: the idle rule stops it again.
+          if ((await instance().catch(() => null)) === "Running") watch("user");
+          throw e;
         }
         if (was !== "absent") await lima(["delete", "--force", NAME]);
         set({ kind: "absent" });
