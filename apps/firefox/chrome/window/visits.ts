@@ -8,7 +8,7 @@ const { LOCATION_CHANGE_ERROR_PAGE, LOCATION_CHANGE_SAME_DOCUMENT, STATE_START, 
 const CAPTURE_DELAY_MS = 1500;
 /** A page's own URL changes (pushState, #) are noted at most this often per tab, then its latest one. */
 const SAME_DOCUMENT_GAP_MS = 3000;
-/** After a page's own URL change, its text is read at most this often per tab, then the latest URL's: a pushState loop would keep a page per change. */
+/** After its own URL change, a page the user is not looking at has its text read at most this often, then the latest URL's: a pushState loop in a forgotten tab would keep a page per change. */
 const SAME_DOCUMENT_TEXT_GAP_MS = 30_000;
 
 type Context = { spaceId: string; private: boolean } | null;
@@ -118,8 +118,10 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
     onLocationChange: (browser: any, progress: any, _request: unknown, location: any, flags: number) => {
       if (progress.isTopLevel) {
         if (flags & LOCATION_CHANGE_ERROR_PAGE) skipped.add(browser);
+        // The tab in front of the user keeps every page they browse; a tab left behind is held to the gap.
+        const watched = browser === gBrowser.selectedBrowser && window.document.hasFocus();
         if (flags & LOCATION_CHANGE_SAME_DOCUMENT)
-          plan(browser, Math.max(CAPTURE_DELAY_MS, (readAt.get(browser) ?? -Infinity) + SAME_DOCUMENT_TEXT_GAP_MS - Date.now()));
+          plan(browser, watched ? CAPTURE_DELAY_MS : Math.max(CAPTURE_DELAY_MS, (readAt.get(browser) ?? -Infinity) + SAME_DOCUMENT_TEXT_GAP_MS - Date.now()));
         else cancel(browser);
       }
       if (!progress.isTopLevel || flags & LOCATION_CHANGE_ERROR_PAGE) return;
