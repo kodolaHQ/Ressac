@@ -9,6 +9,7 @@ workshop image (`packages/kernel/docker/workshop.Dockerfile`) already loaded, so
 | `build-image.sh` | Builds `dist/vm/ressac-vm-<VM_VERSION>.raw.zst`, `packages.txt`, `sources.tar`. |
 | `guest-setup.sh` | Runs as root in the throwaway bake machine (`setup`, then `seal`). |
 | `publish-image.sh` | Uploads the three files to R2 under `vm/`. |
+| `security-check.sh` | Proves the workshop's protections on a throwaway machine (see below). |
 | `../vm-tools.sh` | Pinned Lima and Podman remote client for the Mac (SHA-256 checked, cached in `dist/cache/vm-tools/`). |
 
 ## Build
@@ -68,3 +69,34 @@ The Podman service runs `system service --time 0` (Alpine's default `podman_opts
 
 The image is not reproducible byte for byte (`apk upgrade`, apt in the Dockerfile, file times): each build gives a new
 SHA-256, pin the one actually published.
+
+## Security check
+
+```sh
+apps/firefox/scripts/vm/security-check.sh    # ~3 min; the Mac's 127.0.0.1:5300-5319 must be free (stop a Docker workshop first)
+```
+
+It starts the machine from `dist/vm/ressac-vm-*.raw.zst` (or `RESSAC_VM_IMAGE_URL` + `RESSAC_VM_IMAGE_SHA256`) through
+`createMachine` in a throwaway `LIMA_HOME` and `RESSAC_ROOT` under `/private/tmp/rsc.*`, deleted at the end even on
+failure; it never touches `~/.ressac-vm`, `~/.lima`, `~/Ressac` or Docker. `security-check.ts` then runs the kernel's
+`workshop` and `session` integration tests on the machine (`RESSAC_REAL_ENGINE=machine`), starts the kernel's `Workshop`
+on it with the allowlist rules, and prints one PASS/FAIL line per check: mounts (Ressac root and engine folder only, no
+`/Users` in the workshop), `.ressac` read-only, web only through the proxy (example.com refused, api.anthropic.com
+reached), the Mac's localhost only on the relay port, harvests with no network and a read-only root, the 2.5g and 1024
+pids caps (3 GB allocation killed, a 1500-process fork bomb stopped), a real `npm install`, the forward of
+127.0.0.1:5300 and none outside the range, and the idle stop. Exits 1 on any FAIL.
+
+Measured 2026-11-17 (M5 Pro, macOS 27, Lima 2.3.0, image `3.24.4-5.8.10-20062535e787`, 3 GiB, 9 CPUs). Memory: the
+process holding the instance's disk (the vz machine), RSS as `usage()` reports it, and `footprint`:
+
+| | RSS | footprint |
+| --- | --- | --- |
+| after boot, nothing running | 807 MB | 589 MB |
+| workshop started, rules applied | 1,336 MB | 872 MB |
+| after `npm install` (react, react-dom, vite, @vitejs/plugin-react, typescript, eslint, typescript-eslint, vitest: 201 packages, 9 s) | 2,608 MB | 1,845 MB |
+| after the idle stop | 0 (no process) | 0 |
+
+The machine never gives memory back while it runs (no balloon): what a build touched stays held until the idle stop.
+
+Cold start (machine stopped) → `Workshop.ensureStarted()` + `exec true` answers (rules applied again): 6.1 s, 6.3 s,
+6.1 s. First start from the image (create + boot + Podman answers): 10.9 s.

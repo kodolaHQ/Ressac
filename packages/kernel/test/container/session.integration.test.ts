@@ -1,17 +1,20 @@
 import { execFileSync } from "node:child_process";
 import { expect, test } from "vitest";
 import { spacePaths } from "../../src/paths.js";
-import { Workshop } from "../../src/container/workshop.js";
+import { Workshop, containerName } from "../../src/container/workshop.js";
 import { SessionAgent } from "../../src/pty/session.js";
+import { engineCli, realEngine } from "../helpers/real-engine.js";
 
-// Launched by hand: SESSION_INTEGRATION=1, with the workshop already started (it only launches a sleep there, which it stops).
+// Launched by hand: SESSION_INTEGRATION=1 (RESSAC_REAL_ENGINE=machine for the machine), with the workshop already started (it only launches a sleep there, which it stops).
 // The container's sh is dash: this is where a stop script that the Mac's sh would accept alone shows up.
 const active = process.env.SESSION_INTEGRATION === "1";
+const engine = active ? realEngine() : null;
+// The image has no ps: the command lines are read from /proc.
 const inWorkshop = (pattern: string) =>
-  execFileSync("docker", ["exec", "ressac-workshop", "sh", "-c", `ps -eo args | grep '[${pattern[0]}]${pattern.slice(1)}' || true`]).toString().trim();
+  execFileSync(...engineCli(engine!, ["exec", containerName(), "sh", "-c", `for c in /proc/[0-9]*/cmdline; do tr '\\0' ' ' < $c 2>/dev/null; echo; done | grep '[${pattern[0]}]${pattern.slice(1)}' || true`])).toString().trim();
 
 test.skipIf(!active)("stopping a session kills in the container an agent deaf to HUP and TERM, and what it launched", async () => {
-  const a = new Workshop({ paths: spacePaths() });
+  const a = new Workshop({ paths: spacePaths(), engine: () => engine! });
   expect(await a.state()).toBe("demarre");
   const s = SessionAgent.start(a.sessionCommand("integration1", ["sh", "-c", "trap '' HUP TERM; sleep 302 & wait"]), {
     cols: 80, rows: 24, stopRemote: () => a.stopSession("integration1"),
@@ -23,7 +26,7 @@ test.skipIf(!active)("stopping a session kills in the container an agent deaf to
 }, 30_000);
 
 test.skipIf(!active)("stopping a session also kills the servers the agent detached from its group (nohup, setsid)", async () => {
-  const a = new Workshop({ paths: spacePaths() });
+  const a = new Workshop({ paths: spacePaths(), engine: () => engine! });
   expect(await a.state()).toBe("demarre");
   const s = SessionAgent.start(a.sessionCommand("integration2", ["sh", "-c", "setsid nohup sleep 303 >/dev/null 2>&1 & sleep 304"]), {
     cols: 80, rows: 24, stopRemote: () => a.stopSession("integration2"),
@@ -35,7 +38,7 @@ test.skipIf(!active)("stopping a session also kills the servers the agent detach
 }, 30_000);
 
 test.skipIf(!active)("at launch, the sessions left by an abruptly killed app (without a stop) are stopped", async () => {
-  const a = new Workshop({ paths: spacePaths() });
+  const a = new Workshop({ paths: spacePaths(), engine: () => engine! });
   // Without arreterDistant: like an app that dies, only the local docker client disappears.
   const s = SessionAgent.start(a.sessionCommand("integration3", ["sh", "-c", "trap '' HUP TERM; setsid nohup sleep 305 >/dev/null 2>&1 & sleep 306"]), { cols: 80, rows: 24 });
   await expect.poll(() => inWorkshop("sleep 305"), { timeout: 10_000 }).not.toBe("");
