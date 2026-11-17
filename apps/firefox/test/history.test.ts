@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { History, ICON_MAX, IMPORTED_SPACE } from "../core/history";
+import { History, ICON_MAX, IMPORTED_SPACE, REFUSED_VECTOR } from "../core/history";
 
 let h: History;
 let path: string;
@@ -622,6 +622,19 @@ describe("page vectors", () => {
       expect(urls({ since: d(4), until: d(5) })).toEqual(["https://www.youtube.com/w"]);
       expect(urls({ sites: ["youtube.com"] })).toEqual(["https://www.youtube.com/w"]);
       expect(urls({})).toEqual(["https://a.fr/", "https://www.youtube.com/w"]);
+      expect(vectored()).toEqual(["https://a.fr/", "https://www.youtube.com/w"]);
+    });
+
+    test("a refused page is skipped and not pending; a vector of another length is ignored and dropped to be recomputed", () => {
+      visit("https://refused.fr/", "R");
+      visit("https://old-model.fr/", "O");
+      visit("https://ok.fr/", "K");
+      save("https://refused.fr/", REFUSED_VECTOR);
+      save("https://old-model.fr/", v(1, 0, 0));
+      save("https://ok.fr/", v(1, 0));
+      expect(pending()).toEqual([]);
+      expect(h.findSimilar(v(1, 0), { limit: 10 }).map((x) => x.url)).toEqual(["https://ok.fr/"]);
+      expect(pending()).toEqual(["https://old-model.fr/"]);
     });
   });
 });

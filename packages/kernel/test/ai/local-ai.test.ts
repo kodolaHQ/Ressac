@@ -300,6 +300,16 @@ describe("LocalAi", () => {
     expect(launched).toBe(2);
   });
 
+  it("stopServers when nothing started (AI off at launch) launches and changes nothing", async () => {
+    const launch = vi.fn((): AiProcess => ({ stop() {}, onOutput() {} }));
+    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, ...fast });
+    toStop.push(ai);
+    await ai.stopServers();
+    expect(launch).not.toHaveBeenCalled();
+    expect(ai.state().state).toBe("stopped");
+    expect(ai.embed.state().state).toBe("stopped");
+  });
+
   it("stopServers (AI off) stops the decision server and the search model's", async () => {
     const kev = keep(await fakeKev());
     let stopped = 0;

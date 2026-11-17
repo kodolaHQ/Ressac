@@ -344,6 +344,7 @@ export const EMBED_MODEL: LlamaModelSpec = {
   sha256: "56d087bf9409431cadfd43fb0b774c83afc4a3f28c14db84c79d2978b313e04d",
   bytes: 333590976,
   port: 8010,
-  args: ["--embedding", "--pooling", "mean", "-ngl", "99"],
+  // A whole page document in one batch (the 512-token default refuses a long one).
+  args: ["--embedding", "--pooling", "mean", "-ngl", "99", "-ub", "2048", "-b", "2048"],
   idleMs: 600_000,
 };

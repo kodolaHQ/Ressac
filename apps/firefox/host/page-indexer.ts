@@ -1,11 +1,17 @@
-import type { History, PendingPage } from "../core/history.ts";
+import { REFUSED_VECTOR, type History, type PendingPage } from "../core/history.ts";
 
 /** Characters of a title embedded: a giant title must not exceed the server's batch of tokens (normal titles are far shorter). */
 const TITLE_MAX = 300;
 
 /** A page as the search model reads it (the measured prompt). */
-export const pageDocument = (p: Pick<PendingPage, "title" | "host" | "excerpt">) =>
-  `title: ${p.title.slice(0, TITLE_MAX) || "none"} | text: ${`${p.host} ${p.excerpt}`.trim()}`;
+export const pageDocument = (p: Pick<PendingPage, "title" | "host" | "excerpt">) => {
+  let title = p.title.slice(0, TITLE_MAX);
+  if (/[\uD800-\uDBFF]$/.test(title)) title = title.slice(0, -1); // no half character
+  return `title: ${title || "none"} | text: ${`${p.host} ${p.excerpt}`.trim()}`;
+};
+
+/** The server answered but refused the texts (unlike a server down or still loading). */
+export class EmbedRefused extends Error {}
 
 /** Embeds texts with the llama-server whose base URL `ready` gives: L2-normalised vectors, in input order. */
 export const llamaEmbed =
@@ -17,9 +23,10 @@ export const llamaEmbed =
       body: JSON.stringify({ input: texts }),
       signal: AbortSignal.timeout(120_000),
     });
-    if (!r.ok) throw new Error(`embeddings: HTTP ${r.status}`);
+    if (r.status === 503) throw new Error("embeddings: server loading");
+    if (!r.ok) throw new EmbedRefused(`embeddings: HTTP ${r.status}`);
     const data = ((await r.json()) as { data: { index: number; embedding: number[] }[] }).data;
-    if (data.length !== texts.length) throw new Error("embeddings: wrong count");
+    if (data.length !== texts.length) throw new EmbedRefused("embeddings: wrong count");
     return [...data]
       .sort((a, b) => a.index - b.index)
       .map(({ embedding }) => {
@@ -31,7 +38,8 @@ export const llamaEmbed =
 
 /**
  * Gives the history's pages their vectors in the background, one batch at a time with a pause between (the host keeps
- * answering). Idle, it looks for new pages every `idleMs`; an error stops the round, retried after `retryMs`.
+ * answering). Idle, it looks for new pages every `idleMs`. A refused batch is retried page by page and a page still
+ * refused gets REFUSED_VECTOR, so the queue moves on; any other error (server down) stops the round, retried after `retryMs`.
  */
 export function createPageIndexer(o: {
   history: Pick<History, "pendingVectors" | "saveVectors">;
@@ -53,10 +61,24 @@ export function createPageIndexer(o: {
     while (r === round) {
       const pages = o.history.pendingVectors(batch);
       if (!pages.length) return later(idleMs, r);
-      let vecs: Float32Array[];
+      const docs = pages.map(pageDocument);
+      const embed = async (texts: string[]) => {
+        const vecs = await o.embed(texts);
+        if (vecs.length !== texts.length) throw new EmbedRefused("embeddings: wrong count");
+        return vecs;
+      };
+      let vecs: Float32Array[] = [];
       try {
-        vecs = await o.embed(pages.map(pageDocument));
-        if (vecs.length !== pages.length) throw new Error("embeddings: wrong count");
+        try {
+          vecs = await embed(docs);
+        } catch (e) {
+          if (!(e instanceof EmbedRefused) || r !== round) throw e;
+          vecs = [];
+          for (const d of docs) {
+            if (r !== round) return;
+            vecs.push(await embed([d]).then((v) => v[0]!, (e2) => (e2 instanceof EmbedRefused ? REFUSED_VECTOR : Promise.reject(e2))));
+          }
+        }
       } catch (e) {
         if (r === round) console.error("[ressac] page vectors:", (e as Error).message);
         return later(retryMs, r);

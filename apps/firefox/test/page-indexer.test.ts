@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { History } from "../core/history";
-import { createPageIndexer, llamaEmbed, pageDocument } from "../host/page-indexer";
+import { EmbedRefused, createPageIndexer, llamaEmbed, pageDocument } from "../host/page-indexer";
 
 let path: string;
 let h: History;
@@ -32,6 +32,28 @@ const done = () => vi.waitFor(() => expect(h.pendingVectors(1)).toEqual([]), { t
 test("the document text: title (or « none »), host without www, then the excerpt", () => {
   expect(pageDocument({ title: "Rust", host: "youtube.com", excerpt: "Une vidéo" })).toBe("title: Rust | text: youtube.com Une vidéo");
   expect(pageDocument({ title: "", host: "a.fr", excerpt: "" })).toBe("title: none | text: a.fr");
+  // A giant title is cut at 300 characters, never inside a surrogate pair.
+  expect(pageDocument({ title: `${"x".repeat(299)}😀y`, host: "a.fr", excerpt: "" })).toBe(`title: ${"x".repeat(299)} | text: a.fr`);
+});
+
+test("a page the model refuses is marked and skipped: the 39 others get vectors and the indexer goes idle", async () => {
+  fill(40);
+  h.keep({ url: "https://p7.fr/", spaceId: "import", title: "Page 7", text: "POISON" });
+  const embed = vi.fn(async (texts: string[]) => {
+    if (texts.some((t) => t.includes("POISON"))) throw new EmbedRefused("HTTP 500");
+    return texts.map(() => Float32Array.from([1, 0]));
+  });
+  indexer = createPageIndexer({ history: h, embed, pauseMs: 0, idleMs: 20 });
+  indexer.start();
+  await done();
+  const calls = embed.mock.calls.length;
+  await new Promise((r) => setTimeout(r, 100));
+  expect(embed.mock.calls.length).toBe(calls); // idle: nothing retried
+  expect(h.findSimilar(Float32Array.from([1, 0]), { limit: 100 }).map((x) => x.url)).toHaveLength(39);
+  expect(h.findSimilar(Float32Array.from([1, 0]), { limit: 100, sites: ["p7.fr"] })).toEqual([]);
+  // A new text lifts the mark: the page is tried again.
+  h.keep({ url: "https://p7.fr/", spaceId: "import", title: "Page 7", text: "sain" });
+  await vi.waitFor(() => expect(h.findSimilar(Float32Array.from([1, 0]), { limit: 100, sites: ["p7.fr"] })).toHaveLength(1));
 });
 
 test("10 000 pages are indexed in batches of 32, most recent first, and a timer fires between batches", async () => {
@@ -116,6 +138,20 @@ test("a page whose title changes is embedded again with its new title", async ()
 describe("llamaEmbed", () => {
   let server: ReturnType<typeof createServer>;
   afterEach(() => server.close());
+
+  test("a refusal (HTTP 4xx/5xx) is EmbedRefused; a server still loading (503) or down is not", async () => {
+    let status = 500;
+    server = createServer((_req, res) => {
+      res.statusCode = status;
+      res.end("{}");
+    });
+    await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    await expect(llamaEmbed(async () => base)(["a"])).rejects.toBeInstanceOf(EmbedRefused);
+    status = 503;
+    await expect(llamaEmbed(async () => base)(["a"])).rejects.not.toBeInstanceOf(EmbedRefused);
+    await expect(llamaEmbed(async () => "http://127.0.0.1:1")(["a"])).rejects.not.toBeInstanceOf(EmbedRefused);
+  });
 
   test("posts the batch to /v1/embeddings and returns L2-normalised vectors in input order", async () => {
     const bodies: unknown[] = [];

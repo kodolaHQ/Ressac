@@ -64,7 +64,7 @@ async function fakeFile(data: Buffer, o: { hold?: boolean } = {}) {
 describe("LlamaModel: the server", () => {
   it("the embedding model's spec: its own port, mean-pooled embeddings, 10 min idle", () => {
     expect(EMBED_MODEL).toMatchObject({ file: "embeddinggemma-300m-Q8_0.gguf", bytes: 333590976, sha256: "56d087bf9409431cadfd43fb0b774c83afc4a3f28c14db84c79d2978b313e04d", port: 8010, idleMs: 600_000 });
-    expect(EMBED_MODEL.args).toEqual(["--embedding", "--pooling", "mean", "-ngl", "99"]);
+    expect(EMBED_MODEL.args).toEqual(["--embedding", "--pooling", "mean", "-ngl", "99", "-ub", "2048", "-b", "2048"]);
   });
 
   it("model absent: « not installed », nothing launched", async () => {

@@ -47,6 +47,8 @@ const onSites = (url: string, sites: string[]) => {
 export const VECTOR_EXCERPT = 300;
 /** A page waiting for its vector: what its document text is made of (see page-indexer's pageDocument). */
 export type PendingPage = { url: string; spaceId: string; title: string; host: string; excerpt: string };
+/** Kept as a page's vector when the model refuses the page: it leaves the queue until its title or text changes. */
+export const REFUSED_VECTOR = new Float32Array(0);
 
 /** Lowercase without accents: « Été » and « ete » find each other (SQLite's LIKE only folds ASCII). */
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -59,7 +61,7 @@ export class History {
     | "keep" | "updateTitleText" | "isPrivate" | "forgetText" | "forgetSpaceTexts" | "eraseTextsSince"
     | "eraseOrphanTexts" | "clearAllTexts" | "purgeBefore" | "purgeVisitsBefore" | "totalBytes" | "oldTexts" | "forgetTextId"
     | "keptText" | "visitsOf" | "excerpt" | "importVisit" | "noteIcon" | "icon" | "clearIcons" | "eraseOrphanIcons"
-    | "pendingVectors" | "saveVector" | "similar",
+    | "pendingVectors" | "saveVector" | "similar" | "dropVector",
     StatementSync
   >;
   private byteCap: number;
@@ -132,13 +134,15 @@ export class History {
         WHERE v.private = 0 AND NOT EXISTS (SELECT 1 FROM vectors x WHERE x.url = v.url AND x.space_id = v.space_id)
         ORDER BY v.last_visit DESC LIMIT ?`),
       // Saved only if the page is still as it was embedded (its title or text may have changed meanwhile) and not private.
+      // REFUSED_VECTOR binds as NULL: stored as an empty blob.
       saveVector: this.db.prepare(`
-        INSERT INTO vectors (url, space_id, vec) SELECT :url, :spaceId, :vec
+        INSERT INTO vectors (url, space_id, vec) SELECT :url, :spaceId, COALESCE(:vec, X'')
         WHERE EXISTS (SELECT 1 FROM visits v WHERE v.url = :url AND v.space_id = :spaceId AND v.private = 0 AND v.title = :title)
           AND COALESCE((SELECT substr(text, 1, ${VECTOR_EXCERPT}) FROM texts WHERE url = :url AND space_id = :spaceId), '') = :excerpt
         ON CONFLICT (url, space_id) DO UPDATE SET vec = excluded.vec`),
+      dropVector: this.db.prepare("DELETE FROM vectors WHERE url = ? AND space_id = ?"),
       similar: this.db.prepare(`
-        SELECT v.url, v.title, v.last_visit AS lastVisit, v.visits, x.vec, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt
+        SELECT v.url, v.space_id AS spaceId, v.title, v.last_visit AS lastVisit, v.visits, x.vec, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt
         FROM vectors x JOIN visits v ON v.url = x.url AND v.space_id = x.space_id
         LEFT JOIN texts t ON t.url = x.url AND t.space_id = x.space_id
         WHERE v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until`),
@@ -438,7 +442,10 @@ export class History {
     }));
   }
 
-  /** Non-private pages without a vector, most recent first. */
+  /**
+   * Non-private pages without a vector, most recent first.
+   * Its scan walks past every vectored page (one primary-key lookup each): a few ms per 10k visits, once a minute when idle.
+   */
   pendingVectors(limit: number): PendingPage[] {
     if (!this.db.isOpen) return [];
     return (this.req.pendingVectors.all(limit) as Omit<PendingPage, "host">[]).map((r) => {
@@ -450,7 +457,7 @@ export class History {
     });
   }
 
-  /** Keeps the vectors (L2-normalised) of pages read by pendingVectors; a page changed or erased since is skipped. */
+  /** Keeps the vectors (L2-normalised, or REFUSED_VECTOR) of pages read by pendingVectors; a page changed or erased since is skipped. */
   saveVectors(rows: (PendingPage & { vec: Float32Array })[]): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {
@@ -472,14 +479,20 @@ export class History {
     if (!this.db.isOpen) return [];
     const sites = (q.sites ?? []).map((s) => s.toLowerCase());
     const rows = this.req.similar.all({ since: q.since?.toISOString() ?? "", until: q.until?.toISOString() ?? "\uffff" }) as {
-      url: string; title: string; lastVisit: string; visits: number; vec: Uint8Array; excerpt: string;
+      url: string; spaceId: string; title: string; lastVisit: string; visits: number; vec: Uint8Array; excerpt: string;
     }[];
     const best = new Map<string, PageHit & { score: number }>();
     for (const r of rows) {
       if (!onSites(r.url, sites)) continue;
-      const page = new Float32Array(r.vec.buffer.slice(r.vec.byteOffset, r.vec.byteOffset + r.vec.byteLength));
+      if (r.vec.byteLength === 0) continue; // refused by the model
+      if (r.vec.byteLength !== vec.byteLength) {
+        this.req.dropVector.run(r.url, r.spaceId); // another model's vector: computed again
+        continue;
+      }
+      const b = r.vec;
+      const page = b.byteOffset % 4 === 0 ? new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4) : new Float32Array(b.slice().buffer);
       let score = 0;
-      for (let i = 0; i < Math.min(page.length, vec.length); i++) score += page[i]! * vec[i]!;
+      for (let i = 0; i < page.length; i++) score += page[i]! * vec[i]!;
       const hit = best.get(r.url);
       if (!hit) {
         best.set(r.url, { url: r.url, title: r.title, lastVisit: r.lastVisit, visits: r.visits, excerpt: r.excerpt, favicon: null, score });
