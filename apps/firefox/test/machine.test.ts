@@ -765,6 +765,15 @@ describe("the workshop machine", () => {
     const failing: Runner = (cmd, args, o) => (args[0] === "delete" ? Promise.resolve({ code: 1, stdout: "", stderr: "boom" }) : f.run(cmd, args, o));
     await expect(machine(f, { run: failing }).remove({ force: true })).rejects.toThrow();
     expect(existsSync(join(f.home, "removed"))).toBe(false);
+    // Delete and listing both fail: maybe deleted, so the mark stays and nothing reinstalls on its own.
+    const u = world({ instance: { status: "Stopped" } });
+    let deleted = false;
+    const blind: Runner = (cmd, args, o) =>
+      args[0] === "delete" ? ((deleted = true), Promise.resolve({ code: 1, stdout: "", stderr: "boom" }))
+      : deleted && args[0] === "list" ? Promise.resolve({ code: 1, stdout: "", stderr: "boom" })
+      : u.run(cmd, args, o);
+    await expect(machine(u, { run: blind }).remove({ force: true })).rejects.toThrow();
+    expect(existsSync(join(u.home, "removed"))).toBe(true);
   });
 
   it("a fresh boot deletes the older versioned engine folders; a machine already running keeps them mounted", async () => {

@@ -575,7 +575,7 @@ export function createMachine(o: {
           }
         } catch (e) {
           const left = await instance().catch(() => null);
-          if (left !== "absent") await rm(removedMark, { force: true }); // still there: not removed
+          if (left && left !== "absent") await rm(removedMark, { force: true }); // known to be still there: not removed
           // Kept, maybe running: the idle rule stops it again.
           if (left === "Running") watch("user");
           throw e;
