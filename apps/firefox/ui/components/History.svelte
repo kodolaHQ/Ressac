@@ -50,6 +50,7 @@
   async function clear(from?: Date) {
     clearChoice = false;
     await api.history.clear(from?.toISOString());
+    api.dispatch({ type: "clearRecentlyClosed" });
     await load();
   }
 

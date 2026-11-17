@@ -130,6 +130,15 @@ test("reopenClosedTab reopens the most recent one and removes it from the stack;
   expect(fen().recentlyClosed[0]!.url).toBe("https://23.test/");
 });
 
+test("clearRecentlyClosed empties every window's closed tabs", () => {
+  ag({ type: "closeTab", id: open("https://a.test/") });
+  ag({ type: "clearRecentlyClosed" });
+  expect(fen().recentlyClosed).toEqual([]);
+  const before = e;
+  ag({ type: "clearRecentlyClosed" });
+  expect(e).toBe(before);
+});
+
 test("reopenClosedTab with an empty stack changes nothing", () => {
   const before = e;
   ag({ type: "reopenClosedTab", windowId: F });

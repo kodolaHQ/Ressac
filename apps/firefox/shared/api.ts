@@ -50,6 +50,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("activateTab"), id, keepSpace: z.boolean().optional() }),
   z.object({ type: z.literal("moveTab"), id, index: z.number().int() }),
   z.object({ type: z.literal("reopenClosedTab"), windowId: id }),
+  /** Erasing the history also forgets every window's closed tabs (they have no date: all of them, whatever the period). */
+  z.object({ type: z.literal("clearRecentlyClosed") }),
   z.object({
     type: z.literal("updateTab"),
     id,

@@ -301,6 +301,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       f.activeSpace = space;
       return true;
     }
+    case "clearRecentlyClosed": {
+      if (d.windows.every((f) => !f.recentlyClosed.length)) return false;
+      for (const f of d.windows) f.recentlyClosed = [];
+      return true;
+    }
     case "updateTab": {
       const o = d.tabs[a.id];
       // Pages often emit the same values: nothing changed, nothing to rebroadcast.
