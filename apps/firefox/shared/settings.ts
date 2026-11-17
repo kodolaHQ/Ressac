@@ -108,7 +108,9 @@ export function apiUrlProblem(url: string): string | null {
 export type DockerStatus = { kind: "ready" | "absent" | "unmanaged" } | { kind: "stopped"; app: string };
 /** Ressac's workshop machine (host/machine.ts). */
 export type MachineStatus =
-  | { kind: "unsupported" | "absent" | "stopped" | "starting" | "running" }
+  | { kind: "unsupported" | "stopped" | "starting" | "running" }
+  /** `removed`: the user removed it; nothing installs it again before their « Installer la machine ». */
+  | { kind: "absent"; removed?: true }
   | { kind: "downloading"; percent: number | null }
   /** `forceRemovable`: a damaged instance, or one whose logins cannot be exported: only a forced removal (logins lost) clears it. */
   | { kind: "error"; message: string; forceRemovable?: true };

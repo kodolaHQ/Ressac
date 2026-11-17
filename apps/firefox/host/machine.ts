@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { createReadStream, existsSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { cpSync, createReadStream, existsSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { appendFile, chmod, mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { cpus, homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createZstdDecompress } from "node:zlib";
@@ -63,6 +63,17 @@ const detached = (args: string[], env: Record<string, string>) =>
 const ZERO = Buffer.alloc(BLOCK);
 /** Rewrites the guest's mark from what it really runs (apk may deliver less than the image), keeping its setup hash. */
 const MARK = `h=$(sed 's/.*-//' /etc/ressac-vm-version); echo "$(cat /etc/alpine-release)-$(podman version -f '{{.Client.Version}}')-$h" >/etc/ressac-vm-version\n`;
+/**
+ * Run as root in the guest (stdin): `apk upgrade` detached, so the boot goes on and apk is never cut by a timeout; the
+ * mark is rewritten by the job itself once apk succeeds. Skipped while an apk runs (an earlier boot's job).
+ */
+export const UPGRADE = `pgrep -x apk >/dev/null && exit 0
+JOB=$(cat <<'EOF'
+apk upgrade --no-cache || exit 1
+${MARK}EOF
+)
+nohup sh -c "$JOB" >/dev/null 2>&1 </dev/null &
+`;
 /** `<alpine>-<podman>-<setup hash>`, as guest-setup.sh writes it. */
 const parts = (v: string) => {
   const [alpine = "", podman = "", setup = ""] = v.split("-");
@@ -75,6 +86,37 @@ const older = (a: string, b: string): boolean => {
   return false;
 };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The packaged engine folder copied to `<dataDir>/engine-<content hash>`, at a path that stays when the app moves
+ * (translocation), and never rewritten while a machine that survived a relaunch still mounts it: a new content goes to a
+ * new folder (its lima.yaml then differs: restarted when idle), the older ones are deleted at the next boot. A failed
+ * copy falls back to the shipped folder.
+ */
+export function engineCopy(shipped: string, dataDir: string): string {
+  try {
+    const hash = createHash("sha256");
+    for (const f of (readdirSync(shipped, { recursive: true }) as string[]).sort()) {
+      const p = join(shipped, f);
+      if (statSync(p).isFile()) hash.update(`${f}\0`).update(readFileSync(p));
+    }
+    const target = join(dataDir, `engine-${hash.digest("hex").slice(0, 12)}`);
+    if (existsSync(target)) return target;
+    const part = join(dataDir, `.engine-part-${process.pid}`);
+    rmSync(part, { recursive: true, force: true });
+    cpSync(shipped, part, { recursive: true });
+    try {
+      renameSync(part, target);
+    } catch (e) {
+      rmSync(part, { recursive: true, force: true });
+      if (!existsSync(target)) throw e; // else another launch made the same copy first
+    }
+    return target;
+  } catch (e) {
+    console.error("[ressac] the engine folder could not be copied, the shipped one is used:", e);
+    return shipped;
+  }
+}
 
 /**
  * The Lima + Podman machine that runs the workshop. Every limactl call runs with Ressac's own LIMA_HOME, so the user's
@@ -113,6 +155,10 @@ export function createMachine(o: {
   const tar = join(home, `${VOLUME_HOME}.tar`);
   const raw = join(home, `ressac-vm-${image.version}.raw`);
   const tooLong = Buffer.byteLength(socket) > SOCKET_MAX;
+  /** Written by a removal, deleted by the user's « Installer »: until then nothing installs the machine on its own. */
+  const removedMark = join(home, "removed");
+  const absent = (): MachineStatus => (existsSync(removedMark) ? { kind: "absent", removed: true } : { kind: "absent" });
+  const removedError = () => new Error(hostSay("host-machine-removed"));
 
   const lima = (args: string[], x: { delayMs?: number; input?: string } = {}) => run(limactl, args, { delayMs: 120_000, ...x, env: { LIMA_HOME: home } });
   const shell = (args: string[], x: { delayMs?: number; input?: string } = {}) => lima(["shell", "--workdir", "/", NAME, ...args], x);
@@ -123,7 +169,7 @@ export function createMachine(o: {
   const forceable = (message: string) => Object.assign(new Error(message), { forceRemovable: true as const });
   const damaged = () => forceable(hostSay("host-machine-damaged"));
 
-  let status: MachineStatus = tooLong ? { kind: "error", message: hostSay("host-machine-socket-too-long", { path: socket }) } : { kind: "absent" };
+  let status: MachineStatus = tooLong ? { kind: "error", message: hostSay("host-machine-socket-too-long", { path: socket }) } : absent();
   const listeners = new Set<(s: MachineStatus) => void>();
   const set = (s: MachineStatus) => {
     status = s;
@@ -160,8 +206,9 @@ export function createMachine(o: {
   async function usable(): Promise<void> {
     if (closed) throw new Error(hostSay("host-machine-cancelled"));
     if (tooLong) throw new Error((status as { message: string }).message);
-    if (await supported())
-      return (claimed ??= claim().then(
+    if (await supported()) {
+      if (claimed) return claimed.then(() => claim()); // again at each use: another Ressac's quit may have taken it
+      return (claimed = claim().then(
         // Should the host die without its quit (crash, kill -9), this stops the machine; a quit or a newer launch takes the token from it.
         () => detach([QUIT_STOP, "ressac-vm-watch", limactl, NAME, "0", "0", token, String(process.pid)], { LIMA_HOME: home }),
         (e) => {
@@ -169,6 +216,7 @@ export function createMachine(o: {
           throw e;
         },
       ));
+    }
     set({ kind: "unsupported" });
     throw new Error(hostSay("host-machine-unsupported"));
   }
@@ -275,6 +323,7 @@ export function createMachine(o: {
       set({ kind: "starting" });
       const r = await lima(["start", "--tty=false", NAME], { delayMs: 5 * 60_000 });
       if (r.code !== 0) throw startFailed(detail(r));
+      await pruneEngines();
     }
     for (let i = 0; ; i++) {
       const r = await pod(["info"], 10_000);
@@ -289,9 +338,8 @@ export function createMachine(o: {
     if (guest.branch !== want.branch || guest.setup !== want.setup) {
       console.warn(`[ressac] the machine (${guest.alpine}, setup ${guest.setup}) differs from its image ${image.version}: removing it in Réglages brings the new one`);
     } else if (older(guest.alpine, want.alpine) || older(guest.podman, want.podman)) {
-      // Capped: one cut short (slow network) leaves the boot going and is tried again at the next one.
-      const u = await shell(["sudo", "apk", "upgrade", "--no-cache"], { delayMs: 2 * 60_000 });
-      if (u.code === 0) await shell(["sudo", "sh"], { input: MARK });
+      // shortcut: a machine stop (idle, quit) during the job still cuts apk; an apk-aware stop if a broken guest shows.
+      await shell(["sudo", "sh"], { input: UPGRADE });
     }
     await rm(raw, { force: true }); // the instance has its own disk now
     if (existsSync(tar)) {
@@ -299,6 +347,14 @@ export function createMachine(o: {
       // A failed import keeps the export: the next start tries again.
       if ((await pod(["volume", "import", VOLUME_HOME, tar], 10 * 60_000)).code === 0) await rm(tar, { force: true });
     }
+  }
+
+  /** The packaged engine copies (`engine-<hash>`, engineCopy): once booted with this one, the others are mounted no more. */
+  async function pruneEngines(): Promise<void> {
+    const name = basename(o.engine);
+    if (!name.startsWith("engine-")) return;
+    const parent = dirname(o.engine);
+    for (const f of await readdir(parent).catch(() => [])) if (f.startsWith("engine-") && f !== name) await rm(join(parent, f), { recursive: true, force: true }).catch(() => {});
   }
 
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -353,11 +409,11 @@ export function createMachine(o: {
   }
 
   /**
-   * Up and answering. A Running machine this launch saw running whose Podman is gone (stale after the Mac slept) is
-   * force-stopped and booted again; asked twice, so one hiccup never cuts the sessions in it.
+   * Up and answering. A Running machine this launch saw running (or in error) whose Podman is gone (stale after the Mac
+   * slept) is force-stopped and booted again; asked twice, so one hiccup never cuts the sessions in it.
    */
   async function ensureUp(was: "Running" | "Stopped" | "damaged"): Promise<void> {
-    if (was === "Running" && status.kind === "running") {
+    if (was === "Running" && (status.kind === "running" || status.kind === "error")) {
       const answers = async () => (await pod(["info"], 10_000)).code === 0;
       if ((await answers()) || (await sleep(1000).then(answers))) return;
       await lima(["stop", "--force", NAME]);
@@ -409,6 +465,13 @@ export function createMachine(o: {
   const guarded = <T>(f: () => Promise<T>): Promise<T> => serial(() => guard(f));
   /** A harvest never re-creates a removed machine nor retries a failing one: background work waits for the user. */
   const harvestable = () => status.kind !== "absent" && status.kind !== "error";
+  /** A user's install (« Installer », « Réessayer ») clears the removal; an automatic one (AI on) refuses while it holds. */
+  const install = (r: { auto?: boolean } = {}) =>
+    serial(async () => {
+      if (r.auto && existsSync(removedMark)) throw removedError();
+      if (!r.auto) await rm(removedMark, { force: true });
+      return guard(() => installInner("user"));
+    });
 
   // The status at launch; a machine left running (crash) gets the idle rule.
   const known = tooLong
@@ -417,8 +480,11 @@ export function createMachine(o: {
       if (!(await supported())) return set({ kind: "unsupported" });
       const was = await instance();
       if (was === "Running") watch("user");
-      set(was === "damaged" ? { kind: "error", message: damaged().message, forceRemovable: true } : { kind: was === "Running" ? "running" : was === "Stopped" ? "stopped" : "absent" });
-    }).catch(() => {});
+      set(was === "damaged" ? { kind: "error", message: damaged().message, forceRemovable: true } : was === "Running" ? { kind: "running" } : was === "Stopped" ? { kind: "stopped" } : absent());
+    }).catch(() => {
+      // Lima did not answer: an installed machine must not vanish from the harvests (the wake tells the real state).
+      if (status.kind === "absent" && !existsSync(removedMark)) set({ kind: "stopped" });
+    });
 
   return {
     kind: "machine" as const,
@@ -432,6 +498,7 @@ export function createMachine(o: {
     wake: (reason: WakeReason) =>
       serial(async () => {
         // Checked in turn (after the launch's status and any removal before it), outside `guard`: the status stays.
+        if (existsSync(removedMark)) throw removedError();
         if (reason === "harvest" && !harvestable()) throw new Error(hostSay("kernel-err-machine-stopped"));
         return guard(async () => {
           await usable();
@@ -447,7 +514,7 @@ export function createMachine(o: {
       listeners.add(l);
       return () => void listeners.delete(l);
     },
-    install: () => guarded(() => installInner("user")),
+    install,
     stop: () => serial(stopInner),
     /** AI off: the image download in flight stops (its part is kept for the next try); a machine booting or running stops once up. */
     cancel(): Promise<void> {
@@ -492,7 +559,9 @@ export function createMachine(o: {
           if ((await instance().catch(() => null)) === "Running") watch("user");
           throw e;
         }
-        set({ kind: "absent" });
+        await ownHome();
+        await writeFile(removedMark, "");
+        set(absent());
       }),
     /**
      * At quit: nothing more starts, and a detached script stops the machine after a short grace, so the stop completes
@@ -523,12 +592,15 @@ export function createMachine(o: {
 
 /**
  * e2e (RESSAC_TEST_MACHINE): a fixed status, `<kind>[:<percent>|damaged|<detail>]`; its actions only note themselves in
- * `log`, and answer after `delayMs` (RESSAC_TEST_MACHINE_DELAY_MS).
+ * `log`, and answer after `delayMs` (RESSAC_TEST_MACHINE_DELAY_MS). A removal leaves `<log>.removed`, as the real one
+ * leaves its mark: absent and removed from then on (later launches included) until « Installer », which shows a download.
  */
 export function fakeMachine(spec: string, log: string, delayMs = 0): ReturnType<typeof createMachine> {
   const [kind, extra] = spec.split(":") as [MachineStatus["kind"], string | undefined];
-  const status = (
-    kind === "downloading" ? { kind, percent: extra ? Number(extra) : null }
+  const removedMark = `${log}.removed`;
+  let status = (
+    existsSync(removedMark) ? { kind: "absent", removed: true }
+    : kind === "downloading" ? { kind, percent: extra ? Number(extra) : null }
     : kind === "error" ? (extra === "damaged" ? { kind, message: hostSay("host-machine-damaged"), forceRemovable: true } : { kind, message: hostSay("host-machine-start-failed", { detail: extra ?? "test" }) })
     : { kind }
   ) as MachineStatus;
@@ -544,14 +616,25 @@ export function fakeMachine(spec: string, log: string, delayMs = 0): ReturnType<
     hostAddress: () => HOST_ADDRESS,
     up: async () => false,
     wake: async () => {},
-    harvestable: async () => true,
+    harvestable: async () => status.kind !== "absent",
     status: () => status,
     onStatus: () => () => {},
-    install: () => note("install"),
+    install: async (r = {}) => {
+      if (existsSync(removedMark)) {
+        if (r.auto) throw new Error(hostSay("host-machine-removed"));
+        await rm(removedMark, { force: true });
+        status = { kind: "downloading", percent: null };
+      } else if (r.auto) return; // the fake never downloads on its own
+      await note("install");
+    },
     stop: async () => {},
     cancel: async () => {},
-    remove: (r = {}) => note(r.force ? "remove --force" : "remove"),
+    remove: async (r = {}) => {
+      await note(r.force ? "remove --force" : "remove");
+      await writeFile(removedMark, "");
+      status = { kind: "absent", removed: true };
+    },
     close: async () => {},
-    usage: async () => (kind === "running" || kind === "stopped" ? { memoryMB: kind === "running" ? 614 : 0, diskMB: 1843 } : null),
+    usage: async () => (status.kind === "running" || status.kind === "stopped" ? { memoryMB: status.kind === "running" ? 614 : 0, diskMB: 1843 } : null),
   };
 }

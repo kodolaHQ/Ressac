@@ -21,7 +21,7 @@ process.env.RESSAC_CONTAINER_PORTS ||= "5300-5319";
 
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");
-const { appendFileSync, cpSync, readFileSync, rmSync } = await import("node:fs");
+const { appendFileSync, readFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
 const { ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE } = await import("../../../packages/kernel/src/index.ts");
@@ -37,7 +37,7 @@ const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./de
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createWriterChoice } = await import("./writer.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
-const { MACHINE_HOME, createMachine, fakeMachine, vmImage } = await import("./machine.ts");
+const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
@@ -158,19 +158,12 @@ const vmTools = (() => {
   const cache = join(app, "dist", "cache", "vm-tools");
   return { limactl: join(cache, `lima-${version("lima")}`, "bin", "limactl"), podman: join(cache, `podman-${version("podman")}`, "podman"), template: join(app, "scripts", "vm", "lima.yaml") };
 })();
-// Tests never touch a real machine. RESSAC_TEST_MACHINE (e2e): a fake one with a fixed status, that never takes over
-// from the fake Docker (no install at AI start, no hand-over, its own marker).
+// Tests never touch a real machine. RESSAC_TEST_MACHINE (e2e): a fake one with a fixed status (or removed), that never
+// takes over from the fake Docker (no hand-over nor Docker start, its own marker).
 const testMachine = process.env.RESSAC_TEST_MACHINE;
 // The machine mounts the engine folder by its path, and the harvests name that path: a translocated app (opened from
 // the DMG or Downloads) moves at each launch, so the packaged one runs a copy at a path that stays (outside the workspace).
-const engineFolder = (() => {
-  const shipped = join(DEFAULT_DOCKER_FOLDER, "engine");
-  if (!process.env.RESSAC_KERNEL_RESOURCES) return shipped;
-  const stable = join(dataDir, "engine");
-  rmSync(stable, { recursive: true, force: true });
-  cpSync(shipped, stable, { recursive: true });
-  return stable;
-})();
+const engineFolder = process.env.RESSAC_KERNEL_RESOURCES ? engineCopy(join(DEFAULT_DOCKER_FOLDER, "engine"), dataDir) : join(DEFAULT_DOCKER_FOLDER, "engine");
 const machine: ReturnType<typeof createMachine> = testMachine
   ? fakeMachine(testMachine, join(root, "fake-machine-calls.log"), Number(process.env.RESSAC_TEST_MACHINE_DELAY_MS) || 0)
   : createMachine({
@@ -269,13 +262,13 @@ const wakeAi = () => {
   if (aiWoken) return;
   aiWoken = true;
   void ai.check().then((v) => aiOn && settings.downloadModels([!v.decision && DECISION_MODEL, !v.embed && SEARCH_MODEL].filter((n) => n !== false)), () => {});
-  if (testMachine) return;
-  void machine.install().then(
+  // A machine the user removed stays so: only their « Installer la machine » brings it back.
+  void machine.install({ auto: true }).then(
     // AI turned off meanwhile (machine.cancel): no hand-over, nor Docker start, until it is on again.
-    () => (aiOn ? engines.settle() : Promise.resolve()).catch((e) => console.error("[ressac] the logins did not move to the machine:", e)),
+    () => (aiOn && !testMachine ? engines.settle() : Promise.resolve()).catch((e) => console.error("[ressac] the logins did not move to the machine:", e)),
     (e) => {
       console.error("[ressac] the machine is not ready:", e);
-      if (aiOn && engines.current().kind === "docker")
+      if (aiOn && !testMachine && engines.current().kind === "docker")
         void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
     },
   );

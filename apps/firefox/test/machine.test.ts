@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { zstdCompressSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Runner } from "../../../packages/kernel/src/index.ts";
-import { QUIT_STOP, VM_IMAGE, createMachine, type MachineStatus } from "../host/machine";
+import { QUIT_STOP, UPGRADE, VM_IMAGE, createMachine, engineCopy, type MachineStatus } from "../host/machine";
 
 const TEMPLATE = readFileSync(join(__dirname, "../scripts/vm/lima.yaml"), "utf8");
 const dirs: string[] = [];
@@ -22,6 +22,7 @@ interface Call {
   cmd: string;
   args: string[];
   env?: Record<string, string>;
+  input?: string;
 }
 
 /** A fake world: one Lima instance, a Podman that answers when it runs, the guest's version file and the logins volume. */
@@ -40,7 +41,7 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
   }
   const ok = (stdout = "") => ({ code: 0, stdout, stderr: "" });
   const run: Runner = async (cmd, args, opts = {}) => {
-    s.calls.push({ cmd, args, env: opts.env });
+    s.calls.push({ cmd, args, env: opts.env, input: opts.input });
     const line = args.join(" ");
     if (cmd.endsWith("limactl")) {
       if (line === "list --json") return ok(s.instance ? JSON.stringify({ name: "ressac", status: s.instance.status, dir }) + "\n" : "");
@@ -66,8 +67,8 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
       if (line === "delete --force ressac") return rmSync(dir, { recursive: true, force: true }), (s.instance = null), ok();
       if (line.endsWith("cat /etc/ressac-vm-version")) return ok(s.guestVersion + "\n");
       if (line.endsWith("sudo tee /etc/ressac-vm-version")) return (s.guestVersion = String(opts.input).trim()), ok();
-      // The mark script: what apk delivered (alpine-release, podman), the setup hash kept.
-      if (line.endsWith("ressac sudo sh")) return (s.guestVersion = o.upgradedTo ?? VM_IMAGE.version), ok();
+      // The detached upgrade job: what apk delivered (alpine-release, podman), the setup hash kept.
+      if (line.endsWith("ressac sudo sh") && String(opts.input).includes("apk upgrade")) return (s.guestVersion = o.upgradedTo ?? VM_IMAGE.version), ok();
       return ok();
     }
     if (cmd.endsWith("podman")) {
@@ -267,35 +268,20 @@ describe("the workshop machine", () => {
     expect(w.s.calls).toEqual([]);
   });
 
-  it("an older guest on the image's Alpine branch and setup is upgraded in place, capped at 2 min, and marked as apk left it", async () => {
-    const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-20062535e787" });
-    const m = machine(w);
-    await m.wake("user");
-    await m.stop();
-    await m.wake("user");
-    const upgrades = w.s.calls.filter((c) => c.args.join(" ") === "shell --workdir / ressac sudo apk upgrade --no-cache");
-    expect(upgrades).toHaveLength(1);
-    expect(w.s.calls.find((c) => c.args.join(" ").endsWith("ressac sudo sh"))?.cmd).toMatch(/limactl$/);
-    expect(w.s.guestVersion).toBe(VM_IMAGE.version);
-  });
-
-  it("an upgrade that falls short of the image is marked as delivered, never as the image, and tried again at the next boot", async () => {
+  it("an older guest on the image's Alpine branch and setup is upgraded detached in the guest: the boot never waits for apk nor cuts it", async () => {
     const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-20062535e787", upgradedTo: "3.24.3-5.8.10-20062535e787" });
-    const m = machine(w);
+    const delays: (number | undefined)[] = [];
+    const run: Runner = (cmd, args, o) => (String(o?.input ?? "").includes("apk upgrade") && delays.push(o?.delayMs), w.run(cmd, args, o));
+    const m = machine(w, { run });
     await m.wake("user");
-    expect(w.s.guestVersion).toBe("3.24.3-5.8.10-20062535e787");
+    expect(limactl(w).some((l) => l.includes("apk"))).toBe(false); // never a blocking apk over the shell
+    const job = w.s.calls.filter((c) => c.args.join(" ") === "shell --workdir / ressac sudo sh" && String(c.input ?? "").includes("apk upgrade"));
+    expect(job).toHaveLength(1);
+    expect(delays).toEqual([120_000]); // any shell call's default: it only launches the job
+    expect(w.s.guestVersion).toBe("3.24.3-5.8.10-20062535e787"); // the mark as apk left it
     await m.stop();
     await m.wake("user");
-    expect(limactl(w).filter((l) => l.endsWith("sudo apk upgrade --no-cache"))).toHaveLength(2);
-    expect(w.s.calls.find((c) => c.args.join(" ").endsWith("sudo apk upgrade --no-cache"))?.env).toBeDefined();
-  });
-
-  it("the in-boot upgrade is capped at 2 minutes", async () => {
-    const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-20062535e787" });
-    const delays: (number | undefined)[] = [];
-    const run: Runner = (cmd, args, o) => (args.join(" ").endsWith("sudo apk upgrade --no-cache") && delays.push(o?.delayMs), w.run(cmd, args, o));
-    await machine(w, { run }).wake("user");
-    expect(delays).toEqual([120_000]);
+    expect(delays).toHaveLength(2); // still short of the image: launched again at the next boot
   });
 
   it("a guest on another Alpine branch, another setup, or newer than the image is not upgraded: it boots as it is", async () => {
@@ -622,7 +608,7 @@ describe("the workshop machine", () => {
       const m = machine(w, { busy: async () => busy, idleMs: 60_000 });
       await vi.waitFor(() => expect(m.status().kind).toBe("running"));
       if (busy) {
-        await expect(m.wake("user")).rejects.toThrow(/autre Ressac|another Ressac/);
+        await expect(m.wake("user")).rejects.toThrow(/autre configuration|another configuration/);
         expect(stops(w)).toBe(0);
         continue;
       }
@@ -643,6 +629,147 @@ describe("the workshop machine", () => {
     await machine(w, { image }).install();
     for (const f of ["ressac-vm-old.raw", "ressac-vm-old.raw.zst.part", "ressac-vm-old.raw.part"]) expect(existsSync(join(w.home, f))).toBe(false);
     expect(w.s.calls.some((c) => c.args.includes("import"))).toBe(true); // the saved logins were kept for their import
+  });
+  it("a removed machine stays removed: no new launch installs it unasked, nor any wake; « Installer » clears that and installs", async () => {
+    const w = world({ instance: { status: "Stopped" }, volume: true });
+    const { image } = localImage(w.root);
+    await machine(w, { image }).remove();
+    const m = machine(w, { image }); // the next launch
+    expect(m.status()).toEqual({ kind: "absent", removed: true });
+    await expect(m.install({ auto: true })).rejects.toThrow(/Réglages|Settings/);
+    for (const reason of ["user", "harvest"] as const) await expect(m.wake(reason)).rejects.toThrow(/Réglages|Settings/);
+    expect(await m.harvestable()).toBe(false);
+    expect(limactl(w).filter((l) => l.startsWith("create"))).toHaveLength(0);
+    expect(m.status()).toEqual({ kind: "absent", removed: true });
+    await m.install(); // the click
+    expect(limactl(w).filter((l) => l.startsWith("create"))).toHaveLength(1);
+    expect(m.status().kind).toBe("running");
+    expect(machine(w, { image }).status()).toEqual({ kind: "absent" }); // the mark is gone (a launch's first status before its probe)
+  });
+
+  it("a forced removal leaves the machine removed too", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    await machine(w).remove({ force: true });
+    expect(machine(w).status()).toEqual({ kind: "absent", removed: true });
+  });
+
+  it("a failed launch probe counts the machine as stopped (harvestable), never absent; a removed one stays removed", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    const run: Runner = (cmd, args, o) => (args.join(" ") === "list --json" ? Promise.resolve({ code: 1, stdout: "", stderr: "lima: boom" }) : w.run(cmd, args, o));
+    const m = machine(w, { run });
+    expect(await m.harvestable()).toBe(true);
+    expect(m.status().kind).toBe("stopped");
+    await machine(w).remove({ force: true });
+    const r = machine(w, { run });
+    expect(await r.harvestable()).toBe(false);
+    expect(r.status()).toEqual({ kind: "absent", removed: true });
+  });
+
+  it("every wake writes this launch's token again: another Ressac's quit never disarms its crash watcher", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    const detach = vi.fn();
+    const m = machine(w, { detach });
+    await m.wake("user");
+    const token = readFileSync(join(w.home, "launch"), "utf8");
+    await machine(w).close(); // another Ressac quits
+    expect(readFileSync(join(w.home, "launch"), "utf8")).not.toBe(token);
+    await m.wake("user");
+    expect(readFileSync(join(w.home, "launch"), "utf8")).toBe(token);
+    expect(detach.mock.calls.filter((c) => c[0][1] === "ressac-vm-watch")).toHaveLength(1);
+  });
+
+  it("remove of a machine in error that Lima lists Running restarts a stale Podman before the export", async () => {
+    const w = world({ instance: { status: "Stopped" }, volume: true });
+    let fails = true;
+    let stale = false;
+    const run: Runner = async (cmd, args, o) => {
+      if (args[0] === "start" && fails) return { code: 1, stdout: "", stderr: "vz: boom" };
+      if (cmd.endsWith("podman") && args.includes("info") && stale) return { code: 125, stdout: "", stderr: "connection refused" };
+      if (args.join(" ") === "stop --force ressac") stale = false;
+      return w.run(cmd, args, o);
+    };
+    const m = machine(w, { run });
+    await expect(m.wake("user")).rejects.toThrow();
+    expect(m.status().kind).toBe("error");
+    fails = false;
+    w.s.instance!.status = "Running"; // up after all (a late boot), its Podman gone
+    stale = true;
+    await m.remove();
+    expect(limactl(w)).toContain("stop --force ressac");
+    expect(w.s.calls.filter((c) => c.args.includes("info")).length).toBeLessThan(10);
+    expect(w.s.calls.some((c) => c.args.includes("export"))).toBe(true);
+  });
+
+  it("a fresh boot deletes the older versioned engine folders; a machine already running keeps them mounted", async () => {
+    for (const status of ["Stopped", "Running"]) {
+      const w = world({ instance: { status } });
+      const data = join(w.root, "data");
+      for (const f of ["engine-old", "engine-new", "other"]) mkdirSync(join(data, f), { recursive: true });
+      const m = machine(w, { engine: join(data, "engine-new"), idleMs: 60_000 });
+      if (status === "Running") await vi.waitFor(() => expect(m.status().kind).toBe("running"));
+      await m.wake("user");
+      expect(existsSync(join(data, "engine-old"))).toBe(w.s.starts === 0);
+      expect(existsSync(join(data, "engine-new"))).toBe(true);
+      expect(existsSync(join(data, "other"))).toBe(true);
+    }
+  });
+});
+
+describe("the guest upgrade job", () => {
+  it("returns at once, apk runs detached, the mark is rewritten only once apk is done; a second launch while apk runs starts none", async () => {
+    const d = mkdtempSync(join(tmpdir(), "u-"));
+    dirs.push(d);
+    const bin = join(d, "bin");
+    mkdirSync(bin);
+    const tool = (name: string, body: string) => (writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`), chmodSync(join(bin, name), 0o755));
+    tool("apk", `echo "$*" >> ${d}/apk.log; touch ${d}/apk.running; sleep 1; rm ${d}/apk.running`);
+    tool("pgrep", `[ "$*" = "-x apk" ] && [ -e ${d}/apk.running ]`);
+    tool("podman", "echo 5.8.10");
+    writeFileSync(join(d, "alpine-release"), "3.24.4\n");
+    writeFileSync(join(d, "version"), "3.24.0-5.8.0-20062535e787\n");
+    const script = UPGRADE.replaceAll("/etc/ressac-vm-version", join(d, "version")).replaceAll("/etc/alpine-release", join(d, "alpine-release"));
+    const launch = (input: string) => new Promise<number>((ok) => {
+      const began = Date.now();
+      const p = spawn("/bin/sh", [], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, stdio: ["pipe", "ignore", "ignore"] });
+      p.on("close", () => ok(Date.now() - began));
+      p.stdin.end(input);
+    });
+    expect(await launch(script)).toBeLessThan(800);
+    await vi.waitFor(() => expect(existsSync(join(d, "apk.running"))).toBe(true));
+    expect(await launch(script)).toBeLessThan(800);
+    expect(readFileSync(join(d, "version"), "utf8").trim()).toBe("3.24.0-5.8.0-20062535e787");
+    await vi.waitFor(() => expect(readFileSync(join(d, "version"), "utf8").trim()).toBe("3.24.4-5.8.10-20062535e787"), { timeout: 3000 });
+    expect(readFileSync(join(d, "apk.log"), "utf8")).toBe("upgrade --no-cache\n");
+  });
+});
+
+describe("engineCopy", () => {
+  it("copies the shipped engine once to <dataDir>/engine-<content hash>, a new content to a new folder; a failed copy falls back to the shipped one", async () => {
+    const d = mkdtempSync(join(tmpdir(), "e-"));
+    dirs.push(d);
+    const shipped = join(d, "shipped");
+    mkdirSync(join(shipped, "blocks"), { recursive: true });
+    writeFileSync(join(shipped, "harvester.mjs"), "a");
+    writeFileSync(join(shipped, "blocks", "x.mjs"), "b");
+    const data = join(d, "data");
+    const first = engineCopy(shipped, data);
+    expect(first).toMatch(/\/engine-[0-9a-f]{12}$/);
+    expect(readFileSync(join(first, "blocks", "x.mjs"), "utf8")).toBe("b");
+    writeFileSync(join(first, "marker"), ""); // a second launch of the same build leaves it as it is (mounted by a VM that survived)
+    expect(engineCopy(shipped, data)).toBe(first);
+    expect(existsSync(join(first, "marker"))).toBe(true);
+    writeFileSync(join(shipped, "harvester.mjs"), "a2");
+    const second = engineCopy(shipped, data);
+    expect(second).not.toBe(first);
+    expect(existsSync(first)).toBe(true); // the running machine may mount it: deleted at a later boot
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      writeFileSync(join(d, "file"), "");
+      expect(engineCopy(shipped, join(d, "file"))).toBe(shipped);
+      expect(err).toHaveBeenCalled();
+    } finally {
+      err.mockRestore();
+    }
   });
 });
 
