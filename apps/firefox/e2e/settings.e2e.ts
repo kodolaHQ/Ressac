@@ -220,7 +220,7 @@ describe("Settings page", () => {
       await shows("machine-usage", "0,6 Go de mémoire · 1,8 Go sur le disque");
       expect(await inUi(m, `return ["workshop-restart", "workshop-rebuild", "machine-remove"].every((id) => doc.querySelector('[data-testid="' + id + '"]'))`)).toBe(true);
       await click(m, '[data-testid="machine-remove"]');
-      await shows("settings-workshop", "Vos connexions Claude et Codex sont gardées. Elle sera téléchargée de nouveau (environ 500 Mo).");
+      await shows("settings-workshop", "Les agents et les applis en cours s'arrêtent. Vos connexions Claude et Codex sont gardées. Elle sera téléchargée de nouveau (environ 500 Mo).");
       expect(calls()).toEqual([]);
       await click(m, '[data-testid="confirm-machine"]');
       await waitFor(m, "return true", () => calls().includes("remove"), 10_000);

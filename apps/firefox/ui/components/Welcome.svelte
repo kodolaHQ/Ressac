@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { fade } from "svelte/transition";
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
   import type { ImportSource, SettingsApi } from "../../shared/api";
   import { DECISION_MODEL, SEARCH_MODEL, type DockerStatus, type MachineStatus } from "../../shared/settings";
@@ -145,13 +146,9 @@
 {/snippet}
 
 {#snippet machineLine(m: MachineStatus)}
-  {#if m.kind === "error"}
-    {@render status("welcome-machine", "warn", m.message)}
-  {:else if m.kind === "running" || m.kind === "stopped"}
-    {@render status("welcome-machine", "ok", t("home-welcome-machine-ready"))}
-  {:else}
-    {@render status("welcome-machine", "warn", m.kind === "downloading" && m.percent !== null ? t("home-welcome-machine-downloading", { percent: m.percent }) : t("home-welcome-machine-preparing"))}
-  {/if}
+  {@const ready = m.kind === "running" || m.kind === "stopped"}
+  <!-- One element whose text follows the status: it rises in once and fades out when the page stops showing it. -->
+  <p class="status appear" data-testid="welcome-machine" data-tone={ready ? "ok" : "warn"} role="status" out:fade={{ duration: 150 }}>{m.kind === "error" ? m.message : ready ? t("home-welcome-machine-ready") : m.kind === "downloading" && m.percent !== null ? t("home-welcome-machine-downloading", { percent: m.percent }) : t("home-welcome-machine-preparing")}</p>
 {/snippet}
 
 <div class="welcome" style={Object.entries(auraVariables(aura)).map(([k, v]) => `${k}:${v}`).join(";")}>
@@ -374,6 +371,7 @@
   .status { --tone: var(--stopped); flex-basis: 100%; display: inline-flex; align-items: center; gap: 8px; }
   .status::before { content: ""; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--tone); }
   .status[data-tone="ok"] { --tone: var(--running); }
+  .appear { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .status[data-tone="warn"] { --tone: var(--in-progress); }
   .grow { flex: 1; }
 

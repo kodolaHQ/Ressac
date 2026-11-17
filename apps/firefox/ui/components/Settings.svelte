@@ -437,11 +437,11 @@
               <button data-testid="workshop-rebuild" disabled={!!operation} onclick={() => (asking = "rebuild")}>{t("settings-rebuild")}</button>
             </div>
             {#if machine}
-              <div class="row" data-testid="machine">
+              <div class="row appear" data-testid="machine" out:fade={{ duration: 150 }}>
                 <div class="grow">
                   <b data-testid="machine-state">{machineText(machine)}</b>
-                  {#if machine.kind === "error"}<span class="muted alert">{machine.message}</span>{/if}
-                  {#if usage}<span class="muted" data-testid="machine-usage">{machine.kind === "running" ? t("settings-workshop-machine-usage", { memory: gb(usage.memoryMB), disk: gb(usage.diskMB) }) : t("settings-workshop-machine-usage-disk", { disk: gb(usage.diskMB) })}</span>{/if}
+                  {#if machine.kind === "error"}<span class="muted alert appear" out:fade={{ duration: 150 }}>{machine.message}</span>{/if}
+                  {#if usage}<span class="muted appear" data-testid="machine-usage" out:fade={{ duration: 150 }}>{machine.kind === "running" ? t("settings-workshop-machine-usage", { memory: gb(usage.memoryMB), disk: gb(usage.diskMB) }) : t("settings-workshop-machine-usage-disk", { disk: gb(usage.diskMB) })}</span>{/if}
                 </div>
                 {#if machine.kind === "error"}
                   <button data-testid="machine-retry" disabled={machineBusy} onclick={() => void machineAct(s.machineInstall)}>{t("settings-workshop-machine-retry")}</button>
@@ -734,6 +734,7 @@
   select { padding: 5px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 12px var(--font-ui); }
   .switch { appearance: none; position: relative; width: 34px; height: 20px; margin: 0; flex: none; border-radius: 10px; background: var(--bg-active); transition: background var(--tap); }
   .language-note { margin: 0; padding: 0 16px 12px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .appear { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .custom-engine { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .custom-engine input { display: block; box-sizing: border-box; width: 100%; margin: 6px 0; }
   .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--on-color); box-shadow: var(--float); transition: left var(--spring-d) var(--spring); }
