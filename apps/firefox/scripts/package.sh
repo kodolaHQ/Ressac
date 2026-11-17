@@ -19,6 +19,7 @@ node_sha256=61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6
 node_cache=$app_dir/dist/cache
 sentry_cli=@sentry/cli@2.58.6
 source $app_dir/scripts/llama-server.sh
+source $app_dir/scripts/vm-tools.sh
 
 step() { print -r -- "==> $*" }
 fail() { print -u2 -- "package: $*"; exit 1 }
@@ -103,6 +104,9 @@ tar -xzf $node_cache/$node_tar -C $node_x node-$node_version-darwin-arm64/bin/no
 step "llama-server $llama_version"
 fetch_llama $node_cache || fail "could not fetch llama-server"
 llama_src=$node_cache/llama-$llama_version
+step "Lima $lima_version, Podman $podman_version"
+fetch_vm_tools $node_cache/vm-tools || fail "could not fetch Lima or Podman"
+lima_src=$node_cache/vm-tools/lima-$lima_version
 
 # 5. The bundled host: the layout chrome/agent/command.ts expects (see test/host-bundle.test.ts).
 step "ressac-host"
@@ -114,6 +118,27 @@ cp $node_x/node-$node_version-darwin-arm64/LICENSE $host/LICENSES/node-LICENSE
 mkdir -p $host/llama
 cp $llama_src/llama-server $llama_src/*.dylib $host/llama/
 cp $llama_src/LICENSE $host/LICENSES/llama.cpp-LICENSE
+# The machine (host/host.ts vmTools): Lima's own layout, so limactl finds its guest agent and templates in share/lima.
+# Only the Linux aarch64 guest agent: the machine is Linux on Apple silicon (no macOS guests, no Lima plugins).
+mkdir -p $host/vm/bin $host/vm/share/lima
+cp $lima_src/bin/limactl $host/vm/bin/
+cp $lima_src/share/lima/lima-guestagent.Linux-aarch64.gz $host/vm/share/lima/
+cp -R $lima_src/share/lima/templates $host/vm/share/lima/
+cp $node_cache/vm-tools/podman-$podman_version/podman $host/vm/podman
+cp $app_dir/scripts/vm/lima.yaml $host/vm/lima.yaml
+cp $lima_src/share/doc/lima/LICENSE $host/LICENSES/lima-LICENSE
+# Podman's release zip carries no LICENSE: it is Apache-2.0 too, the same text as Lima's.
+{ print -r -- "Podman $podman_version remote client, https://github.com/containers/podman, Apache License 2.0:"; print; cat $lima_src/share/doc/lima/LICENSE } > $host/LICENSES/podman-LICENSE
+# The machine image is downloaded at first use, not shipped; its package list and GPL sources are published next to it.
+vm_image=$(sed -nE 's|^  url: "(https://[^"]+)\.raw\.zst",$|\1|p' $app_dir/host/machine.ts)
+[[ $vm_image == https://* ]] || fail "no VM_IMAGE url in host/machine.ts"
+cat > $host/LICENSES/machine-image-NOTICE.txt <<NOTICE
+Ressac downloads its Linux machine image ($vm_image.raw.zst) at first use: Alpine Linux with Podman
+and the workshop image. Each package in it keeps its own license. The list (name, version, origin, aports commit,
+license) and the sources of every GPL-licensed package are published next to the image:
+  $vm_image.packages.txt
+  $vm_image.sources.tar
+NOTICE
 cp $app_dir/dist-host/host.mjs $host/host.mjs
 cp -R $pty/package.json $pty/lib $pty/LICENSE $host/node_modules/node-pty/
 cp -R $pty/prebuilds/darwin-arm64 $host/node_modules/node-pty/prebuilds/
@@ -182,6 +207,8 @@ else
   # The dylibs before the binary that loads them; no entitlement: llama-server only maps the model and serves on 127.0.0.1.
   codesign --force --timestamp --options runtime --sign "$identity" $host/llama/*.dylib
   codesign --force --timestamp --options runtime --sign "$identity" $host/llama/llama-server
+  codesign --force --timestamp --options runtime --entitlements $app_dir/scripts/limactl-entitlements.plist --sign "$identity" $host/vm/bin/limactl
+  codesign --force --timestamp --options runtime --sign "$identity" $host/vm/podman
   codesign -d --entitlements - --xml $app > $node_x/app-entitlements.plist
   codesign --force --timestamp --options runtime --entitlements $node_x/app-entitlements.plist --sign "$identity" $app
 fi

@@ -1,4 +1,4 @@
-# Sourced (zsh) by scripts/vm/build-image.sh (and later by scripts/package.sh): the tools that run the machine on the Mac.
+# Sourced (zsh) by scripts/vm/build-image.sh and scripts/package.sh: the tools that run the machine on the Mac.
 # Lima starts the VM (limactl + its Linux guest agent), the Podman remote client talks to the rootful Podman inside it.
 lima_version=2.3.0
 lima_tar=lima-$lima_version-Darwin-arm64.tar.gz
