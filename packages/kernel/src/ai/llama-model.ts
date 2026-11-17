@@ -137,6 +137,8 @@ export class LlamaModel {
   private lastUsage = 0;
   private generation = 0;
   private closed = false;
+  /** Set once a server died at start on the GPU: from then on this model runs on the CPU (see start()). */
+  private cpuOnly = false;
   /** Install in progress: its cancellation and its end (successful or not). */
   private installation?: { controller: AbortController; end: Promise<unknown> };
   /** The running (or starting) server's URL: `serverUrl`, else 127.0.0.1 on the port of the last launch. */
@@ -315,7 +317,8 @@ export class LlamaModel {
     this.baseUrl = `http://127.0.0.1:${port}`;
     const lines: string[] = [];
     let output: number | null | undefined;
-    const args = ["-m", this.modelFile, "--host", "127.0.0.1", "--port", String(port), ...this.spec.args];
+    // A later -ngl wins in llama-server's parser: "-ngl 0" puts every layer on the CPU.
+    const args = ["-m", this.modelFile, "--host", "127.0.0.1", "--port", String(port), ...this.spec.args, ...(this.cpuOnly ? ["-ngl", "0"] : [])];
     const p = this.launch(this.o.llamaServer, args, { cwd: this.folder });
     this.process = p;
     p.onLine?.((l) => { lines.push(l); if (lines.length > 20) lines.shift(); });
@@ -334,6 +337,11 @@ export class LlamaModel {
     while (Date.now() < end) {
       if (gen !== this.generation) throw new Error(AI_CLOSED_ERROR); // stop() came through here
       if (dead) {
+        // A GPU llama.cpp cannot use (a macOS 13 VM's paravirtual GPU aborts at load): one more try on the CPU.
+        if (!this.cpuOnly) {
+          this.cpuOnly = true;
+          return this.start();
+        }
         const msg = this.say("kernel-ai-llama-start-failed", { detail: lines.slice(-5).join("\n") || `code ${output}` });
         this.change("error", msg);
         throw new Error(msg);

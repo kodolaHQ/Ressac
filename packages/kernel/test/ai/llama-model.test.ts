@@ -124,10 +124,10 @@ describe("LlamaModel: the server", () => {
     expect(m.state().state).toBe("error");
   });
 
-  it("a server that dies at start rejects with its last lines; the next call launches again", async () => {
-    let launched = 0;
-    const launch = (): AiProcess => {
-      launched++;
+  it("a server that dies at start is tried once more on the CPU, then rejects with its last lines; the next call launches again on the CPU", async () => {
+    const launched: string[][] = [];
+    const launch = (_cmd: string, args: string[]): AiProcess => {
+      launched.push(args);
       return { stop() {}, onLine(r) { r("loading model"); r("bind: address already in use"); }, onOutput(r) { setTimeout(() => r(1), 5); } };
     };
     const m = model({ folder: await installed(), launch }); // port 1: nothing answers there
@@ -136,7 +136,7 @@ describe("LlamaModel: the server", () => {
     expect(Date.now() - start).toBeLessThan(1000);
     expect(m.state().state).toBe("error");
     await expect(m.ready()).rejects.toThrow("bind: address already in use");
-    expect(launched).toBe(2);
+    expect(launched.map((a) => a.slice(-2))).toEqual([["99", "--x"], ["-ngl", "0"], ["-ngl", "0"]]);
   });
 
   it("relaunches after a crash; parallel calls start one server", async () => {
