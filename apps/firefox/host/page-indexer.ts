@@ -63,6 +63,8 @@ export function createPageIndexer(o: {
   let inPass = false;
   /** Within a pass: the oldest date of the last batch; the next batch reads from there down (ties included). */
   let cursor: string | undefined;
+  /** When the last full look (a pass, or a look `passEveryMs` after one) began: the idle looks only read pages seen since. */
+  let since: string | undefined;
   const later = (ms: number, r: number) => {
     timer = setTimeout(() => void run(r), ms);
     timer.unref();
@@ -75,13 +77,17 @@ export function createPageIndexer(o: {
   const run = async (r: number) => {
     try {
       while (r === round) {
-        const pages = o.history.pendingVectors(batch, inPass ? cursor : undefined);
+        const full = inPass || clock() - lastPass >= passEveryMs;
+        const start = new Date().toISOString(); // a wall-clock date, like the visits'
+        if (!inPass && full) since = start;
+        const pages = o.history.pendingVectors(batch, inPass ? cursor : undefined, full ? undefined : since);
         const endPass = () => {
-          if (inPass) [inPass, lastPass] = [false, clock()];
+          if (full) [inPass, lastPass] = [false, clock()];
           return later(idleMs, r);
         };
         if (!pages.length) return endPass();
-        if (!inPass && pages.length < batch && clock() - lastPass < passEveryMs) return later(idleMs, r);
+        if (!full && pages.length < batch) return later(idleMs, r);
+        if (!inPass) since = start;
         inPass = true;
         const docs = pages.map(pageDocument);
         let vecs: Float32Array[];

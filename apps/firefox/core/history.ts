@@ -140,7 +140,7 @@ export class History {
       pendingVectors: this.db.prepare(`
         SELECT v.url, v.space_id AS spaceId, v.title, v.last_visit AS lastVisit, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt
         FROM visits v LEFT JOIN texts t ON t.url = v.url AND t.space_id = v.space_id
-        WHERE v.private = 0 AND v.last_visit <= ? AND NOT EXISTS (SELECT 1 FROM vectors x WHERE x.url = v.url AND x.space_id = v.space_id)
+        WHERE v.private = 0 AND v.last_visit <= ? AND v.last_visit >= ? AND NOT EXISTS (SELECT 1 FROM vectors x WHERE x.url = v.url AND x.space_id = v.space_id)
         ORDER BY v.last_visit DESC LIMIT ?`),
       // Saved only if the page is still as it was embedded (its title or text may have changed meanwhile) and not private.
       // REFUSED_VECTOR binds as NULL: stored as an empty blob.
@@ -433,13 +433,14 @@ export class History {
   }
 
   /**
-   * Non-private pages without a vector last seen at or before `before` (an ISO date; any when absent), most recent first.
-   * Its scan walks past every vectored page (one primary-key lookup each): a few ms per 10k visits, once a minute when idle;
-   * a pass passes its last batch's oldest date as `before` so it does not walk past the pages it already did.
+   * Non-private pages without a vector last seen at or before `before` and at or after `after` (ISO dates; any when
+   * absent), most recent first. Its scan walks past every vectored page in that range (one primary-key lookup each):
+   * ~190 ms at 150k visits. A pass passes its last batch's oldest date as `before` so it does not walk past the pages it
+   * already did; the idle looks pass `after` so they only walk the pages seen since the last full one.
    */
-  pendingVectors(limit: number, before = "\uffff"): PendingPage[] {
+  pendingVectors(limit: number, before = "\uffff", after = ""): PendingPage[] {
     if (!this.db.isOpen) return [];
-    return (this.req.pendingVectors.all(before, limit) as Omit<PendingPage, "host">[]).map((r) => {
+    return (this.req.pendingVectors.all(before, after, limit) as Omit<PendingPage, "host">[]).map((r) => {
       let host = "";
       try {
         host = new URL(r.url).hostname.replace(/^www\./, "");

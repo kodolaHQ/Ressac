@@ -201,6 +201,28 @@ test("between passes a few new pages wait: a pass runs at start, then at 32 page
   expect(docs).toHaveLength(36);
 });
 
+test("idle looks only read pages seen since the last full look; the look 10 min after a pass reads them all", async () => {
+  let now = 0;
+  fill(3);
+  const afters: (string | undefined)[] = [];
+  const history = {
+    pendingVectors: (n: number, before?: string, after?: string) => (afters.push(after), h.pendingVectors(n, before, after)),
+    saveVectors: (rows: Parameters<History["saveVectors"]>[0]) => h.saveVectors(rows),
+  };
+  const started = new Date().toISOString();
+  indexer = createPageIndexer({ history, embed: fake().embed, pauseMs: 0, idleMs: 10, clock: () => now });
+  indexer.start();
+  await done();
+  await vi.waitFor(() => expect(afters.length).toBeGreaterThan(3));
+  expect(afters[0]).toBeUndefined(); // the pass at start
+  const idle = afters.at(-1)!;
+  expect(idle >= started && idle <= new Date().toISOString()).toBe(true);
+  now += 10 * 60_000;
+  const n = afters.length;
+  await vi.waitFor(() => expect(afters.slice(n)).toContain(undefined));
+  await vi.waitFor(() => expect(afters.at(-1)).toBeDefined()); // then bounded again
+});
+
 describe("llamaEmbed", () => {
   let server: ReturnType<typeof createServer>;
   afterEach(() => server.close());

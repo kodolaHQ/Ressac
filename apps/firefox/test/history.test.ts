@@ -533,6 +533,7 @@ describe("page vectors", () => {
     visit("https://c.fr/", "C", { date: d(2) });
     visit("https://e.fr/", "E", { date: d(3) });
     expect(h.pendingVectors(10, d(2).toISOString()).map((r) => r.url).sort()).toEqual(["https://a.fr/", "https://b.fr/", "https://c.fr/"]);
+    expect(h.pendingVectors(10, undefined, d(2).toISOString()).map((r) => r.url).sort()).toEqual(["https://b.fr/", "https://c.fr/", "https://e.fr/"]);
   });
 
   test("a NUL character in a title or text is dropped at every write, so the page's vector is saved", () => {
