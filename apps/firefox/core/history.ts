@@ -339,6 +339,7 @@ export class History {
   forgetText(url: string, spaceId: string): void {
     if (!this.db.isOpen) return;
     this.req.forgetText.run(url, spaceId);
+    this.checkpoint();
   }
 
   /** Forgets visits and text older than RETENTION_DAYS days, then the oldest text while the total exceeds the cap. */

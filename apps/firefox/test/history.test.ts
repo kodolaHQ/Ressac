@@ -389,6 +389,9 @@ test("erased text leaves no trace in the database files, the full-text index's l
   keep("https://c.fr/", "s", new Date(Date.now() - 200 * 86_400_000));
   h.purge();
   expect(read()).not.toContain("zorglub");
+  keep("https://d.fr/", "s");
+  h.forgetText("https://d.fr/", "s");
+  expect(read()).not.toContain("zorglubsecret"); // the visit keeps its title
   keep("https://b.fr/", "p");
   h.makePrivate("p");
   expect(read()).not.toContain("zorglubsecret"); // the private visit keeps its title
