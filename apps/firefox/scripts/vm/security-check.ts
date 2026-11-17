@@ -5,7 +5,8 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { join } from "node:path";
-import { createMachine, vmImage } from "../../host/machine.ts";
+import { UPGRADE, createMachine, vmImage } from "../../host/machine.ts";
+import { LOGINS_EXTRACT } from "../../host/engines.ts";
 import { DEFAULT_DOCKER_FOLDER, IMAGE, Workshop, containerName, spacePaths } from "../../../../packages/kernel/src/index.ts";
 
 const env = (k: string) => process.env[k] ?? (() => { throw new Error(`${k} missing`); })();
@@ -208,6 +209,25 @@ setTimeout(()=>{const r=(f)=>fs.readFileSync('/sys/fs/cgroup/'+f,'utf8').trim();
     const e = await workshop.exec(["true"]);
     measure(`cold start → exec answers, run ${i}`, `${((Date.now() - t) / 1000).toFixed(1)} s (exec code ${e.code})`);
   }
+
+  // The logins copy's extract with the workshop image's own tar: fills what is missing, never overwrites, no staging left.
+  const extract = pod(["run", "--rm", "--pull", "never", "--network", "none", "-u", "root", IMAGE, "sh", "-c",
+    `mkdir -p /v/.claude /s/.claude && echo machine > /v/.claude/c && echo docker > /s/.claude/c && echo new > /s/x && tar -C /s -cf - . | { ${LOGINS_EXTRACT}; } && cat /v/.claude/c /v/x && ls -A /v && tar --version | head -1`]);
+  line(extract.status === 0 && extract.stdout.startsWith("machine\nnew\n.claude\nx\ntar (GNU tar)"), "workshop image: the logins extract (GNU tar) adds the missing files and keeps the machine's", out(extract));
+
+  // The guest upgrade job, as a boot launches it on an older guest: returns at once, one apk at a time, the mark rewritten by the job.
+  const sudo = (input: string) => spawnSync(tools.limactl, ["shell", "--workdir", "/", "ressac", "sudo", "sh"], { encoding: "utf8", env: process.env, input, timeout: 120_000 });
+  const setup = vm("sed 's/.*-//' /etc/ressac-vm-version").stdout.trim();
+  sudo(`echo 3.24.0-5.8.0-${setup} >/etc/ressac-vm-version\n`);
+  t = Date.now();
+  const job = [sudo(UPGRADE), sudo(UPGRADE)];
+  const launched = (Date.now() - t) / 1000;
+  const apks = vm("pgrep -x apk | wc -l").stdout.trim();
+  while (vm("pgrep -x apk").status === 0 && Date.now() - t < 5 * 60_000) await sleep(2000);
+  await sleep(2000);
+  const mark = vm("cat /etc/ressac-vm-version").stdout.trim();
+  const real = vm(`echo "$(cat /etc/alpine-release)-$(podman version -f '{{.Client.Version}}')-${setup}"`).stdout.trim();
+  line(job.every((j) => j.status === 0) && launched < 20 && Number(apks) <= 1 && mark === real && !mark.startsWith("3.24.0-"), "guest: the apk upgrade runs detached (two launches, one apk) and rewrites the mark once done", `launched in ${launched.toFixed(1)} s, apk processes ${apks}, mark ${mark}, after ${((Date.now() - t) / 1000).toFixed(0)} s`);
 
   // The idle stop: another handle on the same machine with a short idle delay and the real busy rule.
   const idle = createMachine({ ...tools, home, engine: engineDir, ressacRoot: root, busy: () => workshop.busy(idle), idleMs: 10_000, pollMs: 2_000, image: vmImage() });
