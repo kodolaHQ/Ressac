@@ -62,12 +62,21 @@ async function writePrivate(file: string, content: Buffer): Promise<void> {
   await rename(temp, file);
 }
 
-/** The JSON may come from the container: valid element ids, capture only `<id>.png`. */
+/** What the cart and the agent's prefix read of an element (shownElement, remarksPrefix): a missing field made them throw. */
+function wellShaped(e: Element): boolean {
+  const c = e.context as unknown as Record<string, unknown> | null;
+  if (typeof e.text !== "string" || !c || typeof c !== "object") return false;
+  if (e.type === "review") return typeof c.file === "string" && Number.isFinite(c.start) && Number.isFinite(c.end) && Array.isArray(c.lines);
+  const s = c.source as Record<string, unknown> | null | undefined;
+  return e.type === "design" && typeof c.label === "string" && typeof c.url === "string" && (s == null || (typeof s === "object" && typeof s.file === "string"));
+}
+
+/** The JSON may come from the container: valid element ids and shapes, capture only `<id>.png`. */
 function sanitize(v: unknown): Element[] {
   if (!Array.isArray(v)) return [];
   const output: Element[] = [];
   for (const e of v as Element[]) {
-    if (!e || typeof e !== "object" || typeof e.id !== "string" || !ID_ELEMENT.test(e.id)) continue;
+    if (!e || typeof e !== "object" || typeof e.id !== "string" || !ID_ELEMENT.test(e.id) || !wellShaped(e)) continue;
     output.push(e.type === "design" ? { ...e, capture: e.capture === `${e.id}.png` ? e.capture : null } : e);
   }
   return output;

@@ -238,6 +238,23 @@ describe("Remarks", () => {
     expect(await exists(victim)).toBe(true);
   });
 
+  test("tampered basket.json: an item without text or with a malformed context is dropped, the others still read", async () => {
+    const { folders, r } = await frame();
+    const folder = remarksFolder(folders, "app-essai");
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "basket.json"), JSON.stringify([
+      { id: "e-00000001", type: "design", text: "x" },
+      { id: "e-00000002", type: "design", text: "x", context: { ...ctx(), label: 1 } },
+      { id: "e-00000003", type: "review", text: "x", context: { ...rel, lines: null } },
+      { id: "e-00000004", type: "autre", text: "x", context: rel },
+      { id: "e-00000005", type: "review", context: rel },
+      { id: "e-00000006", type: "design", text: "x", context: { ...ctx(), source: { line: 3 } } },
+      { id: "e-0000000a", type: "design", text: "bon", context: ctx(), capture: null },
+      { id: "e-0000000b", type: "review", text: "bon", context: rel },
+    ]));
+    expect((await r.basket("app-essai")).map((e) => e.id)).toEqual(["e-0000000a", "e-0000000b"]);
+  });
+
   test("purge: a space batch it cannot move out does not stop the others, private ones included", async () => {
     const { folders, clock, r } = await frame();
     const handled = async (p: string) => {
