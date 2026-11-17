@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { writeData, writeWidgetState, readData, readWidgetState, deleteData } from "../../src/home/data.js";
 import type { WidgetState } from "../../src/home/schemas.js";
-import type { WorkshopState } from "../../src/container/workshop.js";
+import { Workshop, type WorkshopState } from "../../src/container/workshop.js";
+import type { ContainerEngine, WakeReason } from "../../src/container/engine.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { kernelError, runHarvest, type ProcessLauncher, type HarvestOptions, type AttemptResult } from "../../src/widgets/harvest.js";
 import { writeRun, attemptId, listRuns, type Execution } from "../../src/workflows/executions.js";
@@ -90,7 +91,7 @@ async function prepare(o: { workshop?: WorkshopState; status?: WidgetState["stat
     return { ok: true, run: attemptId(clock().toISOString()), status: "succeeded" };
   });
   const directs: DirectState[] = [];
-  const workshop = { state: async () => workshopState, stageHarvest: async (_p: unknown, d: string) => d, harvestCommand: () => ["docker"], deleteHarvest: async (_id: string) => {} };
+  const workshop = { harvestReady: async () => workshopState === "demarre", stageHarvest: async (_p: unknown, d: string) => d, harvestCommand: () => ["docker"], deleteHarvest: async (_id: string) => {} };
   const options = (): SchedulerOptions => ({
     paths: c,
     locale: () => "fr",
@@ -300,10 +301,10 @@ test("arreter while the harvest checks the workshop: it does not start", async (
   const { p, harvest, workshop } = await prepare();
   let release!: () => void;
   const checked = vi.fn();
-  workshop.state = async () => {
+  workshop.harvestReady = async () => {
     checked();
     await new Promise<void>((r) => (release = r));
-    return "demarre";
+    return true;
   };
   const check = p.check({ onLaunch: true });
   await vi.waitFor(() => expect(checked).toHaveBeenCalled());
@@ -357,7 +358,7 @@ test("the first check waits for the workshop to be ready: no « atelier arrêté
   const { widgetsFolder, harvest, workshop, c, harvests } = await prepare();
   await p!.stop();
   let state: WorkshopState = "arrete";
-  workshop.state = async () => state;
+  workshop.harvestReady = async () => state === "demarre";
   let ready!: () => void;
   const changes = vi.fn();
   p = new WidgetsScheduler({
@@ -379,6 +380,24 @@ test("the first check waits for the workshop to be ready: no « atelier arrêté
   state = "demarre";
   ready();
   await vi.waitFor(() => expect(harvests).toEqual(["actus"]));
+});
+
+test("a stopped machine does not block the harvest: it runs, and stageHarvest wakes the machine for it", async () => {
+  const { widgetsFolder, harvest, c, harvests } = await prepare();
+  await p!.stop();
+  const reasons: WakeReason[] = [];
+  const machine: ContainerEngine = { kind: "machine", binary: () => "/b/podman", args: () => [], hostAddress: () => "192.168.5.2", up: async () => false, wake: async (r) => void reasons.push(r) };
+  const workshop = new Workshop({ paths: c, run: async () => ({ code: 1, stdout: "", stderr: "" }), engine: () => machine });
+  harvest.mockImplementationOnce(async (r) => {
+    harvests.push(r.id);
+    await r.workshop.stageHarvest(r.id, join(c.widgets, r.id));
+    return { state: await readWidgetState(r.widgetsFolder, r.id) };
+  });
+  p = new WidgetsScheduler({ paths: c, widgetsFolder, engine: "/engine", workshop, bridge: new FakeBridge([], { active: null, allow: false }), ai: null, intervalMs: 60 * MIN, harvest });
+  expect(await p.check({ onLaunch: true })).toEqual(["actus"]);
+  expect(harvests).toEqual(["actus"]);
+  expect(reasons).toEqual(["harvest"]);
+  expect((await readWidgetState(widgetsFolder, "actus")).status).not.toBe("workshop-stopped");
 });
 
 test("a harvest that throws an error after writing in-progress leaves a kernel error state", async () => {

@@ -287,6 +287,15 @@ export class Workshop {
     return r.stdout.trim() === "true" ? "demarre" : "arrete";
   }
 
+  /**
+   * Background runs (widgets, actions) may go: the workshop started, or Ressac's machine, which `stageHarvest` wakes;
+   * its container stays stopped after a wake for a harvest (spec §6 ter).
+   */
+  async harvestReady(): Promise<boolean> {
+    const s = await this.state().catch(() => "absent" as const);
+    return s === "demarre" || (this.engine().kind === "machine" && (s === "machine-stopped" || s === "arrete"));
+  }
+
   /** Is the existing container mounted on the right root and built from the current Dockerfile? */
   private async containerUpToDate(hash: string): Promise<boolean> {
     const format = `{{range .Mounts}}{{if eq .Destination "${CONTAINER_PATH}"}}{{.Source}}{{end}}{{end}}|{{index .Config.Labels "${HASH_LABEL}"}}`;

@@ -7,6 +7,11 @@ const setup = (state: string, loggedIn: Record<string, boolean>, preferred: "cla
   const choice = createWriterChoice({
     workshop: {
       state: async () => state as never,
+      ensureStarted: async () => {
+        calls.push("ensureStarted");
+        state = "demarre";
+        return "demarre";
+      },
       exec: async (argv) => {
         calls.push(argv[0]!);
         const a = argv[0]!;
@@ -41,10 +46,22 @@ describe("writer choice", () => {
     expect(await s.choice.agent()).toBe("workshop-stopped");
     expect(s.calls).toEqual([]);
   });
+  it("a stopped machine: the display never starts it, a write does", async () => {
+    const s = setup("machine-stopped", { claude: true });
+    expect(await s.choice.agent()).toBe("workshop-stopped");
+    expect(s.calls).toEqual([]);
+    expect(await s.choice.wakeAgent()).toBe("claude");
+    expect(s.calls).toEqual(["ensureStarted", "claude"]);
+  });
+  it("a write on a stopped Docker workshop does not start it", async () => {
+    const s = setup("arrete", { claude: true });
+    expect(await s.choice.wakeAgent()).toBe("workshop-stopped");
+    expect(s.calls).toEqual([]);
+  });
   it("does not keep a failed check, and shares one exec between parallel calls", async () => {
     let n = 0;
     const choice = createWriterChoice({
-      workshop: { state: async () => "demarre" as never, exec: async (argv) => { if (argv[0] === "codex") return { code: 0, stdout: "Not logged in", stderr: "" }; n++; if (n === 1) throw new Error("boom"); return { code: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }; } },
+      workshop: { state: async () => "demarre" as never, ensureStarted: async () => "demarre", exec: async (argv) => { if (argv[0] === "codex") return { code: 0, stdout: "Not logged in", stderr: "" }; n++; if (n === 1) throw new Error("boom"); return { code: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }; } },
       preferred: () => "claude",
     });
     expect(await choice.agent()).toBeNull();

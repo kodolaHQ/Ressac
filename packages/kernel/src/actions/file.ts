@@ -35,7 +35,7 @@ export interface OptionsFileActions {
   paths: SpacePaths;
   actionsFolder: string;
   engine: string;
-  workshop: Pick<Workshop, "state" | "stageHarvest" | "harvestCommand" | "deleteHarvest">;
+  workshop: Pick<Workshop, "harvestReady" | "stageHarvest" | "harvestCommand" | "deleteHarvest">;
   launch?: ProcessLauncher;
   bridge: BrowserBridge;
   /** The dispatcher shared with the widgets; null without local AI. */
@@ -213,7 +213,7 @@ export class FileActions {
     const tracking: DirectAction = { action: d.id, start: start, input: d.input, attempt: d.attempt !== null, step: "workflow", blocks: {} };
     d.direct = tracking;
     this.signalDirect();
-    if ((await this.o.workshop.state().catch(() => "absent")) !== "demarre") {
+    if (!(await this.o.workshop.harvestReady().catch(() => false))) {
       return { status: "failed", error: WORKSHOP_STOPPED_ERROR(this.locale()), kernelError: true };
     }
     const onTrace = (t: TraceAction) => {

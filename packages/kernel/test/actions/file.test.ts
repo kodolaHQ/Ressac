@@ -41,7 +41,7 @@ async function prepare(o: Partial<OptionsFileActions> = {}) {
     paths: c,
     actionsFolder: actionsFolder,
     engine: ENGINE,
-    workshop: { state: async () => "demarre", stageHarvest: async (_p, d) => d, harvestCommand: (p) => ["docker", JSON.stringify(p)], deleteHarvest: async (p) => void deleted.push(p) },
+    workshop: { harvestReady: async () => true, stageHarvest: async (_p, d) => d, harvestCommand: (p) => ["docker", JSON.stringify(p)], deleteHarvest: async (p) => void deleted.push(p) },
     bridge: new FakeBridge([], { active: null, allow: false }),
     dispatcher: null,
     clock: clock,
@@ -194,7 +194,7 @@ describe("FileActions", () => {
       paths: c,
       widgetsFolder: await tempFolder(),
       engine: ENGINE,
-      workshop: { state: async () => "demarre", stageHarvest: async (_p, d) => d, harvestCommand: () => ["docker"], deleteHarvest: async () => {} },
+      workshop: { harvestReady: async () => true, stageHarvest: async (_p, d) => d, harvestCommand: () => ["docker"], deleteHarvest: async () => {} },
       bridge: new FakeBridge([], { active: null, allow: false }),
       ai: null,
       harvest: async (_o: HarvestOptions) => {

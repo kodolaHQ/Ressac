@@ -9,7 +9,7 @@ import type { MachineStatus } from "../shared/settings";
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 
-function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}) {
+function setup(over: { state?: string; started?: string; exec?: (argv: string[]) => unknown } = {}) {
   const pids = join(mkdtempSync(join(tmpdir(), "settings-pids-")), "pids");
   dirs.push(join(pids, ".."));
   const dataDir = mkdtempSync(join(tmpdir(), "settings-host-"));
@@ -23,6 +23,7 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}
       restart: vi.fn(async () => (calls.push("restart"), "demarre" as const)),
       rebuild: vi.fn(async () => (calls.push("rebuild"), "demarre" as const)),
       secureNetwork: vi.fn(async () => void calls.push("secureNetwork")),
+      ensureStarted: vi.fn(async () => (calls.push("ensureStarted"), (over.started ?? "demarre") as any)),
     },
     ai: {
       state: () => ({ state: "stopped" as const }),
@@ -212,6 +213,16 @@ describe("settings host", () => {
     const { h, o } = setup({ state: "arrete" });
     expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Conteneur." });
     expect(o.deviceCommand).not.toHaveBeenCalled();
+  });
+
+  it("login on a stopped machine starts it first; one that stays stopped is refused", async () => {
+    const { h, calls } = setup({ state: "machine-stopped" });
+    expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "device" });
+    expect(calls.slice(0, 2)).toEqual(["ensureStarted", "secureNetwork"]);
+    h.stopLogins();
+    const still = setup({ state: "machine-stopped", started: "machine-stopped" });
+    expect(await still.h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Conteneur." });
+    expect(still.o.deviceCommand).not.toHaveBeenCalled();
   });
 
   it("logout codex", async () => {

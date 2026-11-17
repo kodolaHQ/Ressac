@@ -225,7 +225,7 @@ const writerChoice = createWriterChoice({
 const ai = new LocalAi({
   writer: createAgentWriter({
     exec: (a, x) => workshop.execWrite(a, x),
-    agent: writerChoice.agent,
+    agent: writerChoice.wakeAgent,
     signedOut: writerChoice.signedOut,
     log: (l) => console.log("[writer]", l),
     locale: () => hostLocale(),

@@ -91,7 +91,7 @@ const UNSUPPORTED_MODEL = () => hostSay("host-unsupported-model");
 const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export interface SettingsOptions {
-  workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork">;
+  workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork" | "ensureStarted">;
   /** Who writes (the account check is cached): reset whenever an account may have changed. */
   writer: { agent(): Promise<WriterAgent | "workshop-stopped" | null>; reset(): void };
   ai: Pick<LocalAi, "state" | "check" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
@@ -271,7 +271,9 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       const a = AGENT_ACCOUNTS.find((x) => x.id === p?.id);
       if (!a) return { kind: "error", error: hostSay("host-unknown-agent") };
       if (a.login.kind === "panel") return { kind: "panel" };
-      if ((await o.workshop.state()) !== "demarre") return { kind: "error", error: hostSay("host-workshop-not-started") };
+      let state = await o.workshop.state();
+      if (state === "machine-stopped") state = await o.workshop.ensureStarted().catch(() => state);
+      if (state !== "demarre") return { kind: "error", error: hostSay("host-workshop-not-started") };
       stopLogins();
       try {
         // The login runs the agent's CLI as node: never before the network rules are in place.

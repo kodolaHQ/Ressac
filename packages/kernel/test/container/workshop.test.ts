@@ -898,6 +898,16 @@ describe("container engine", () => {
     expect(reasons).toEqual(["user", "harvest"]);
   });
 
+  test("harvestReady: a started workshop, or the machine (stopped or woken for a harvest); never a stopped Docker workshop", async () => {
+    const docker = (stdout: string, code = 0) => new Workshop({ paths, run: fakeRunner([[/ inspect /, { code, stdout }]]).run, docker: "docker" });
+    expect(await docker("true\n").harvestReady()).toBe(true);
+    expect(await docker("false\n").harvestReady()).toBe(false);
+    expect(await new Workshop({ paths, run: fakeRunner([]).run, engine: () => machine(async () => false) }).harvestReady()).toBe(true);
+    // Its container stays stopped after a wake for a harvest: the next harvest still goes.
+    expect(await new Workshop({ paths, run: fakeRunner([[/ inspect /, { code: 0, stdout: "false\n" }]]).run, engine: () => machine() }).harvestReady()).toBe(true);
+    expect(await new Workshop({ paths, run: fakeRunner([[/ inspect /, { code: 1 }]]).run, engine: () => machine() }).harvestReady()).toBe(false);
+  });
+
   test("harvestCommand and execCommand start with the engine binary and args", () => {
     const workshop = new Workshop({ paths, run: fakeRunner([]).run, engine: () => machine() });
     expect(workshop.harvestCommand("meteo", "/d", "/e").slice(0, 3)).toEqual(["/b/podman", "--url", "unix:///s"]);

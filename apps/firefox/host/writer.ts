@@ -3,8 +3,11 @@ import { AGENT_ACCOUNTS } from "./settings.ts";
 
 const TTL_MS = 5 * 60_000;
 
-/** Which agent writes: the preferred one if signed in, else the other, else none; "workshop-stopped" when its accounts cannot be read. Never starts the workshop. */
-export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec">; preferred(): WriterAgent; now?(): number }) {
+/**
+ * Which agent writes: the preferred one if signed in, else the other, else none; "workshop-stopped" when its accounts
+ * cannot be read. `agent` never starts the workshop; `wakeAgent`, for a write, starts it when Ressac's machine is stopped.
+ */
+export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec" | "ensureStarted">; preferred(): WriterAgent; now?(): number }) {
   const now = o.now ?? Date.now;
   // The in-flight promise is cached, so parallel cold calls share one status exec; a failed check is not kept.
   const cache = new Map<WriterAgent, { at: number; in: Promise<boolean> }>();
@@ -18,7 +21,7 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
     entry.in = entry.in.catch(() => (forget(), false));
     return entry.in;
   };
-  return {
+  const choice = {
     /** `exclude`: agents whose call answered "not signed in" while their status still says signed in (a dead token). */
     async agent(exclude?: ReadonlySet<WriterAgent>): Promise<WriterAgent | "workshop-stopped" | null> {
       if ((await o.workshop.state()) !== "demarre") return "workshop-stopped";
@@ -26,7 +29,12 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
       for (const a of [first, first === "claude" ? "codex" : "claude"] as const) if (!exclude?.has(a) && (await signedIn(a))) return a;
       return null;
     },
+    async wakeAgent(exclude?: ReadonlySet<WriterAgent>): Promise<WriterAgent | "workshop-stopped" | null> {
+      if ((await o.workshop.state()) === "machine-stopped") await o.workshop.ensureStarted().catch(() => {}); // still stopped: agent says so
+      return choice.agent(exclude);
+    },
     reset: () => cache.clear(),
     signedOut: (a: WriterAgent) => void cache.delete(a),
   };
+  return choice;
 }
