@@ -86,7 +86,8 @@ iptables, api.anthropic.com
 reached), the Mac's localhost only on the relay port, harvests with no network and a read-only root, the 2.5g and 1024
 pids caps (a 2.64 GiB allocation killed by the container's own OOM, `memory.events` oom and oom_kill up; a
 1500-process fork bomb stopped, `pids.events` max up), a real `npm install`, the forward of
-127.0.0.1:5300 and none outside the range, and the idle stop. Exits 1 on any FAIL.
+127.0.0.1:5300 and none outside the range, and the idle stop. Exits 1 on any FAIL, 2 when the Mac range was busy (forward
+checks skipped), 0 only on a full pass.
 
 Measured 2026-11-17 (M5 Pro, macOS 27, Lima 2.3.0, image `3.24.4-5.8.10-20062535e787`, 3 GiB, 9 CPUs). Memory: the
 process holding the instance's disk (the vz machine), RSS as `usage()` reports it, and `footprint`:

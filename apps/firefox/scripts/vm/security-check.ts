@@ -1,6 +1,6 @@
 // Run by security-check.sh (which sets LIMA_HOME, RESSAC_ROOT, the image and tools, and cleans up): drives the shipped
 // code path (createMachine + the kernel's Workshop on the machine engine) and prints one PASS/FAIL line per protection,
-// then the measurements. Exits 1 on any FAIL.
+// then the measurements. Exits 1 on any FAIL, 2 when the forward checks were skipped (Mac range busy), 0 only on a full pass.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
@@ -222,6 +222,7 @@ setTimeout(()=>{const r=(f)=>fs.readFileSync('/sys/fs/cgroup/'+f,'utf8').trim();
 
 console.log("\nMeasurements:");
 for (const m of report) console.log(`  ${m}`);
-console.log(failed ? `\n${failed} FAIL` : skipped ? `\nall PASS, ${skipped} SKIP` : "\nall PASS");
-process.exit(failed ? 1 : 0);
+// Only a full run exits 0: skipped checks (the forward ones, Mac range busy) are not a pass.
+console.log(failed ? `\n${failed} FAIL` : skipped ? `\nINCOMPLETE: the forward checks were not run (free 127.0.0.1:${ports.join("-")} and run again)` : "\nall PASS");
+process.exit(failed ? 1 : skipped ? 2 : 0);
 

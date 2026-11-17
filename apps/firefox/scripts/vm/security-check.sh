@@ -2,7 +2,7 @@
 # Proves the workshop's protections on the real machine: starts it from the built image (dist/vm, or RESSAC_VM_IMAGE_URL
 # + RESSAC_VM_IMAGE_SHA256) in a throwaway LIMA_HOME and RESSAC_ROOT, runs security-check.ts (the kernel's integration
 # tests on the machine engine, then one PASS/FAIL line per check, then measurements), and deletes everything at the end.
-# Never touches ~/.ressac-vm, ~/.lima, ~/Ressac or Docker. Exits non-zero on any FAIL.
+# Never touches ~/.ressac-vm, ~/.lima, ~/Ressac or Docker. Exits 1 on any FAIL, 2 when the forward checks were skipped.
 # Needs: the Mac's 127.0.0.1:5300-5319 free (a running Docker workshop holds them), internet (npm, api.anthropic.com).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
