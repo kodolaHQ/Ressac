@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { apply, withEssentials } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
-import { AGENT_PROFILE, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, urlRecap, recapOfUrl, type BrowserState, type Tab } from "../../shared/model";
+import { AGENT_PROFILE, siteProfile, sitePlacement, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, urlRecap, recapOfUrl, type BrowserState, type Tab } from "../../shared/model";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -1226,4 +1226,64 @@ test.each(["example.com", "*.example.com", "a-b.example.co.uk", "Example.com", "
 test("openTabs opens every tab in one action, in order", () => {
   ag({ type: "openTabs", tabs: [{ type: "openTab", windowId: F, url: "https://a.fr", activate: false }, { type: "openTab", windowId: F, url: "https://b.fr", activate: false }] });
   expect(order().map((id) => e.tabs[id]!.url)).toEqual(["https://a.fr", "https://b.fr"]);
+});
+
+const WA = { id: "whatsapp", url: "https://web.whatsapp.com/", title: "WhatsApp", favicon: null };
+const place = (placement: "essentials" | "bar" | "none") => ag({ type: "placeSite", ...WA, placement });
+const siteTabs = () => Object.values(e.tabs).filter((o) => o.link?.id === e.essentials[0]?.id);
+
+test("placeSite essentials: one tab per window in the site's own container, whatever the spaces' profiles", () => {
+  ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "new", windowId: F });
+  place("essentials");
+  expect(e.essentials).toEqual([{ ...WA, id: e.essentials[0]!.id, site: "whatsapp" }]);
+  expect(e.siteBar).toEqual([]);
+  expect(siteTabs()).toHaveLength(1);
+  expect(siteTabs()[0]!.profile).toBe("site-whatsapp");
+  expect(siteProfile("whatsapp")).toBe("site-whatsapp");
+  expect(sitePlacement(e, "whatsapp")).toBe("essentials");
+});
+
+test("placeSite bar after essentials: the essential and its tabs are gone", () => {
+  place("essentials");
+  place("bar");
+  expect(e.essentials).toEqual([]);
+  expect(Object.values(e.tabs)).toHaveLength(0);
+  expect(order()).toEqual([]);
+  expect(e.siteBar).toEqual(["whatsapp"]);
+  expect(sitePlacement(e, "whatsapp")).toBe("bar");
+  const before = e;
+  place("bar");
+  expect(e).toBe(before);
+});
+
+test("placeSite none: in neither; essentials needs an http(s) address", () => {
+  place("essentials");
+  place("none");
+  expect(e.essentials).toEqual([]);
+  expect(e.siteBar).toEqual([]);
+  expect(sitePlacement(e, "whatsapp")).toBe("none");
+  const before = e;
+  ag({ type: "placeSite", id: "whatsapp", placement: "essentials" });
+  expect(e).toBe(before);
+  expect(SchemaAction.safeParse({ type: "placeSite", id: "whatsapp", placement: "none" }).success).toBe(true);
+  expect(SchemaAction.safeParse({ type: "placeSite", id: "Bad Id", placement: "none" }).success).toBe(false);
+});
+
+test("openFavorite on an app essential from a private space shows the existing app tab", () => {
+  place("essentials");
+  const tab = siteTabs()[0]!.id;
+  ag({ type: "createSpace", name: "Privé", icon: "🔒", private: true, profile: "default", windowId: F });
+  ag({ type: "openFavorite", windowId: F, kind: "essential", id: e.essentials[0]!.id });
+  expect(Object.keys(e.tabs)).toEqual([tab]);
+  expect(active(fen().activeSpace)).toBe(tab);
+});
+
+test("removeEssential on an app essential: its tab joins the list in its container", () => {
+  place("essentials");
+  ag({ type: "removeEssential", favoriteId: e.essentials[0]!.id });
+  const o = Object.values(e.tabs);
+  expect(o).toHaveLength(1);
+  expect(o[0]).toMatchObject({ link: null, profile: "site-whatsapp" });
+  expect(order()).toEqual([o[0]!.id]);
+  expect(sitePlacement(e, "whatsapp")).toBe("none");
 });

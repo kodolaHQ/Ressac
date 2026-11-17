@@ -9,6 +9,8 @@ import { bindingProblem, effectiveBindings, sameBinding } from "../../shared/sho
 import {
   AGENT_PROFILE,
   spaceKey,
+  siteProfile,
+  sitePlacement,
   AGENT_WIDTH_MAX,
   AGENT_WIDTH_MIN,
   BAR_WIDTH_MAX,
@@ -346,11 +348,13 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       if (!favorite || !favoriteSpace) return false;
       // An essential has a single tab per window, shared by spaces with the same key (login profile, private);
       // a pinned tab belongs to its space.
+      // A site app's essential has one tab per window whatever the space: its container is its own.
+      const site = favorite.site;
       const existing = Object.values(d.tabs).find(
         (o) =>
           o.windowId === f.id &&
           o.link?.id === favorite.id &&
-          (a.kind === "essential" ? spaceKey(d, o.spaceId) === spaceKey(d, favoriteSpace) : o.spaceId === favoriteSpace),
+          (a.kind === "essential" ? !!site || spaceKey(d, o.spaceId) === spaceKey(d, favoriteSpace) : o.spaceId === favoriteSpace),
       );
       const o =
         existing ??
@@ -361,6 +365,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
           title: favorite.title,
           favicon: favorite.favicon,
           link: { type: a.kind, id: favorite.id },
+          ...(site ? { profile: siteProfile(site) } : {}),
         });
       f.active[favoriteSpace] = o.id;
       f.activeSpace = favoriteSpace;
@@ -449,6 +454,17 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       if (!d.essentials.some((x) => x.id === a.favoriteId)) return false;
       d.essentials = d.essentials.filter((x) => x.id !== a.favoriteId);
       unlink(d, a.favoriteId);
+      return true;
+    }
+    case "placeSite": {
+      const url = a.url;
+      if (a.placement === "essentials" && !url) return false;
+      if (sitePlacement(d, a.id) === a.placement) return false;
+      for (const x of d.essentials.filter((x) => x.site === a.id)) for (const o of Object.values(d.tabs)) if (o.link?.id === x.id) deleteTab(d, o);
+      d.essentials = d.essentials.filter((x) => x.site !== a.id);
+      d.siteBar = d.siteBar.filter((x) => x !== a.id);
+      if (a.placement === "essentials") d.essentials.push({ id: genId(), url: url!, title: a.title ?? url!, favicon: a.favicon ?? null, site: a.id });
+      else if (a.placement === "bar") d.siteBar.push(a.id);
       return true;
     }
     case "unloadEssential": {
@@ -805,19 +821,21 @@ function keepEssentials(d: Draft, genId: () => string): boolean {
   let created = false;
   // One pass over the tabs, not one per window and essential: this runs after every action.
   const have = new Set<string>();
-  for (const o of Object.values(d.tabs)) if (o.link) have.add(`${o.windowId}|${o.link.id}|${spaceKey(d, o.spaceId)}`);
+  const sites = new Set(d.essentials.filter((e) => e.site).map((e) => e.id));
+  // A site app's essential has one tab per window, in the app's container: the space's key does not count.
+  const keyOf = (id: string, space: string) => (sites.has(id) ? "site" : spaceKey(d, space));
+  for (const o of Object.values(d.tabs)) if (o.link) have.add(`${o.windowId}|${o.link.id}|${keyOf(o.link.id, o.spaceId)}`);
   for (const f of d.windows) {
     // Displayed again, an unloaded essential loads.
     const shown = d.tabs[f.active[f.activeSpace] ?? ""];
     if (shown?.unloaded) delete shown.unloaded;
     const space = d.spaces.find((e) => e.id === f.activeSpace);
     if (!space || space.private) continue;
-    const key = spaceKey(d, space.id);
     for (const e of d.essentials) {
-      if (have.has(`${f.id}|${e.id}|${key}`)) continue;
+      if (have.has(`${f.id}|${e.id}|${keyOf(e.id, space.id)}`)) continue;
       // Some callers give the id of the one tab their action opens: never reuse it.
       const id = genId();
-      createTab(d, () => (d.tabs[id] ? randomUUID() : id), { windowId: f.id, spaceId: space.id, url: e.url, title: e.title, favicon: e.favicon, link: { type: "essential", id: e.id } });
+      createTab(d, () => (d.tabs[id] ? randomUUID() : id), { windowId: f.id, spaceId: space.id, url: e.url, title: e.title, favicon: e.favicon, link: { type: "essential", id: e.id }, ...(e.site ? { profile: siteProfile(e.site) } : {}) });
       created = true;
     }
   }

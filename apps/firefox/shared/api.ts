@@ -89,6 +89,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("unpin"), spaceId: id, favoriteId: id }),
   z.object({ type: z.literal("addEssential"), id }),
   z.object({ type: z.literal("removeEssential"), favoriteId: id }),
+  /** A site app in the essentials (a tab in its own container, `url` required), in the sidebar bar, or nowhere. */
+  z.object({ type: z.literal("placeSite"), id: z.string().regex(/^[a-z0-9-]{1,100}$/), placement: z.enum(["essentials", "bar", "none"]), url: z.string().regex(/^https?:\/\//).optional(), title: z.string().optional(), favicon: z.string().nullable().optional() }),
   /** The essential takes the place `index` in the grid. */
   z.object({ type: z.literal("moveEssential"), favoriteId: id, index: z.number().int() }),
   z.object({ type: z.literal("unloadEssential"), windowId: id, favoriteId: id }),

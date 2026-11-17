@@ -632,3 +632,15 @@ test("a title-only change is saved on the slow timer; a real change brings it fo
   await wait(150);
   expect(readFileSync(join(d, "session.json"), "utf8")).not.toContain("\n");
 });
+
+test("a session without siteBar loads with []; an essential with a bad site is dropped", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { siteBar?: unknown; essentials: unknown[] };
+  delete old.siteBar;
+  old.essentials = [{ id: "a", url: "https://a.test/", title: "A", favicon: null, site: "ok-1" }, { id: "b", url: "https://b.test/", title: "B", favicon: null, site: "Bad Id" }];
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  const e = await loadSession(d);
+  expect(e.siteBar).toEqual([]);
+  expect(e.essentials.map((x) => x.id)).toEqual(["a"]);
+  expect(e.essentials[0]!.site).toBe("ok-1");
+});

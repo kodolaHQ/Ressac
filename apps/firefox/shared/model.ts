@@ -136,6 +136,8 @@ export interface Favorite {
   favicon: string | null;
   /** A pinned tab only: the folder of its space it sits in. */
   folder?: string;
+  /** An essential only: the site app (id of an application) it stands for; its tab lives in the app's own container. */
+  site?: string;
 }
 
 /** A folder of pinned tabs in a space's sidebar (one level, Arc/Zen model). */
@@ -214,6 +216,8 @@ export interface BrowserState {
   profiles: ConnectionProfile[];
   /** Shared by all spaces and all windows. */
   essentials: Favorite[];
+  /** The site apps shown in the sidebar bar (application ids). */
+  siteBar: string[];
   tabs: Record<TabId, Tab>;
   windows: WindowState[];
   settings: { engine: SearchEngine; /** The address « Autre… » searches with (`%s` = the words), kept when another engine is chosen. */ customEngine: string | null; /** Profil d'agent (fichier .ressac/profiles/<id>.json). */ agentProfile: string;
@@ -299,6 +303,16 @@ export function historyContext(state: BrowserState, id: TabId): { spaceId: Space
 /** The tab's login profile: its own if it has one, else its space's (the default profile if the space is unknown). */
 export function tabProfile(state: BrowserState, tab: Tab): ProfileId {
   return tab.profile ?? state.spaces.find((e) => e.id === tab.spaceId)?.profile ?? DEFAULT_PROFILE;
+}
+
+/** The login profile (container) of a site app placed in the essentials. */
+export function siteProfile(id: string): ProfileId {
+  return `site-${id}`;
+}
+
+/** Where a site app sits: an essential, the sidebar bar, or nowhere. */
+export function sitePlacement(state: BrowserState, id: string): "essentials" | "bar" | "none" {
+  return state.essentials.some((x) => x.site === id) ? "essentials" : state.siteBar.includes(id) ? "bar" : "none";
 }
 
 /** A history page: one row per URL and per space (`spaceId` empty: no space). */

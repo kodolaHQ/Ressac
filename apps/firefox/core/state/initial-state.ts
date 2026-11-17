@@ -10,6 +10,7 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
     spaces: [{ id: space, name: "Perso", icon: "🏠", pinned: [], folders: [], private: false, profile: DEFAULT_PROFILE, aura: DEFAULT_AURA }],
     profiles: [{ id: DEFAULT_PROFILE }],
     essentials: [],
+    siteBar: [],
     tabs: {},
     windows: [
       {
