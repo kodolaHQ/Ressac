@@ -255,6 +255,11 @@ test("titles are cut to TITLE_MAX characters at every write, and a kept title co
   expect(["https://1.fr/", "https://2.fr/"].map((u) => h.keptText(u) !== null)).toEqual([false, true]);
 });
 
+test("a NUL in the agent's query is ignored instead of breaking the full-text query", () => {
+  visit("https://a.fr/", "A", "zorg");
+  expect(h.searchForAgent({ query: "zo\0rg" }).map((r) => r.url)).toEqual(["https://a.fr/"]);
+});
+
 test("erase(depuis) also erases the retained text since that date; erase() erases everything", () => {
   visit("https://vieux.fr/", "V", "vieux", { date: "2026-10-01T00:00:00Z" });
   visit("https://recent.fr/", "R", "recent", { date: "2026-10-05T00:00:00Z" });

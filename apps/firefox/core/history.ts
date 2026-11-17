@@ -389,7 +389,7 @@ export class History {
     if (!this.db.isOpen) return [];
     const limit = Math.max(1, Math.min(AGENT_LIMIT.max, Math.floor(q.limit ?? AGENT_LIMIT.default)));
     const period = { since: q.since?.toISOString() ?? "", until: q.until?.toISOString() ?? "\uffff" };
-    const words = q.query.split(/\s+/).filter(Boolean);
+    const words = noNul(q.query).split(/\s+/).filter(Boolean);
     // Each word is a quoted FTS phrase: no query operator is interpreted.
     const fts = words.map((m) => `"${m.replaceAll('"', '""')}"`).join(" OR ");
     const patterns = Object.fromEntries(words.map((m, i) => [`m${i}`, `%${fold(m).replace(/[\\%_]/g, (c) => `\\${c}`)}%`]));
