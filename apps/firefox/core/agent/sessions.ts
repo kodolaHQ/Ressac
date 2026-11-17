@@ -77,7 +77,7 @@ interface Entry {
   engine?: string;
   /** The engine changed since this session started: the panel offers to relaunch it. */
   engineChanged?: boolean;
-  /** A message was sent (the user's Enter, or a text submitted for them): the conversation is someone's, never cut on its own. A draft is not. */
+  /** The user typed or pasted, or a text was submitted for them: the conversation (or draft) is someone's, never cut on its own. Ressac's own pre-fill is not. */
   touched?: boolean;
 }
 
@@ -211,9 +211,9 @@ export class SessionsAgent {
     e.toSend = "";
   }
 
-  /** True while a window's session, running or starting, has the user's input (see Entry.touched). */
+  /** True while a window's session, running or starting, has the user's input or a text queued to send (see Entry.touched). */
   touched(): boolean {
-    return [...this.inputs.values()].some((e) => e.touched && (e.session?.active || e.startup));
+    return [...this.inputs.values()].some((e) => (e.touched || e.prefill?.submit) && (e.session?.active || e.startup));
   }
 
   active(f: WindowId): boolean {
@@ -224,9 +224,9 @@ export class SessionsAgent {
     const e = this.inputs.get(f);
     if (!e?.session) return;
     e.session.write(d);
-    if (!d.includes("\r")) return;
-    e.touched = true;
-    this.o.onSend?.(f);
+    // Keys and pastes are the user's; the terminal's own replies (focus, queries) start with ESC.
+    if (!d.startsWith("\x1b") || d.startsWith("\x1b[200~")) e.touched = true;
+    if (d.includes("\r")) this.o.onSend?.(f);
   }
 
   /**
@@ -283,7 +283,8 @@ export class SessionsAgent {
     const olds = [...this.inputs];
     this.inputs.clear();
     for (const [, e] of olds) this.drop(e);
-    await Promise.all(olds.map(([f, e]) => (this.entry(f, e.size, e.profile, e.ran), this.start(f, e.size))));
+    // A text queued to send (⌘T, a design remark) waits for the new session.
+    await Promise.all(olds.map(([f, e]) => ((this.entry(f, e.size, e.profile, e.ran).prefill = e.prefill), this.start(f, e.size))));
   }
 
   /** This window only changes agent; switching back to a profile that ran here resumes its last conversation. */

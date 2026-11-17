@@ -168,7 +168,7 @@
     });
   });
   // The note takes the keyboard; Compris gives it back: to the terminal if the user opened the panel (⌘J, ✦), else to
-  // where it was (the empty page's field when the home page opened the panel). Captured before the note mounts.
+  // where it was (a panel left open at the last quit, shown again at launch). Captured before the note mounts.
   let giveBack: (() => void) | undefined;
   let userAsked = false;
   $effect.pre(() => {

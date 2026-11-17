@@ -183,7 +183,7 @@ const engines = createEngines({
   // Docker starts its app for the user, never for a background harvest.
   docker: { ...dockerContainers, start: () => docker.start(), wake: (reason) => (reason === "user" ? docker.start() : Promise.resolve()) },
   // Sessions nobody typed in (a panel opened, left empty) do not hold the hand-over: they restart in the machine.
-  workshopIdle: async () => !(await workshop.busy(dockerContainers)) || (!sessions.touched() && !(await workshop.busy(dockerContainers, { agentSessions: false })) && "untouched"),
+  workshopIdle: async () => !(await workshop.busy(dockerContainers)) || (!(await workshop.busy(dockerContainers, { agentSessions: false })) && !sessions.touched() && "untouched"),
   relaunchSessions: () => sessions.relaunchAll(),
   stopDocker: async () => {
     const r = await runTool(dockerContainers.binary()!, ["stop", "-t", "10", containerName()], { delayMs: 60_000 });

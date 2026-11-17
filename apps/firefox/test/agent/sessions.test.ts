@@ -450,19 +450,22 @@ describe("engine change (Réglages › Agents)", () => {
   });
 });
 
-test("touched: only a session a message was sent to (Enter, a submitted text; not a draft); kept by Relancer, not by a workshop restart", async () => {
-  const { management: manager, sessions } = prepare();
+test("touched: a session the user typed or pasted in, or that has a text queued to send; not the terminal's replies nor Ressac's own pre-fill; kept by Relancer, not by a workshop restart", async () => {
+  const { management: manager } = prepare();
   await manager.start("F", size);
   await manager.start("G", size);
   manager.write("F", "\x1b[I"); // the terminal's own replies (focus, queries) are not the user's
-  manager.write("F", "bonj");
+  manager.write("F", "\x1b[?1;2c");
   expect(manager.touched()).toBe(false);
-  manager.write("F", "\r");
+  manager.write("F", "bonj"); // a draft: lost if the session restarted
   expect(manager.touched()).toBe(true);
   await manager.relaunch("F");
   expect(manager.touched()).toBe(true);
   await manager.relaunchAll();
   expect(manager.touched()).toBe(false);
+  manager.write("F", "\x1b[200~collé\x1b[201~"); // a paste
+  expect(manager.touched()).toBe(true);
+  await manager.closeWindow("F");
   manager.prefill("G", "[contexte : Page A] ");
   expect(manager.touched()).toBe(false);
   vi.useFakeTimers();
@@ -473,3 +476,15 @@ test("touched: only a session a message was sent to (Enter, a submitted text; no
   await manager.closeWindow("G");
   expect(manager.touched()).toBe(false);
 });
+
+test("touched: a text queued to send on a session still starting counts, and survives a workshop restart", async () => {
+  let release: (s: SessionLike) => void = () => {};
+  const { management: manager } = prepare(() => new Promise<SessionLike>((r) => (release = r)));
+  void manager.start("F", size);
+  manager.prefill("F", "question ⌘T", undefined, true);
+  expect(manager.touched()).toBe(true);
+  void manager.relaunchAll();
+  expect(manager.touched()).toBe(true);
+  release(new FakeSession());
+});
+
