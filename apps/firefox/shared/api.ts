@@ -767,9 +767,11 @@ export interface ProfileForGrant {
 export interface LocalAiStateShown {
   state: AiState;
   error?: string;
-  verification?: { ollama: boolean; gemma: boolean; gemmaModel?: string | null; decision: boolean };
+  verification?: { ollama: boolean; gemma: boolean; gemmaModel?: string | null; decision: boolean; embed: boolean };
   /** The last failed download of the decision model, until one succeeds (retried at the next launch). */
   decisionError?: string;
+  /** Same for the search model. */
+  searchError?: string;
   ollamaUrl?: string;
   /** What was found of Ollama on this machine (absent from an older host). */
   ollama?: OllamaStatus;

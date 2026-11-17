@@ -36,7 +36,7 @@ afterEach(async () => {
 /** A launch that shows the welcome (unless `welcome` is false: the tests' default, which skips it). Ollama unreachable. */
 async function launch(o: { welcome?: boolean; env?: Record<string, string>; dataDir?: string; firstTimeNotes?: boolean; ai?: boolean } = {}): Promise<void> {
   // The kernel's own decision-model address: the welcome reads the decision model found in Ollama, which an imposed one hides.
-  const env = { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined, RESSAC_D1_URL: "http://127.0.0.1:9" /* never the real 1.1 GB */, ...(o.welcome === false ? {} : { RESSAC_SKIP_WELCOME: "0" }), ...o.env };
+  const env = { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined, RESSAC_D1_URL: "http://127.0.0.1:9" /* never the real 1.1 GB */, RESSAC_EMBED_URL: "http://127.0.0.1:9", ...(o.welcome === false ? {} : { RESSAC_SKIP_WELCOME: "0" }), ...o.env };
   w = await launchRessac({ env, prefs: NO_WEB, dataDir: o.dataDir, firstTimeNotes: o.firstTimeNotes, ai: o.ai });
   m = w.marionette;
   await m.setContext("chrome");
@@ -178,7 +178,8 @@ describe("welcome", () => {
       d1.release();
       const file = join(w!.dataDir, "notifications.jsonl");
       await waitFor(m, "return true", () => existsSync(file) && readFileSync(file, "utf8").includes("L'IA locale est prête"), 15_000);
-      expect(pulled).toEqual(["gemma4:e4b-mlx"]); // d1 came from the background download
+      expect(pulled).toEqual(["gemma4:e4b-mlx"]); // d1 and the search model came from the background downloads
+      expect(d1.hits()).toBe(2);
     } finally {
       release();
       await d1.close();

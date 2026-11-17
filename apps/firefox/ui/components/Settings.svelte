@@ -21,7 +21,7 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { DECISION_MODEL, OLLAMA_ITSELF, validAgentDomain, type DockerStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { DECISION_MODEL, OLLAMA_ITSELF, SEARCH_MODEL, validAgentDomain, type DockerStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { updateStatusText } from "../../core/update";
   import { aiOn, api, appState } from "../state.svelte";
   import AiAsleep from "./AiAsleep.svelte";
@@ -247,7 +247,7 @@
     <span class="pill" data-tone="warn" data-testid="pull-progress-{id}">{pullLabel(pulling)}</span>
   {:else}
     <span class="pill" data-tone="off">{t("settings-pill-absent")}</span>
-    {#if v?.ollama || name === OLLAMA_ITSELF || name === DECISION_MODEL}<button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>{t(action)}</button>{/if}
+    {#if v?.ollama || name === OLLAMA_ITSELF || name === DECISION_MODEL || name === SEARCH_MODEL}<button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>{t(action)}</button>{/if}
   {/if}
 {/snippet}
 
@@ -394,6 +394,10 @@
               <div class="grow"><b>{t("settings-ai-decision-model")}</b><span class="muted">{t("settings-ai-decision-detail")}</span></div>
               {@render pullPill(DECISION_MODEL, !!v?.decision, "decision")}
             </div>
+            <div class="row" data-testid="ai-search">
+              <div class="grow"><b>{t("settings-ai-search-model")}</b><span class="muted">{t("settings-ai-search-detail")}</span></div>
+              {@render pullPill(SEARCH_MODEL, !!v?.embed, "search")}
+            </div>
             <div class="row" data-testid="ai-writer">
               <div class="grow"><b>{t("settings-ai-writer")}</b><span class="muted">{writer === undefined ? "" : t(`settings-ai-writer-${writer ?? "none"}`)}</span></div>
               {#if writer === null}<button data-testid="ai-writer-connect" onclick={() => (current = "agents")}>{t("settings-ai-writer-connect")}</button>{/if}
@@ -403,6 +407,9 @@
             {/if}
             {#if ai.decisionError && !v?.decision && pulling?.name !== DECISION_MODEL}
               <div class="row"><span class="pill" data-tone="error" data-testid="ai-decision-error">{t("settings-ai-decision-failed", { reason: ai.decisionError })}</span></div>
+            {/if}
+            {#if ai.searchError && !v?.embed && pulling?.name !== SEARCH_MODEL}
+              <div class="row"><span class="pill" data-tone="error" data-testid="ai-search-error">{t("settings-ai-decision-failed", { reason: ai.searchError })}</span></div>
             {/if}
             {#if pullError}<div class="row"><span class="pill" data-tone="error" data-testid="pull-error">{pullError}</span></div>{/if}
             {#if v?.ollama && !v.gemma}

@@ -1,11 +1,11 @@
 import { listOllamaModels } from "./ollama-models.ts";
 import { PULLABLE_MODELS, pullOllamaModel, UNSUPPORTED_MODEL } from "./ollama-pull.ts";
-import { readGrants, readSiteGrants, type LocalAi, type Workshop, type WriterAgent } from "../../../packages/kernel/src/index.ts";
+import { readGrants, readSiteGrants, type LlamaModel, type LocalAi, type Workshop, type WriterAgent } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
 import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
-import { DECISION_MODEL, OLLAMA_ITSELF, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
+import { DECISION_MODEL, OLLAMA_ITSELF, SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
 import type { OllamaRuntime } from "./ollama-runtime.ts";
 import type { DockerRuntime } from "./docker-runtime.ts";
 import { hostSay } from "./locale.ts";
@@ -91,7 +91,7 @@ export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork">;
   /** Who writes (the account check is cached): reset whenever an account may have changed. */
   writer: { agent(): Promise<WriterAgent | null>; reset(): void };
-  ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "installDecisionModel" | "cancelInstall">;
+  ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install"> };
   ollama: Pick<OllamaRuntime, "status" | "start" | "install">;
   docker: DockerRuntime;
   stopApps(): Promise<void>;
@@ -120,10 +120,10 @@ const LOGIN_WAIT_MS = 120_000;
 export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & {
   stopLogins(): void;
   loginEnded(maxMs?: number): Promise<void>;
-  /** Starts the decision model's download in the pull slot, unless a pull already runs (AI start, model missing). */
-  downloadDecision(): void;
-  /** Cancels the decision model's download (AI off); its partial file stays for the next try. */
-  cancelDecision(): void;
+  /** Starts Ressac's own model downloads (d1, the search model), one after the other in the pull slot, unless a pull already runs (AI start, models missing). */
+  downloadModels(names: string[]): void;
+  /** Cancels those downloads (AI off); their partial files stay for the next try. */
+  cancelDownloads(): void;
 } {
   /** The sign-in by code in progress; one at a time. */
   let signIn: ReturnType<typeof startDeviceLogin> | undefined;
@@ -136,16 +136,16 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
    * shortcut: no cancel button in v1; quitting stops it and Ollama resumes from its kept chunks next time.
    */
   let pull: PullProgress | null = null;
-  /** The last failed download of the decision model, cleared by a success; a cancel (AI off) is not a failure. */
-  let decisionError: string | undefined;
-  let decisionCancelled = false;
-  const installDecision = async () => {
-    decisionCancelled = false;
+  /** The last failed download of each llama-server model, cleared by a success; a cancel (AI off) is not a failure. */
+  const modelErrors = new Map<string, string>();
+  let cancelled = false;
+  const installModel = async (name: string, install: (onPercent: (percent: number | null) => void) => Promise<void>) => {
+    cancelled = false;
     try {
-      await o.ai.installDecisionModel((percent) => (pull = { name: DECISION_MODEL, percent, status: "" }));
-      decisionError = undefined;
+      await install((percent) => (pull = { name, percent, status: "" }));
+      modelErrors.delete(name);
     } catch (e) {
-      if (!decisionCancelled) decisionError = failure(e);
+      if (!cancelled) modelErrors.set(name, failure(e));
       throw e;
     }
   };
@@ -161,16 +161,21 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
   const pullNow = async (name: string) => {
     try {
       if (name === OLLAMA_ITSELF) await o.ollama.install((percent) => (pull = { name, percent, status: "" }));
-      else if (name === DECISION_MODEL) await installDecision();
+      else if (name === DECISION_MODEL) await installModel(name, (p) => o.ai.installDecisionModel(p));
+      else if (name === SEARCH_MODEL) await installModel(name, (p) => o.ai.embed.install(p));
       else await pullOllamaModel(o.ai.ollamaUrl, name, (e) => (pull = e));
     } finally {
       pull = null;
     }
   };
-  /** The decision download started at AI start is Ressac's, not the user's: a user's pull waits for it instead of being refused. */
-  const busy = () => !!pull && pull.name !== DECISION_MODEL;
-  const afterDecision = async () => {
-    while (pull?.name === DECISION_MODEL) await pulled;
+  /** Ressac's own models, downloaded at AI start. */
+  const ressacModel = (name: string) => name === DECISION_MODEL || name === SEARCH_MODEL;
+  /** Ressac's download chain at AI start, from its first model to its last. */
+  let ressacPulls: Promise<void> | undefined;
+  /** Ressac's downloads are not the user's: a user's pull waits for them instead of being refused. */
+  const busy = () => !!pull && !ressacModel(pull.name);
+  const afterRessac = async () => {
+    while (ressacPulls || (pull && ressacModel(pull.name))) await (ressacPulls ?? pulled);
   };
   /** The restart or rebuild in progress, whatever page or window asked for it. */
   let operation: WorkshopOperation = null;
@@ -242,10 +247,16 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       clearTimeout(timer);
       if (signIn === s) stopLogins();
     },
-    // The failure is already in decisionError (shown in Réglages): nothing else to say here.
-    downloadDecision: () => void (pull ? undefined : pullOne(DECISION_MODEL).catch(() => {})),
-    cancelDecision: () => {
-      decisionCancelled = true;
+    // A failure is kept in modelErrors (shown in Réglages) and the chain goes on to the next model.
+    downloadModels: (names: string[]) => {
+      if (pull || ressacPulls) return;
+      cancelled = false;
+      ressacPulls = (async () => {
+        for (const n of names) if (!cancelled) await pullOne(n).catch(() => {});
+      })().finally(() => (ressacPulls = undefined));
+    },
+    cancelDownloads: () => {
+      cancelled = true;
       o.ai.cancelInstall();
     },
     "settings.agents": agents,
@@ -364,7 +375,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       if (busy()) return { ok: false, error: PULL_BUSY() };
       try {
         // Rechecked after the wait: of two d1 callers resuming together, the second finds the slot taken by the first and waits again.
-        do await afterDecision(); while (p?.name === DECISION_MODEL && pull?.name === DECISION_MODEL);
+        do await afterRessac(); while (ressacModel(String(p?.name)) && (ressacPulls || (pull && ressacModel(pull.name))));
         await pullOne(String(p?.name));
         return { ok: true };
       } catch (e) {
@@ -375,11 +386,11 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     "settings.pullInBackground": (p: { names?: unknown }): SettingsResult => {
       if (busy()) return { ok: false, error: PULL_BUSY() };
       const names = Array.isArray(p?.names) ? p.names.map(String) : [];
-      if (!names.length || names.some((n) => n !== OLLAMA_ITSELF && n !== DECISION_MODEL && !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL() };
+      if (!names.length || names.some((n) => n !== OLLAMA_ITSELF && !ressacModel(n) && !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL() };
       void (async () => {
         try {
-          // A decision model installed meanwhile is a no-op for LocalAi; one that failed is tried again here.
-          await afterDecision();
+          // A model of Ressac's installed meanwhile is a no-op for LocalAi; one that failed is tried again here.
+          await afterRessac();
           for (const n of names) await pullOne(n);
           o.notify({ title: hostSay("host-ai-ready-title"), text: hostSay("host-ai-ready-text") });
         } catch (e) {
@@ -401,7 +412,10 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     "ai.state": async (): Promise<LocalAiStateShown> => {
       const v = await o.ai.check().catch(() => undefined);
       const ollama = await o.ollama.status().catch(() => undefined);
-      return { ...o.ai.state(), ...(v ? { verification: v } : {}), ollamaUrl: o.ai.ollamaUrl, ...(ollama ? { ollama } : {}), ...(decisionError ? { decisionError } : {}) };
+      const decisionError = modelErrors.get(DECISION_MODEL);
+      const searchError = modelErrors.get(SEARCH_MODEL);
+      const errors = { ...(decisionError ? { decisionError } : {}), ...(searchError ? { searchError } : {}) };
+      return { ...o.ai.state(), ...(v ? { verification: v } : {}), ollamaUrl: o.ai.ollamaUrl, ...(ollama ? { ollama } : {}), ...errors };
     },
   };
 }

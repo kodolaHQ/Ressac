@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
   import type { ImportSource, SettingsApi } from "../../shared/api";
-  import { DECISION_MODEL, OLLAMA_ITSELF, type DockerStatus, type OllamaStatus } from "../../shared/settings";
+  import { DECISION_MODEL, OLLAMA_ITSELF, SEARCH_MODEL, type DockerStatus, type OllamaStatus } from "../../shared/settings";
   import { SEARCH_ENGINES, type SearchEngine } from "../../shared/search";
   import { APPEARANCES } from "../../shared/model";
   import { shortcutLabel } from "../../shared/shortcuts";
@@ -74,9 +74,9 @@
     const v = ai?.verification;
     runtime = ai?.ollama;
     ollama = !!v?.ollama;
-    // The decision download Ressac starts with AI is not the user's: Gemma and Ollama stay offered (the host queues them behind it).
-    const background = running?.name === DECISION_MODEL;
-    missing = v ? [!v.gemma && "gemma4:e4b-mlx", !v.decision && !background && DECISION_MODEL].filter((n): n is string => !!n) : [];
+    // The downloads Ressac starts with AI (d1, then the search model) are not the user's: Gemma and Ollama stay offered (the host queues them behind).
+    const background = running?.name === DECISION_MODEL || running?.name === SEARCH_MODEL;
+    missing = v ? [!v.gemma && "gemma4:e4b-mlx", !v.decision && !background && DECISION_MODEL, !v.embed && !background && SEARCH_MODEL].filter((n): n is string => !!n) : [];
     pulling = !!running && !background;
   }
   async function startOllama() {

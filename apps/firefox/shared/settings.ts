@@ -112,6 +112,8 @@ export type OllamaStatus = { kind: "ready"; version: string } | { kind: "outdate
 export const OLLAMA_ITSELF = "ollama";
 /** The name the decision model's download (d1-2B, run by llama-server) goes under, next to the Ollama models. */
 export const DECISION_MODEL = "d1-2B";
+/** The name the search model's download (EmbeddingGemma, run by llama-server for ⌘T Demander) goes under. */
+export const SEARCH_MODEL = "embeddinggemma-300m";
 
 /** The progress of an Ollama model download (or of Ollama itself) shown in Settings. */
 export interface PullProgress {

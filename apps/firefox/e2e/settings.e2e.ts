@@ -43,7 +43,7 @@ afterEach(async () => {
 /** Launches with `files` written under the workspace (RESSAC_ROOT). Ollama is unreachable unless the test points it elsewhere. */
 async function launch(env: Record<string, string> = {}, files: Record<string, string> = {}): Promise<void> {
   // The kernel's own decision-model address: these tests read the decision model found in Ollama, which an imposed one hides.
-  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD, ...env } });
+  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD, RESSAC_EMBED_URL: DEAD, ...env } });
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(join(w.dataDir, "workspace"), { recursive: true });
     writeFileSync(join(w.dataDir, "workspace", name), text);
@@ -127,7 +127,7 @@ describe("Settings page", () => {
     // After afterEach has closed the app.
     onTestFinished(() => rmSync(dataDir, { recursive: true, force: true }));
     const relaunch = async () => {
-      w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD } });
+      w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD, RESSAC_EMBED_URL: DEAD } });
       m = w.marionette;
       await m.setContext("chrome");
       await waitReady(m);
@@ -254,17 +254,22 @@ describe("Settings page", () => {
     expect(await text("ai-gemma")).toContain("Gemma (gemma4:e4b-mlx)");
     await shows("ai-decision", "absent");
     await shows("ai-decision-error", "Téléchargement échoué");
+    await shows("ai-search", "Modèle de recherche");
+    await shows("ai-search", "absent");
+    await shows("ai-search-error", "Téléchargement échoué");
   });
 
-  it("local AI: the sort model downloads by itself, shows a percentage, then installed", async () => {
+  it("local AI: the sort model then the search model download by themselves, show a percentage, then installed", async () => {
     const d1 = await startD1Server({ hold: true });
     try {
       await launch({ ...d1.env });
       await openPage();
       await go("ai");
       await shows("ai-decision", "Téléchargement 50 %");
+      await shows("ai-search", "absent"); // queued behind d1
       d1.release();
       await shows("ai-decision", "installé");
+      await shows("ai-search", "installé");
     } finally {
       await d1.close();
     }

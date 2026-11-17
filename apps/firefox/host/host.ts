@@ -43,7 +43,7 @@ const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { ollamaRelayTarget } = await import("./ollama-models.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
-const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, cleanAgentDomains } = await import("../shared/settings.ts");
+const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DECISION_MODEL, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
 const {
@@ -159,7 +159,8 @@ const broadcastAccess = () => {
 };
 
 // The local AI for harvests: Gemma runs in Ollama, the decision model (d1-2B) in the llama-server shipped with Ressac
-// (RESSAC_LLAMA_SERVER, set by chrome/agent/command.ts). RESSAC_D1_URL / RESSAC_D1_SHA256: tests only.
+// (RESSAC_LLAMA_SERVER, set by chrome/agent/command.ts), as is the search model (⌘T). RESSAC_D1_URL / RESSAC_D1_SHA256 and
+// RESSAC_EMBED_URL / RESSAC_EMBED_SHA256: dev and tests only.
 // The agent that writes (Claude Haiku or Codex, in the workshop): the default profile's, else the other if signed in.
 const profileAgents = new Map<string, "claude" | "codex">();
 // Best effort (the space may not exist yet): a profile read late leaves the default "claude" until agent.profiles runs.
@@ -180,6 +181,8 @@ const ai = new LocalAi({
   llamaServer: process.env.RESSAC_LLAMA_SERVER,
   decisionUrl: process.env.RESSAC_D1_URL,
   decisionSha256: process.env.RESSAC_D1_SHA256,
+  embedUrl: process.env.RESSAC_EMBED_URL,
+  embedSha256: process.env.RESSAC_EMBED_SHA256,
   locale: () => hostLocale(),
 });
 
@@ -202,12 +205,12 @@ const docker = fakeDocker
 let aiOn = false;
 let aiWoken = false;
 // Once per off → on: an installed Ollama or container app that is not running is started, and left running at quit
-// (nothing of theirs is downloaded without a click). The decision model, small and needed by the agent's watch, is
-// downloaded at once when missing; a failure shows in Réglages and is retried at the next launch.
+// (nothing of theirs is downloaded without a click). The decision model, needed by the agent's watch, then the search
+// model (⌘T), both small, are downloaded at once when missing; a failure shows in Réglages and is retried at the next launch.
 const wakeAi = () => {
   if (aiWoken) return;
   aiWoken = true;
-  void ai.check().then((v) => aiOn && !v.decision && settings.downloadDecision(), () => {});
+  void ai.check().then((v) => aiOn && settings.downloadModels([!v.decision && DECISION_MODEL, !v.embed && SEARCH_MODEL].filter((n) => n !== false)), () => {});
   void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[ressac] Ollama did not start:", e));
   void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
 };
@@ -399,7 +402,7 @@ const applyAi = async () => {
   if (!aiWoken && !kernelLaunched) return;
   aiWoken = false;
   kernelLaunched = false;
-  settings.cancelDecision();
+  settings.cancelDownloads();
   // The kernel first: its widget scheduler must not start a harvest while the sessions and apps stop. Its stop only
   // drops the sessions' MCP tokens (idempotent with their own end); the sessions themselves stop below.
   ready = ready.then(async (n) => (await stopKernel(n), null));

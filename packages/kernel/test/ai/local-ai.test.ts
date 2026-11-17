@@ -6,7 +6,8 @@ import { createHash } from "node:crypto";
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { LocalAi, launchAiProcess, D1_FILE, type AiProcess } from "../../src/ai/local-ai.js";
+import { LocalAi, D1_FILE } from "../../src/ai/local-ai.js";
+import { EMBED_MODEL, type AiProcess } from "../../src/ai/llama-model.js";
 import { D1_ANCHORS, toPplxScale } from "../../src/ai/d1-scale.js";
 import { tempFolder } from "../helpers/temp.js";
 import { fakeForeign, fakeKev, fakeOllama, fakeSilentOllama, unreachableUrl, type FakeServer } from "../helpers/fake-ai.js";
@@ -78,9 +79,19 @@ describe("LocalAi", () => {
   it("check reports decision from the file", async () => {
     const ollama = keep(await fakeOllama("", ["gemma4:e4b-mlx", "pplx-decider-flash:latest"]));
     const empty = new LocalAi({ folder: await tempFolder(), ollamaUrl: ollama.url });
-    expect(await empty.check()).toEqual({ ollama: true, gemma: true, gemmaModel: "gemma4:e4b-mlx", decision: false });
+    expect(await empty.check()).toEqual({ ollama: true, gemma: true, gemmaModel: "gemma4:e4b-mlx", decision: false, embed: false });
     expect((await new LocalAi({ folder: await installed(), ollamaUrl: ollama.url }).check()).decision).toBe(true);
     expect((await new LocalAi({ folder: await tempFolder(), ollamaUrl: ollama.url, kevUrl: "http://127.0.0.1:9" }).check()).decision).toBe(true);
+  });
+
+  it("check reports the search model from its own file in embed/", async () => {
+    const folder = await tempFolder();
+    const ai = new LocalAi({ folder, ollamaUrl: await unreachableUrl() });
+    expect((await ai.check()).embed).toBe(false);
+    await mkdir(join(folder, "embed"), { recursive: true });
+    await writeFile(join(folder, "embed", EMBED_MODEL.file), "gguf");
+    expect((await ai.check()).embed).toBe(true);
+    expect(ai.embed.installed()).toBe(true);
   });
 
   it("Gemma: only gemma4:e4b installed is used, both installed prefers the MLX build, none is absent", async () => {
@@ -199,69 +210,21 @@ describe("LocalAi", () => {
   it("launches llama-server with the model on 127.0.0.1", async () => {
     const folder = await installed();
     const kev = keep(await fakeKev());
+    const port = Number(new URL(kev.url).port);
     const launches: { cmd: string; args: string[]; cwd: string }[] = [];
     const states: string[] = [];
-    let ai!: LocalAi;
-    const launch = (cmd: string, args: string[], o: { cwd: string }): AiProcess => {
-      launches.push({ cmd, args, cwd: o.cwd });
-      (ai as any).kevUrl = kev.url; // the server takes a while: plug it to the fake
-      return { stop() {}, onOutput() {} };
-    };
-    ai = new LocalAi({ folder, llamaServer: LLAMA, launch, onState: (e) => states.push(e), ...fast });
+    const launch = (cmd: string, args: string[], o: { cwd: string }): AiProcess => (launches.push({ cmd, args, cwd: o.cwd }), { stop() {}, onOutput() {} });
+    const ai = new LocalAi({ folder, llamaServer: LLAMA, launch, port, onState: (e) => states.push(e), ...fast });
     toStop.push(ai);
     await ai.kev({ state: "", questions: {} });
+    expect(kev.requests.filter((r) => r.url === "/v1/systemone")).toHaveLength(1);
     expect(launches).toEqual([{
       cmd: LLAMA,
-      args: ["-m", join(folder, "d1", D1_FILE), "--host", "127.0.0.1", "--port", "8008", "-ngl", "99", "-np", "4", "-c", "16384"],
+      args: ["-m", join(folder, "d1", D1_FILE), "--host", "127.0.0.1", "--port", String(port), "-ngl", "99", "-np", "4", "-c", "16384"],
       cwd: join(folder, "d1"),
     }]);
     expect(states).toEqual(["starting", "active"]);
     expect(ai.state().state).toBe("active");
-  });
-
-  it("a foreign server on the port (no model name) is not taken as ready", async () => {
-    const foreign = keep(await fakeForeign());
-    // Our process dies after a while: a ready server would have been accepted long before.
-    const launch = (): AiProcess => ({ stop() {}, onOutput(r) { setTimeout(() => r(1), 100); } });
-    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: Number(new URL(foreign.url).port), ...fast });
-    toStop.push(ai);
-    await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("did not start");
-    expect(ai.state().state).toBe("error");
-  });
-
-  it("a server that dies at start rejects with its last lines; the next call launches again", async () => {
-    let launched = 0;
-    const launch = (): AiProcess => {
-      launched++;
-      return { stop() {}, onLine(r) { r("loading model"); r("bind: address already in use"); }, onOutput(r) { setTimeout(() => r(1), 5); } };
-    };
-    // port 1: nothing answers there
-    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: 1, ...fast });
-    const start = Date.now();
-    await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("bind: address already in use");
-    expect(Date.now() - start).toBeLessThan(1000);
-    expect(ai.state().state).toBe("error");
-    await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("bind: address already in use");
-    expect(launched).toBe(2);
-  });
-
-  it("relaunches after a crash; parallel calls start one server", async () => {
-    const kev = keep(await fakeKev());
-    const exits: ((c: number | null) => void)[] = [];
-    let ai!: LocalAi;
-    const launch = (): AiProcess => {
-      setTimeout(() => { (ai as any).kevUrl = kev.url; }, 60);
-      return { stop() {}, onOutput(r) { exits.push(r); } };
-    };
-    ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: 1, ...fast });
-    toStop.push(ai);
-    await Promise.all([ai.kev({ state: "a", questions: {} }), ai.kev({ state: "b", questions: {} })]);
-    expect(exits).toHaveLength(1);
-    expect(kev.requests.filter((r) => r.url === "/v1/systemone")).toHaveLength(2);
-    exits[0]!(139);
-    expect(ai.state().state).toBe("stopped");
-    await ai.kev({ state: "c", questions: {} });
-    expect(exits).toHaveLength(2);
   });
 
   it("warmDecision starts the server once and never throws", async () => {
@@ -279,34 +242,12 @@ describe("LocalAi", () => {
     expect(ai.state().state).toBe("starting");
   });
 
-  it("arreter() during startup: state arretee, no error, no timer", async () => {
-    let output!: (c: number | null) => void;
-    const launch = (): AiProcess => ({
-      stop() { setTimeout(() => output(null), 1); },
-      onOutput(r) { output = r; },
-    });
-    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: 1, ...fast });
-    toStop.push(ai);
-    const call = ai.kev({ state: "", questions: {} }).catch((e) => e);
-    await new Promise((r) => setTimeout(r, 40));
-    expect(ai.state().state).toBe("starting");
-    await ai.stop();
-    await call;
-    await new Promise((r) => setTimeout(r, 40));
-    expect(ai.state()).toEqual({ state: "stopped" });
-    expect((ai as any).timeout).toBeUndefined();
-  });
-
   it("after 10 min without a call, the server is stopped (fake clock)", async () => {
     const kev = keep(await fakeKev());
     let now = 1000;
     let stopped = 0;
-    let ai!: LocalAi;
-    const launch = (): AiProcess => {
-      (ai as any).kevUrl = kev.url;
-      return { stop() { stopped++; }, onOutput() {} };
-    };
-    ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, clock: () => now, inactivityMs: 600_000, ...fast });
+    const launch = (): AiProcess => ({ stop() { stopped++; }, onOutput() {} });
+    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: Number(new URL(kev.url).port), clock: () => now, inactivityMs: 600_000, ...fast });
     toStop.push(ai);
     await ai.kev({ state: "", questions: {} });
     expect(ai.state().state).toBe("active");
@@ -323,13 +264,8 @@ describe("LocalAi", () => {
     const kev = keep(await fakeKev());
     const ollama = keep(await fakeOllama("ok"));
     let launched = 0;
-    let ai!: LocalAi;
-    const launch = (): AiProcess => {
-      launched++;
-      (ai as any).kevUrl = kev.url;
-      return { stop() {}, onOutput() {} };
-    };
-    ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, ollamaUrl: ollama.url, ...fast });
+    const launch = (): AiProcess => (launched++, { stop() {}, onOutput() {} });
+    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: Number(new URL(kev.url).port), ollamaUrl: ollama.url, ...fast });
     toStop.push(ai);
     await ai.stop();
     await ai.kev({ state: "", questions: {} });
@@ -349,13 +285,8 @@ describe("LocalAi", () => {
     const kev = keep(await fakeKev());
     let launched = 0;
     let stoppedList = 0;
-    let ai!: LocalAi;
-    const launch = (): AiProcess => {
-      launched++;
-      (ai as any).kevUrl = kev.url;
-      return { stop() { stoppedList++; }, onOutput() {} };
-    };
-    ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, ...fast });
+    const launch = (): AiProcess => (launched++, { stop() { stoppedList++; }, onOutput() {} });
+    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: Number(new URL(kev.url).port), ...fast });
     toStop.push(ai);
     const first = ai.access();
     await first.kev({ state: "", questions: {} });
@@ -370,7 +301,7 @@ describe("LocalAi", () => {
   });
 });
 
-describe("LocalAi: the decision model download", () => {
+describe("LocalAi: the models' downloads", () => {
   const data = Buffer.from("d1 weights ".repeat(5000));
   const final = (folder: string) => join(folder, "d1", D1_FILE);
 
@@ -394,32 +325,7 @@ describe("LocalAi: the decision model download", () => {
     expect(existsSync(final(folder))).toBe(false);
   });
 
-  it("resumes a partial download", async () => {
-    const host = await fakeFile(data);
-    const folder = await tempFolder();
-    await mkdir(join(folder, "d1"), { recursive: true });
-    const half = data.length / 2;
-    await writeFile(`${final(folder)}.part`, data.subarray(0, half));
-    await new LocalAi({ folder, decisionUrl: host.url, decisionSha256: sha(data) }).installDecisionModel(() => {});
-    expect(host.headers[0]!.range).toBe(`bytes=${half}-`); // kept across the redirect
-    expect(sha(await readFile(final(folder)))).toBe(sha(data));
-  });
-
-  it("rejects and deletes a file with the wrong hash", async () => {
-    const host = await fakeFile(data);
-    const folder = await tempFolder();
-    const ai = new LocalAi({ folder, decisionUrl: host.url, decisionSha256: sha(Buffer.from("other")), locale: () => "fr" });
-    await expect(ai.installDecisionModel(() => {})).rejects.toThrow("Le modèle téléchargé est corrompu");
-    expect(existsSync(final(folder))).toBe(false);
-    expect(existsSync(`${final(folder)}.part`)).toBe(false);
-  });
-
-  it("an unreachable host rejects with the download error", async () => {
-    const ai = new LocalAi({ folder: await tempFolder(), decisionUrl: await unreachableUrl(), locale: () => "fr" });
-    await expect(ai.installDecisionModel(() => {})).rejects.toThrow("Le téléchargement du modèle a échoué");
-  });
-
-  it("cancelInstall stops the download and keeps the .part; a second install meanwhile is refused", async () => {
+  it("cancelInstall stops the decision download and keeps the .part; a second install meanwhile is refused", async () => {
     const host = await fakeFile(data, { hold: true });
     const folder = await tempFolder();
     const ai = new LocalAi({ folder, decisionUrl: host.url, decisionSha256: sha(data), locale: () => "fr" });
@@ -434,55 +340,37 @@ describe("LocalAi: the decision model download", () => {
     expect(existsSync(final(folder))).toBe(false);
   });
 
-  it("close() cancels the download and refuses a new one", async () => {
+  it("the search model downloads into embed/ from embedUrl, beside d1", async () => {
+    const host = await fakeFile(data);
+    const folder = await tempFolder();
+    const ai = new LocalAi({ folder, embedUrl: host.url, embedSha256: sha(data) });
+    await ai.embed.install(() => {});
+    expect(await readFile(join(folder, "embed", EMBED_MODEL.file))).toEqual(data);
+    expect(await ai.check().then((v) => [v.decision, v.embed], () => null)).toEqual([false, true]);
+  });
+
+  it("cancelInstall cancels both downloads; close() cancels and refuses new ones", async () => {
     const host = await fakeFile(data, { hold: true });
-    const ai = new LocalAi({ folder: await tempFolder(), decisionUrl: host.url, decisionSha256: sha(data), locale: () => "fr" });
-    let started!: () => void;
-    const running = new Promise<void>((ok) => (started = ok));
-    const install = ai.installDecisionModel((p) => p && started());
-    await running;
+    const fresh = async () => new LocalAi({ folder: await tempFolder(), decisionUrl: host.url, decisionSha256: sha(data), embedUrl: host.url, embedSha256: sha(data), locale: () => "fr" });
+    let ai = await fresh();
+    const start = async () => {
+      let started = 0;
+      let ok!: () => void;
+      const running = new Promise<void>((r) => (ok = r));
+      const tick = (p: number | null) => void (p && ++started === 2 && ok());
+      const installs = [ai.installDecisionModel(tick), ai.embed.install(tick)];
+      await running;
+      return installs;
+    };
+    const first = await start();
+    ai.cancelInstall();
+    for (const i of first) await expect(i).rejects.toThrow("Installation annulée");
+    ai = await fresh(); // a new folder: the first one's .part files already hold the held half
+    const second = await start();
     await ai.close();
-    await expect(install).rejects.toThrow("Installation annulée");
+    for (const i of second) await expect(i).rejects.toThrow("Installation annulée");
     await expect(ai.installDecisionModel(() => {})).rejects.toThrow("IA locale fermée");
-  });
-});
-
-describe("launchAiProcess (the server may launch a child process)", () => {
-  const alive = (pid: number) => {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  const waitUntilTrue = async (f: () => boolean, ms = 5000) => {
-    const end = Date.now() + ms;
-    while (!f() && Date.now() < end) await new Promise((r) => setTimeout(r, 20));
-    return f();
-  };
-  /** Launches `sh -c script`; the script writes its child's pid on the first line. */
-  async function launchWithChild(script: string, killDelayMs?: number) {
-    const p = launchAiProcess("sh", ["-c", script], { cwd: process.cwd(), ...(killDelayMs ? { killDelayMs: killDelayMs } : {}) });
-    const pid = await new Promise<number>((ok) => p.onLine?.((l) => ok(Number(l))));
-    let exited = false;
-    p.onOutput(() => (exited = true));
-    return { p, pid, exited: () => exited };
-  }
-
-  it("arreter() also kills the children (the whole group), not only the first process", async () => {
-    const { p, pid, exited } = await launchWithChild("sleep 300 & echo $!; wait");
-    expect(alive(pid)).toBe(true);
-    p.stop();
-    expect(await waitUntilTrue(() => !alive(pid))).toBe(true);
-    expect(await waitUntilTrue(exited)).toBe(true);
+    await expect(ai.embed.install(() => {})).rejects.toThrow("IA locale fermée");
   });
 
-  it("a group that ignores SIGTERM is killed by SIGKILL after the delay", async () => {
-    const { p, pid } = await launchWithChild("trap '' TERM; sleep 300 & echo $!; wait", 200);
-    p.stop();
-    await new Promise((r) => setTimeout(r, 100));
-    expect(alive(pid)).toBe(true); // SIGTERM ignored
-    expect(await waitUntilTrue(() => !alive(pid))).toBe(true);
-  });
 });
