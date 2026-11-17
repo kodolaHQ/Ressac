@@ -219,8 +219,8 @@ describe("an agent-writable folder (root given) hides nothing", () => {
     const fresh = new ReviewStore({ repo: join(root, "prive", "q.git"), folder, root });
     expect((await fresh.compare()).files).toMatchObject([{ path: "a.txt", status: "added" }]);
   });
-  test("a self-ignoring .gitignore, a nested dist or build: shown; node_modules and .DS_Store left out", async () => {
-    for (const d of ["node_modules", "tweaks/node_modules", "tweaks/dist", "build"]) {
+  test("a self-ignoring .gitignore, a nested dist or build: shown; node_modules, tool caches and .DS_Store left out", async () => {
+    for (const d of ["node_modules", "tweaks/node_modules", "tweaks/dist", "build", "target", "py/.venv", "__pycache__", ".next"]) {
       await mkdir(join(folder, d), { recursive: true });
       await write(join(d, "x.js"), "x");
     }
@@ -247,7 +247,7 @@ describe("an agent-writable folder (root given) hides nothing", () => {
     await expect(agent().compare()).rejects.toMatchObject({ reason: NESTED_REPO });
     execFileSync(GIT, ["-C", sub, "add", "f.txt"], { env });
     execFileSync(GIT, ["-C", sub, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"], { env });
-    await expect(agent().compare()).rejects.toMatchObject({ reason: NESTED_REPO });
+    await expect(agent().compare()).rejects.toMatchObject({ reason: NESTED_REPO, message: expect.stringContaining("sous") });
   });
 });
 

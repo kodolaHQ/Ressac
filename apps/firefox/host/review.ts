@@ -7,6 +7,7 @@ import {
   reviewStore,
   destinationOf,
   ReviewError,
+  NESTED_REPO,
   commentsFile,
   PROJECT_ID,
   ID_SITE,
@@ -239,7 +240,8 @@ export class ReviewService {
         ...this.destination(await this.tracking(p)),
       };
     } catch (e) {
-      if (e instanceof ReviewError) return { state: "unavailable", name: project.name, reason: e.reason };
+      // A nested repository's folder is named: the user removes its .git to get the review back.
+      if (e instanceof ReviewError) return { state: "unavailable", name: project.name, reason: e.reason === NESTED_REPO ? e.message : e.reason };
       console.error(`[review] comparison of ${p}:`, e);
       return { state: "unavailable", name: project.name, reason: hostSay("host-review-failed") };
     }

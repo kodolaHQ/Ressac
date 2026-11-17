@@ -18,7 +18,11 @@ export const EXCLUSIONS = [".git", "node_modules", ".DS_Store", "dist", "build",
  * Left out of an agent-writable folder's snapshot, as pathspecs: there `add --force` ignores every .gitignore and
  * info/exclude, since the agent can write one that hides its own code. Git never adds a nested `.git` folder.
  */
-export const AGENT_EXCLUSIONS = [":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.DS_Store"];
+// Heavy tool folders by fixed name (Ressac's choice, not the agent's): installs, build caches, virtual envs.
+export const AGENT_EXCLUSIONS = [
+  ...["node_modules", "target", ".venv", "__pycache__", ".next"].map((n) => `:(exclude,glob)**/${n}/**`),
+  ":(exclude,glob)**/.DS_Store",
+];
 
 const REF = "refs/ressac/relu";
 /** Read (never written) for projects reviewed before the rename to Ressac. */
@@ -114,8 +118,6 @@ export class ReviewStore {
       GIT_DIR: this.repo,
       GIT_WORK_TREE: workTree,
       GIT_INDEX_FILE: join(this.repo, "index-ressac"),
-      // A .gitattributes the agent writes (`* -diff`) showed its code as binary: attributes come from the empty tree.
-      ...(this.emptyTree ? { GIT_ATTR_SOURCE: this.emptyTree } : {}),
       GIT_AUTHOR_NAME: "Ressac", GIT_AUTHOR_EMAIL: "ressac@localhost",
       GIT_COMMITTER_NAME: "Ressac", GIT_COMMITTER_EMAIL: "ressac@localhost",
     };
@@ -149,7 +151,11 @@ export class ReviewStore {
       await mkdir(join(this.repo, "info"), { recursive: true });
       await writeFile(join(this.repo, "info", "exclude"), EXCLUSIONS.join("\n") + "\n");
     }
-    if (this.root !== undefined) this.emptyTree ??= (await this.g(["hash-object", "-t", "tree", "-w", "/dev/null"])).trim();
+    if (this.root !== undefined) {
+      // A .gitattributes the agent writes (`* -diff`) showed its code as binary: info/attributes wins over it, on any git.
+      await writeFile(join(this.repo, "info", "attributes"), "* !diff !text !eol !filter\n");
+      this.emptyTree ??= (await this.g(["hash-object", "-t", "tree", "-w", "/dev/null"])).trim();
+    }
   }
 
   private async internalSnapshot(): Promise<string> {
