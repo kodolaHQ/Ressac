@@ -12,7 +12,7 @@ import { callTool } from "./mcp";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { ICON, startServer } from "./server";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inUi, missingApi, waitUi, agentPanelReady } from "./ui";
 
 // The agent's recap: published with show_recap, drawn as a ressac://recap/<id> tab. A link is clickable only if the
 // agent read its address. exemple.invalide resolves to the machine, so an opened link leaves nothing.
@@ -65,7 +65,7 @@ async function ready(w: LaunchedRessac): Promise<Marionette> {
   await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await sleep(100)) if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  await agentPanelReady(m);
   return m;
 }
 

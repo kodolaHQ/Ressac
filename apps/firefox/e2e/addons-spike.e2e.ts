@@ -7,7 +7,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { waitUi } from "./ui";
+import { agentPanelReady } from "./ui";
 
 // Probes of plan 23's unknowns. They print what they see
 // rather than assert it: rerun them with RESSAC_SPIKE=1 after a Firefox version change and compare with the previous run.
@@ -80,7 +80,7 @@ async function ready(m: Marionette): Promise<void> {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  await agentPanelReady(m);
 }
 
 /** Opens `url` in a Ressac tab and waits until the selected browser shows it; returns the Ressac tab id. */

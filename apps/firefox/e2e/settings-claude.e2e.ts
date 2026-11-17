@@ -7,7 +7,7 @@ import { waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inUi, missingApi, startAgentSession, waitUi } from "./ui";
 
 // Plan 48 Task 4: Claude's engine in Settings › Agents, its Ollama model picked from the installed ones.
 
@@ -115,6 +115,8 @@ describe("Claude in Settings", () => {
     await fill("ollama-model", "ornith:35b");
     await engineSaved((e) => e.kind === "ollama" && e.ollamaModel === "ornith:35b");
     const envFile = join(w!.dataDir, "workspace", "fake-agent-env.json");
+    // A session runs first: switching agent with none open only picks the next one's profile.
+    await startAgentSession(m);
     await inUi(m, "ui.ressac.agent.switch('codex')");
     await waitFor(m, "return true", () => existsSync(envFile), 30_000);
     rmSync(envFile);
@@ -130,6 +132,8 @@ describe("Claude in Settings", () => {
   it("engine changed while Claude runs: the panel offers Relancer, which resumes on the new engine", { timeout: 90_000 }, async () => {
     await launch();
     const envFile = join(w!.dataDir, "workspace", "fake-agent-env.json");
+    // A session runs first: switching agent with none open only picks the next one's profile.
+    await startAgentSession(m);
     await inUi(m, "ui.ressac.agent.switch('codex')");
     await waitFor(m, "return true", () => existsSync(envFile), 30_000);
     rmSync(envFile);

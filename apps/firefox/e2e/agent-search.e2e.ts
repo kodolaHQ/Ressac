@@ -6,7 +6,7 @@ import { callTool } from "./mcp";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, inUi, waitUi } from "./ui";
+import { click, inUi, waitUi, agentPanelReady } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedRessac;
@@ -49,8 +49,8 @@ beforeEach(async () => {
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  // The home page's panel starts the agent's session, which takes back every access.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  // Opening the agent panel starts the window's session, which takes back every access.
+  await agentPanelReady(m);
 });
 afterEach(() => w?.close());
 
@@ -154,8 +154,8 @@ it("late results are returned", async () => {
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  // The home page opens the agent's session, which resets the searches: the agent searches only once it is ready.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  // Opening the agent panel starts the agent's session, which resets the searches: the agent searches only once it is ready.
+  await agentPanelReady(m);
   const r = (await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text;
   expect(r).toContain(`Lien — ${server.url}/lien.html`);
 });
@@ -170,8 +170,8 @@ it("the engine redirecting to another origin: search_web, then read_tab right af
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  // The home page opens the agent's session, which resets the searches: the agent searches only once it is ready.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  // Opening the agent panel starts the agent's session, which resets the searches: the agent searches only once it is ready.
+  await agentPanelReady(m);
   const r = (await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text;
   expect(r).not.toContain("changé de site");
   const link = `${local}/l/?uddg=${encodeURIComponent(`${server.url}/a.html`)}`;
@@ -361,8 +361,8 @@ it("the band enters and leaves with a transition", async () => {
   await m.execute(`window.__samples = []; window.__sampling = true;
     const tick = () => { const b = document.querySelector('${BAND}'); window.__samples.push({ o: b ? +getComputedStyle(b).opacity : 0, inset: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8 }); if (window.__sampling) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);`);
-  // The home page opens the agent's session, which resets the searches: the agent searches only once it is ready.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  // Opening the agent panel starts the agent's session, which resets the searches: the agent searches only once it is ready.
+  await agentPanelReady(m);
   const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   await dispatch(m, { type: "activateTab", id });
   await waitBand((v) => v.shown);

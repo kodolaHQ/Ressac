@@ -7,7 +7,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { answerHistory as answerMcpHistory, callTool } from "./mcp";
 import { startServer } from "./server";
-import { waitUi } from "./ui";
+import { waitUi, agentPanelReady } from "./ui";
 
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
@@ -28,8 +28,8 @@ beforeEach(async () => {
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  // Opening the agent panel starts the window's session, which takes back every access: tools are called after it.
+  await agentPanelReady(m);
 });
 afterEach(() => w?.close());
 

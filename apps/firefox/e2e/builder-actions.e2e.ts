@@ -8,7 +8,7 @@ import { actionsDataDir, listen, openAction, runsOnDisk, tid, uiQueries, waitKer
 import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
+import { click, inUi, missingApi, agentPanelReady, pressKeys, waitUi } from "./ui";
 
 // The workflow builder opened on an action (ressac://workflow/action/<id>): the Action panel, ▶ Lancer with the input, a replay whose page shows in the preview without becoming the last
 // result. Gemma absent: the fallback layout.
@@ -136,7 +136,10 @@ describe("the builder of an action", () => {
       'L\'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l\'agent.',
     );
     // The agent knows it is the action's workflow, and the block chosen.
-    // The window's agent session (the fake agent notes its arguments once started).
+    // The window's agent session, its panel opened (the fake agent notes its arguments once started).
+    await agentPanelReady(m);
+    // Closed again, as before the panel stopped opening on its own: the canvas gets its full width back.
+    await dispatch(m, { type: "toggleAgentPanel", windowId: (await state(m)).windows[0]!.id });
     await poll(() => existsSync(path.join(w.dataDir, "workspace", "fake-agent-args.json")), (v) => v, "the agent session", 20_000);
     const open = async () => (await callMcpTool(path.join(w.dataDir, "workspace"), "open_workflow", {}, lastSessionConfig())).text;
     await poll(open, (t) => t === '{"action":"gitlab-a","block":null}', "open_workflow", 20_000);

@@ -10,7 +10,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { SITE_HOME, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite, type SiteTest } from "./sites";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inUi, missingApi, waitUi, agentPanelReady } from "./ui";
 
 // Plan 31 Task 6: the Applications page's « Sites » section and the agent's site
 // tools.
@@ -299,7 +299,7 @@ describe("the agent's site tools", () => {
     const l = await launch({ prepare, page: false });
     const config = path.join(l.dataDir, "workspace", ".ressac", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await sleep(100)) if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-    await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+    await agentPanelReady(m);
     return l;
   }
 

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { waitUi } from "./ui";
+import { agentPanelReady } from "./ui";
 
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 // The kernel's gap between two reads of a site: a request must come at least this long (minus clock slack) after the previous.
@@ -60,7 +60,7 @@ beforeAll(async () => {
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow", (v) => v === true);
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  await agentPanelReady(m);
   await m.execute(
     `const o = Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride);
      o.addIPOverride("site-a.test", "127.0.0.1"); o.addIPOverride("site-b.test", "127.0.0.1"); o.addIPOverride("site-c.test", "127.0.0.1");

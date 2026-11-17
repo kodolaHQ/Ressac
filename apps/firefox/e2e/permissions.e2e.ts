@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, inWindow, newWindow, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { waitUi } from "./ui";
+import { agentPanelReady } from "./ui";
 
 // Site permissions through the Ressac banner (chrome/window/site-banner.ts, chrome/store/permission-hooks.ts). No
 // network, no real device (spike P1, P7).
@@ -105,7 +105,7 @@ describe("site permissions", () => {
     await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
     // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir. A
     // restart shows the restored tabs, not the home page.
-    if (first) await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+    if (first) await agentPanelReady(m);
   }
 
   /** Opens `/p?do=<what>` (made unique) of `base` in a Ressac tab of the first window; returns its tab id once loaded. */

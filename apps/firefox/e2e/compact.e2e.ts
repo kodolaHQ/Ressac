@@ -131,6 +131,7 @@ describe("compact mode", () => {
   });
 
   it("the empty page fills the space left of the agent panel", async () => {
+    if (await m.execute<boolean>("return document.getElementById('ressac-agent').hidden")) await click(m, '[data-testid="agent-button"]');
     await toggle();
     await waitSidebar(false);
     const shown = await inUi<{ frame: number; left: number; free: number }>(

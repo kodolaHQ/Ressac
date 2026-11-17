@@ -9,6 +9,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { grantSite, inSiteView, siteWindowExpr, writeSite } from "./sites";
+import { click } from "./ui";
 import { consoleWith, DATA_PNG, NET_PREFS, netEnv, resolvedNames, rtcPage, SFX, startNetWitness, testPages, uiRefusals, widgetFiles } from "./ui-network";
 
 // The UI's network (spec 2026-11-08-ressac-firefox-reseau-interfaces-design.md): nothing the UI shows reaches a server
@@ -332,6 +333,8 @@ describe("the UI's network", () => {
   });
 
   it("the sidebar and the agent panel load nothing from the web: an <img> and a background-image in http, https or ws, even 127.0.0.1, are refused; a data: image shows", { timeout: 120_000 }, async () => {
+    // The panel opened (✦): a hidden one lays nothing out, so it would not even try its background-image.
+    if (await m.execute<boolean>("return document.getElementById('ressac-agent').hidden")) await click(m, '[data-testid="agent-button"]');
     const widths = await m.execute<Record<string, number>>(
       `return (async () => { const out = {};
        for (const [tag, id] of [["sb", "ressac-sidebar"], ["ag", "ressac-agent"]]) {

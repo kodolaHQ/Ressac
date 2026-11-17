@@ -6,7 +6,7 @@ import { callTool } from "./mcp";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { waitUi } from "./ui";
+import { agentPanelReady } from "./ui";
 
 // The agent's read goes through shadow roots, slots, same-origin frames and PDFs; links come ranked by zone.
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -113,7 +113,7 @@ beforeEach(async () => {
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  await agentPanelReady(m);
 });
 afterEach(() => w?.close());
 

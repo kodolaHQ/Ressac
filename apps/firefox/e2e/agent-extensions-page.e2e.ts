@@ -11,7 +11,7 @@ import type { LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inUi, missingApi, waitUi, agentPanelReady } from "./ui";
 
 // The Extensions page: the unlock on the page, Supprimer and Désactiver partout of an agent extension. The page lists the agent's extensions only
 // (plan decision 8); list_extensions lists AMO add-ons too (decision 7).
@@ -82,7 +82,7 @@ async function launch(o: { prepare?: (root: string, dataDir: string) => void; ag
     const config = path.join(root, ".ressac", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-    await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+    await agentPanelReady(w.marionette);
   }
   return { ...w, ...d, root: root, call: (name: string, args: Record<string, unknown> = {}) => callTool(d.dataDir, name, args) };
 }

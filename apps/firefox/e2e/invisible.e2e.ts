@@ -5,7 +5,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { waitUi } from "./ui";
+import { agentPanelReady } from "./ui";
 
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 
@@ -26,7 +26,7 @@ beforeAll(async () => {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow", (v) => v === true);
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  await agentPanelReady(m);
   await m.execute(`Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride).addIPOverride("localtest.me", "::1");`);
   // Should a download slip through, it lands in the test's data dir, never in ~/Downloads.
   await m.execute(

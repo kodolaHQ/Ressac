@@ -12,7 +12,7 @@ import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { ICON } from "./server";
 import { grantSite, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteWindowExpr, startSitesServer, writeSite, type SiteTest } from "./sites";
-import { inUi, missingApi, waitUi } from "./ui";
+import { inUi, missingApi, agentPanelReady } from "./ui";
 
 // Plan 32 Task 6: Firefox add-ons in a site app's window. Their buttons in the app's bar (the « site » view only), their
 // popups in the app's window, and the app view protected from them. Add-ons
@@ -356,7 +356,7 @@ describe("the agent and the app's add-ons", () => {
     const config = path.join(dataDir, "workspace", ".ressac", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-    await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+    await agentPanelReady(m);
     const lines = (await callTool(dataDir, "list_tabs")).text.split("\n");
     expect(lines.filter((l) => l.includes("vidola-a.localhost"))).toEqual(["site:vidola · Vidola · vidola-a.localhost · appli de site"]);
     expect(Object.values((await state(m)).tabs).filter((o) => o.url.includes("vidola-a.localhost"))).toEqual([]);

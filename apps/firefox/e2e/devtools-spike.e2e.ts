@@ -11,7 +11,7 @@ import { cleanupXpis, installAddon } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { waitUi } from "./ui";
+import { agentPanelReady } from "./ui";
 
 // Probes of plan 28's unknowns (D1-D9): the agent's dev
 // tools on one tab, inside the browser process, without any listening port. They print what they see rather than
@@ -81,7 +81,7 @@ async function ready(m: Marionette): Promise<void> {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  await agentPanelReady(m);
 }
 
 const chrome = <T = any>(m: Marionette, body: string, args: unknown[] = []) => m.execute<T>(`return (async () => { ${body} })();`, args);

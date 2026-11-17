@@ -6,7 +6,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import { callTool } from "./mcp";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, inUi, waitUi } from "./ui";
+import { click, inUi, waitUi, agentPanelReady } from "./ui";
 
 // The agent's last tab: its activity from the host, and thumbnails taken only while someone watches.
 
@@ -30,7 +30,7 @@ beforeAll(async () => {
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await sleep(100)) if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The agent's session takes back every access when it starts: tools are called after it.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  await agentPanelReady(m);
 }, 60_000);
 afterAll(async () => {
   await w?.close();

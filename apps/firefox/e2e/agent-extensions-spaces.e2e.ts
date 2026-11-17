@@ -10,7 +10,7 @@ import type { LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { click, inUi, waitUi } from "./ui";
+import { click, inUi, waitUi, agentPanelReady } from "./ui";
 
 // The space settings' Extensions section (A7, N1, Review Focus 5), plus spec choice 2: an agent extension's content scripts run only in the spaces it is active in.
 const HOST = "http://127.0.0.1/*";
@@ -54,7 +54,7 @@ async function launch(prepare: (root: string, dataDir: string) => void = () => {
     const config = path.join(root, ".ressac", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-    await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+    await agentPanelReady(w.marionette);
   }
   return { ...w, root: root, call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
 }

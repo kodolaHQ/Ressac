@@ -9,7 +9,7 @@ import { waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inUi, missingApi, startAgentSession, waitUi } from "./ui";
 
 // Plan 45 Task 7: Codex in Settings › Agents (sign-in by code, its engine, the compatible API key).
 
@@ -164,6 +164,8 @@ describe("Codex in Settings", () => {
     expect(read(keyFile)).toBe(SECRET);
 
     const args = join(w!.dataDir, "workspace", "fake-agent-args.json");
+    // A session runs first: switching agent with none open only picks the next one's profile.
+    await startAgentSession(m);
     await inUi(m, "ui.ressac.agent.switch('codex')");
     await waitFor(m, "return true", () => read(args).includes("ressac-api"), 30_000);
     const argv = JSON.parse(read(args)) as string[];

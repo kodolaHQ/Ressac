@@ -12,7 +12,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { cleanupXpis, installAddon, uninstallAddon } from "./addons";
-import { click, inUi, pressKeys, waitUi } from "./ui";
+import { click, inUi, pressKeys, waitUi, agentPanelReady } from "./ui";
 import { TEXT_CUT, SITE_CHANGED_TEXT } from "../../../packages/kernel/src/mcp/devtools";
 
 // Which one the kernel answers depends on whether the new page committed before it read the tab list.
@@ -86,8 +86,8 @@ beforeAll(async () => {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await kernelUp();
-  // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  // Opening the agent panel starts the window's session, which takes back every access: tools are called after it.
+  await agentPanelReady(m);
   before = await listening(m, w);
 }, 90_000);
 afterAll(async () => {

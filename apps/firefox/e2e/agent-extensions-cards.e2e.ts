@@ -12,7 +12,7 @@ import type { LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { click, inUi, pressKeys, waitUi } from "./ui";
+import { click, inUi, pressKeys, waitUi, agentPanelReady } from "./ui";
 
 // The agent's extension tools and their card (posed straight through the store's Questions; its answer is written to a file).
 const MODAL = '[data-testid="request-modal"]';
@@ -51,7 +51,7 @@ async function launch(o: { amo?: Parameters<typeof launchWithAmo>[0]["amo"]; env
   const config = path.join(dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  await agentPanelReady(w.marionette);
   return { ...w, root: path.join(dataDir, "workspace"), call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
 }
 

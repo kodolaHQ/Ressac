@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import os from "node:os";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
+import { click } from "./ui";
 import { FAKE_TOOLS, launchRessac, type LaunchedRessac } from "./launch";
 
 describe("Ressac foundation", () => {
@@ -99,7 +100,9 @@ describe("Ressac foundation", () => {
 
   it("covers the window left of the agent panel with the UI while no page is shown, then keeps the left 240 px", async () => {
     const rect = "const r = document.getElementById('ressac-sidebar')?.getBoundingClientRect(); return r ? { left: r.left, width: r.width } : null";
-    // The home page opens the 420 px agent panel.
+    await waitFor(w.marionette, rect, (r: { left: number; width: number } | null) => r?.left === 0 && r.width === 1280);
+    // The 420 px agent panel, opened with ✦ (never on its own), takes its share.
+    await click(w.marionette, '[data-testid="agent-button"]');
     await waitFor(w.marionette, rect, (r: { left: number; width: number } | null) => r?.left === 0 && r.width === 1280 - 420);
     const f = (await state(w.marionette)).windows[0]!;
     await dispatch(w.marionette, { type: "openTab", windowId: f.id, url: "data:text/html,<title>t</title>t" });

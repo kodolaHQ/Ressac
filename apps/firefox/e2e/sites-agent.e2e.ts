@@ -9,7 +9,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { grantSite, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inUi, missingApi, waitUi, agentPanelReady } from "./ui";
 
 // Plan 32 Task 5: the agent's tools on a site app window, behind the app's « donnees-widget » card, plus
 // the case seen on 2026-11-06 (open_site, then
@@ -61,7 +61,7 @@ async function start(sites: Record<string, object> = { vidola: vidola() }, prepa
   const config = path.join(dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+  await agentPanelReady(m);
 }
 
 /** The app opened, its view on `chemin` and loaded. */
