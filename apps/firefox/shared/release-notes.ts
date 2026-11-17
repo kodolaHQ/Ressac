@@ -1,6 +1,16 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.12",
+    date: "novembre 2026",
+    items: [
+      "L'agent n'a plus besoin de Docker : Ressac télécharge sa propre petite machine (environ 500 Mo) et l'éteint après 5 minutes sans activité ; Réglages › Conteneur permet d'allonger ce délai. Vos connexions Claude et Codex sont reprises.",
+      "Si vous n'utilisez plus OrbStack ou Docker Desktop pour autre chose, vous pouvez les désinstaller : l'image « ressac-workshop » et le volume « webaios-home » y restent jusque-là. Avec Colima, démarrez-le une fois pour que vos connexions soient reprises.",
+      "Réglages › Conteneur montre la machine : son état, la mémoire qu'elle prend (comme le Moniteur d'activité), et des boutons pour la supprimer ou la réinstaller.",
+      "L'accueil n'ouvre plus le panneau de l'agent tout seul : ✦ l'ouvre quand vous en avez besoin.",
+    ],
+  },
+  {
     version: "0.1.11",
     date: "novembre 2026",
     items: [

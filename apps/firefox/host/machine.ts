@@ -15,8 +15,8 @@ import type { MachineStatus } from "../shared/settings.ts";
 export const VM_IMAGE = {
   version: "3.24.4-5.8.10-20062535e787",
   url: "https://updates.getressac.app/vm/ressac-vm-3.24.4-5.8.10-20062535e787.raw.zst",
-  sha256: "1be8f8cfe85ead60fdd61ad4bc376e2965d4c103f3652e2e12a2678fd391ce19",
-  bytes: 526076788,
+  sha256: "7113cc64e8631d4ae7f4f99dca9d60feb180e01d6ef791d15d14d85ab037ec4b",
+  bytes: 527805421,
 };
 
 /**
