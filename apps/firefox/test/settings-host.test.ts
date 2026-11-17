@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSettingsHandlers } from "../host/settings";
+import type { AiState } from "../../../packages/kernel/src/index";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -28,7 +29,7 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown; ollam
       ollamaUrl: "http://127.0.0.1:11434",
       installDecisionModel: vi.fn(async (onPercent: (p: number | null) => void): Promise<void> => (onPercent(30), void calls.push("installDecisionModel"))),
       cancelInstall: vi.fn(),
-      embed: { install: vi.fn(async (onPercent: (p: number | null) => void): Promise<void> => (onPercent(60), void calls.push("embed.install"))) },
+      embed: { state: vi.fn((): { state: AiState; error?: string } => ({ state: "stopped" })), install: vi.fn(async (onPercent: (p: number | null) => void): Promise<void> => (onPercent(60), void calls.push("embed.install"))) },
     },
     ollama: {
       status: async () => (over.ollama ?? { kind: "unmanaged" }) as any,
@@ -364,6 +365,13 @@ describe("settings host", () => {
   it("ai.state", async () => {
     const { h } = setup();
     expect(await h["ai.state"]!({})).toMatchObject({ state: "stopped", verification: { decision: true }, ollamaUrl: "http://127.0.0.1:11434" });
+  });
+
+  it("ai.state: the search server's start failure shows as searchServerError", async () => {
+    const { h, o } = setup();
+    expect(await h["ai.state"]!({})).not.toHaveProperty("searchServerError");
+    o.ai.embed.state.mockReturnValue({ state: "error", error: "llama-server did not start" });
+    expect(await h["ai.state"]!({})).toMatchObject({ searchServerError: "llama-server did not start" });
   });
 
   it("the decision model downloads through LocalAi, in the single pull slot; pplx is no longer pullable", async () => {

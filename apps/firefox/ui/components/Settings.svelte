@@ -405,11 +405,14 @@
             {#if ai.state === "error" && ai.error}
               <div class="row"><span class="pill" data-tone="error" data-testid="ai-decision-server-error">{ai.error}</span></div>
             {/if}
+            {#if ai.searchServerError}
+              <div class="row"><span class="pill" data-tone="error" data-testid="ai-search-server-error">{ai.searchServerError}</span></div>
+            {/if}
             {#if ai.decisionError && !v?.decision && pulling?.name !== DECISION_MODEL}
-              <div class="row"><span class="pill" data-tone="error" data-testid="ai-decision-error">{t("settings-ai-decision-failed", { reason: ai.decisionError })}</span></div>
+              <div class="row"><span class="pill" data-tone="error" data-testid="ai-decision-error">{t("settings-ai-model-failed", { reason: ai.decisionError })}</span></div>
             {/if}
             {#if ai.searchError && !v?.embed && pulling?.name !== SEARCH_MODEL}
-              <div class="row"><span class="pill" data-tone="error" data-testid="ai-search-error">{t("settings-ai-decision-failed", { reason: ai.searchError })}</span></div>
+              <div class="row"><span class="pill" data-tone="error" data-testid="ai-search-error">{t("settings-ai-model-failed", { reason: ai.searchError })}</span></div>
             {/if}
             {#if pullError}<div class="row"><span class="pill" data-tone="error" data-testid="pull-error">{pullError}</span></div>{/if}
             {#if v?.ollama && !v.gemma}

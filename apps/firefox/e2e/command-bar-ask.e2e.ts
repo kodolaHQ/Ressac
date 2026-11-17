@@ -4,48 +4,38 @@ import { listen, tid, uiQueries, type TestServer } from "./actions";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { startServer } from "./server";
+import { startEmbedServer, startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
-// The ⌘T bar's Demander mode: a fake Ollama (its Gemma answer canned per test) and the fake agent, history seeded through the host.
+// The ⌘T bar's Demander mode: a fake search model (one vector per concept, French and English alike) and the fake
+// agent, history seeded through the host and given its vectors by the host's indexer.
 
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
-const GEMMA_TAGS = '{"models":[{"name":"gemma4:e4b"}]}';
 
 let server: Awaited<ReturnType<typeof startServer>>;
-let ollama: TestServer;
+let embed: Awaited<ReturnType<typeof startEmbedServer>>;
 let kev: TestServer;
-let tags = GEMMA_TAGS;
-let answer: unknown = { kind: "other" };
-/** Bodies of the /api/chat requests. */
-const chats: string[] = [];
 let w: LaunchedRessac;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
 
 beforeAll(async () => {
   server = await startServer();
-  ollama = await listen((req, res, body) => {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    if (req.url === "/api/tags") return res.end(tags);
-    if (req.url === "/api/chat") {
-      chats.push(body);
-      return res.end(JSON.stringify({ message: { content: JSON.stringify(answer) } }));
-    }
-    res.end("{}");
-  });
+  // « Page A » is the title of /a.html loaded for real, its kept text may replace the seeded one.
+  embed = await startEmbedServer([["mascaret", "tidal bore"], ["garonne", "page a"]]);
   kev = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"data":[]}'));
 });
 afterAll(async () => {
   await server?.close();
-  await ollama?.close();
+  await embed?.close();
   await kev?.close();
 });
 beforeEach(async () => {
-  tags = GEMMA_TAGS;
-  answer = { kind: "other" };
-  chats.length = 0;
-  w = await launchRessac({ env: { RESSAC_OLLAMA_URL: ollama.url, RESSAC_KEV_URL: kev.url, RESSAC_MEMORY_LOOP: "1" } });
+  embed.inputs.length = 0;
+  embed.refuse = false;
+  w = await launchRessac({
+    env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: kev.url, RESSAC_EMBED_SERVER_URL: embed.url, RESSAC_TEST_INDEX_IDLE_MS: "100", RESSAC_MEMORY_LOOP: "1" },
+  });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");
@@ -77,7 +67,7 @@ async function openTab(path: string): Promise<string> {
   const after = await dispatch(m, { type: "openTab", windowId: (await win()).id, url: server.url + path });
   return Object.keys(after.tabs).find((id) => !before.has(id))!;
 }
-/** A visit of the active space with kept text, written straight into the host's history. */
+/** A visit of the active space with kept text, written straight into the host's history, once the indexer embedded it. */
 async function seed(path: string, title: string, text: string): Promise<string> {
   const f = await win();
   const url = server.url + path;
@@ -88,6 +78,7 @@ async function seed(path: string, title: string, text: string): Promise<string> 
       await h.request("history.recent", {}); })();`,
     [url, title, f.activeSpace, text],
   );
+  await expect.poll(() => embed.inputs.some((t) => t.startsWith(`title: ${title} | text: 127.0.0.1 ${text.slice(0, 20)}`)), { timeout: 20_000 }).toBe(true);
   return url;
 }
 /** ⌘T, Demander, the question typed. */
@@ -129,22 +120,21 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     expect(await modeShown()).toBe("Chercher");
   });
 
-  it("a page answer: the hits and « Demander à l'agent », Enter opens the first in a new tab", async () => {
-    const url = await seed("/b.html", "Le mascaret de la Seine", "Le mascaret remonte la Seine à chaque grande marée.");
-    answer = { kind: "page", groups: [["mascaret"]] };
+  it("a page answer: an English page for a French question, « Demander à l'agent » last, Enter opens the first in a new tab", async () => {
+    const url = await seed("/b.html", "The tidal bore of the Seine", "The tidal bore runs up the Seine at each spring tide.");
     const tabsBefore = Object.keys((await state(m)).tabs).length;
     await ask("c'était quoi la page sur les mascarets");
     expect(await q.count(tid("command-ask-hit"))).toBe(0);
     await pressKeys(m, "Enter");
     await q.waitCount(tid("command-ask-hit"), 1);
     await q.waitCount(tid("command-ask-agent"), 1);
-    await q.waitContains(tid("command-ask-hit"), "Le mascaret de la Seine");
+    await q.waitContains(tid("command-ask-hit"), "The tidal bore of the Seine");
     await q.waitContains(tid("command-ask-hit"), "aujourd'hui");
     // The kept text's excerpt, not the address.
-    await q.waitContains(tid("command-ask-hit"), "remonte la Seine");
+    await q.waitContains(tid("command-ask-hit"), "runs up the Seine");
     await q.waitContains(tid("command-ask-agent"), "Demander à l'agent");
     expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-selected')", [tid("command-ask-hit")])).toBe("true");
-    expect(chats.some((c) => c.includes("c'était quoi la page sur les mascarets"))).toBe(true);
+    expect(embed.inputs).toContain("task: search result | query: c'était quoi la page sur les mascarets");
     await pressKeys(m, "Enter");
     await waitBar(false);
     const s = await state(m);
@@ -160,7 +150,6 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (v) => v === "Page B");
     // Matched by its address: the page it shows may already have its own text kept.
     await seed("/a.html", "Page A", "Une barre de marée sur la Garonne.");
-    answer = { kind: "page", groups: [["a.html"]] };
     const tabsBefore = Object.keys((await state(m)).tabs).length;
     await ask("la page sur la Garonne");
     await pressKeys(m, "Enter");
@@ -179,7 +168,6 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (v) => v === "Page A");
     await dispatch(m, { type: "createSpace", name: "Pro", icon: "💼", private: false, profile: "default", windowId: (await win()).id });
     await seed("/a.html", "Page A", "Une barre de marée sur la Garonne.");
-    answer = { kind: "page", groups: [["a.html"]] };
     const tabsBefore = Object.keys((await state(m)).tabs).length;
     await ask("la page sur la Garonne");
     await pressKeys(m, "Enter");
@@ -193,19 +181,18 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     expect(f.active[first]).toBe(a);
   });
 
-  it("an « other » answer: the agent panel opens and gets exactly the question", async () => {
-    answer = { kind: "other" };
+  it("an action request: the agent panel opens and gets exactly the question, nothing embedded", async () => {
     await ask("écris-moi un poème sur la mer");
     await pressKeys(m, "Enter");
     await waitBar(false);
     await agentPanelShown();
     await received("écris-moi un poème sur la mer");
     expect(agentInput(w.dataDir)).not.toContain("—");
+    expect(embed.inputs.filter((t) => t.includes("poème"))).toEqual([]);
   });
 
   it("« Demander à l'agent » after the hits: one line with the question and the hits' URLs", async () => {
     const url = await seed("/b.html", "Le mascaret de la Seine", "Le mascaret remonte la Seine.");
-    answer = { kind: "page", groups: [["mascaret"]] };
     await ask("la page sur les mascarets");
     await pressKeys(m, "Enter");
     await q.waitCount(tid("command-ask-agent"), 1);
@@ -222,19 +209,18 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     expect(line).not.toContain("\n");
   });
 
-  it("no Gemma in Ollama: Enter goes straight to the agent, Gemma never asked", async () => {
-    tags = '{"models":[]}';
+  it("the search model failing: Enter goes to the agent", async () => {
+    embed.refuse = true;
     await ask("où est la page des marées");
     await pressKeys(m, "Enter");
     await waitBar(false);
     await agentPanelShown();
     await received("où est la page des marées");
-    expect(chats.filter((c) => c.includes("où est la page des marées"))).toEqual([]);
+    expect(embed.inputs).toContain("task: search result | query: où est la page des marées");
   });
 
   it("typing after the hits clears them", async () => {
     await seed("/b.html", "Le mascaret de la Seine", "Le mascaret remonte la Seine.");
-    answer = { kind: "page", groups: [["mascaret"]] };
     await ask("les mascarets");
     await pressKeys(m, "Enter");
     await q.waitCount(tid("command-ask-hit"), 1);

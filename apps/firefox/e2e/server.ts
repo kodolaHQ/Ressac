@@ -171,3 +171,35 @@ export async function startD1Server(o: { hold?: boolean } = {}): Promise<{ env: 
     },
   };
 }
+
+/**
+ * A fake search model (RESSAC_EMBED_SERVER_URL): /v1/embeddings gives each text the one-hot vector of the first concept
+ * whose words it holds (case-insensitive), or of none. A concept's French and English words share a vector, so a French
+ * question finds an English page. `inputs` keeps every text asked; `refuse = true` answers 500.
+ */
+export async function startEmbedServer(concepts: string[][]): Promise<{ url: string; inputs: string[]; refuse: boolean; close(): Promise<void> }> {
+  const vector = (text: string) => {
+    const t = text.toLowerCase();
+    const i = concepts.findIndex((words) => words.some((w) => t.includes(w)));
+    return Array.from({ length: concepts.length + 1 }, (_, k) => (k === (i < 0 ? concepts.length : i) ? 1 : 0));
+  };
+  const fake = {
+    inputs: [] as string[],
+    refuse: false,
+  };
+  const server = await startServer({
+    routes: {
+      "/v1/embeddings": (req, res) => {
+        let body = "";
+        req.on("data", (d) => (body += d)).on("end", () => {
+          const input = (JSON.parse(body) as { input: string[] }).input;
+          fake.inputs.push(...input);
+          if (fake.refuse) return void res.writeHead(500).end("{}");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ data: input.map((t, index) => ({ index, embedding: vector(t) })) }));
+        });
+      },
+    },
+  });
+  return Object.assign(fake, { url: server.url, close: server.close });
+}

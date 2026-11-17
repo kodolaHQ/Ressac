@@ -161,7 +161,7 @@ const broadcastAccess = () => {
 
 // The local AI for harvests: Gemma runs in Ollama, the decision model (d1-2B) in the llama-server shipped with Ressac
 // (RESSAC_LLAMA_SERVER, set by chrome/agent/command.ts), as is the search model (⌘T). RESSAC_D1_URL / RESSAC_D1_SHA256 and
-// RESSAC_EMBED_URL / RESSAC_EMBED_SHA256: dev and tests only.
+// RESSAC_EMBED_URL / RESSAC_EMBED_SHA256, RESSAC_EMBED_SERVER_URL (a search server already running): dev and tests only.
 // The agent that writes (Claude Haiku or Codex, in the workshop): the default profile's, else the other if signed in.
 const profileAgents = new Map<string, "claude" | "codex">();
 // Best effort (the space may not exist yet): a profile read late leaves the default "claude" until agent.profiles runs.
@@ -187,10 +187,11 @@ const ai = new LocalAi({
   locale: () => hostLocale(),
 });
 
-// The ⌘T bar's Demander mode: calls Gemma directly, outside the workflows' dispatcher queue.
-const ask = createAsk({ ai, history: () => hist ?? null });
+// The ⌘T bar's Demander mode: rules and the search model, outside the workflows' dispatcher queue.
+const ask = createAsk({ embed: ai.embed, history: () => hist ?? null });
 // The pages' vectors for ⌘T Demander, computed in the background while AI is on and the search model is installed.
-const indexer = hist && createPageIndexer({ history: hist, embed: llamaEmbed(() => ai.embed.ready()) });
+// RESSAC_TEST_INDEX_IDLE_MS (e2e): pages seeded after launch get their vectors without waiting a minute.
+const indexer = hist && createPageIndexer({ history: hist, embed: llamaEmbed(() => ai.embed.ready()), idleMs: Number(process.env.RESSAC_TEST_INDEX_IDLE_MS) || undefined });
 const startIndexer = () => {
   if (aiOn && ai.embed.installed()) indexer?.start();
 };
@@ -810,7 +811,7 @@ const rpc = createRpc({
     "ask.warm": () => void (aiOn && ask.warm()),
     "ask.find": aiOnly((p: { question?: unknown }) => {
       if (typeof p?.question !== "string") throw new Error("ask.find: invalid question");
-      return ask.find(p.question.slice(0, 2000), hostLocale());
+      return ask.find(p.question.slice(0, 2000));
     }),
     "ask.handOff": aiOnly((p: { window?: unknown; question?: unknown; shown?: unknown }) => {
       if (typeof p?.window !== "string" || typeof p.question !== "string" || !Array.isArray(p.shown)) throw new Error("ask.handOff: invalid params");

@@ -772,6 +772,8 @@ export interface LocalAiStateShown {
   decisionError?: string;
   /** Same for the search model. */
   searchError?: string;
+  /** The search model's server failed to start (`error` is the decision server's). */
+  searchServerError?: string;
   ollamaUrl?: string;
   /** What was found of Ollama on this machine (absent from an older host). */
   ollama?: OllamaStatus;

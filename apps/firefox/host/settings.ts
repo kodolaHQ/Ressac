@@ -91,7 +91,7 @@ export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork">;
   /** Who writes (the account check is cached): reset whenever an account may have changed. */
   writer: { agent(): Promise<WriterAgent | null>; reset(): void };
-  ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install"> };
+  ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
   ollama: Pick<OllamaRuntime, "status" | "start" | "install">;
   docker: DockerRuntime;
   stopApps(): Promise<void>;
@@ -417,7 +417,12 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       const ollama = await o.ollama.status().catch(() => undefined);
       const decisionError = modelErrors.get(DECISION_MODEL);
       const searchError = modelErrors.get(SEARCH_MODEL);
-      const errors = { ...(decisionError ? { decisionError } : {}), ...(searchError ? { searchError } : {}) };
+      const search = o.ai.embed.state();
+      const errors = {
+        ...(decisionError ? { decisionError } : {}),
+        ...(searchError ? { searchError } : {}),
+        ...(search.state === "error" && search.error ? { searchServerError: search.error } : {}),
+      };
       return { ...o.ai.state(), ...(v ? { verification: v } : {}), ollamaUrl: o.ai.ollamaUrl, ...(ollama ? { ollama } : {}), ...errors };
     },
   };

@@ -19,6 +19,7 @@ export interface LocalAiOptions {
   decisionBytes?: number;
   embedUrl?: string;
   embedSha256?: string;
+  embedServerUrl?: string;
   port?: number;
   inactivityMs?: number;
   clock?: () => number;
@@ -104,7 +105,8 @@ export class LocalAi {
       { ...D1_MODEL, port: o.port ?? D1_MODEL.port, idleMs: o.inactivityMs ?? D1_MODEL.idleMs },
       { ...common, urlOverride: o.decisionUrl, sha256Override: o.decisionSha256, bytesOverride: o.decisionBytes, serverUrl: imposed, onState: o.onState },
     );
-    this.embed = new LlamaModel(EMBED_MODEL, { ...common, urlOverride: o.embedUrl, sha256Override: o.embedSha256 });
+    // RESSAC_EMBED_SERVER_URL (or `embedServerUrl`): a search server already running (tests), taken as installed.
+    this.embed = new LlamaModel(EMBED_MODEL, { ...common, urlOverride: o.embedUrl, sha256Override: o.embedSha256, serverUrl: o.embedServerUrl ?? process.env.RESSAC_EMBED_SERVER_URL });
   }
 
   private say(id: string, args?: Record<string, string | number>): string {

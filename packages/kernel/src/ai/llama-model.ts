@@ -150,9 +150,9 @@ export class LlamaModel {
     this.o.onState?.(e, error);
   }
 
-  /** The file is in place: it is only renamed there once its SHA-256 matched. */
+  /** The file is in place (only renamed there once its SHA-256 matched), or a server runs elsewhere (`serverUrl`). */
   installed(): boolean {
-    return existsSync(this.modelFile);
+    return Boolean(this.o.serverUrl) || existsSync(this.modelFile);
   }
 
   /**

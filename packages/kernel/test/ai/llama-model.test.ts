@@ -102,6 +102,7 @@ describe("LlamaModel: the server", () => {
   it("serverUrl: ready() answers it without launching anything", async () => {
     const launch = vi.fn();
     const m = model({ folder: await tempFolder(), launch, serverUrl: "http://127.0.0.1:7" });
+    expect(m.installed()).toBe(true);
     expect(await m.ready()).toBe("http://127.0.0.1:7");
     expect(m.state().state).toBe("active");
     expect(launch).not.toHaveBeenCalled();

@@ -1,161 +1,105 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createServer, type Server } from "node:http";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { History } from "../core/history";
+import type { History } from "../core/history";
 import { createAsk } from "../host/ask";
 
-// Saturday 14 November 2026, noon local time.
-const NOW = new Date(2026, 10, 14, 12);
-const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000);
+// Monday 16 November 2026, afternoon local time.
+const NOW = new Date(2026, 10, 16, 15);
 
-let h: History;
-beforeEach(() => {
-  h = new History(join(mkdtempSync(join(tmpdir(), "ressac-ask-")), "history.sqlite"));
+/** A fake search server: answers /v1/embeddings with the vector [3, 4] (or as `reply` says) and keeps the texts asked. */
+let server: Server;
+let base: string;
+let inputs: string[];
+let reply: "ok" | "500" | "never";
+beforeEach(async () => {
+  inputs = [];
+  reply = "ok";
+  server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c)).on("end", () => {
+      inputs.push(...(JSON.parse(body) as { input: string[] }).input);
+      if (reply === "never") return;
+      if (reply === "500") return void res.writeHead(500).end("{}");
+      res.end(JSON.stringify({ data: [{ index: 0, embedding: [3, 4] }] }));
+    });
+  });
+  await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+  base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
-afterEach(() => h.close());
+afterEach(() => {
+  server.closeAllConnections();
+  server.close();
+});
 
-const visit = (url: string, title: string, text: string | null, date: Date, priv = false) => {
-  h.note({ url, title, spaceId: "s", private: priv, date });
-  if (text !== null) h.keep({ url, spaceId: "s", title, text, date });
+const hit = (url: string, score: number) => ({ url, title: url, lastVisit: "2026-11-15T10:00:00.000Z", visits: 1, excerpt: "", favicon: null, score });
+
+const make = (hits: ReturnType<typeof hit>[] = [], o: { timeoutMs?: number; installed?: boolean } = {}) => {
+  const embed = { ready: vi.fn(async () => base), warm: vi.fn(), installed: vi.fn(() => o.installed ?? true) };
+  const history = { findSimilar: vi.fn((_v: Float32Array, _q: Parameters<History["findSimilar"]>[1]) => hits) };
+  const ask = createAsk({ embed, history: () => history, now: () => NOW, timeoutMs: o.timeoutMs });
+  return { ask, embed, history };
 };
 
-const make = (answer: unknown, o: { timeoutMs?: number } = {}) => {
-  const gemma = vi.fn(async (_: { prompt: string; json?: boolean; signal?: AbortSignal }) => answer);
-  const hasGemma = vi.fn(async () => true);
-  const warm = vi.fn(async () => {});
-  const history = { findPages: vi.fn((q: Parameters<History["findPages"]>[0]) => h.findPages(q)) };
-  const ask = createAsk({ ai: { gemma, hasGemma, warm }, history: () => history, now: () => NOW, ...o });
-  return { ask, gemma, hasGemma, warm, history };
-};
-
-const page = (extra: Record<string, unknown> = {}) => ({ kind: "page", groups: [["mascaret", "mascarets", "tidal bore"]], ...extra });
-
-test("a page question finds the recent visit, the older one is left out by since", async () => {
-  visit("https://www.youtube.com/watch?v=1", "Le mascaret de la Dordogne", "vidéo du mascaret à Saint-Pardon", daysAgo(3));
-  visit("https://old.fr/mascaret", "Mascaret ancien", "un vieux mascaret", daysAgo(30));
-  const { ask } = make(JSON.stringify(page({ since: "2026-11-07" })));
-  const r = await ask.find("la vidéo du mascaret l'autre jour", "fr");
+test("the query text is the measured prompt and the question without its period words; filters reach findSimilar", async () => {
+  const { ask, history } = make([hit("https://www.youtube.com/watch?v=1", 0.8)]);
+  const r = await ask.find("la vidéo du mascaret vue hier");
+  expect(inputs).toEqual(["task: search result | query: la vidéo du mascaret vue"]);
+  const [vec, q] = history.findSimilar.mock.calls[0]!;
+  expect(Array.from(vec).map((x) => Math.round(x * 100) / 100)).toEqual([0.6, 0.8]);
+  expect(q).toEqual({
+    since: new Date(2026, 10, 15),
+    until: new Date(2026, 10, 15, 23, 59, 59, 999),
+    sites: ["youtube.com", "vimeo.com", "dailymotion.com"],
+    limit: 3,
+  });
   expect(r).toEqual({
     kind: "page",
-    hits: [{ url: "https://www.youtube.com/watch?v=1", title: "Le mascaret de la Dordogne", lastVisit: daysAgo(3).toISOString(), excerpt: expect.stringContaining("mascaret"), favicon: null }],
+    hits: [{ url: "https://www.youtube.com/watch?v=1", title: "https://www.youtube.com/watch?v=1", lastVisit: "2026-11-15T10:00:00.000Z", excerpt: null, favicon: null }],
   });
 });
 
-test("an already parsed answer works too; until covers its whole day", async () => {
-  visit("https://a.fr/", "Mascaret hier soir", null, new Date(2026, 10, 13, 23, 30));
-  visit("https://b.fr/", "Mascaret aujourd'hui", null, new Date(2026, 10, 14, 9));
-  const { ask } = make(page({ since: "2026-11-13", until: "2026-11-13" }));
-  expect(await ask.find("le mascaret d'hier", "fr")).toEqual({
-    kind: "page",
-    hits: [{ url: "https://a.fr/", title: "Mascaret hier soir", lastVisit: new Date(2026, 10, 13, 23, 30).toISOString(), excerpt: null, favicon: null }],
-  });
+test("no period: no dates; scores under 0.30 are dropped", async () => {
+  const { ask, history } = make([hit("https://a.fr/", 0.9), hit("https://b.fr/", 0.3), hit("https://c.fr/", 0.29)]);
+  const r = await ask.find("le mascaret");
+  expect(history.findSimilar.mock.calls[0]![1]).toEqual({ since: undefined, until: undefined, sites: [], limit: 3 });
+  expect(r.kind === "page" && r.hits.map((x) => x.url)).toEqual(["https://a.fr/", "https://b.fr/"]);
 });
 
-test("named sites filter; a video question keeps video sites even when the model forgets them", async () => {
-  visit("https://blog.fr/mascaret", "Mascaret", "mascaret mascaret mascaret", daysAgo(1));
-  visit("https://www.youtube.com/watch?v=2", "Le mascaret en vidéo", null, daysAgo(2));
-  const plain = await make(page()).ask.find("le mascaret", "fr");
-  expect(plain.kind === "page" && plain.hits.map((x) => x.url)).toEqual(["https://blog.fr/mascaret", "https://www.youtube.com/watch?v=2"]);
-  const hinted = await make(page({ sites: ["youtube.com"] })).ask.find("le mascaret", "fr");
-  expect(hinted.kind === "page" && hinted.hits.map((x) => x.url)).toEqual(["https://www.youtube.com/watch?v=2"]);
-  const forgot = await make(page()).ask.find("la vidéo du mascaret", "fr");
-  expect(forgot.kind === "page" && forgot.hits.map((x) => x.url)).toEqual(["https://www.youtube.com/watch?v=2"]);
+test("nothing at 0.30 or more → agent", async () => {
+  const { ask } = make([hit("https://a.fr/", 0.2)]);
+  expect(await ask.find("le mascaret")).toEqual({ kind: "agent" });
 });
 
-test("every group must match: noise holding one idea is not a hit", async () => {
-  visit("https://www.leboncoin.fr/recherche?text=videoprojecteur", "vidéoprojecteur 4K", null, daysAgo(1));
-  visit("https://www.youtube.com/watch?v=s", "I discovered a sound that leaks your exact location", null, daysAgo(2));
-  const { ask } = make({ kind: "page", groups: [["son", "sound"], ["lieu", "location"]] });
-  const r = await ask.find("une vidéo sur trouver un lieu à partir d'un son", "fr");
-  expect(r.kind === "page" && r.hits.map((x) => x.url)).toEqual(["https://www.youtube.com/watch?v=s"]);
+test("an action request → agent, nothing embedded nor searched", async () => {
+  const { ask, embed, history } = make([hit("https://a.fr/", 0.9)]);
+  expect(await ask.find("résume-moi cette page")).toEqual({ kind: "agent" });
+  expect(embed.ready).not.toHaveBeenCalled();
+  expect(history.findSimilar).not.toHaveBeenCalled();
 });
 
-test("sites that are not strings are ignored, not malformed", async () => {
-  visit("https://blog.fr/mascaret", "Mascaret", null, daysAgo(1));
-  const { ask } = make(page({ sites: "youtube.com" }));
-  expect((await ask.find("mascaret", "fr")).kind).toBe("page");
+test("the server refusing, down, or no history → agent", async () => {
+  reply = "500";
+  expect(await make([hit("https://a.fr/", 0.9)]).ask.find("le mascaret")).toEqual({ kind: "agent" });
+  const down = make([hit("https://a.fr/", 0.9)]);
+  down.embed.ready.mockRejectedValueOnce(new Error("Local AI not installed"));
+  expect(await down.ask.find("le mascaret")).toEqual({ kind: "agent" });
+  const none = createAsk({ embed: make().embed, history: () => null, now: () => NOW });
+  expect(await none.find("le mascaret")).toEqual({ kind: "agent" });
 });
 
-test("5 matches → 3 hits", async () => {
-  for (let i = 0; i < 5; i++) visit(`https://s${i}.fr/`, `Mascaret ${i}`, null, daysAgo(i + 1));
-  const { ask, history } = make(page());
-  const r = await ask.find("mascaret", "fr");
-  expect(r.kind === "page" && r.hits.length).toBe(3);
-  expect(history.findPages).toHaveBeenCalledWith({ groups: [["mascaret", "mascarets", "tidal bore"]], since: undefined, until: undefined, sites: [], limit: 3 });
-});
-
-test("a private visit is not a hit; no match → agent", async () => {
-  visit("https://secret.fr/", "Mascaret secret", null, daysAgo(1), true);
-  const { ask } = make(page());
-  expect(await ask.find("mascaret", "fr")).toEqual({ kind: "agent" });
-});
-
-test("kind other → agent, history not searched", async () => {
-  const { ask, history } = make({ kind: "other" });
-  expect(await ask.find("résume cette page", "fr")).toEqual({ kind: "agent" });
-  expect(history.findPages).not.toHaveBeenCalled();
-});
-
-test.each([
-  ["non-JSON", "pas du json"],
-  ["a group not of strings", page({ groups: [[1]] })],
-  ["no groups", page({ groups: [] })],
-  ["an empty group", page({ groups: [[]] })],
-  ["groups of plain strings", page({ groups: ["mascaret"] })],
-  ["since not a date", page({ since: "hier" })],
-  ["since an impossible date", page({ since: "2026-02-31" })],
-  ["too many groups", page({ groups: [["a"], ["b"], ["c"], ["d"], ["e"]] })],
-])("malformed answer (%s) → agent", async (_, answer) => {
-  visit("https://a.fr/", "Mascaret", null, daysAgo(1));
-  const { ask, history } = make(answer);
-  expect(await ask.find("mascaret", "fr")).toEqual({ kind: "agent" });
-  expect(history.findPages).not.toHaveBeenCalled();
-});
-
-test("⌘T keeps Gemma warm for 10 minutes, unlike background work", async () => {
-  const { ask, gemma } = make(page());
-  await ask.find("mascaret", "fr");
-  expect(gemma.mock.calls[0]![0]).toMatchObject({ keepAlive: "10m" });
-});
-
-test("gemma throwing, or no history → agent", async () => {
-  const { ask, gemma } = make(page());
-  gemma.mockRejectedValueOnce(new Error("Ollama n'est pas lancé"));
-  expect(await ask.find("mascaret", "fr")).toEqual({ kind: "agent" });
-  const none = createAsk({ ai: { gemma: async () => page(), hasGemma: async () => true, warm: async () => {} }, history: () => null, now: () => NOW });
-  expect(await none.find("mascaret", "fr")).toEqual({ kind: "agent" });
-});
-
-test("no answer within timeoutMs → agent, and gemma's signal is aborted", async () => {
-  const { ask, gemma } = make(undefined, { timeoutMs: 50 });
-  gemma.mockImplementationOnce(() => new Promise(() => {}));
+test("no vector within timeoutMs → agent", async () => {
+  reply = "never";
+  const { ask, history } = make([hit("https://a.fr/", 0.9)], { timeoutMs: 50 });
   const start = Date.now();
-  expect(await ask.find("mascaret", "fr")).toEqual({ kind: "agent" });
+  expect(await ask.find("le mascaret")).toEqual({ kind: "agent" });
   expect(Date.now() - start).toBeLessThan(500);
-  expect(gemma.mock.calls[0]![0].signal!.aborted).toBe(true);
+  expect(history.findSimilar).not.toHaveBeenCalled();
 });
 
-test("the prompt asks for JSON and gives today's date and weekday, in the UI language", async () => {
-  const { ask, gemma } = make({ kind: "other" });
-  await ask.find("mascaret", "fr");
-  await ask.find("mascaret", "en");
-  const [fr, en] = gemma.mock.calls.map((c) => c[0]);
-  expect(fr!.json).toBe(true);
-  expect(fr!.prompt).toContain("2026-11-14");
-  expect(fr!.prompt).toContain("samedi");
-  expect(fr!.prompt).toContain("mascaret");
-  expect(en!.prompt).toContain("2026-11-14");
-  expect(en!.prompt).toContain("Saturday");
-});
-
-test("usable: whatever hasGemma says, false when it rejects; warm calls the AI", async () => {
-  const { ask, hasGemma, warm } = make(null);
-  expect(await ask.usable()).toBe(true);
-  hasGemma.mockResolvedValueOnce(false);
-  expect(await ask.usable()).toBe(false);
-  hasGemma.mockRejectedValueOnce(new Error("boom"));
+test("usable: the search model is installed; warm starts its server", async () => {
+  expect(await make([], { installed: true }).ask.usable()).toBe(true);
+  const { ask, embed } = make([], { installed: false });
   expect(await ask.usable()).toBe(false);
   ask.warm();
-  expect(warm).toHaveBeenCalled();
+  expect(embed.warm).toHaveBeenCalled();
 });

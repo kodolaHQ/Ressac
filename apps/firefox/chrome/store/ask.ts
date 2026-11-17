@@ -2,7 +2,7 @@ import type { AskHit, AskResult, WindowId } from "../../shared/model";
 import type { AgentHost } from "../agent/host";
 
 export interface Ask {
-  /** False while the host is down or Gemma is missing. */
+  /** False while the host is down or the search model is missing. */
   usable(): Promise<boolean>;
   warm(): void;
   /** Never rejects: the agent while the host is down. */
