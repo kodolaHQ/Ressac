@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Workshop, BUILD_DELAY_MS, parseBuildStep, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript } from "../../src/container/workshop.js";
 import { findDocker } from "../../src/container/engine.js";
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { TOOLS_FOLDERS } from "../../src/container/runner.js";
@@ -950,6 +950,18 @@ describe("busy", () => {
       expect(script).toContain("RESSAC_SESSION=.*");
       expect(script).toContain("RESSAC_APP=.*");
     }
+  });
+
+  test("without the agent sessions, a write (UUID id) and the apps still count", async () => {
+    const { run, calls } = fakeRunner([[/ inspect /, { code: 0, stdout: "true\n" }], [/ exec /, { code: 0, stdout: "" }]]);
+    expect(await new Workshop({ paths, run }).busy(engine(true), { agentSessions: false })).toBe(false);
+    const script = calls[2]!.args.at(-1)!;
+    expect(script).toContain("RESSAC_SESSION=.*-.*");
+    expect(script).not.toContain("RESSAC_SESSION=.*'");
+    expect(script).toContain("RESSAC_APP=.*");
+    // The real grep: a session's hex id is left out, a write's UUID is matched.
+    for (const [v, hit] of [["RESSAC_SESSION=0a1b2c3d4e5f6a7b", false], ["RESSAC_SESSION=6f1c2e1a-1b2c-4d3e-8f00-123456789abc", true]] as const)
+      expect(spawnSync("sh", ["-c", `printf '%s\\0' "$1" | grep -qzx 'RESSAC_SESSION=.*-.*'`, "sh", v]).status === 0).toBe(hit);
   });
 
   test("the scan's own exit code does not hide a PID it printed", async () => {

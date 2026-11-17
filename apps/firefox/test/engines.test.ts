@@ -17,7 +17,7 @@ const tmp = () => {
   return d;
 };
 
-function world(o: { status?: MachineStatus["kind"]; docker?: boolean; dockerUp?: boolean; idle?: boolean[]; marker?: boolean | string; markerPath?: string; stopFails?: boolean; copyFails?: boolean } = {}) {
+function world(o: { status?: MachineStatus["kind"]; docker?: boolean; dockerUp?: boolean; idle?: (boolean | "untouched")[]; marker?: boolean | string; markerPath?: string; stopFails?: boolean; copyFails?: boolean } = {}) {
   const log: string[] = [];
   let status = { kind: o.status ?? "running" } as MachineStatus;
   let releaseCopy: () => void = () => {};
@@ -62,6 +62,7 @@ function world(o: { status?: MachineStatus["kind"]; docker?: boolean; dockerUp?:
     },
     marker,
     idlePollMs: 1,
+    relaunchSessions: async () => void log.push("relaunch sessions"),
   });
   return { engines, machine, log, marker, copyGate, release: () => releaseCopy(), setStatus: (k: MachineStatus["kind"]) => (status = { kind: k } as MachineStatus) };
 }
@@ -121,6 +122,19 @@ describe("choosing the engine", () => {
     expect(w.log.slice(-3)).toEqual(["docker stop", "machine wake user", "copy"]);
     expect(kind(w)).toBe("machine");
     await w.engines.switchNow(); // nothing waits: a no-op
+  });
+
+  it("Docker's workshop busy only with sessions nobody typed in: it switches at once and asks to relaunch them", async () => {
+    const w = world({ idle: ["untouched"] });
+    await w.engines.settle();
+    expect(w.log).toEqual(["idle untouched", "docker stop", "machine wake user", "copy", "relaunch sessions"]);
+    expect(kind(w)).toBe("machine");
+  });
+
+  it("a session someone typed in keeps the wait (and no relaunch once idle)", async () => {
+    const w = world({ idle: [false, false, true] });
+    await w.engines.settle();
+    expect(w.log).not.toContain("relaunch sessions");
   });
 
   it("logins copied once", async () => {

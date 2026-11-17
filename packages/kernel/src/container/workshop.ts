@@ -619,9 +619,10 @@ export class Workshop {
 
   /**
    * True while a harvest or action container runs, or a session or app process lives in the workshop. Never wakes the
-   * engine (a down one is idle). `e`: the engine to look at, the current one by default.
+   * engine (a down one is idle). `e`: the engine to look at, the current one by default. `agentSessions: false` leaves
+   * the interactive agent sessions out (their ids are hex; a write's, still counted, is a UUID).
    */
-  async busy(e: ContainerEngine = this.engine()): Promise<boolean> {
+  async busy(e: ContainerEngine = this.engine(), o: { agentSessions?: boolean } = {}): Promise<boolean> {
     const binary = e.binary();
     if (!binary || !(await e.up())) return false;
     const run = (args: string[]) => this.run(binary, [...e.args(), ...args], { delayMs: PROBE_DELAY_MS });
@@ -631,7 +632,8 @@ export class Workshop {
     if (running.code !== 0) return !/no such (container|object)/i.test(running.stderr); // a doubt stops nothing
     if (running.stdout.trim() !== "true") return false; // no workshop running: nothing lives in it
     // `; true`: the scan's for loop exits with its last grep's status; a failure now is the exec's own, a doubt.
-    const found = await run(["exec", containerName(), "sh", "-c", `${marks(`${VARIABLE_SESSION}=.*`)}; ${marks(`${VARIABLE_APPLICATION}=.*`)}; true`]);
+    const sessions = o.agentSessions === false ? `${VARIABLE_SESSION}=.*-.*` : `${VARIABLE_SESSION}=.*`;
+    const found = await run(["exec", containerName(), "sh", "-c", `${marks(sessions)}; ${marks(`${VARIABLE_APPLICATION}=.*`)}; true`]);
     return found.code !== 0 || found.stdout.trim() !== "";
   }
 

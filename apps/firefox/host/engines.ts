@@ -15,8 +15,10 @@ type Machine = ContainerEngine & { status(): MachineStatus };
 export function createEngines(o: {
   machine: Machine;
   docker: ContainerEngine & { start(): Promise<void> };
-  /** True when no session or app runs in Docker's workshop. */
-  workshopIdle: () => Promise<boolean>;
+  /** True when no session or app runs in Docker's workshop; « untouched » when only sessions nobody typed in run there. */
+  workshopIdle: () => Promise<boolean | "untouched">;
+  /** After a hand-over that cut sessions nobody typed in: they start again, in the machine. */
+  relaunchSessions: () => Promise<void>;
   /** Stops Docker's workshop container (never removes it, its image or the logins volume): it holds the apps' ports. */
   stopDocker: () => Promise<void>;
   copyLogins: () => Promise<void>;
@@ -90,8 +92,9 @@ export function createEngines(o: {
         }
         if (!(await o.docker.up())) await o.docker.start().catch(() => {});
         if (!(await o.docker.up())) return handOver(false); // Docker cannot serve either: the machine takes over, the copy waits
+        let idle: boolean | "untouched" = false;
         try {
-          while (!now && !(await o.workshopIdle())) await new Promise<void>((r) => ((waiting = r), setTimeout(r, o.idlePollMs ?? 30_000).unref()));
+          while (!now && !(idle = await o.workshopIdle())) await new Promise<void>((r) => ((waiting = r), setTimeout(r, o.idlePollMs ?? 30_000).unref()));
         } finally {
           waiting = undefined;
           now = false;
@@ -109,6 +112,8 @@ export function createEngines(o: {
           }
         })();
         await switching;
+        // Their panels showed nothing yet: they restart in the machine unseen. (« Passer maintenant » relaunches on its own.)
+        if (idle === "untouched") await o.relaunchSessions();
       })().finally(() => {
         settling = undefined;
         switching = undefined;

@@ -449,3 +449,25 @@ describe("engine change (Réglages › Agents)", () => {
     expect(manager.active("F")).toBe(true);
   });
 });
+
+test("touched: only a session the user sent something to (Enter, a text put in for them); kept by Relancer, not by a workshop restart", async () => {
+  const { management: manager, sessions } = prepare();
+  await manager.start("F", size);
+  await manager.start("G", size);
+  manager.write("F", "\x1b[I"); // the terminal's own replies (focus, queries) are not the user's
+  manager.write("F", "bonj");
+  expect(manager.touched()).toBe(false);
+  manager.write("F", "\r");
+  expect(manager.touched()).toBe(true);
+  await manager.relaunch("F");
+  expect(manager.touched()).toBe(true);
+  await manager.relaunchAll();
+  expect(manager.touched()).toBe(false);
+  manager.prefill("G", "résume la page");
+  expect(manager.touched()).toBe(true);
+  await manager.closeWindow("G");
+  expect(manager.touched()).toBe(false);
+  for (const x of sessions) x.finish(0);
+  manager.prefill("F", "x"); // an ended session counts no more, until the next one starts
+  expect(manager.touched()).toBe(false);
+});

@@ -77,6 +77,8 @@ interface Entry {
   engine?: string;
   /** The engine changed since this session started: the panel offers to relaunch it. */
   engineChanged?: boolean;
+  /** The user sent something (Enter, or a text put in for them): the conversation is someone's, never cut on its own. */
+  touched?: boolean;
 }
 
 /** One agent session per window (spec §8): it survives tab changes and the panel closing. */
@@ -193,6 +195,7 @@ export class SessionsAgent {
     this.inputs.delete(f);
     this.drop(old);
     const e = this.entry(f, old.size, old.profile, old.ran);
+    e.touched = old.touched; // the conversation resumes
     await this.start(f, e.size, e.ran.has(e.profile));
   }
 
@@ -208,15 +211,22 @@ export class SessionsAgent {
     e.toSend = "";
   }
 
+  /** True while a window's session, running or starting, has the user's input (see Entry.touched). */
+  touched(): boolean {
+    return [...this.inputs.values()].some((e) => e.touched && (e.session?.active || e.startup));
+  }
+
   active(f: WindowId): boolean {
     return this.inputs.get(f)?.session?.active ?? false;
   }
 
   write(f: WindowId, d: string): void {
-    const session = this.inputs.get(f)?.session;
-    if (!session) return;
-    session.write(d);
-    if (d.includes("\r")) this.o.onSend?.(f);
+    const e = this.inputs.get(f);
+    if (!e?.session) return;
+    e.session.write(d);
+    if (!d.includes("\r")) return;
+    e.touched = true;
+    this.o.onSend?.(f);
   }
 
   /**
@@ -227,8 +237,10 @@ export class SessionsAgent {
   prefill(f: WindowId, text: string, written?: () => void, submit = false): void {
     const p = { text: text, ...(written ? { written: written } : {}), ...(submit ? { submit: true } : {}) };
     let e = this.inputs.get(f);
+    if (e) e.touched = true;
     if (e?.session?.active) return this.writePrefill(f, e.session, p);
     e ??= this.entry(f, { cols: 80, rows: 24 });
+    e.touched = true;
     e.prefill = p;
   }
 
@@ -281,6 +293,7 @@ export class SessionsAgent {
     this.inputs.delete(f);
     if (old) this.drop(old);
     const e = this.entry(f, old?.size ?? { cols: 80, rows: 24 }, profile, old?.ran);
+    e.touched = old?.touched;
     await this.start(f, e.size, e.ran.has(profile));
   }
 
