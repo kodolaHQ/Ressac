@@ -68,3 +68,32 @@ test("action requests", () => {
   expect(isAction("quelle était la page sur le mascaret")).toBe(false);
   expect(isAction("")).toBe(false);
 });
+
+test.each([
+  // Sunday 15 and Saturday 14 November 2026: « dernier / last » is the weekend before this one.
+  [new Date(2026, 10, 15, 15), "le week-end dernier", "2026-11-07", "2026-11-08"],
+  [new Date(2026, 10, 14, 15), "last weekend", "2026-11-07", "2026-11-08"],
+  [new Date(2026, 10, 15, 15), "ce week-end", "2026-11-14", "2026-11-15"],
+  // Monday: the weekend just past.
+  [new Date(2026, 10, 16, 15), "le weekend dernier", "2026-11-14", "2026-11-15"],
+  // Sunday 3 January 2027: across the year.
+  [new Date(2027, 0, 3, 15), "le week-end dernier", "2026-12-26", "2026-12-27"],
+])("on %s, « %s »", (today, q, since, until) => {
+  const p = parseAsk(q, today);
+  expect([iso(p.since), iso(p.until)]).toEqual([since, until]);
+});
+
+test.each([
+  // A weekday that is the page's subject is no period.
+  ["la recette du dimanche", null, null],
+  ["le marché du mardi", null, null],
+  ["les crêpes de mardi gras", null, null],
+  ["mardi gras", null, null],
+  ["le dimanche", null, null],
+  // Alone, or marked, it stays a period.
+  ["mardi", "2026-11-10", "2026-11-10"],
+  ["la page vue le dimanche", "2026-11-15", "2026-11-15"],
+  ["le dimanche dernier", "2026-11-15", "2026-11-15"],
+])("weekday in « %s »", (q, since, until) => {
+  expect(period(q)).toEqual([since, until]);
+});

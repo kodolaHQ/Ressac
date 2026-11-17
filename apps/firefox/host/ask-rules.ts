@@ -41,8 +41,10 @@ const PERIODS: [RegExp, (d: Day, m: RegExpMatchArray) => [Day, Day | undefined]]
     /\b(la semaine (derniere|passee|d'avant)|semaine derniere|last week|the previous week|the week before)\b/,
     (d) => [add(weekStart(d), -7), add(weekStart(d), -1)],
   ],
+  // The weekend before this week, even on a Saturday or Sunday.
+  [/\b(le (week-?end|weekend) (dernier|passe)|last (week-?end|weekend))\b/, (d) => [add(weekStart(d), -2), add(weekStart(d), -1)]],
   [
-    /\b(ce (week-?end|weekend)|le (week-?end|weekend) dernier|(this|last|over the) (week-?end|weekend))\b/,
+    /\b(ce (week-?end|weekend)|(this|over the) (week-?end|weekend))\b/,
     (d) => (weekday(d) < 5 ? [lastWeekday(d, 5), add(lastWeekday(d, 5), 1)] : [add(d, -(weekday(d) - 5)), d]),
   ],
   [/\b(cette semaine|this week|earlier this week)\b/, (d) => [weekday(d) ? weekStart(d) : add(d, -7), undefined]],
@@ -64,6 +66,9 @@ const PERIODS: [RegExp, (d: Day, m: RegExpMatchArray) => [Day, Day | undefined]]
 const WEEKDAY = new RegExp(`\\b(${DAY_NAMES})( (dernier|passe|last))?\\b|\\blast (${DAY_NAMES})\\b`, "g");
 /** « vus mardi »: the day the page was seen, not one of its subject (« le dimanche »). */
 const SEEN_BEFORE = /\b(vus?|vues?|visitee?s?|regardee?s?|seen|visited|watched)( (le|on))? $/;
+/** « la recette du dimanche », « mardi gras »: a bare weekday that names the subject, not a period. */
+const SUBJECT_BEFORE = /\b(du|de|le|d') ?$/;
+const SUBJECT_AFTER = /^ gras\b/;
 
 function period(t: string, today: Day): { since: Day; until?: Day; at: number; end: number } | null {
   for (const [rx, f] of PERIODS) {
@@ -73,9 +78,11 @@ function period(t: string, today: Day): { since: Day; until?: Day; at: number; e
       return { since, until, at: m.index!, end: m.index! + m[0].length };
     }
   }
-  const all = [...t.matchAll(WEEKDAY)];
+  const marked = (x: RegExpMatchArray) => x[2] || x[4] || SEEN_BEFORE.test(t.slice(0, x.index));
+  const subject = (x: RegExpMatchArray) => SUBJECT_BEFORE.test(t.slice(0, x.index)) || SUBJECT_AFTER.test(t.slice(x.index! + x[0].length));
+  const all = [...t.matchAll(WEEKDAY)].filter((x) => marked(x) || !subject(x));
   // A weekday marked « dernier/last » or after « vu(s)/visité/regardé » wins over a bare one.
-  const m = all.find((x) => x[2] || x[4] || SEEN_BEFORE.test(t.slice(0, x.index))) ?? all[0];
+  const m = all.find(marked) ?? all[0];
   if (!m) return null;
   const day = lastWeekday(today, DAYS[m[1] ?? m[4]!]!);
   return { since: day, until: day, at: m.index!, end: m.index! + m[0].length };
