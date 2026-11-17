@@ -624,6 +624,19 @@ describe("history", { timeout: 30_000 }, () => {
     expect(h.stderr()).toContain("history");
   });
 
+  it("history.import keeps a visit with a long title (cut), drops a long URL, and fails without a history", async () => {
+    const h = startHost();
+    const date = new Date().toISOString();
+    const r = await h.rpc.request("history.import", { visits: [
+      { url: "https://a.test/", title: "t".repeat(5000), date },
+      { url: `https://b.test/${"x".repeat(2048)}`, title: "B", date },
+    ] });
+    expect(r).toEqual({ count: 1 });
+    expect(await h.rpc.request("history.recent", {})).toEqual([expect.objectContaining({ url: "https://a.test/", title: "t".repeat(256) })]);
+    const broken = startHost({}, (d) => mkdirSync(join(d, "history.sqlite")));
+    await expect(broken.rpc.request("history.import", { visits: [] })).rejects.toThrow(/no history/);
+  });
+
   it("a space turned private marks its visits", async () => {
     const h = startHost();
     visit(h, "https://a.test/", "Page A");

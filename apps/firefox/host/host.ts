@@ -783,14 +783,17 @@ const rpc = createRpc({
     },
     "history.record": (p: Parameters<InstanceType<typeof History>["note"]>[0]) => hist?.note(p),
     "history.import": (p: { visits?: unknown }) => {
-      const str = (x: unknown) => typeof x === "string" && x.length <= 2048;
+      // No history (unreadable database): a failure, so the importer says the history did not come in.
+      if (!hist) throw new Error("history.import: no history");
       if (!Array.isArray(p?.visits) || p.visits.length > 50_000) throw new Error("history.import: invalid visits");
       const visits: { url: string; title: string; date: Date }[] = [];
       for (const v of p.visits) {
         const date = new Date(v?.date);
-        if (str(v?.url) && str(v?.title) && !isNaN(date.getTime())) visits.push({ url: v.url, title: v.title, date });
+        // A long title is cut by importVisits (TITLE_MAX), never a reason to drop the visit.
+        if (typeof v?.url === "string" && v.url.length <= 2048 && typeof v.title === "string" && !isNaN(date.getTime()))
+          visits.push({ url: v.url, title: v.title, date });
       }
-      return { count: hist?.importVisits(visits) ?? 0 };
+      return { count: hist.importVisits(visits) };
     },
     "history.title": (p: { url: string; spaceId: string; title: string }) => hist?.updateTitle(p.url, p.spaceId, p.title),
     "history.icon": (p: { url: string; spaceId: string; icon: string }) => hist?.noteIcon(p.url, p.spaceId, p.icon),
