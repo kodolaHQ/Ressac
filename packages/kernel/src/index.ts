@@ -31,6 +31,7 @@ export * from "./mcp/devtools.js";
 export * from "./mcp/extensions.js";
 export * from "./ai/local-ai.js";
 export * from "./ai/llama-model.js";
+export { downloadVerified, HashMismatchError } from "./download.js";
 export * from "./ai/dispatcher.js";
 export * from "./workflows/protocol.js";
 export * from "./widgets/grants.js";

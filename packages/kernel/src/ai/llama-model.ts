@@ -1,10 +1,9 @@
 import { say } from "../i18n.js";
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { createReadStream, existsSync } from "node:fs";
-import { mkdir, open, rename, rm, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import { downloadVerified, HashMismatchError } from "../download.js";
 import { toolsPath, forgetGroup, keepGroup, killGroup } from "../container/runner.js";
 
 export type AiState = "not-installed" | "stopped" | "starting" | "active" | "error";
@@ -196,49 +195,21 @@ export class LlamaModel {
 
   private async download(signal: AbortSignal, onPercent: (percent: number | null) => void): Promise<void> {
     if (existsSync(this.modelFile)) return;
-    const part = `${this.modelFile}.part`;
-    const cancelled = () => new Error(this.say("kernel-ai-install-cancelled"));
     try {
-      await mkdir(this.folder, { recursive: true });
-      let from = (await stat(part).catch(() => undefined))?.size ?? 0;
-      const r = await fetch(this.o.urlOverride ?? this.spec.url, { headers: from ? { range: `bytes=${from}-` } : {}, signal });
-      // 416: the .part already holds the whole file (the app quit before checking it).
-      if (r.status !== 416) {
-        if ((r.status !== 200 && r.status !== 206) || !r.body) throw new Error(`HTTP ${r.status}`);
-        if (r.status === 200) from = 0; // the range was ignored: start over
-        const total = from + Number(r.headers.get("content-length") ?? NaN);
-        let received = from;
-        let shown: number | null | undefined;
-        const file = await open(part, from ? "a" : "w");
-        try {
-          for await (const chunk of r.body) {
-            await file.write(chunk);
-            received += chunk.length;
-            if (received > (this.o.bytesOverride ?? this.spec.bytes)) throw new Error("too many bytes");
-            const percent = Number.isFinite(total) ? Math.floor((received * 100) / total) : null;
-            if (percent !== shown) onPercent((shown = percent));
-          }
-        } finally {
-          await file.close();
-        }
-      }
+      await downloadVerified({
+        url: this.o.urlOverride ?? this.spec.url,
+        file: this.modelFile,
+        sha256: this.o.sha256Override ?? this.spec.sha256,
+        bytes: this.o.bytesOverride ?? this.spec.bytes,
+        signal,
+        onPercent,
+        cancelled: () => new Error(this.say("kernel-ai-install-cancelled")),
+      });
     } catch (e) {
-      if (signal.aborted) throw cancelled();
-      if ((e as Error).message === "too many bytes") await rm(part, { force: true });
+      if (signal.aborted) throw e;
+      if (e instanceof HashMismatchError) throw new Error(this.say("kernel-ai-hash-mismatch"));
       throw new Error(this.say("kernel-ai-download-failed", { error: (e as Error).message }));
     }
-    const hash = createHash("sha256");
-    // Checked per chunk: hashing 1.4 GB takes seconds, and the slot stays taken until the cancel lands.
-    for await (const chunk of createReadStream(part)) {
-      if (signal.aborted) throw cancelled();
-      hash.update(chunk as Buffer);
-    }
-    if (signal.aborted) throw cancelled();
-    if (hash.digest("hex") !== (this.o.sha256Override ?? this.spec.sha256)) {
-      await rm(part, { force: true });
-      throw new Error(this.say("kernel-ai-hash-mismatch"));
-    }
-    await rename(part, this.modelFile);
   }
 
   /** The server's base URL once it answers, launching it if needed; each call counts as a use for the idle stop. */
