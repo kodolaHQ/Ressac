@@ -162,7 +162,7 @@
       </div>
     {/if}
     <div class="row">
-      <button type="button" data-testid="import-start" disabled={access !== "ready" || !types.some((t) => !unchecked.includes(t))} onclick={() => void start()}>{t("home-import-start")}</button>
+      <button type="button" data-testid="import-start" disabled={access !== "ready" || !types.some((t) => !unchecked.includes(t)) || (watching && !progress?.done)} onclick={() => void start()}>{t("home-import-start")}</button>
     </div>
     {#if refusal}{@render status("import-refusal", "warn", refusal)}{/if}
     {#if watching && progress?.done}{@render status("import-done", "ok", t("home-import-done"))}
