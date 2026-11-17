@@ -79,7 +79,12 @@ export class RemoteBridge implements BrowserBridge {
   openTab = (url: string, space?: string) => this.call<TabInfo>("openTab", space === undefined ? [url] : [url, space]);
   navigate = (id: string, url: string) => this.call<void | "pending">("navigate", [id, url]);
   capture = async (id: string, o?: { expect?: string }) => Buffer.from(await this.call<string>("capture", o ? [id, o] : [id]), "base64");
-  askPermission = (o: TabInfo) => this.call<boolean>("askPermission", [o]);
+  // Taken down (signal) when a new conversation starts: refused.
+  askPermission = (o: TabInfo, signal?: AbortSignal) =>
+    this.call<boolean>("askPermission", [o], signal).catch((e) => {
+      if (signal?.aborted) return false;
+      throw e;
+    });
   // Taken down (signal) when a new conversation starts: no rights.
   askDevTools = (o: TabInfo, d: { rights: DevRight[]; reason: string; agent: string }, signal?: AbortSignal) =>
     this.call<DevRight[]>("askDevTools", [o, d], signal).catch((e) => {

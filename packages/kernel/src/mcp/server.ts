@@ -398,14 +398,24 @@ function createToolsServer(
     if (o.site !== undefined) return (await siteAccess(o.site, o.title, o.hash)) && policy.canRead(await tab(o.id));
     let request = requests.get(o.id);
     if (!request) {
-      request = bridge
-        .askPermission(o)
+      // Like askDataCard: a new conversation takes the card down, and a late « Autoriser » grants nothing.
+      const conversation = policy.conversation;
+      const removal = new AbortController();
+      const unsubscribe = policy.onChange(() => {
+        if (policy.conversation !== conversation) removal.abort();
+      });
+      const abandon = new Promise<boolean>((ok) => removal.signal.addEventListener("abort", () => ok(false), { once: true }));
+      const pending: Promise<boolean> = Promise.race([bridge.askPermission(o, removal.signal), abandon])
         .then((yes) => {
-          if (yes) policy.grant(o);
-          return yes;
+          if (!yes || policy.conversation !== conversation) return false;
+          policy.grant(o);
+          return true;
         })
-        .finally(() => requests.delete(o.id));
-      requests.set(o.id, request);
+        .finally(() => {
+          unsubscribe();
+          if (requests.get(o.id) === pending) requests.delete(o.id);
+        });
+      requests.set(o.id, (request = pending));
     }
     if (!(await request)) return false;
     // The user may have changed site during the question: their grant is for the site they saw.

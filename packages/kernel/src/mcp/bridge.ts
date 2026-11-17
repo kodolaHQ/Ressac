@@ -100,8 +100,8 @@ export interface BrowserBridge {
   navigate(id: string, url: string): Promise<void | "pending">;
   /** PNG capture of the tab. `expect`: as for readText. */
   capture(id: string, o?: { expect?: string }): Promise<Buffer>;
-  /** Shows the request to the user; true if they accept. */
-  askPermission(o: TabInfo): Promise<boolean>;
+  /** Shows the request to the user; true if they accept. `signal` raised (new conversation): the card is removed, false. */
+  askPermission(o: TabInfo, signal?: AbortSignal): Promise<boolean>;
   /** Dev tools (absent if the browser does not provide them). */
   devTools?: BrowserDevTools;
   /**

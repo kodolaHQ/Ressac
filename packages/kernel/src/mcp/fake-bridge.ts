@@ -496,7 +496,7 @@ export class FakeBridge implements BrowserBridge {
     return PNG;
   }
 
-  async askPermission(o: TabInfo) {
+  async askPermission(o: TabInfo, _signal?: AbortSignal) {
     this.note("askPermission", o.id);
     return this.allow;
   }
