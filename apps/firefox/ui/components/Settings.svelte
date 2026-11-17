@@ -156,11 +156,16 @@
   let machine = $state<MachineStatus | null>(null);
   let usage = $state<{ memoryMB: number; diskMB: number } | null>(null);
   let askingMachine = $state<"remove" | "force" | null>(null);
+  let loads = 0;
   const loadWorkshop = async () => {
+    // A load started before an action (a removal) may answer after the one started after it: only the latest one shows.
+    const n = ++loads;
     const [w, op, m] = await Promise.all([s.workshop(), s.workshopOperation(), s.machine()]);
-    machine = m && m.kind !== "unsupported" ? m : null;
-    usage = machine?.kind === "running" || machine?.kind === "stopped" ? await s.machineUsage() : null;
-    [workshop, operation] = [w, op];
+    if (n !== loads) return;
+    const shown = m && m.kind !== "unsupported" ? m : null;
+    const u = shown?.kind === "running" || shown?.kind === "stopped" ? await s.machineUsage() : null;
+    if (n !== loads) return;
+    [machine, usage, workshop, operation] = [shown, u, w, op];
     docker = workshop === "docker-absent" ? await s.docker() : null;
   };
   const machineChanging = $derived(machine?.kind === "downloading" || machine?.kind === "starting");
