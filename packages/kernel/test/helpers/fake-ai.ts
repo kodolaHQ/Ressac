@@ -57,8 +57,8 @@ export async function unreachableUrl(): Promise<string> {
   return `http://127.0.0.1:${port}`;
 }
 
-/** Fake Ollama that never answers /api/chat; `coupees` counts the requests abandoned by the client. */
-export async function fakeSilentOllama(): Promise<FakeServer & { cut: () => number }> {
+/** A fake server that never answers; `cut` counts the requests abandoned by the client. */
+export async function fakeSilentServer(): Promise<FakeServer & { cut: () => number }> {
   let cuts = 0;
   const s = await start((_r, res) => {
     res.on("close", () => {

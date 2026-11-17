@@ -10,7 +10,7 @@ import { LocalAi, D1_FILE } from "../../src/ai/local-ai.js";
 import { EMBED_MODEL, type AiProcess } from "../../src/ai/llama-model.js";
 import { D1_ANCHORS, toPplxScale } from "../../src/ai/d1-scale.js";
 import { tempFolder } from "../helpers/temp.js";
-import { fakeForeign, fakeKev, fakeOllama, fakeSilentOllama, type FakeServer } from "../helpers/fake-ai.js";
+import { fakeForeign, fakeKev, fakeOllama, fakeSilentServer, type FakeServer } from "../helpers/fake-ai.js";
 
 const toClose: FakeServer[] = [];
 const toStop: LocalAi[] = [];
@@ -127,7 +127,7 @@ describe("LocalAi", () => {
   });
 
   it("kev with a raised signal aborts the request to Kev", async () => {
-    const kev = keep(await fakeSilentOllama());
+    const kev = keep(await fakeSilentServer());
     const ai = new LocalAi({ folder: await tempFolder(), kevUrl: kev.url });
     toStop.push(ai);
     const controller = new AbortController();
