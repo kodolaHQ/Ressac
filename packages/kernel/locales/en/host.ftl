@@ -13,13 +13,7 @@ host-engine-incomplete-api = Set the compatible API's address and model in Setti
 host-engine-in-settings = { $problem } (Settings › Agents)
 host-invalid-key = Invalid key: only letters, digits and . _ ~ + / = : -
 host-unsupported-model = Unsupported model
-host-ollama-replied = Ollama replied { $status }
-host-ollama-unexpected = Unexpected reply from Ollama: { $line }
-host-download-interrupted = The download was interrupted
 host-docker-not-started = Docker did not start
-host-ollama-not-started = Ollama did not start
-host-ollama-bad-archive = The Ollama download is corrupted: try again.
-host-ollama-download-failed = The Ollama download failed ({ $status })
 host-ollama-down = Ollama does not answer at this address.
 host-pull-busy = A download is already in progress
 host-account-api-key = API key

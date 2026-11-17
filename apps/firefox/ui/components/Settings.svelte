@@ -21,7 +21,7 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { DECISION_MODEL, OLLAMA_ITSELF, SEARCH_MODEL, validAgentDomain, type DockerStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { DECISION_MODEL, SEARCH_MODEL, validAgentDomain, type DockerStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { updateStatusText } from "../../core/update";
   import { aiOn, api, appState } from "../state.svelte";
   import AiAsleep from "./AiAsleep.svelte";
@@ -116,15 +116,6 @@
   $effect(() => {
     if (aiOn()) void agents, void s.writer().then((r) => (writer = r.agent));
   });
-  const ollama = $derived(ai?.ollama);
-  let startingOllama = $state(false);
-  async function startOllama() {
-    startingOllama = true;
-    const r = await s.startOllama();
-    startingOllama = false;
-    pullError = r.ok ? null : r.error;
-    reloadAi();
-  }
   async function pullModel(name: string) {
     pullError = null;
     pulling = { name, percent: null, status: "" };
@@ -239,15 +230,15 @@
   };
 </script>
 
-<!-- The pill of a local model: « installé », or « absent » with a download button once Ollama answers (Ressac downloads Ollama and the decision model itself). -->
-{#snippet pullPill(name: string, installed: boolean, id: string, action = "settings-pull-download")}
+<!-- The pill of one of Ressac's models: « installé », or « absent » with a download button. -->
+{#snippet pullPill(name: string, installed: boolean, id: string)}
   {#if installed}
     <span class="pill" data-tone="ok">{t("settings-pill-installed")}</span>
   {:else if pulling?.name === name}
     <span class="pill" data-tone="warn" data-testid="pull-progress-{id}">{pullLabel(pulling)}</span>
   {:else}
     <span class="pill" data-tone="off">{t("settings-pill-absent")}</span>
-    {#if v?.ollama || name === OLLAMA_ITSELF || name === DECISION_MODEL || name === SEARCH_MODEL}<button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>{t(action)}</button>{/if}
+    <button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>{t("settings-pull-download")}</button>
   {/if}
 {/snippet}
 
@@ -367,29 +358,11 @@
           <AiAsleep feature="settings" />
         {:else if !ai}
           <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
-        {:else if !ai.ollamaUrl}
-          <!-- Only the silent host gives no address; a failed check still shows Ollama as unreachable. -->
+        {:else if !v}
+          <!-- Only the silent host gives no verification. -->
           <p><span class="pill" data-tone="error" data-testid="ai-error">{ai.error ?? t("settings-agent-silent")}</span></p>
         {:else}
           <div class="panel">
-            <div class="row" data-testid="ai-ollama">
-              <div class="grow"><b>Ollama</b><code class="muted">{ai.ollamaUrl}</code></div>
-              {#if ollama?.kind === "outdated"}
-                <span class="pill" data-tone="warn">{t("settings-ai-ollama-outdated", { version: ollama.version, min: ollama.min })}</span>
-                <button data-testid="ollama-update" onclick={() => s.openUrl("https://ollama.com/download")}>{t("settings-ai-ollama-update")}</button>
-              {:else if ollama?.kind === "stopped"}
-                <span class="pill" data-tone="warn">{t("settings-ai-ollama-stopped")}</span>
-                <button data-testid="ollama-start" disabled={startingOllama} onclick={() => void startOllama()}>{startingOllama ? t("settings-ai-ollama-starting") : t("settings-ai-ollama-start")}</button>
-              {:else if ollama?.kind === "absent"}
-                {@render pullPill(OLLAMA_ITSELF, false, "ollama", "settings-ai-ollama-download")}
-              {:else}
-                <span class="pill" data-tone={v?.ollama ? "ok" : "warn"}>{v?.ollama ? t("settings-ai-ollama-reachable") : t("settings-ai-ollama-unreachable")}</span>
-              {/if}
-            </div>
-            <div class="row" data-testid="ai-gemma">
-              <div class="grow"><b>Gemma</b><span class="muted">{v?.gemmaModel ? t("settings-ai-gemma-present", { model: v.gemmaModel }) : t("settings-ai-gemma-absent")}</span></div>
-              {@render pullPill("gemma4:e4b-mlx", !!v?.gemma, "gemma")}
-            </div>
             <div class="row" data-testid="ai-decision">
               <div class="grow"><b>{t("settings-ai-decision-model")}</b><span class="muted">{t("settings-ai-decision-detail")}</span></div>
               {@render pullPill(DECISION_MODEL, !!v?.decision, "decision")}
@@ -415,9 +388,6 @@
               <div class="row"><span class="pill" data-tone="error" data-testid="ai-search-error">{t("settings-ai-model-failed", { reason: ai.searchError })}</span></div>
             {/if}
             {#if pullError}<div class="row"><span class="pill" data-tone="error" data-testid="pull-error">{pullError}</span></div>{/if}
-            {#if v?.ollama && !v.gemma}
-              <div class="row"><span class="muted">{t("settings-ai-large-download")}</span></div>
-            {/if}
           </div>
         {/if}
       </section>
@@ -436,7 +406,7 @@
                 {operation === "restart" ? t("settings-workshop-restarting") : operation === "rebuild" ? t("settings-workshop-rebuilding") : workshop ? t(WORKSHOP[workshop]) : t("settings-agent-silent")}
               </span>
               {#if workshop === "docker-absent" && docker?.kind === "stopped"}
-                <button class="primary" data-testid="docker-start" disabled={startingDocker} onclick={() => void startDocker()}>{startingDocker ? t("settings-ai-ollama-starting") : t("settings-docker-start", { app: docker.app })}</button>
+                <button class="primary" data-testid="docker-start" disabled={startingDocker} onclick={() => void startDocker()}>{startingDocker ? t("settings-starting") : t("settings-docker-start", { app: docker.app })}</button>
               {:else if workshop === "docker-absent"}
                 <button class="primary" onclick={() => s.openUrl("https://orbstack.dev/download")}>{t("settings-docker-install")}</button>
               {/if}

@@ -13,7 +13,7 @@ import type { Marionette } from "./marionette";
 import { click, inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
 
 // Plan 47 Task 2: the first-launch welcome (seven pages since plan 68: page 4 asks « Activer l'IA ? », « Plus tard » skips
-// the Docker and Ollama pages) and « Revoir l'accueil » in Settings. Plan 68: the AI setup alone (Docker and Ollama pages).
+// the Docker and local AI pages) and « Revoir l'accueil » in Settings. Plan 68: the AI setup alone (Docker and local AI pages).
 
 // Any https page the test opens fails on a dead proxy: no real web.
 const NO_WEB = { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 };
@@ -33,9 +33,9 @@ afterEach(async () => {
   }
 });
 
-/** A launch that shows the welcome (unless `welcome` is false: the tests' default, which skips it). Ollama unreachable. */
+/** A launch that shows the welcome (unless `welcome` is false: the tests' default, which skips it). Model downloads go to a dead address. */
 async function launch(o: { welcome?: boolean; env?: Record<string, string>; dataDir?: string; firstTimeNotes?: boolean; ai?: boolean } = {}): Promise<void> {
-  // The kernel's own decision-model address: the welcome reads the decision model found in Ollama, which an imposed one hides.
+  // The kernel's own decision-model address: an imposed one (RESSAC_KEV_URL) counts the model as installed.
   const env = { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined, RESSAC_D1_URL: "http://127.0.0.1:9" /* never the real 1.1 GB */, RESSAC_EMBED_URL: "http://127.0.0.1:9", ...(o.welcome === false ? {} : { RESSAC_SKIP_WELCOME: "0" }), ...o.env };
   w = await launchRessac({ env, prefs: NO_WEB, dataDir: o.dataDir, firstTimeNotes: o.firstTimeNotes, ai: o.ai });
   m = w.marionette;
@@ -96,7 +96,7 @@ describe("welcome", () => {
     await shown("welcome-9");
   });
 
-  it("no docker, no ollama, still through", async () => {
+  it("no docker, models missing, still through", async () => {
     await launch({ env: { FAKE_DOCKER_ABSENT: "1" } });
     await forward(1, 5);
     await shows("welcome-docker", "OrbStack n'est pas lancé ou pas installé.");
@@ -127,8 +127,9 @@ describe("welcome", () => {
     await shown("welcome-5");
 
     await press("welcome-later");
-    await shows("welcome-ollama", "Ollama n'est pas installé ou pas lancé.");
-    await shown("welcome-install-ollama");
+    // The background downloads failed at once (a dead address): the models are offered.
+    await shows("welcome-models", "Il manque les modèles d'IA locale (1,4 Go).");
+    await shown("welcome-pull");
     await press("welcome-later");
     await shown("welcome-7");
     await press("welcome-finish");
@@ -140,50 +141,21 @@ describe("welcome", () => {
     await shown("command-bar");
   });
 
-  it("ollama without its models: while the d1 download runs, Gemma is still offered and pulled; the welcome goes on, a notification says the end", async () => {
+  it("the models' background download, started by « Oui », shows as under way; the welcome goes on", async () => {
     const d1 = await startD1Server({ hold: true });
-    const pulled: string[] = [];
-    let release!: () => void;
-    const gate = new Promise<void>((ok) => (release = ok));
-    const ollama = await startServer({
-      routes: {
-        "/api/tags": (_req, res) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ models: pulled.map((name) => ({ name })) })),
-        "/api/pull": (req, res) => {
-          let body = "";
-          req.on("data", (d) => (body += d)).on("end", () => {
-            const name = JSON.parse(body).model as string;
-            res.writeHead(200, { "Content-Type": "application/x-ndjson" });
-            res.write('{"status":"downloading","total":100,"completed":40}\n');
-            void gate.then(() => {
-              pulled.push(name);
-              res.end('{"status":"success"}\n');
-            });
-          });
-        },
-      },
-    });
     try {
-      await launch({ env: { RESSAC_OLLAMA_URL: ollama.url, ...d1.env } });
+      await launch({ env: d1.env });
       await forward(1, 6);
-      await waitFor(m, "return true", () => d1.hits() > 0, 15_000); // the background d1 download (started by « Oui ») holds the pull slot
-      await shows("welcome-ollama", "Ollama est prêt.");
-      await shows("welcome-models", "Il manque les modèles d'IA locale (plusieurs Go).");
-      await press("welcome-pull");
-      await shows("welcome-models", "Téléchargement lancé");
-      expect(await inUi(m, `return !!doc.querySelector('[data-testid="welcome-models"]')?.textContent.includes("occupé")`)).toBe(false);
-      // The welcome goes on while the host pulls.
+      await waitFor(m, "return true", () => d1.hits() > 0, 15_000);
+      await shows("welcome-models", "Téléchargement en cours.");
+      expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [`${LAYER} [data-testid="welcome-pull"]`])).toBe(false);
       await press("welcome-next");
       await shown("welcome-7");
-      release();
       d1.release();
-      const file = join(w!.dataDir, "notifications.jsonl");
-      await waitFor(m, "return true", () => existsSync(file) && readFileSync(file, "utf8").includes("L'IA locale est prête"), 15_000);
-      expect(pulled).toEqual(["gemma4:e4b-mlx"]); // d1 and the search model came from the background downloads
-      expect(d1.hits()).toBe(2);
+      // d1, then the search model: Ressac's two models, nothing from Ollama.
+      await waitFor(m, "return true", () => d1.hits() === 2, 15_000);
     } finally {
-      release();
       await d1.close();
-      await ollama.close();
     }
   });
 
@@ -194,39 +166,17 @@ describe("welcome", () => {
     await shows("welcome-start-docker", "Démarrer OrbStack");
   });
 
-  it("no Ollama on the machine: « Installer en arrière-plan » starts the install, and the welcome goes on", async () => {
-    await launch({ env: { RESSAC_TEST_OLLAMA_KIND: "absent" } });
-    await forward(1, 6);
-    await shows("welcome-ollama", "L'IA locale n'est pas installée");
-    await press("welcome-install-ai");
-    await shows("welcome-ollama", "Installation lancée");
-    await press("welcome-next");
-    await shown("welcome-7");
-  });
-
-  it("an Ollama too old or stopped: the welcome invites to update it, or offers to start it", async () => {
-    await launch({ env: { RESSAC_TEST_OLLAMA_KIND: "outdated" } });
-    await forward(1, 6);
-    await shows("welcome-ollama", "Ollama 0.30.0 est trop ancien pour l'IA locale : il faut la version 0.40.0 ou plus.");
-    await shown("welcome-update-ollama");
-    await w!.close();
-    await launch({ env: { RESSAC_TEST_OLLAMA_KIND: "stopped" } });
-    await forward(1, 6);
-    await shows("welcome-ollama", "Ollama est installé mais arrêté.");
-    await shown("welcome-start-ollama");
-  });
-
   it("a silent host: neither state can be checked", async () => {
     await launch({ welcome: false });
     await m.execute(`return (async () => { await window.ressacWindow.store.agent.stop(); return true; })();`);
     await waitFor<number | null>(m, `return window.ressacWindow.store.agent.pid;`, (pid) => pid === null);
-    // The AI setup alone (AI already on, so the host stays stopped): the Docker and Ollama pages.
+    // The AI setup alone (AI already on, so the host stays stopped): the Docker and local AI pages.
     await dispatch(m, { type: "enableAi" });
     await shown("welcome-5");
     await shows("welcome-docker", "Impossible de vérifier pour l'instant.");
     await shown("welcome-recheck");
     await press("welcome-next");
-    await shows("welcome-ollama", "Ollama n'est pas installé ou pas lancé.");
+    await shows("welcome-models", "Impossible de vérifier pour l'instant.");
   });
 
   it("agent choice", async () => {
@@ -295,7 +245,7 @@ describe("welcome", () => {
     await click(m, '[data-testid="settings-nav-about"]');
     await click(m, '[data-testid="settings-replay-welcome"]');
     await shown("welcome-1");
-    // AI already on: no question, no Docker or Ollama page.
+    // AI already on: no question, no Docker or local AI page.
     await forward(1, 7, [1, 2, 3, 8, 9, 7]);
     await fill("welcome-space-name", "Maison");
     await press("welcome-finish");
@@ -388,13 +338,13 @@ describe("welcome", () => {
     }
   });
 
-  it("yes shows Docker then Ollama, and saves AI on", async () => {
+  it("yes shows Docker then local AI, and saves AI on", async () => {
     await launch();
     await forward(1, 4);
     await press("welcome-next");
     await shown("welcome-docker");
     await press("welcome-next");
-    await shown("welcome-ollama");
+    await shown("welcome-models");
     await press("welcome-next");
     await shown("welcome-7");
     await press("welcome-finish");
@@ -437,14 +387,14 @@ describe("welcome", () => {
     await saved((s) => s.settings?.onboarded === true && s.settings.aiEnabled === true);
   });
 
-  it("AI setup alone: the Docker and Ollama pages, then the browser", async () => {
+  it("AI setup alone: the Docker and local AI pages, then the browser", async () => {
     await launch({ welcome: false, ai: false });
     await shown("empty-page");
     await dispatch(m, { type: "enableAi" });
     await shown("welcome-docker");
     expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [`${LAYER} [data-testid="welcome-back"]`])).toBe(false);
     await press("welcome-next");
-    await shown("welcome-ollama");
+    await shown("welcome-models");
     await shows("welcome-next", "Terminer");
     await press("welcome-next");
     await layerGone();

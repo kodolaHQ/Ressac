@@ -168,7 +168,7 @@ it("off: after « Activer l'IA » and the AI setup, the agent panel attaches the
   await pressKeys(m, "Meta+j");
   await shown(tid("ai-asleep-agent"), "agent");
   await click(m, tid("ai-asleep-enable"), { frame: "agent" });
-  // The welcome's Docker and Ollama pages, alone.
+  // The welcome's Docker and local AI pages, alone.
   await shown(tid("welcome-5"));
   await click(m, `${tid("welcome-layer")} ${tid("welcome-next")}`);
   await shown(tid("welcome-6"));
@@ -205,7 +205,7 @@ it("off then on without relaunch: ⌘J shows a fresh agent session, no click", {
   await dispatch(m, { type: "disableAi" });
   await panelShown(false);
   await dispatch(m, { type: "enableAi" });
-  // The AI-only setup, if it shows: its Docker and Ollama pages.
+  // The AI-only setup, if it shows: its Docker and local AI pages.
   for (const page of ["welcome-5", "welcome-6"])
     if (await waitUi(m, `return !!doc.querySelector('${tid(page)}')`, [], 3_000).then(() => true, () => false))
       await click(m, `${tid("welcome-layer")} ${tid("welcome-next")}`);

@@ -5,7 +5,7 @@ import { SHORTCUT_IDS } from "./shortcuts";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "./search";
 import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type AccessState, type BrowserState, type SpaceId, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
 import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile } from "@ressac/kernel";
-import { ClaudeEngineSchema, CodexEngineSchema, type OllamaStatus, type DockerStatus, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
+import { ClaudeEngineSchema, CodexEngineSchema, type DockerStatus, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
@@ -242,7 +242,7 @@ export interface ApiRessac {
   };
   /** The ⌘T questions (Demander): quick history search, else the agent. */
   ask: {
-    /** False while the host is down or Gemma is missing. */
+    /** False while the host is down or the search model is missing. */
     usable(): Promise<boolean>;
     warm(): void;
     /** Never rejects: { kind: "agent" } while the host is down. */
@@ -363,14 +363,9 @@ export interface ApiRessac {
     live(): Promise<DirectState>;
     onLive(callback: (e: DirectState) => void): () => void;
   };
-  /** Local AI (Kev and Gemma) of the harvests. */
+  /** Local AI (the decision and search models). */
   ai: {
     state(): Promise<LocalAiStateShown>;
-    /** Downloads Kev and Gemma (several gigabytes): only on a click by the user. */
-    install(): Promise<{ ok: boolean; error?: string }>;
-    onState(callback: (e: LocalAiStateShown) => void): () => void;
-    /** A line of the install output. */
-    onProgress(callback: (line: string) => void): () => void;
   };
   /**
    * The actions (`~/Ressac/actions`) and their pages. Refused when the window's active space is private
@@ -524,15 +519,13 @@ export interface SettingsApi {
   setClaudeKey(key: string): Promise<SettingsResult>;
   deleteClaudeKey(): Promise<SettingsResult>;
   chooseClaudeEngine(engine: ClaudeEngine): void;
-  /** Pulls a missing local model through Ollama (several GB). Refused while another pull runs. */
+  /** Downloads one of Ressac's missing models. Refused while another download runs. */
   pullModel(name: string): Promise<SettingsResult>;
   /** The pull in progress (from any window), null when none. */
   pullProgress(): Promise<PullProgress | null>;
-  /** Starts the Ollama installed on this machine and waits for it to answer. */
-  startOllama(): Promise<SettingsResult>;
   /** The agent that writes for the AI (its account signed in, workshop running), or null. */
   writer(): Promise<{ agent: "claude" | "codex" | null }>;
-  /** Pulls the given models one after the other without waiting (`OLLAMA_ITSELF` first downloads Ollama); a system notification says the end. */
+  /** Downloads the given models one after the other without waiting; a system notification says the end. */
   pullInBackground(names: string[]): Promise<SettingsResult>;
   ollamaModels(url: string): Promise<{ ok: true; models: { name: string; size?: string }[] } | { ok: false; error: string }>;
   grants(): Promise<GrantRow[]>;
@@ -767,16 +760,13 @@ export interface ProfileForGrant {
 export interface LocalAiStateShown {
   state: AiState;
   error?: string;
-  verification?: { ollama: boolean; gemma: boolean; gemmaModel?: string | null; decision: boolean; embed: boolean };
+  verification?: { decision: boolean; embed: boolean };
   /** The last failed download of the decision model, until one succeeds (retried at the next launch). */
   decisionError?: string;
   /** Same for the search model. */
   searchError?: string;
   /** The search model's server failed to start (`error` is the decision server's). */
   searchServerError?: string;
-  ollamaUrl?: string;
-  /** What was found of Ollama on this machine (absent from an older host). */
-  ollama?: OllamaStatus;
 }
 
 /** What an app window's badge UI gets (ui/badge-api.ts): the agent's access and its app's design mode. */

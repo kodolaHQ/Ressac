@@ -101,7 +101,7 @@ const ACTIONS = new Set([
 const PAGE_NOUNS = /\b(page|pages|site|sites|article|articles|video|videos|lien|link|onglet|tab|recette|recipe|doc|thread|fil|billet|post|blog|tuto|tutoriel|tutorial|guide|fiche|annonce|listing|review|notes?)\b/;
 
 export function isAction(question: string): boolean {
-  const t = fold(question).trim();
+  const t = fold(question.normalize("NFC")).trim();
   const w = t.match(/[a-z0-9'-]+/g);
   if (!w) return false;
   const first = w[0]!;
@@ -112,7 +112,9 @@ export function isAction(question: string): boolean {
 }
 
 /** `today`: any time of the local day; the dates are local midnight (since) and the last millisecond of the day (until). */
-export function parseAsk(question: string, today: Date): { since?: Date; until?: Date; sites: string[]; action: boolean; rest: string } {
+export function parseAsk(text: string, today: Date): { since?: Date; until?: Date; sites: string[]; action: boolean; rest: string } {
+  // Composed first: fold keeps one character for one, so a decomposed accent would stay and miss the word lists.
+  const question = text.normalize("NFC");
   const p = period(fold(question), new Date(today.getFullYear(), today.getMonth(), today.getDate()));
   const rest = p ? question.slice(0, p.at) + question.slice(p.end) : question;
   return {

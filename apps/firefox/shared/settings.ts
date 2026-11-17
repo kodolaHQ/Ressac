@@ -106,19 +106,15 @@ export function apiUrlProblem(url: string): string | null {
 
 /** What Ressac found of Docker on this machine. `stopped`: an app it can start (`app`: its name). `unmanaged`: under tests. */
 export type DockerStatus = { kind: "ready" | "absent" | "unmanaged" } | { kind: "stopped"; app: string };
-/** What Ressac found of Ollama on this machine. `unmanaged`: another address is imposed, Ressac starts and installs nothing. */
-export type OllamaStatus = { kind: "ready"; version: string } | { kind: "outdated"; version: string; min: string } | { kind: "stopped" | "absent" | "unmanaged" };
-/** The name the download of Ollama itself goes under, next to the model names. */
-export const OLLAMA_ITSELF = "ollama";
-/** The name the decision model's download (d1-2B, run by llama-server) goes under, next to the Ollama models. */
+/** The name the decision model's download (d1-2B, run by llama-server) goes under. */
 export const DECISION_MODEL = "d1-2B";
 /** The name the search model's download (EmbeddingGemma, run by llama-server for ⌘T Demander) goes under. */
 export const SEARCH_MODEL = "embeddinggemma-300m";
 
-/** The progress of an Ollama model download (or of Ollama itself) shown in Settings. */
+/** The progress of one of Ressac's model downloads, shown in Settings. */
 export interface PullProgress {
   name: string;
-  /** 0-100, null while Ollama gives no total (manifest, verifying). */
+  /** 0-100, null without a total. */
   percent: number | null;
   status: string;
 }

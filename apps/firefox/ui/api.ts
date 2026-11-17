@@ -308,10 +308,10 @@ export function createApi(win: WindowController): ApiFirefox {
     },
     // The section « Projets externes »: the external MCP server, kept by the kernel host.
     external: createExternalApi({ host, window: windowId, dispatch: (a) => win.store.dispatch(a), untilUnload }),
-    // The local AI's state; its install and feed are not migrated.
+    // The local AI's state.
     ai: {
       state: () => ask<LocalAiStateShown>("ai.state", undefined, { state: "error", error: say("sidebar-api-agent-silent") }),
-    } as Partial<ApiRessac["ai"]> as ApiRessac["ai"],
+    },
     // The Review page: its comparisons and comments, kept by the kernel host.
     review: createReviewApi({ host }),
     settings: createSettingsApi({

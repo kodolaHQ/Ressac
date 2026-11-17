@@ -10,7 +10,7 @@ import { LocalAi, D1_FILE } from "../../src/ai/local-ai.js";
 import { EMBED_MODEL, type AiProcess } from "../../src/ai/llama-model.js";
 import { D1_ANCHORS, toPplxScale } from "../../src/ai/d1-scale.js";
 import { tempFolder } from "../helpers/temp.js";
-import { fakeForeign, fakeKev, fakeOllama, fakeSilentOllama, unreachableUrl, type FakeServer } from "../helpers/fake-ai.js";
+import { fakeForeign, fakeKev, fakeOllama, fakeSilentOllama, type FakeServer } from "../helpers/fake-ai.js";
 
 const toClose: FakeServer[] = [];
 const toStop: LocalAi[] = [];
@@ -77,16 +77,14 @@ describe("LocalAi", () => {
   });
 
   it("check reports decision from the file", async () => {
-    const ollama = keep(await fakeOllama("", ["gemma4:e4b-mlx", "pplx-decider-flash:latest"]));
-    const empty = new LocalAi({ folder: await tempFolder(), ollamaUrl: ollama.url });
-    expect(await empty.check()).toEqual({ ollama: true, gemma: true, gemmaModel: "gemma4:e4b-mlx", decision: false, embed: false });
-    expect((await new LocalAi({ folder: await installed(), ollamaUrl: ollama.url }).check()).decision).toBe(true);
-    expect((await new LocalAi({ folder: await tempFolder(), ollamaUrl: ollama.url, kevUrl: "http://127.0.0.1:9" }).check()).decision).toBe(true);
+    expect(await new LocalAi({ folder: await tempFolder() }).check()).toEqual({ decision: false, embed: false });
+    expect((await new LocalAi({ folder: await installed() }).check()).decision).toBe(true);
+    expect((await new LocalAi({ folder: await tempFolder(), kevUrl: "http://127.0.0.1:9" }).check()).decision).toBe(true);
   });
 
   it("check reports the search model from its own file in embed/", async () => {
     const folder = await tempFolder();
-    const ai = new LocalAi({ folder, ollamaUrl: await unreachableUrl() });
+    const ai = new LocalAi({ folder });
     expect((await ai.check()).embed).toBe(false);
     await mkdir(join(folder, "embed"), { recursive: true });
     await writeFile(join(folder, "embed", EMBED_MODEL.file), "gguf");
@@ -94,86 +92,38 @@ describe("LocalAi", () => {
     expect(ai.embed.installed()).toBe(true);
   });
 
-  it("Gemma: only gemma4:e4b installed is used, both installed prefers the MLX build, none is absent", async () => {
-    const mk = async (models: string[]) => {
-      const ollama = keep(await fakeOllama('{"a":1}', models));
-      const ai = new LocalAi({ folder: await tempFolder(), ollamaUrl: ollama.url });
-      toStop.push(ai);
-      return { ollama, ai };
-    };
-    const only = await mk(["gemma4:e4b"]);
-    expect(await only.ai.check()).toMatchObject({ gemma: true, gemmaModel: "gemma4:e4b" });
-    await only.ai.gemma({ prompt: "x" });
-    expect(only.ollama.requests.find((r) => r.url === "/api/chat")!.body.model).toBe("gemma4:e4b");
-    const fresh = await mk(["gemma4:e4b"]); // no check() first: generation reads the tags itself
-    await fresh.ai.gemma({ prompt: "x" });
-    expect(fresh.ollama.requests.find((r) => r.url === "/api/chat")!.body.model).toBe("gemma4:e4b");
-    const both = await mk(["gemma4:e4b", "gemma4:e4b-mlx"]);
-    expect(await both.ai.check()).toMatchObject({ gemma: true, gemmaModel: "gemma4:e4b-mlx" });
-    const none = await mk([]);
-    expect(await none.ai.check()).toMatchObject({ gemma: false, gemmaModel: null });
+  it("a folder left by an older Ressac (Gemma, its own Ollama) loads: check works and no call reaches Ollama", async () => {
+    const ollama = keep(await fakeOllama('{"a":1}', ["gemma4:e4b-mlx"]));
+    const folder = await installed();
+    await mkdir(join(folder, "kev"), { recursive: true });
+    const before = process.env.RESSAC_OLLAMA_URL;
+    process.env.RESSAC_OLLAMA_URL = ollama.url;
+    try {
+      const ai = new LocalAi({ folder });
+      expect(await ai.check()).toEqual({ decision: true, embed: false });
+      await expect(ai.access().gemma({ prompt: "x" })).rejects.toThrow("Connect Claude Code or Codex");
+      expect(ollama.requests).toHaveLength(0);
+    } finally {
+      if (before === undefined) delete process.env.RESSAC_OLLAMA_URL;
+      else process.env.RESSAC_OLLAMA_URL = before;
+    }
   });
 
-  it("gemma() sends the gemma4:e4b-mlx model, think false, and parses the JSON if requested", async () => {
-    const ollama = keep(await fakeOllama('{"a":1}'));
-    const ai = new LocalAi({ folder: await tempFolder(), ollamaUrl: ollama.url });
-    expect(await ai.gemma({ prompt: "salut", images: ["QUJD"], json: true })).toEqual({ a: 1 });
-    const chats = () => ollama.requests.filter((r) => r.url === "/api/chat");
-    const c = chats()[0]!.body;
-    expect(c.model).toBe("gemma4:e4b-mlx");
-    expect(c.stream).toBe(false);
-    expect(c.think).toBe(false);
-    expect(c.keep_alive).toBe("1m");
-    expect(c.format).toBe("json");
-    expect(c.options).toEqual({ num_ctx: 16384, temperature: 0.2 });
-    expect(c.messages[0]).toMatchObject({ role: "user", content: "salut", images: ["QUJD"] });
-    expect(await ai.gemma({ prompt: "x" })).toBe('{"a":1}');
-    expect(chats()[1]!.body.format).toBeUndefined();
-  });
-
-  it("access().gemma goes to the writer when there is one, never to Ollama, and is refused once the access is closed", async () => {
-    const ollama = keep(await fakeOllama('{"a":1}'));
+  it("access().gemma goes to the writer, and is refused once the access is closed", async () => {
     const writer = vi.fn().mockResolvedValue({ a: 1 });
-    const ai = new LocalAi({ folder: await tempFolder(), ollamaUrl: ollama.url, writer });
+    const ai = new LocalAi({ folder: await tempFolder(), writer });
     const access = ai.access();
     expect(await access.gemma({ prompt: "p", json: true })).toEqual({ a: 1 });
     expect(writer).toHaveBeenCalledWith({ prompt: "p", json: true, images: undefined, signal: undefined });
-    expect(ollama.requests.filter((r) => r.url === "/api/chat")).toHaveLength(0);
     await access.close();
     await expect(access.gemma({ prompt: "p" })).rejects.toThrow("IA locale fermée");
     expect(writer).toHaveBeenCalledTimes(1);
   });
 
-  it("hasGemma() reads only Ollama's tags: true with a Gemma build, false without one or when Ollama is down", async () => {
-    const yes = new LocalAi({ folder: await tempFolder(), ollamaUrl: keep(await fakeOllama("", ["gemma4:e4b"])).url });
-    expect(await yes.hasGemma()).toBe(true);
-    const no = new LocalAi({ folder: await tempFolder(), ollamaUrl: keep(await fakeOllama("", ["llama3"])).url });
-    expect(await no.hasGemma()).toBe(false);
-    const down = new LocalAi({ folder: await tempFolder(), ollamaUrl: await unreachableUrl() });
-    expect(await down.hasGemma()).toBe(false);
-  });
-
-  it("warm() asks Ollama to load the detected Gemma build (no prompt, keep_alive 10m) and never throws", async () => {
-    const ollama = keep(await fakeOllama("", ["gemma4:e4b"]));
-    const ai = new LocalAi({ folder: await tempFolder(), ollamaUrl: ollama.url });
-    await ai.warm(); // the fake answers 404 on /api/generate: still no throw
-    expect(ollama.requests.find((r) => r.url === "/api/generate")!.body).toEqual({ model: "gemma4:e4b", keep_alive: "10m" });
-    const down = new LocalAi({ folder: await tempFolder(), ollamaUrl: await unreachableUrl() });
-    await expect(down.warm()).resolves.toBeUndefined();
-  });
-
-  it("gemma with a raised signal aborts the request to Ollama (fake server)", async () => {
-    const ollama = keep(await fakeSilentOllama());
-    const ai = new LocalAi({ folder: await tempFolder(), ollamaUrl: ollama.url });
-    const controller = new AbortController();
-    const call = ai.gemma({ prompt: "x", json: true, signal: controller.signal });
-    await vi.waitFor(() => expect(ollama.requests).toHaveLength(1));
-    controller.abort();
-    await expect(call).rejects.toThrow(AI_ABANDONED);
-    await vi.waitFor(() => expect(ollama.cut()).toBe(1));
-    // Already raised: nothing leaves.
-    await expect(ai.gemma({ prompt: "y", signal: controller.signal })).rejects.toThrow(AI_ABANDONED);
-    expect(ollama.requests).toHaveLength(1);
+  it("without a writer, gemma() rejects with the writer's no-account error", async () => {
+    const ai = new LocalAi({ folder: await tempFolder(), locale: () => "fr" });
+    await expect(ai.gemma({ prompt: "x" })).rejects.toThrow("Connectez Claude Code ou Codex");
+    await expect(ai.access().gemma({ prompt: "x" })).rejects.toThrow("Connectez Claude Code ou Codex");
   });
 
   it("kev with a raised signal aborts the request to Kev", async () => {
@@ -184,11 +134,6 @@ describe("LocalAi", () => {
     controller.abort();
     await expect(ai.kev({ state: "", questions: {} }, { signal: controller.signal })).rejects.toThrow(AI_ABANDONED);
     expect(kev.requests).toHaveLength(0);
-  });
-
-  it("Ollama unreachable: error « Ollama n'est pas lancé »", async () => {
-    const ai = new LocalAi({ folder: await tempFolder(), ollamaUrl: await unreachableUrl() });
-    await expect(ai.gemma({ prompt: "x" })).rejects.toThrow("Ollama n'est pas lancé");
   });
 
   it("model absent: « IA locale non installée », nothing launched", async () => {
@@ -262,10 +207,10 @@ describe("LocalAi", () => {
 
   it("stop() at rest allows a relaunch; close() then refuses kev() and gemma() without launching anything", async () => {
     const kev = keep(await fakeKev());
-    const ollama = keep(await fakeOllama("ok"));
+    const writer = vi.fn();
     let launched = 0;
     const launch = (): AiProcess => (launched++, { stop() {}, onOutput() {} });
-    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: Number(new URL(kev.url).port), ollamaUrl: ollama.url, ...fast });
+    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: Number(new URL(kev.url).port), writer, ...fast });
     toStop.push(ai);
     await ai.stop();
     await ai.kev({ state: "", questions: {} });
@@ -278,7 +223,7 @@ describe("LocalAi", () => {
     await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("IA locale fermée");
     await expect(ai.gemma({ prompt: "x" })).rejects.toThrow("IA locale fermée");
     expect(launched).toBe(2);
-    expect(ollama.requests).toHaveLength(0);
+    expect(writer).not.toHaveBeenCalled();
   });
 
   it("a kernel's access: once closed, it refuses and stops the server; another access relaunches it", async () => {

@@ -372,73 +372,11 @@ test("importVisits: http(s) only, retention, upsert keeps latest, not private, s
   expect(Date.now() - t).toBeLessThan(2000);
 });
 
-describe("findPages: every group must match, title and URL before kept text", () => {
-  let h: History;
-  const d = (day: number) => new Date(2026, 10, day, 12);
-  beforeEach(() => {
-    h = new History(join(mkdtempSync(join(tmpdir(), "ressac-find-")), "history.sqlite"));
-  });
-  afterEach(() => h.close());
-  const visit = (url: string, title: string, text: string | null, date: Date, priv = false) => {
-    h.note({ url, title, spaceId: "s", private: priv, date });
-    if (text !== null) h.keep({ url, spaceId: "s", title, text, date });
-  };
-  const urls = (q: Parameters<History["findPages"]>[0]) => h.findPages(q).map((r) => r.url);
-
-  test("an English title found from French words with English variants, noise left out", () => {
-    visit("https://www.youtube.com/watch?v=a", "I discovered a sound that leaks your exact location", null, d(12));
-    visit("https://github.com/x/readme", "README", "son lieu vidéo sound location everything", d(14));
-    visit("https://www.leboncoin.fr/recherche?text=videoprojecteur", "« vidéoprojecteur 4K »", null, d(13));
-    expect(urls({ groups: [["son", "sound"], ["lieu", "location"]], limit: 3 })).toEqual(["https://www.youtube.com/watch?v=a", "https://github.com/x/readme"]);
-  });
-
-  test("one group missing → not a hit (AND across groups, OR inside)", () => {
-    visit("https://a.fr/", "Le son du mascaret", null, d(12));
-    expect(urls({ groups: [["son"], ["lieu", "location"]], limit: 3 })).toEqual([]);
-  });
-
-  test("a word matches at a word start, not inside another word", () => {
-    visit("https://a.fr/", "Jason and the season", null, d(12));
-    visit("https://b.fr/", "Sons et lieux", null, d(12));
-    expect(urls({ groups: [["son"], ["lieu"]], limit: 3 })).toEqual(["https://b.fr/"]);
-  });
-
-  test("sites filter, period applies, private visits never", () => {
-    visit("https://www.youtube.com/watch?v=1", "Mascaret", null, d(12));
-    visit("https://m.youtube.com/watch?v=2", "Mascaret mobile", null, d(13));
-    visit("https://blog.fr/m", "Mascaret", null, d(13));
-    visit("https://www.youtube.com/watch?v=3", "Mascaret ancien", null, d(1));
-    visit("https://www.youtube.com/watch?v=4", "Mascaret secret", null, d(13), true);
-    expect(urls({ groups: [["mascaret"]], sites: ["youtube.com"], since: d(10), limit: 5 })).toEqual(["https://m.youtube.com/watch?v=2", "https://www.youtube.com/watch?v=1"]);
-  });
-
-  test("from 3 groups on, a title may miss one (a model's extra idea); with 2, never", () => {
-    visit("https://www.youtube.com/watch?v=a", "I discovered a sound that leaks your exact location", null, d(12));
-    expect(urls({ groups: [["son", "sound"], ["lieu", "location"], ["trouver", "find"]], limit: 3 })).toEqual(["https://www.youtube.com/watch?v=a"]);
-    expect(urls({ groups: [["son", "sound"], ["trouver", "find"]], limit: 3 })).toEqual([]);
-  });
-
-  test("accents and case folded; FTS operators in words are literal", () => {
-    visit("https://a.fr/", "L'ÉTÉ à Bordeaux", null, d(12));
-    expect(urls({ groups: [["ete"], ["bordeaux"]], limit: 3 })).toEqual(["https://a.fr/"]);
-    expect(() => h.findPages({ groups: [['a" OR "b'], ["NEAR("]], limit: 3 })).not.toThrow();
-  });
-
-  test("a big history is not grouped and folded whole: 150k visits answer in under 200 ms (370 ms before)", () => {
-    const now = Date.now();
-    h.importVisits(Array.from({ length: 150_000 }, (_, i) => ({ url: `https://s${i % 3000}.fr/p${i}`, title: `Article ${i}`, date: new Date(now - (i % 100) * 3_600_000) })));
-    visit("https://a.fr/", "Le mascaret", null, new Date());
-    const start = performance.now();
-    expect(urls({ groups: [["mascaret"]], limit: 3 })).toEqual(["https://a.fr/"]);
-    expect(performance.now() - start).toBeLessThan(200);
-  });
-});
-
 describe("site favicons", () => {
   const ICON = "data:image/png;base64,AAAA";
   const visit = (url: string, spaceId = "e", priv = false) => h.note({ url, title: url, spaceId, private: priv });
 
-  test("noteIcon keeps a data:image/ icon per host, returned by search, recents and findPages", () => {
+  test("noteIcon keeps a data:image/ icon per host, returned by search and recents", () => {
     visit("https://a.fr/page");
     visit("https://a.fr/autre");
     visit("https://b.fr/");
@@ -446,7 +384,6 @@ describe("site favicons", () => {
     expect(h.search("a.fr").map((v) => v.favicon)).toEqual([ICON, ICON]);
     expect(h.search("a.fr", 50, true).map((v) => v.favicon)).toEqual([ICON, ICON]);
     expect(h.recents().find((v) => v.url === "https://b.fr/")?.favicon).toBeNull();
-    expect(h.findPages({ groups: [["autre"]], limit: 3 })).toMatchObject([{ url: "https://a.fr/autre", favicon: ICON }]);
   });
 
   test("noteIcon ignores http icons, oversize icons, non-http pages and private visits", () => {

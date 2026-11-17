@@ -1,6 +1,6 @@
 import type { Kernel, TabInfo } from "../../../packages/kernel/src/index.ts";
 import type { FrameBounds } from "../shared/model.ts";
-import type { ClaudeEngine, CodexEngine, DockerStatus, OllamaStatus } from "../shared/settings.ts";
+import type { ClaudeEngine, CodexEngine, DockerStatus } from "../shared/settings.ts";
 import type { BuilderSelection, TerminalSize } from "../shared/api.ts";
 import { hostLocale, hostSay, setHostLocale } from "./locale.ts";
 
@@ -34,7 +34,6 @@ const { createPageIndexer, llamaEmbed } = await import("./page-indexer.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createWriterChoice } = await import("./writer.ts");
-const { createOllamaRuntime, OLLAMA_LOCAL_URL, OLLAMA_MIN } = await import("./ollama-runtime.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
@@ -159,8 +158,8 @@ const broadcastAccess = () => {
   accessTimer ??= setTimeout(() => notifyAccess(), 50);
 };
 
-// The local AI for harvests: Gemma runs in Ollama, the decision model (d1-2B) in the llama-server shipped with Ressac
-// (RESSAC_LLAMA_SERVER, set by chrome/agent/command.ts), as is the search model (⌘T). RESSAC_D1_URL / RESSAC_D1_SHA256 and
+// The local AI: the decision model (d1-2B) runs in the llama-server shipped with Ressac (RESSAC_LLAMA_SERVER, set by
+// chrome/agent/command.ts), as does the search model (⌘T). RESSAC_D1_URL / RESSAC_D1_SHA256 and
 // RESSAC_EMBED_URL / RESSAC_EMBED_SHA256, RESSAC_EMBED_SERVER_URL (a search server already running): dev and tests only.
 // The agent that writes (Claude Haiku or Codex, in the workshop): the default profile's, else the other if signed in.
 const profileAgents = new Map<string, "claude" | "codex">();
@@ -197,28 +196,21 @@ const startIndexer = () => {
 };
 
 // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
-// Another address imposed (a remote Ollama, a test): Ressac then starts and installs nothing.
-// RESSAC_TEST_OLLAMA_KIND (e2e): a fixed status and actions that touch nothing, to show each state of the pages.
-const fakeOllama = process.env.RESSAC_TEST_OLLAMA_KIND;
-const ollama = fakeOllama
-  ? { status: async () => ({ kind: fakeOllama, version: "0.30.0", min: OLLAMA_MIN }) as OllamaStatus, start: async () => {}, install: async (progress: (p: number | null) => void) => progress(50), close: () => {} }
-  : createOllamaRuntime({ url: ai.ollamaUrl, dataDir, managed: process.platform === "darwin" && ai.ollamaUrl === OLLAMA_LOCAL_URL && !process.env.RESSAC_TEST_NO_SYSTEM });
 // RESSAC_TEST_DOCKER_KIND (e2e): a fixed status and a start that touches nothing.
 const fakeDocker = process.env.RESSAC_TEST_DOCKER_KIND;
 const docker = fakeDocker
   ? { status: async () => ({ kind: fakeDocker, app: "OrbStack" }) as DockerStatus, start: async () => {} }
   : createDockerRuntime({ running: async () => (await workshop.state()) !== "docker-absent", managed: process.platform === "darwin" && !process.env.RESSAC_TEST_NO_SYSTEM });
-// AI on (settings.aiEnabled, told by the chrome's `start` and `ai.enabled`): off, nothing below touches Docker or Ollama.
+// AI on (settings.aiEnabled, told by the chrome's `start` and `ai.enabled`): off, nothing below touches Docker or the local models.
 let aiOn = false;
 let aiWoken = false;
-// Once per off → on: an installed Ollama or container app that is not running is started, and left running at quit
-// (nothing of theirs is downloaded without a click). The decision model, needed by the agent's watch, then the search
+// Once per off → on: an installed container app that is not running is started, and left running at quit (nothing of
+// it is downloaded without a click); Ollama, the agents' optional engine, is the user's to start. The decision model, needed by the agent's watch, then the search
 // model (⌘T), both small, are downloaded at once when missing; a failure shows in Réglages and is retried at the next launch.
 const wakeAi = () => {
   if (aiWoken) return;
   aiWoken = true;
   void ai.check().then((v) => aiOn && settings.downloadModels([!v.decision && DECISION_MODEL, !v.embed && SEARCH_MODEL].filter((n) => n !== false)), () => {});
-  void ollama.status().then((s) => (s.kind === "stopped" ? ollama.start() : undefined)).catch((e) => console.error("[ressac] Ollama did not start:", e));
   void docker.status().then((s) => (s.kind === "stopped" ? docker.start() : undefined)).catch((e) => console.error("[ressac] Docker did not start:", e));
 };
 /** Wraps a handler that reaches Docker or Ollama: refused while AI is off, whatever the UI shows. */
@@ -370,7 +362,6 @@ const stop = () =>
     await actionsStop?.();
     await stopKernel(await ready);
     await ai.close().catch(() => {});
-    ollama.close();
     clearInterval(purge);
     hist?.close();
     await appsStopped;
@@ -390,11 +381,10 @@ const AI_SETTINGS = new Set<string>([
   "ai.writer",
   "settings.pullModel",
   "settings.pullInBackground",
-  "settings.startOllama",
 ]);
 type StartParams = { agentProfile: string; locale?: string; aiEnabled?: boolean };
 // Brings the host to `aiOn`, the latest wanted state (set at once by `start` and `ai.enabled`, before their turn in
-// serialAi): a step queued behind a newer switch converges to it. On: Docker, Ollama, the apps and the kernel (once; a
+// serialAi): a step queued behind a newer switch converges to it. On: Docker, the apps and the kernel (once; a
 // failed start is retried). Off: the sessions, the apps and the kernel stop (after a launch in flight, chained on `ready`).
 const applyAi = async () => {
   if (aiOn) {
@@ -481,7 +471,7 @@ const rpc = createRpc({
         return aiOn ? start() : null;
       });
     },
-    // Live switch (Réglages). Docker, OrbStack and Ollama are left running when off: they may serve the user's own work.
+    // Live switch (Réglages). Docker and OrbStack are left running when off: they may serve the user's own work.
     "ai.enabled": (p: { on?: unknown }) => {
       aiOn = p?.on === true;
       return serialAi(applyAi).catch((e) => console.error(`[ressac] AI ${aiOn ? "on" : "off"} failed:`, e));
@@ -1032,7 +1022,6 @@ const settings = createSettingsHandlers({
   workshop,
   writer: writerChoice,
   ai,
-  ollama,
   docker,
   stopApps: () => apps.manager.stopAll(),
   relaunchSessions: () => sessions.relaunchAll(),

@@ -43,7 +43,7 @@ export function createHost(o: {
   dataDir: string;
   agentProfile: () => string;
   locale: () => string;
-  /** settings.aiEnabled: off, the host starts no Docker, Ollama nor kernel. */
+  /** settings.aiEnabled: off, the host starts no Docker, local model nor kernel. */
   aiEnabled: () => boolean;
   /** The requests the host sends to Firefox (the browser bridge). */
   handlers: Record<string, Handler>;

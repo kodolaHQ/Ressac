@@ -31,7 +31,7 @@ it("the compiled host runs alone and finds its kernel resources", { timeout: 30_
       ...process.env,
       RESSAC_KERNEL_RESOURCES: join(tmp, "kernel"),
       RESSAC_DATA_DIR: dataDir,
-      // The host must not start the machine's real Ollama or container app.
+      // The host must not start the machine's real container app.
       RESSAC_TEST_NO_SYSTEM: "1",
       RESSAC_ROOT: root,
       RESSAC_HOST_TEST: "1",

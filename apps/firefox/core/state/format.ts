@@ -17,7 +17,7 @@ export const RESET_FILE = ".reset-requested";
 
 const STAMP = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z(-\d+)?$/;
 
-/** What a reset or a format change leaves in place: the agent's files, Ressac's own Ollama, and the request itself. */
+/** What a reset or a format change leaves in place: the agent's files, the Ollama an older Ressac downloaded, and the request itself. */
 const STAYS = ["workspace", "ollama", RESET_FILE];
 
 /** The ISO date of a path that is exactly `<dataDir>.backup-<timestamp>[-n]` (what checkDataFormat writes), else null. */
@@ -43,7 +43,7 @@ export async function checkDataFormat(dataDir: string, now: Date = new Date()): 
       if (await fs.access(backup).then(() => false, () => true)) break;
     }
     await fs.mkdir(backup, { recursive: true });
-    // workspace/ never moves, nor Ressac's own Ollama (a program, not data: it would be downloaded again), and dataDir
+    // workspace/ never moves, nor the Ollama an older Ressac downloaded (a program, not data), and dataDir
     // always exists. An entry that cannot move stays in place, logged: the rest still lands in this backup, which the
     // marker and the notice name (a rerun at the next start would set the new, empty session aside under another name).
     for (const name of await fs.readdir(dataDir))

@@ -1,6 +1,6 @@
 import { say } from "../i18n.js";
 import { AI_CLOSED_ERROR, EMBED_MODEL, LlamaModel, type AiProcess, type AiState, type LlamaModelSpec } from "./llama-model.js";
-import { WRITER_JSON_INVALID, AI_ABANDONED } from "./dispatcher.js";
+import { AI_ABANDONED } from "./dispatcher.js";
 import { toPplxScale } from "./d1-scale.js";
 import type { Writer } from "./writer.js";
 
@@ -11,7 +11,6 @@ export interface LocalAiOptions {
   /** The llama-server binary; absent, the decision server cannot start. */
   llamaServer?: string;
   kevUrl?: string;
-  ollamaUrl?: string;
   /** Test overrides of the models' downloads. */
   decisionUrl?: string;
   decisionSha256?: string;
@@ -32,7 +31,7 @@ export interface LocalAiOptions {
   cancelDelayMs?: number;
   /** The shown language, read when an install error is written (default: English). */
   locale?: () => string;
-  /** Writes for the kernels (workflow `ai.write`, action layouts); absent, they go to Gemma. ⌘T always calls gemma() directly. */
+  /** Writes for the kernels (workflow `ressac.gemma`, action layouts); absent, those calls fail with the no-account error. */
   writer?: Writer;
 }
 
@@ -55,18 +54,7 @@ export const D1_MODEL: LlamaModelSpec = {
   args: ["-ngl", "99", "-np", String(D1_SLOTS), "-c", String(D1_CONTEXT * D1_SLOTS)],
   idleMs: 600_000,
 };
-/** In order of preference: the MLX build is faster, but not every Ollama serves it. */
-export const GEMMA_MODELS = ["gemma4:e4b-mlx", "gemma4:e4b"];
-/** Asked for when no Gemma build is detected. */
-export const GEMMA_MODEL = GEMMA_MODELS[0]!;
 const KEV_DELAY_MS = 60_000;
-const GEMMA_DELAY_MS = 120_000;
-
-/** Background calls (workflows, watches) free the 5-9 GB model a minute after their last use, not Ollama's 5 min or our old 10. */
-export const BACKGROUND_KEEP_ALIVE = "1m";
-/** ⌘T: the model stays warm between questions (a background call after it brings Ollama back to 1 min). */
-export const INTERACTIVE_KEEP_ALIVE = "10m";
-
 /** The call's timeout, and the caller's signal if there is one. */
 const delayAnd = (ms: number, signal?: AbortSignal) => (signal ? AbortSignal.any([AbortSignal.timeout(ms), signal]) : AbortSignal.timeout(ms));
 /** The caller's signal is raised: the call is abandoned (otherwise the original error). */
@@ -85,21 +73,17 @@ export interface AiAccess {
 }
 
 export class LocalAi {
-  /** Closed (the browser quits): nothing starts llama-server or calls Ollama anymore. */
+  /** Closed (the browser quits): nothing starts llama-server anymore. */
   private closed = false;
   /** The decision model; RESSAC_KEV_URL (or `kevUrl`) points it at a server already running. */
   private readonly d1: LlamaModel;
   private readonly kevForced: boolean;
   /** The search model (⌘T Demander): its own llama-server and port, started by its users. */
   readonly embed: LlamaModel;
-  readonly ollamaUrl: string;
-  /** The Gemma build found in Ollama, kept until a call says it is gone. */
-  private gemmaModel: string | undefined;
 
   constructor(private readonly o: LocalAiOptions) {
     const imposed = o.kevUrl ?? process.env.RESSAC_KEV_URL;
     this.kevForced = Boolean(imposed);
-    this.ollamaUrl = o.ollamaUrl ?? process.env.RESSAC_OLLAMA_URL ?? "http://127.0.0.1:11434";
     const common = { folder: o.folder, llamaServer: o.llamaServer, launch: o.launch, clock: o.clock, pollMs: o.pollMs, idleCheckMs: o.idleCheckMs, cancelDelayMs: o.cancelDelayMs, locale: o.locale };
     this.d1 = new LlamaModel(
       { ...D1_MODEL, port: o.port ?? D1_MODEL.port, idleMs: o.inactivityMs ?? D1_MODEL.idleMs },
@@ -118,31 +102,9 @@ export class LocalAi {
     return this.d1.state();
   }
 
-  /** The preferred Gemma build among the installed models (undefined: none, or Ollama unreachable). */
-  private async detectGemma(): Promise<string | undefined> {
-    try {
-      const r = await fetch(`${this.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
-      if (!r.ok) return undefined;
-      const { models } = (await r.json()) as { models?: { name?: string }[] };
-      return GEMMA_MODELS.find((g) => (models ?? []).some((m) => m.name === g));
-    } catch {
-      return undefined;
-    }
-  }
-
-  async check(): Promise<{ ollama: boolean; gemma: boolean; gemmaModel: string | null; decision: boolean; embed: boolean }> {
-    let ollama = false;
-    let gemmaModel: string | null = null;
-    try {
-      const r = await fetch(`${this.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
-      ollama = r.ok;
-      if (r.ok) {
-        const { models } = (await r.json()) as { models?: { name?: string }[] };
-        gemmaModel = GEMMA_MODELS.find((g) => (models ?? []).some((m) => m.name === g)) ?? null;
-        this.gemmaModel = gemmaModel ?? undefined;
-      }
-    } catch { /* unreachable */ }
-    return { ollama, gemma: gemmaModel !== null, gemmaModel, decision: this.kevForced || this.d1.installed(), embed: this.embed.installed() };
+  /** Which of Ressac's models are in place. */
+  async check(): Promise<{ decision: boolean; embed: boolean }> {
+    return { decision: this.kevForced || this.d1.installed(), embed: this.embed.installed() };
   }
 
   /** Downloads the decision model into `d1/` (see LlamaModel.install). */
@@ -183,75 +145,11 @@ export class LocalAi {
     }
   }
 
-  /** keepAlive: how long Ollama keeps the model loaded after the call; background work by default, ⌘T asks longer. */
-  async gemma(o: { prompt: string; images?: string[]; json?: boolean; signal?: AbortSignal; keepAlive?: string }): Promise<string | unknown> {
-    if (this.closed) throw new Error(AI_CLOSED_ERROR);
-    checkAbort(o.signal);
-    // Nothing installed: ask for the preferred tag anyway, Ollama's refusal is the error.
-    const model = (this.gemmaModel ??= await this.detectGemma()) ?? GEMMA_MODEL;
-    checkAbort(o.signal);
-    const message: Record<string, unknown> = { role: "user", content: o.prompt };
-    if (o.images?.length) message.images = o.images;
-    const body: Record<string, unknown> = {
-      model,
-      messages: [message],
-      stream: false,
-      think: false,
-      keep_alive: o.keepAlive ?? BACKGROUND_KEEP_ALIVE,
-      options: { num_ctx: 16384, temperature: 0.2 },
-    };
-    if (o.json) body.format = "json";
-    let r: Response;
-    try {
-      r = await fetch(`${this.ollamaUrl}/api/chat`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: delayAnd(GEMMA_DELAY_MS, o.signal),
-      });
-    } catch {
-      checkAbort(o.signal);
-      throw new Error("Ollama n'est pas lancé");
-    }
-    if (!r.ok) {
-      this.gemmaModel = undefined;
-      throw new Error(`Ollama a répondu ${r.status}`);
-    }
-    let response: { message?: { content?: string } };
-    try {
-      response = (await r.json()) as { message?: { content?: string } };
-    } catch (e) {
-      checkAbort(o.signal);
-      throw e;
-    }
-    const content = response.message?.content ?? "";
-    if (!o.json) return content;
-    try {
-      return JSON.parse(content);
-    } catch {
-      throw new Error(WRITER_JSON_INVALID);
-    }
-  }
-
-  /** Ollama answers and a Gemma build is installed (only Ollama's tags are read: no extra probe). Never throws. */
-  async hasGemma(): Promise<boolean> {
-    this.gemmaModel = await this.detectGemma();
-    return this.gemmaModel !== undefined;
-  }
-
-  /** Asks Ollama to load the installed Gemma build (a request without a prompt only loads it), so a later call skips the cold start. Never throws. */
-  async warm(): Promise<void> {
-    if (this.closed) return;
-    try {
-      const model = (this.gemmaModel ??= await this.detectGemma());
-      if (!model) return;
-      await fetch(`${this.ollamaUrl}/api/generate`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model, keep_alive: INTERACTIVE_KEEP_ALIVE }),
-        signal: AbortSignal.timeout(GEMMA_DELAY_MS),
-      });
-    } catch { /* Ollama unreachable: the real call will say so */ }
+  /** A writing job (the kernels' `gemma`, kept under that name): goes to the user's agent; without a writer, the no-account error. */
+  gemma(o: { prompt: string; images?: string[]; json?: boolean; signal?: AbortSignal }): Promise<string | unknown> {
+    if (this.closed) return Promise.reject(new Error(AI_CLOSED_ERROR));
+    const w = this.o.writer;
+    return w ? w({ prompt: o.prompt, images: o.images, json: o.json, signal: o.signal }) : Promise.reject(new Error(this.say("kernel-writer-none")));
   }
 
   /** Starts the decision server ahead of a first call when the model is installed. Never throws. */
@@ -271,11 +169,7 @@ export class LocalAi {
     // Checked before the call: kev() launches llama-server synchronously, before its first await; close() stops it afterwards.
     return {
       kev: (body, o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.kev(body, o)),
-      gemma: (o) => {
-        if (closed) return Promise.reject(new Error(AI_CLOSED_ERROR));
-        const w = this.o.writer;
-        return w ? w({ prompt: o.prompt, images: o.images, json: o.json, signal: o.signal }) : this.gemma(o);
-      },
+      gemma: (o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.gemma(o)),
       close: async () => {
         closed = true;
         await this.stop();

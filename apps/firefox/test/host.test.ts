@@ -53,7 +53,7 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       RESSAC_ROOT: root,
       FAKE_DOCKER_LOG: log,
       RESSAC_HOST_TEST: "1",
-      // The host must not start the machine's real Ollama or container app.
+      // The host must not start the machine's real container app.
       RESSAC_TEST_NO_SYSTEM: "1",
       PATH: `${tools}:${process.env.PATH}`,
       // A free port: never the real 5279.
@@ -214,6 +214,32 @@ describe("agent host", { timeout: 30_000 }, () => {
       await new Promise((r) => setTimeout(r, 500));
       expect(requests).toBe(0);
       expect(existsSync(h.log) ? readFileSync(h.log, "utf8") : "").toBe("");
+    } finally {
+      ollama.close();
+    }
+  });
+
+  it("AI on with the data of an older Ressac (its own Ollama downloaded): nothing calls, starts or installs Ollama", async () => {
+    const { createServer } = await import("node:http");
+    let requests = 0;
+    const ollama = createServer((_req, res) => (requests++, res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[{"name":"gemma4:e4b-mlx"}],"version":"0.40.13"}')));
+    await new Promise<void>((r) => ollama.listen(0, "127.0.0.1", r));
+    try {
+      const marker = join(tmpdir(), `ressac-old-ollama-${process.pid}-${Date.now()}`);
+      const h = startHost({ RESSAC_OLLAMA_URL: `http://127.0.0.1:${(ollama.address() as { port: number }).port}` }, (dataDir) => {
+        // The copy an older Ressac downloaded: it would leave a marker if anything ran it.
+        mkdirSync(join(dataDir, "ollama", "0.40.13"), { recursive: true });
+        writeFileSync(join(dataDir, "ollama", "0.40.13", "ollama"), `#!/bin/sh\ntouch ${marker}\n`, { mode: 0o755 });
+      });
+      expect(await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true })).toEqual({ agent: expect.any(String) });
+      const state = (await h.rpc.request("ai.state")) as Record<string, unknown>;
+      expect(state.verification).toEqual({ decision: expect.any(Boolean), embed: expect.any(Boolean) });
+      expect(state).not.toHaveProperty("ollama");
+      await expect(h.rpc.request("settings.startOllama")).rejects.toThrow();
+      expect(await h.rpc.request("settings.pullModel", { name: "ollama" })).toMatchObject({ ok: false });
+      await new Promise((r) => setTimeout(r, 500));
+      expect(requests).toBe(0);
+      expect(existsSync(marker)).toBe(false);
     } finally {
       ollama.close();
     }

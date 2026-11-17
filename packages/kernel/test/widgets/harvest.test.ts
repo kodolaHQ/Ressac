@@ -25,7 +25,8 @@ import { Pacing } from "../../src/workflows/pacing.js";
 import { searchUrl } from "../../src/workflows/duckduckgo.js";
 import { tempFolder } from "../helpers/temp.js";
 import { fakeRunner } from "../helpers/fake-runner.js";
-import { fakeKev, fakeOllama, type FakeServer } from "../helpers/fake-ai.js";
+import { fakeKev, type FakeServer } from "../helpers/fake-ai.js";
+import type { Writer } from "../../src/ai/writer.js";
 
 const ENGINE = join(import.meta.dirname, "..", "..", "docker", "engine");
 const SCRIPT = join(ENGINE, "harvester.mjs");
@@ -129,8 +130,8 @@ async function prepare(id: string, code: string, sources = { account: [] as stri
   return ctx;
 }
 
-async function ai(o: { kev?: FakeServer; ollama?: FakeServer } = {}) {
-  const i = new LocalAi({ folder: await tempFolder(), kevUrl: o.kev?.url ?? "http://127.0.0.1:9", ollamaUrl: o.ollama?.url ?? "http://127.0.0.1:9" });
+async function ai(o: { kev?: FakeServer; writer?: Writer } = {}) {
+  const i = new LocalAi({ folder: await tempFolder(), kevUrl: o.kev?.url ?? "http://127.0.0.1:9", writer: o.writer });
   aiToStop.push(i);
   return i;
 }
@@ -225,8 +226,7 @@ describe("runHarvest", () => {
   it("a successful harvest writes data.json and the ok state in widgetsFolder", async () => {
     const web = await webServer({ "/flux.json": (res) => { res.writeHead(200, { "content-type": "application/json" }); res.end('{"x":42}'); } });
     const kev = await fakeKev({ q: { type: "noul", noul: 0.8 } });
-    const ollama = await fakeOllama("bonjour");
-    toClose.push(kev, ollama);
+    toClose.push(kev);
     const ctx = await prepare(
       "meteo",
       `export default async (w) => {
@@ -240,7 +240,7 @@ describe("runHarvest", () => {
     );
     await writeData(ctx.widgetsFolder, "meteo", { old: true });
     const bridge = readBridge();
-    const r = await harvest(ctx, { ai: await ai({ kev, ollama }), bridge: bridge });
+    const r = await harvest(ctx, { ai: await ai({ kev, writer: async () => "bonjour" }), bridge: bridge });
 
     const expected = {
       j: { x: 42 },

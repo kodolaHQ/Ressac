@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
   import type { ImportSource, SettingsApi } from "../../shared/api";
-  import { DECISION_MODEL, OLLAMA_ITSELF, SEARCH_MODEL, type DockerStatus, type OllamaStatus } from "../../shared/settings";
+  import { DECISION_MODEL, SEARCH_MODEL, type DockerStatus } from "../../shared/settings";
   import { SEARCH_ENGINES, type SearchEngine } from "../../shared/search";
   import { APPEARANCES } from "../../shared/model";
   import { shortcutLabel } from "../../shared/shortcuts";
@@ -17,8 +17,8 @@
   /**
    * The first-launch welcome: nine pages on the aura, then the browser. Nothing is saved before « Ouvrir le navigateur »,
    * except an import from another browser, started on page 2, the appearance (page 9, shown at once), and the answer to « Activer l'IA ? » (page 4): « Oui » turns
-   * AI on at once, since the Docker and Ollama pages need the host's AI side.
-   * Mode `ai` (the AI setup, from « Activer l'IA »): the Docker and Ollama pages alone, ending on « Terminer ».
+   * AI on at once, since the Docker and local AI pages need the host's AI side.
+   * Mode `ai` (the AI setup, from « Activer l'IA »): the Docker and local AI pages alone, ending on « Terminer ».
    * An install link steps it aside (unmounted, its page kept in `step`): coming back checks the page's state again.
    */
   let { window: win, mode = "full" }: { window: WindowState; mode?: "full" | "ai" } = $props();
@@ -44,10 +44,9 @@
 
   /** undefined: checking; null: the host does not answer. */
   let docker = $state<Awaited<ReturnType<SettingsApi["workshop"]>> | undefined>(undefined);
-  let ollama = $state<boolean | undefined>(undefined);
-  /** What the host found of Ollama on this machine. */
-  let runtime = $state<OllamaStatus | undefined>(undefined);
-  /** The local models Ollama still lacks; the download runs in the host and goes on after the welcome closes. */
+  /** undefined: checking. */
+  let models = $state<boolean | undefined>(undefined);
+  /** Ressac's local models still missing; the download runs in the host and goes on after the welcome closes. */
   let missing = $state<string[]>([]);
   let pulling = $state(false);
   let pullError = $state<string | null>(null);
@@ -68,38 +67,30 @@
     await checkDocker();
     dockerError = r.ok ? null : r.error;
   }
-  async function checkOllama() {
-    ollama = undefined;
+  async function checkModels() {
+    models = undefined;
     const [ai, running] = await Promise.all([api.ai.state().catch(() => undefined), api.settings.pullProgress()]);
     const v = ai?.verification;
-    runtime = ai?.ollama;
-    ollama = !!v?.ollama;
-    // The downloads Ressac starts with AI (d1, then the search model) are not the user's: Gemma and Ollama stay offered (the host queues them behind).
-    const background = running?.name === DECISION_MODEL || running?.name === SEARCH_MODEL;
-    missing = v ? [!v.gemma && "gemma4:e4b-mlx", !v.decision && !background && DECISION_MODEL, !v.embed && !background && SEARCH_MODEL].filter((n): n is string => !!n) : [];
-    pulling = !!running && !background;
-  }
-  async function startOllama() {
-    ollama = undefined;
-    const r = await api.settings.startOllama();
-    await checkOllama();
-    pullError = r.ok ? null : r.error;
+    // AI on already starts the missing models' download: shown as started, not offered again.
+    pulling = !!running;
+    missing = v && !running ? [!v.decision && DECISION_MODEL, !v.embed && SEARCH_MODEL].filter((n): n is string => !!n) : [];
+    models = !!v;
   }
   async function pullInBackground(names = missing) {
     const r = await api.settings.pullInBackground(names);
     pulling = r.ok;
     pullError = r.ok ? null : r.error;
   }
-  // Each state is checked when its page first shows (only after « Oui »: no Docker or Ollama call while AI is off).
-  let checked = { docker: false, ollama: false };
+  // Each state is checked when its page first shows (only after « Oui »: no Docker or AI call while AI is off).
+  let checked = { docker: false, models: false };
   $effect(() => {
     if (page === 5 && !checked.docker) {
       checked.docker = true;
       void checkDocker();
     }
-    if (page === 6 && !checked.ollama) {
-      checked.ollama = true;
-      void checkOllama();
+    if (page === 6 && !checked.models) {
+      checked.models = true;
+      void checkModels();
     }
   });
 
@@ -236,39 +227,24 @@
           <ul>
             <li>{t("home-welcome-ai-guard")}</li>
             <li>{t("home-welcome-ai-triage")}</li>
-            <li>{t("home-welcome-ai-summaries")}</li>
+            <li>{t("home-welcome-ai-search")}</li>
           </ul>
           <p>{t("home-welcome-ai-needs")}</p>
           <div class="check">
-            {#if ollama === undefined}
-              {@render status("welcome-ollama", "warn", t("home-welcome-checking"))}
-            {:else if runtime?.kind === "outdated"}
-              {@render status("welcome-ollama", "warn", t("home-welcome-ollama-outdated", { version: runtime.version, min: runtime.min }))}
-              <button type="button" data-testid="welcome-update-ollama" onclick={() => install("https://ollama.com/download")}>{t("home-welcome-ollama-update")}</button>
-              <button type="button" data-testid="welcome-recheck" onclick={() => void checkOllama()}>{t("home-welcome-recheck")}</button>
-            {:else if ollama}
-              {@render status("welcome-ollama", "ok", t("home-welcome-ollama-ready"))}
-              {#if pulling}
-                {@render status("welcome-models", "ok", t("home-welcome-models-started"))}
-              {:else if missing.length}
-                {@render status("welcome-models", "warn", pullError ?? t("home-welcome-models-missing"))}
-                <button type="button" data-testid="welcome-pull" onclick={() => void pullInBackground()}>{t("home-welcome-models-pull")}</button>
-              {/if}
+            {#if models === undefined}
+              {@render status("welcome-models", "warn", t("home-welcome-checking"))}
+            {:else if !models}
+              {@render status("welcome-models", "off", t("home-welcome-models-unreachable"))}
+              <button type="button" data-testid="welcome-recheck" onclick={() => void checkModels()}>{t("home-welcome-recheck")}</button>
             {:else if pulling}
-              {@render status("welcome-ollama", "ok", t("home-welcome-ai-installing"))}
-            {:else if runtime?.kind === "absent"}
-              {@render status("welcome-ollama", "warn", pullError ?? t("home-welcome-ai-absent"))}
-              <button type="button" data-testid="welcome-install-ai" onclick={() => void pullInBackground([OLLAMA_ITSELF, ...missing])}>{t("home-welcome-ai-install")}</button>
-            {:else if runtime?.kind === "stopped"}
-              {@render status("welcome-ollama", "warn", pullError ?? t("home-welcome-ollama-stopped"))}
-              <button type="button" data-testid="welcome-start-ollama" onclick={() => void startOllama()}>{t("home-welcome-ollama-start")}</button>
+              {@render status("welcome-models", "ok", t("home-welcome-models-started"))}
+            {:else if missing.length}
+              {@render status("welcome-models", "warn", pullError ?? t("home-welcome-models-missing"))}
+              <button type="button" data-testid="welcome-pull" onclick={() => void pullInBackground()}>{t("home-welcome-models-pull")}</button>
             {:else}
-              {@render status("welcome-ollama", "warn", t("home-welcome-ollama-missing"))}
-              <button type="button" data-testid="welcome-install-ollama" onclick={() => install("https://ollama.com/download")}>{t("home-welcome-ollama-install")}</button>
-              <button type="button" data-testid="welcome-recheck" onclick={() => void checkOllama()}>{t("home-welcome-recheck")}</button>
+              {@render status("welcome-models", "ok", t("home-welcome-models-ready"))}
             {/if}
           </div>
-          <p class="note" data-testid="welcome-ollama-context">{t("home-welcome-ollama-context")}</p>
           {#if mode === "ai"}
             {@render actions(t("home-welcome-done"), false, () => api.dispatch({ type: "finishAiSetup" }))}
           {:else}

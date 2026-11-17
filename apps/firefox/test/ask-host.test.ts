@@ -11,10 +11,14 @@ let server: Server;
 let base: string;
 let inputs: string[];
 let reply: "ok" | "500" | "never";
+/** Requests whose client went away before an answer. */
+let dropped: number;
 beforeEach(async () => {
   inputs = [];
   reply = "ok";
+  dropped = 0;
   server = createServer((req, res) => {
+    res.on("close", () => void (res.writableEnded || dropped++));
     let body = "";
     req.on("data", (c) => (body += c)).on("end", () => {
       inputs.push(...(JSON.parse(body) as { input: string[] }).input);
@@ -87,13 +91,14 @@ test("the server refusing, down, or no history → agent", async () => {
   expect(await none.find("le mascaret")).toEqual({ kind: "agent" });
 });
 
-test("no vector within timeoutMs → agent", async () => {
+test("no vector within timeoutMs → agent, and the query's request is aborted", async () => {
   reply = "never";
   const { ask, history } = make([hit("https://a.fr/", 0.9)], { timeoutMs: 50 });
   const start = Date.now();
   expect(await ask.find("le mascaret")).toEqual({ kind: "agent" });
   expect(Date.now() - start).toBeLessThan(500);
   expect(history.findSimilar).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(dropped).toBe(1), { timeout: 1000 });
 });
 
 test("usable: the search model is installed; warm starts its server", async () => {

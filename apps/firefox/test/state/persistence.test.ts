@@ -307,6 +307,18 @@ test("a session saved with the old decisionModel loads, and the field is gone", 
   expect(set_aside(d, ".corrupt")).toEqual([]);
 });
 
+test("a session of a tester who had Gemma and Ressac's Ollama loads: its agents' Ollama engine is kept", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  const engine = { ...DEFAULT_CLAUDE_ENGINE, kind: "ollama", ollamaModel: "ornith:35b" };
+  Object.assign(old.settings, { aiEnabled: true, onboarded: true, claudeEngine: engine, ollamaUrl: "http://127.0.0.1:11434", gemmaModel: "gemma4:e4b-mlx" });
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  const e = await loadSession(d);
+  expect(set_aside(d, ".corrupt")).toEqual([]);
+  expect(e.settings.claudeEngine).toEqual(engine);
+  expect("gemmaModel" in e.settings || "ollamaUrl" in e.settings).toBe(false);
+});
+
 test("a session saved without agent panel width loads with 420", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };

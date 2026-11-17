@@ -16,12 +16,13 @@ export class EmbedRefused extends Error {}
 /** Embeds texts with the llama-server whose base URL `ready` gives: L2-normalised vectors, in input order. */
 export const llamaEmbed =
   (ready: () => Promise<string>) =>
-  async (texts: string[]): Promise<Float32Array[]> => {
+  async (texts: string[], signal?: AbortSignal): Promise<Float32Array[]> => {
+    const timeout = AbortSignal.timeout(120_000);
     const r = await fetch(`${await ready()}/v1/embeddings`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ input: texts }),
-      signal: AbortSignal.timeout(120_000),
+      signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
     });
     if (r.status === 503) throw new Error("embeddings: server loading");
     if (!r.ok) throw new EmbedRefused(`embeddings: HTTP ${r.status}`);

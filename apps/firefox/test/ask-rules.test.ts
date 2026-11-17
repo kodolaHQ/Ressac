@@ -29,6 +29,11 @@ test.each([
   // Curly apostrophe, accents.
   ["l’article d’aujourd’hui", "2026-11-16", "2026-11-16"],
   ["le mois passé", "2026-10-01", "2026-10-31"],
+  // Decomposed accents (a pasted or macOS-typed text) read as composed ones.
+  ["le mois passe\u0301", "2026-10-01", "2026-10-31"],
+  // A weekday after « vu » / « watched on » is the last one past.
+  ["la page vu mardi", "2026-11-10", "2026-11-10"],
+  ["the video watched on Tuesday", "2026-11-10", "2026-11-10"],
 ])("period of « %s »", (q, since, until) => {
   expect(period(q)).toEqual([since, until]);
 });
@@ -48,6 +53,9 @@ test("rest: the question without its period words", () => {
 test("video words filter video sites", () => {
   expect(parseAsk("la vidéo du mascaret", TODAY).sites).toEqual(["youtube.com", "vimeo.com", "dailymotion.com"]);
   expect(parseAsk("le mascaret", TODAY).sites).toEqual([]);
+  // Decomposed accents.
+  expect(parseAsk("la vide\u0301o du mascaret", TODAY).sites).toEqual(["youtube.com", "vimeo.com", "dailymotion.com"]);
+  expect(isAction("re\u0301sume-moi cette page")).toBe(true);
 });
 
 test("action requests", () => {

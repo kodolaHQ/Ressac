@@ -13,13 +13,7 @@ host-engine-incomplete-api = Réglez l'adresse et le modèle de l'API compatible
 host-engine-in-settings = { $problem } (Réglages › Agents)
 host-invalid-key = Clé invalide : lettres, chiffres et . _ ~ + / = : - seulement
 host-unsupported-model = Modèle non pris en charge
-host-ollama-replied = Ollama a répondu { $status }
-host-ollama-unexpected = Réponse inattendue d'Ollama : { $line }
-host-download-interrupted = Le téléchargement s'est interrompu
 host-docker-not-started = Docker n'a pas démarré
-host-ollama-not-started = Ollama n'a pas démarré
-host-ollama-bad-archive = Le téléchargement d'Ollama est corrompu : réessayez.
-host-ollama-download-failed = Le téléchargement d'Ollama a échoué ({ $status })
 host-ollama-down = Ollama ne répond pas à cette adresse.
 host-pull-busy = Un téléchargement est déjà en cours
 host-account-api-key = clé d'API

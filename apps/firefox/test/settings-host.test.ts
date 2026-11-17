@@ -8,7 +8,7 @@ import type { AiState } from "../../../packages/kernel/src/index";
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 
-function setup(over: { state?: string; exec?: (argv: string[]) => unknown; ollama?: unknown } = {}) {
+function setup(over: { state?: string; exec?: (argv: string[]) => unknown } = {}) {
   const pids = join(mkdtempSync(join(tmpdir(), "settings-pids-")), "pids");
   dirs.push(join(pids, ".."));
   const dataDir = mkdtempSync(join(tmpdir(), "settings-host-"));
@@ -25,16 +25,10 @@ function setup(over: { state?: string; exec?: (argv: string[]) => unknown; ollam
     },
     ai: {
       state: () => ({ state: "stopped" as const }),
-      check: async () => ({ ollama: true, gemma: false, gemmaModel: null, decision: true, embed: true }),
-      ollamaUrl: "http://127.0.0.1:11434",
+      check: async () => ({ decision: true, embed: true }),
       installDecisionModel: vi.fn(async (onPercent: (p: number | null) => void): Promise<void> => (onPercent(30), void calls.push("installDecisionModel"))),
       cancelInstall: vi.fn(),
       embed: { state: vi.fn((): { state: AiState; error?: string } => ({ state: "stopped" })), install: vi.fn(async (onPercent: (p: number | null) => void): Promise<void> => (onPercent(60), void calls.push("embed.install"))) },
-    },
-    ollama: {
-      status: async () => (over.ollama ?? { kind: "unmanaged" }) as any,
-      start: vi.fn(async () => void calls.push("ollama.start")),
-      install: vi.fn(async (progress: (p: number | null) => void) => (progress(40), void calls.push("ollama.install"))),
     },
     docker: { status: async () => ({ kind: "stopped", app: "OrbStack" }) as const, start: vi.fn(async () => void calls.push("docker.start")) },
     stopApps: vi.fn(async () => void calls.push("stopApps")),
@@ -295,64 +289,32 @@ describe("settings host", () => {
     expect(o.revokeSite).toHaveBeenCalledTimes(1);
   });
 
-  it("pullModel: one pull at a time, progress visible meanwhile, refusal and errors returned", async () => {
+  it("pullModel: only Ressac's models, progress visible meanwhile, errors returned", async () => {
     const { h, o } = setup();
-    expect(await h["settings.pullModel"]!({ name: "llama3" })).toEqual({ ok: false, error: "Modèle non pris en charge" });
-    const real = globalThis.fetch;
+    for (const name of ["llama3", "gemma4:e4b-mlx", "ollama"]) expect(await h["settings.pullModel"]!({ name })).toEqual({ ok: false, error: "Modèle non pris en charge" });
     let finish!: () => void;
-    const body = new ReadableStream({
-      start(c) {
-        c.enqueue(new TextEncoder().encode('{"status":"downloading","total":10,"completed":5}\n'));
-        finish = () => (c.enqueue(new TextEncoder().encode('{"status":"success"}\n')), c.close());
-      },
-    });
-    globalThis.fetch = (async () => new Response(body)) as any;
-    try {
-      const first = h["settings.pullModel"]!({ name: "gemma4:e4b-mlx" }) as Promise<unknown>;
-      await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toEqual({ name: "gemma4:e4b-mlx", status: "downloading", percent: 50 }));
-      expect(await h["settings.pullModel"]!({ name: "d1-2B" })).toMatchObject({ ok: false });
-      finish();
-      expect(await first).toEqual({ ok: true });
-      expect(await h["settings.pullProgress"]!({})).toBeNull();
-      expect(o.ai.ollamaUrl).toBe("http://127.0.0.1:11434");
-      globalThis.fetch = (async () => new Response("no space", { status: 500 })) as any;
-      expect(await h["settings.pullModel"]!({ name: "gemma4:e4b-mlx" })).toEqual({ ok: false, error: "no space" });
-    } finally {
-      globalThis.fetch = real;
-    }
-  });
-
-  it("pullInBackground: answers at once, pulls in order, notifies the end or the failure", async () => {
-    const { h, o } = setup();
-    expect(await h["settings.pullInBackground"]!({ names: ["gemma4:e4b-mlx", "llama3"] })).toEqual({ ok: false, error: "Modèle non pris en charge" });
-    expect(await h["settings.pullInBackground"]!({ names: [] })).toMatchObject({ ok: false });
-    const real = globalThis.fetch;
-    const pulled: string[] = [];
-    globalThis.fetch = (async (_u: string, init: RequestInit) => {
-      pulled.push(JSON.parse(String(init.body)).model);
-      return new Response('{"status":"success"}\n');
-    }) as any;
-    try {
-      expect(await h["settings.pullInBackground"]!({ names: ["gemma4:e4b-mlx", "d1-2B"] })).toEqual({ ok: true });
-      await vi.waitFor(() => expect(o.notify).toHaveBeenCalledWith(expect.objectContaining({ title: "L'IA locale est prête" })));
-      expect(pulled).toEqual(["gemma4:e4b-mlx"]);
-      expect(o.ai.installDecisionModel).toHaveBeenCalledTimes(1);
-      expect(await h["settings.pullProgress"]!({})).toBeNull();
-      globalThis.fetch = (async () => new Response("no space", { status: 500 })) as any;
-      expect(await h["settings.pullInBackground"]!({ names: ["gemma4:e4b-mlx"] })).toEqual({ ok: true });
-      await vi.waitFor(() => expect(o.notify).toHaveBeenLastCalledWith({ title: "Le téléchargement de l'IA locale a échoué", text: "no space. Réessayez depuis Réglages › IA locale." }));
-    } finally {
-      globalThis.fetch = real;
-    }
-  });
-
-  it("Ollama itself: its status rides on ai.state, start answers, and its download goes through the pull", async () => {
-    const { h, calls } = setup({ ollama: { kind: "absent" } });
-    expect(await h["ai.state"]!({})).toMatchObject({ ollama: { kind: "absent" } });
-    expect(await h["settings.startOllama"]!({})).toEqual({ ok: true });
-    expect(await h["settings.pullModel"]!({ name: "ollama" })).toEqual({ ok: true });
-    expect(calls).toEqual(["ollama.start", "ollama.install"]);
+    o.ai.installDecisionModel.mockImplementationOnce((onPercent) => new Promise<void>((ok) => (onPercent(50), (finish = ok))));
+    const first = h["settings.pullModel"]!({ name: "d1-2B" }) as Promise<unknown>;
+    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toEqual({ name: "d1-2B", status: "", percent: 50 }));
+    finish();
+    expect(await first).toEqual({ ok: true });
     expect(await h["settings.pullProgress"]!({})).toBeNull();
+    o.ai.installDecisionModel.mockRejectedValueOnce(new Error("no space"));
+    expect(await h["settings.pullModel"]!({ name: "d1-2B" })).toEqual({ ok: false, error: "no space" });
+  });
+
+  it("pullInBackground: answers at once, pulls in order, notifies the end or the failure; Gemma and Ollama are refused", async () => {
+    const { h, o, calls } = setup();
+    expect(await h["settings.pullInBackground"]!({ names: ["gemma4:e4b-mlx"] })).toEqual({ ok: false, error: "Modèle non pris en charge" });
+    expect(await h["settings.pullInBackground"]!({ names: ["ollama", "d1-2B"] })).toEqual({ ok: false, error: "Modèle non pris en charge" });
+    expect(await h["settings.pullInBackground"]!({ names: [] })).toMatchObject({ ok: false });
+    expect(await h["settings.pullInBackground"]!({ names: ["d1-2B", "embeddinggemma-300m"] })).toEqual({ ok: true });
+    await vi.waitFor(() => expect(o.notify).toHaveBeenCalledWith(expect.objectContaining({ title: "L'IA locale est prête" })));
+    expect(calls).toEqual(["installDecisionModel", "embed.install"]);
+    expect(await h["settings.pullProgress"]!({})).toBeNull();
+    o.ai.embed.install.mockRejectedValueOnce(new Error("no space"));
+    expect(await h["settings.pullInBackground"]!({ names: ["embeddinggemma-300m"] })).toEqual({ ok: true });
+    await vi.waitFor(() => expect(o.notify).toHaveBeenLastCalledWith({ title: "Le téléchargement de l'IA locale a échoué", text: "no space. Réessayez depuis Réglages › IA locale." }));
   });
 
   it("Docker: its status and its start", async () => {
@@ -364,7 +326,7 @@ describe("settings host", () => {
 
   it("ai.state", async () => {
     const { h } = setup();
-    expect(await h["ai.state"]!({})).toMatchObject({ state: "stopped", verification: { decision: true }, ollamaUrl: "http://127.0.0.1:11434" });
+    expect(await h["ai.state"]!({})).toEqual({ state: "stopped", verification: { decision: true, embed: true } });
   });
 
   it("ai.state: the search server's start failure shows as searchServerError", async () => {
@@ -400,14 +362,11 @@ describe("settings host", () => {
     o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((ok) => (finish = () => (calls.push("decision"), ok()))));
     h.downloadModels(["d1-2B"]);
     await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
-    expect(await h["settings.pullInBackground"]!({ names: ["ollama", "d1-2B"] })).toEqual({ ok: true });
-    const single = h["settings.pullModel"]!({ name: "ollama" }) as Promise<unknown>;
+    expect(await h["settings.pullInBackground"]!({ names: ["embeddinggemma-300m", "d1-2B"] })).toEqual({ ok: true });
     expect(calls).toEqual([]);
     finish();
     await vi.waitFor(() => expect(o.notify).toHaveBeenCalledWith(expect.objectContaining({ title: "L'IA locale est prête" })));
-    expect(calls).toEqual(["decision", "ollama.install", "installDecisionModel"]);
-    // Queued behind the welcome's list, the single pull then finds the slot taken: refused, as two user pulls always were.
-    expect(await single).toMatchObject({ ok: false });
+    expect(calls).toEqual(["decision", "embed.install", "installDecisionModel"]);
   });
 
   it("two clicks on the d1 row during the background download wait, none is refused busy", async () => {
@@ -463,11 +422,11 @@ describe("settings host", () => {
     o.ai.embed.install.mockImplementationOnce(() => new Promise<void>((ok) => (finish = () => (calls.push("embed"), ok()))));
     h.downloadModels(["d1-2B", "embeddinggemma-300m"]);
     await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "embeddinggemma-300m" }));
-    expect(await h["settings.pullInBackground"]!({ names: ["ollama"] })).toEqual({ ok: true });
+    expect(await h["settings.pullInBackground"]!({ names: ["d1-2B"] })).toEqual({ ok: true });
     expect(calls).toEqual(["installDecisionModel"]);
     finish();
     await vi.waitFor(() => expect(o.notify).toHaveBeenCalledWith(expect.objectContaining({ title: "L'IA locale est prête" })));
-    expect(calls).toEqual(["installDecisionModel", "embed", "ollama.install"]);
+    expect(calls).toEqual(["installDecisionModel", "embed", "installDecisionModel"]);
   });
 
   it("a failed search model download shows in ai.state as searchError, after d1 still ran; the next launch's try clears it", async () => {

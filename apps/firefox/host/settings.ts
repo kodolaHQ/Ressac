@@ -1,12 +1,10 @@
 import { listOllamaModels } from "./ollama-models.ts";
-import { PULLABLE_MODELS, pullOllamaModel, UNSUPPORTED_MODEL } from "./ollama-pull.ts";
 import { readGrants, readSiteGrants, type LlamaModel, type LocalAi, type Workshop, type WriterAgent } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
 import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
-import { DECISION_MODEL, OLLAMA_ITSELF, SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
-import type { OllamaRuntime } from "./ollama-runtime.ts";
+import { DECISION_MODEL, SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
 import type { DockerRuntime } from "./docker-runtime.ts";
 import { hostSay } from "./locale.ts";
 
@@ -79,20 +77,19 @@ export const SETTINGS_METHODS = [
   "settings.pullModel",
   "settings.pullProgress",
   "settings.pullInBackground",
-  "settings.startOllama",
 ] as const;
 
 const KEY = /^[a-z0-9-]{1,100}$/;
 const tail = (s: string) => s.trim().split("\n").slice(-3).join("\n").slice(-300);
 const PULL_BUSY = () => hostSay("host-pull-busy");
+const UNSUPPORTED_MODEL = () => hostSay("host-unsupported-model");
 const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork">;
   /** Who writes (the account check is cached): reset whenever an account may have changed. */
   writer: { agent(): Promise<WriterAgent | null>; reset(): void };
-  ai: Pick<LocalAi, "state" | "check" | "ollamaUrl" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
-  ollama: Pick<OllamaRuntime, "status" | "start" | "install">;
+  ai: Pick<LocalAi, "state" | "check" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
   docker: DockerRuntime;
   stopApps(): Promise<void>;
   relaunchSessions(): Promise<void>;
@@ -135,7 +132,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
   };
   /**
    * The model download in progress, whatever window asked for it; one at a time.
-   * shortcut: no cancel button in v1; quitting stops it and Ollama resumes from its kept chunks next time.
+   * shortcut: no cancel button in v1; quitting stops it and the next try resumes from the kept partial file.
    */
   let pull: PullProgress | null = null;
   /** The last failed download of each llama-server model, cleared by a success; a cancel (AI off) is not a failure. */
@@ -163,10 +160,9 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
   };
   const pullNow = async (name: string) => {
     try {
-      if (name === OLLAMA_ITSELF) await o.ollama.install((percent) => (pull = { name, percent, status: "" }));
-      else if (name === DECISION_MODEL) await installModel(name, (p) => o.ai.installDecisionModel(p));
+      if (name === DECISION_MODEL) await installModel(name, (p) => o.ai.installDecisionModel(p));
       else if (name === SEARCH_MODEL) await installModel(name, (p) => o.ai.embed.install(p));
-      else await pullOllamaModel(o.ai.ollamaUrl, name, (e) => (pull = e));
+      else throw new Error(UNSUPPORTED_MODEL());
     } finally {
       pull = null;
     }
@@ -175,8 +171,6 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
   const ressacModel = (name: string) => name === DECISION_MODEL || name === SEARCH_MODEL;
   /** Ressac's download chain at AI start, from its first model to its last. */
   let ressacPulls: Promise<void> | undefined;
-  /** Ressac's downloads are not the user's: a user's pull waits for them instead of being refused. */
-  const busy = () => !!pull && !ressacModel(pull.name);
   const afterRessac = async () => {
     while (ressacPulls || (pull && ressacModel(pull.name))) await (ressacPulls ?? pulled);
   };
@@ -375,7 +369,6 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
     },
     "settings.pullModel": async (p: { name?: unknown }): Promise<SettingsResult> => {
-      if (busy()) return { ok: false, error: PULL_BUSY() };
       try {
         // Rechecked after the wait: of two d1 callers resuming together, the second finds the slot taken by the first and waits again.
         do await afterRessac(); while (ressacModel(String(p?.name)) && (ressacPulls || (pull && ressacModel(pull.name))));
@@ -387,9 +380,8 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     },
     // The welcome's download: answers at once, pulls one model after the other, and says the end in a notification.
     "settings.pullInBackground": (p: { names?: unknown }): SettingsResult => {
-      if (busy()) return { ok: false, error: PULL_BUSY() };
       const names = Array.isArray(p?.names) ? p.names.map(String) : [];
-      if (!names.length || names.some((n) => n !== OLLAMA_ITSELF && !ressacModel(n) && !PULLABLE_MODELS.includes(n))) return { ok: false, error: UNSUPPORTED_MODEL() };
+      if (!names.length || names.some((n) => !ressacModel(n))) return { ok: false, error: UNSUPPORTED_MODEL() };
       void (async () => {
         try {
           // A model of Ressac's installed meanwhile is a no-op for LocalAi; one that failed is tried again here.
@@ -403,18 +395,9 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       return { ok: true };
     },
     "settings.pullProgress": () => pull,
-    "settings.startOllama": async (): Promise<SettingsResult> => {
-      try {
-        await o.ollama.start();
-        return { ok: true };
-      } catch (e) {
-        return { ok: false, error: failure(e) };
-      }
-    },
     "ai.writer": async () => ({ agent: await o.writer.agent() }),
     "ai.state": async (): Promise<LocalAiStateShown> => {
       const v = await o.ai.check().catch(() => undefined);
-      const ollama = await o.ollama.status().catch(() => undefined);
       const decisionError = modelErrors.get(DECISION_MODEL);
       const searchError = modelErrors.get(SEARCH_MODEL);
       const search = o.ai.embed.state();
@@ -423,7 +406,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
         ...(searchError ? { searchError } : {}),
         ...(search.state === "error" && search.error ? { searchServerError: search.error } : {}),
       };
-      return { ...o.ai.state(), ...(v ? { verification: v } : {}), ollamaUrl: o.ai.ollamaUrl, ...(ollama ? { ollama } : {}), ...errors };
+      return { ...o.ai.state(), ...(v ? { verification: v } : {}), ...errors };
     },
   };
 }

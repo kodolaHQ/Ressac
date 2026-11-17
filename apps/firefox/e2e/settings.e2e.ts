@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserState } from "../shared/model";
-import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { SHELL_SERVICE } from "../chrome/store/settings";
 import { launchRessac, type LaunchedRessac } from "./launch";
@@ -19,16 +19,6 @@ const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const activeTab = (s: BrowserState) => s.tabs[s.windows[0]!.active[s.windows[0]!.activeSpace]!];
 
-let server: Awaited<ReturnType<typeof startServer>>;
-beforeAll(async () => {
-  server = await startServer({
-    routes: {
-      "/api/tags": (_req, res) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ models: [{ name: "gemma4:e4b-mlx" }] })),
-    },
-  });
-});
-afterAll(() => server?.close());
-
 let w: LaunchedRessac | undefined;
 let m: Marionette;
 afterEach(async () => {
@@ -40,9 +30,9 @@ afterEach(async () => {
   }
 });
 
-/** Launches with `files` written under the workspace (RESSAC_ROOT). Ollama is unreachable unless the test points it elsewhere. */
+/** Launches with `files` written under the workspace (RESSAC_ROOT). Model downloads go to a dead address unless the test points them elsewhere. */
 async function launch(env: Record<string, string> = {}, files: Record<string, string> = {}): Promise<void> {
-  // The kernel's own decision-model address: these tests read the decision model found in Ollama, which an imposed one hides.
+  // The kernel's own decision-model address: an imposed one (RESSAC_KEV_URL) counts the model as installed.
   w = await launchRessac({ env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD, RESSAC_EMBED_URL: DEAD, ...env } });
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(join(w.dataDir, "workspace"), { recursive: true });
@@ -231,32 +221,17 @@ describe("Settings page", () => {
     }
   });
 
-  it("local AI: an absent Ollama offers its download, a stopped one « Démarrer », an old one « Mettre à jour Ollama »", async () => {
-    for (const [kind, id, label] of [["absent", "pull-ollama", "Télécharger Ollama (190 Mo)"], ["stopped", "ollama-start", "Démarrer"], ["outdated", "ollama-update", "Mettre à jour Ollama"]] as const) {
-      await launch({ RESSAC_TEST_OLLAMA_KIND: kind });
-      await openPage();
-      await go("ai");
-      await shows(id, label);
-      if (kind === "outdated") expect(await text("ai-ollama")).toContain("version 0.30.0, il faut la 0.40.0");
-      await w!.close();
-      w = undefined;
-    }
-  });
-
-  it("local AI: Ollama reachable, Gemma installed, the sort model download failed", async () => {
-    await launch({ RESSAC_OLLAMA_URL: server.url });
+  it("local AI: only Ressac's two models, no Ollama nor Gemma row; their failed downloads show", async () => {
+    await launch();
     await openPage();
     await go("ai");
-    await shows("ai-ollama", "joignable");
-    expect(await text("ai-ollama")).toContain(server.url);
-    expect(await text("ai-ollama")).not.toContain("injoignable");
-    await shows("ai-gemma", "installé");
-    expect(await text("ai-gemma")).toContain("Gemma (gemma4:e4b-mlx)");
     await shows("ai-decision", "absent");
     await shows("ai-decision-error", "Téléchargement échoué");
     await shows("ai-search", "Modèle de recherche");
     await shows("ai-search", "absent");
     await shows("ai-search-error", "Téléchargement échoué");
+    expect(await inUi(m, `return !!doc.querySelector('[data-testid="ai-ollama"], [data-testid="ai-gemma"]')`)).toBe(false);
+    expect(await text("settings-ai")).not.toMatch(/Ollama|: Gemma|Plusieurs Go/);
   });
 
   it("local AI: the sort model then the search model download by themselves, show a percentage, then installed", async () => {
@@ -272,41 +247,6 @@ describe("Settings page", () => {
       await shows("ai-search", "installé");
     } finally {
       await d1.close();
-    }
-  });
-
-  it("local AI: Download pulls the missing Gemma through Ollama, shows a percentage, then installed", async () => {
-    let pulled = false;
-    let release!: () => void;
-    const gate = new Promise<void>((ok) => (release = ok));
-    const ollama = await startServer({
-      routes: {
-        "/api/tags": (_req, res) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ models: [...(pulled ? [{ name: "gemma4:e4b-mlx" }] : [])] })),
-        "/api/pull": (_req, res) => {
-          res.writeHead(200, { "Content-Type": "application/x-ndjson" });
-          res.write('{"status":"pulling manifest"}\n{"status":"downloading","total":100,"completed":40}\n');
-          void gate.then(() => {
-            pulled = true;
-            res.end('{"status":"success"}\n');
-          });
-        },
-      },
-    });
-    try {
-      await launch({ RESSAC_OLLAMA_URL: ollama.url });
-      await openPage();
-      await go("ai");
-      await shows("ai-gemma", "absent");
-      expect(await text("settings-ai")).toContain("Plusieurs Go : le téléchargement peut prendre un moment.");
-      await click(m, '[data-testid="pull-gemma"]');
-      await shows("ai-gemma", "Téléchargement 40 %");
-      if (process.env.RESSAC_SHOT) writeFileSync(process.env.RESSAC_SHOT, Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
-      release();
-      await shows("ai-gemma", "installé");
-      expect(await text("ai-gemma")).not.toContain("Télécharger");
-    } finally {
-      release();
-      await ollama.close();
     }
   });
 
@@ -390,6 +330,9 @@ describe("Settings page", () => {
     await shows("settings-privacy", "Cette version n'envoie rien.");
     expect(await inUi(m, `return doc.querySelector('[data-testid="telemetry-switch"]').disabled`)).toBe(true);
     await w!.close();
+    // A local server takes whatever Sentry sends.
+    const server = await startServer({ routes: {} });
+    onTestFinished(() => server.close());
     await launch({ RESSAC_SENTRY_DSN: `http://k@127.0.0.1:${server.port}/1` });
     await m.execute(`Services.prefs.setBoolPref("ressac.telemetry.enabled", true);`);
     await openPage();

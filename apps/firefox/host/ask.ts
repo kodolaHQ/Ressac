@@ -34,11 +34,12 @@ export function createAsk(o: {
       const q = parseAsk(question, now());
       if (q.action) return AGENT;
       let timer: NodeJS.Timeout | undefined;
-      // A cold or slow server is given up at the budget: the agent answers instead.
-      const timeout = new Promise<never>((_, no) => (timer = setTimeout(() => no(new Error("timeout")), timeoutMs)));
+      // A cold or slow server is given up at the budget (its request aborted): the agent answers instead.
+      const stop = new AbortController();
+      const timeout = new Promise<never>((_, no) => (timer = setTimeout(() => (stop.abort(), no(new Error("timeout"))), timeoutMs)));
       let vec: Float32Array;
       try {
-        [vec] = (await Promise.race([embed([QUERY + q.rest]), timeout])) as [Float32Array];
+        [vec] = (await Promise.race([embed([QUERY + q.rest], stop.signal), timeout])) as [Float32Array];
       } catch {
         return AGENT;
       } finally {

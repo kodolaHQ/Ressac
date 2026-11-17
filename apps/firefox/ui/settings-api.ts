@@ -73,7 +73,6 @@ export function createSettingsApi(o: {
     docker: () => ask<DockerStatus | null>("settings.docker", undefined, null),
     startDocker: () => ask<SettingsResult>("settings.startDocker", undefined, silent()),
     writer: () => ask<{ agent: "claude" | "codex" | null }>("ai.writer", undefined, { agent: null }),
-    startOllama: () => ask<SettingsResult>("settings.startOllama", undefined, silent()),
     pullInBackground: (names) => ask<SettingsResult>("settings.pullInBackground", { names }, silent()),
     ollamaModels: (url) => ask("settings.ollamaModels", { url }, { ok: false as const, error: say("agent-ollama-silent") }),
     async grants() {
