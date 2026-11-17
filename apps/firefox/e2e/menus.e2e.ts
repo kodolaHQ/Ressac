@@ -75,7 +75,7 @@ const REVIEWED: Record<string, string> = {
   "cmd:cmd_minimizeWindow": "minimize",
   "cmd:zoomWindow": "zoom the window",
   helpMenu: "Aide",
-  // Firefox's About window in Ressac's branding (version, update): kept, Thomas likes it. Its menu bar is neutralized.
+  // Firefox's About window in Ressac's branding (version, update): kept on purpose. Its menu bar is neutralized.
   aboutName: "Ressac's About window (app menu « À propos de Ressac »)",
   // The app menu (nsMenuBarX takes these out of the bar, whatever their "disabled").
   menu_settings: "Ressac's Réglages",
