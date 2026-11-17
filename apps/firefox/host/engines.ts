@@ -38,6 +38,9 @@ export function createEngines(o: {
   let settling: Promise<void> | undefined;
   /** From the idle check to the hand-over: Docker's workshop must not start again meanwhile. */
   let switching: Promise<void> | undefined;
+  /** Set while the hand-over waits for Docker's workshop to idle; called, it stops waiting (« Passer maintenant »). */
+  let waiting: (() => void) | undefined;
+  let now = false;
   const handOver = async (copied: boolean) => {
     mark = copied ? "" : PENDING;
     await mkdir(dirname(o.marker), { recursive: true });
@@ -60,6 +63,16 @@ export function createEngines(o: {
 
   return {
     current,
+    /** True while the machine is ready but waits for the sessions in Docker's workshop to end before it takes over. */
+    waiting: () => !!waiting,
+    /** Takes over at once: the sessions in Docker's workshop are cut. Resolves when the hand-over is done (or failed). */
+    switchNow: async (): Promise<void> => {
+      if (!waiting) return;
+      now = true;
+      const s = settling;
+      waiting();
+      await s;
+    },
     /**
      * Called once the machine is installed. A failure to stop Docker's workshop or wake the machine leaves Docker serving
      * (tried again at the next AI wake or launch). A failed copy still hands over, the copy owed (Docker's volume stays
@@ -77,7 +90,12 @@ export function createEngines(o: {
         }
         if (!(await o.docker.up())) await o.docker.start().catch(() => {});
         if (!(await o.docker.up())) return handOver(false); // Docker cannot serve either: the machine takes over, the copy waits
-        while (!(await o.workshopIdle())) await new Promise((r) => setTimeout(r, o.idlePollMs ?? 30_000).unref());
+        try {
+          while (!now && !(await o.workshopIdle())) await new Promise<void>((r) => ((waiting = r), setTimeout(r, o.idlePollMs ?? 30_000).unref()));
+        } finally {
+          waiting = undefined;
+          now = false;
+        }
         // shortcut: a session opened between the last idle check and here is cut by the stop; a lock on session open if it shows.
         switching = (async () => {
           await o.stopDocker();

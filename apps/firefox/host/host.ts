@@ -447,6 +447,7 @@ const AI_SETTINGS = new Set<string>([
   "settings.restartWorkshop",
   "settings.machineInstall",
   "settings.machineRemove",
+  "settings.machineSwitchNow",
   "ai.state",
   "ai.writer",
   "settings.pullModel",
@@ -1096,6 +1097,7 @@ try {
 } catch (e) {
   console.error("[ressac] the actions watch did not start:", e);
 }
+let fakeSwitched = false;
 const settings = createSettingsHandlers({
   workshop,
   writer: writerChoice,
@@ -1109,6 +1111,12 @@ const settings = createSettingsHandlers({
     install: async () => {
       await machine.install();
       if (!testMachine) void engines.settle().catch((e) => console.error("[ressac] the logins did not move to the machine:", e));
+    },
+    // e2e: « running:waiting » plays a hand-over waiting for Docker's sessions, which « Passer maintenant » ends.
+    waiting: () => (testMachine ? testMachine === "running:waiting" && !fakeSwitched : engines.waiting()),
+    switchNow: async () => {
+      if (testMachine) fakeSwitched = true;
+      else await engines.switchNow();
     },
   },
   stopApps: () => apps.manager.stopAll(),

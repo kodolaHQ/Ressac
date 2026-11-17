@@ -4,7 +4,7 @@ import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
 import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
-import { DECISION_MODEL, SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type SettingsResult, type PullProgress } from "../shared/settings.ts";
+import { DECISION_MODEL, SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type MachineShown, type SettingsResult, type PullProgress } from "../shared/settings.ts";
 import type { DockerRuntime } from "./docker-runtime.ts";
 import type { createMachine } from "./machine.ts";
 import { hostSay } from "./locale.ts";
@@ -72,6 +72,7 @@ export const SETTINGS_METHODS = [
   "settings.machineUsage",
   "settings.machineInstall",
   "settings.machineRemove",
+  "settings.machineSwitchNow",
   "settings.grants",
   "settings.revoke",
   "settings.backups",
@@ -103,7 +104,12 @@ export interface SettingsOptions {
   ai: Pick<LocalAi, "state" | "check" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
   docker: DockerRuntime;
   /** The workshop machine (host/machine.ts); `install` also hands the workshop over to it once installed. */
-  machine: Pick<ReturnType<typeof createMachine>, "status" | "usage" | "install" | "remove">;
+  machine: Pick<ReturnType<typeof createMachine>, "status" | "usage" | "install" | "remove"> & {
+    /** Ready, but waiting for the sessions in Docker's workshop to end before it takes over (host/engines.ts). */
+    waiting(): boolean;
+    /** Takes over at once, cutting those sessions. */
+    switchNow(): Promise<void>;
+  };
   stopApps(): Promise<void>;
   relaunchSessions(): Promise<void>;
   dataDir: string;
@@ -365,11 +371,23 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
     },
     "settings.workshopOperation": () => operation,
-    "settings.machine": () => o.machine.status(),
+    "settings.machine": (): MachineShown => ({ ...o.machine.status(), ...(o.machine.waiting() && { waiting: true as const }) }),
     "settings.machineUsage": () => o.machine.usage(),
     "settings.machineInstall": async (): Promise<SettingsResult> => {
       try {
         await o.machine.install();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: failure(e) };
+      }
+    },
+    /** « Passer maintenant »: the apps stop, the hand-over cuts the sessions in Docker's workshop, they start again in the machine. */
+    "settings.machineSwitchNow": async (): Promise<SettingsResult> => {
+      if (!o.machine.waiting()) return { ok: true };
+      try {
+        await o.stopApps();
+        await o.machine.switchNow();
+        void o.relaunchSessions();
         return { ok: true };
       } catch (e) {
         return { ok: false, error: failure(e) };

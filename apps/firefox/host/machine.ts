@@ -615,7 +615,8 @@ export function createMachine(o: {
 
 /**
  * e2e (RESSAC_TEST_MACHINE): a fixed status, `<kind>[:<percent>|damaged|<detail>]`; its actions only note themselves in
- * `log`, and answer after `delayMs` (RESSAC_TEST_MACHINE_DELAY_MS). A removal leaves `<log>.removed`, as the real one
+ * `log`, and answer after `delayMs` (RESSAC_TEST_MACHINE_DELAY_MS). `absent:auto` installs at AI start (running after
+ * `delayMs`); a retry on an error fails with its message, as the real one does. A removal leaves `<log>.removed`, as the real one
  * leaves its mark: absent and removed from then on (later launches included) until « Installer », which shows a download.
  */
 export function fakeMachine(spec: string, log: string, delayMs = 0): ReturnType<typeof createMachine> {
@@ -647,8 +648,10 @@ export function fakeMachine(spec: string, log: string, delayMs = 0): ReturnType<
         if (r.auto) throw new Error(hostSay("host-machine-removed"));
         await rm(removedMark, { force: true });
         status = { kind: "downloading", percent: null };
-      } else if (r.auto) return; // the fake never downloads on its own
+      } else if (r.auto && extra !== "auto") return; // the fake never downloads on its own, unless asked
       await note("install");
+      if (status.kind === "error") throw new Error(status.message);
+      if (r.auto) status = { kind: "running" };
     },
     stop: async () => {},
     cancel: async () => {},

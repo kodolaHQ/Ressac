@@ -15,7 +15,7 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { DECISION_MODEL, MACHINE_IDLE_MINUTES, SEARCH_MODEL, validAgentDomain, type MachineIdleMinutes, type DockerStatus, type MachineStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { DECISION_MODEL, MACHINE_IDLE_MINUTES, SEARCH_MODEL, validAgentDomain, type MachineIdleMinutes, type DockerStatus, type MachineShown, type MachineStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { updateStatusText } from "../../core/update";
   import { aiOn, api, appState } from "../state.svelte";
   import AiAsleep from "./AiAsleep.svelte";
@@ -153,9 +153,9 @@
   let docker = $state<DockerStatus | null>(null);
   let startingDocker = $state(false);
   /** Ressac's workshop machine; null where it cannot run (the Docker texts then). */
-  let machine = $state<MachineStatus | null>(null);
+  let machine = $state<MachineShown | null>(null);
   let usage = $state<{ memoryMB: number; diskMB: number } | null>(null);
-  let askingMachine = $state<"remove" | "force" | null>(null);
+  let askingMachine = $state<"remove" | "force" | "switch" | null>(null);
   let loads = 0;
   const loadWorkshop = async () => {
     // A load started before an action (a removal) may answer after the one started after it: only the latest one shows.
@@ -168,7 +168,8 @@
     [machine, usage, workshop, operation] = [shown, u, w, op];
     docker = workshop === "docker-absent" ? await s.docker() : null;
   };
-  const machineChanging = $derived(machine?.kind === "downloading" || machine?.kind === "starting");
+  // Polled while its state can change on its own: a download or start, an install AI on may begin, a hand-over waiting.
+  const machineChanging = $derived(machine?.kind === "downloading" || machine?.kind === "starting" || (machine?.kind === "absent" && !machine.removed && aiOn()) || !!machine?.waiting);
   const gb = (mb: number) => Math.round((mb / 1024) * 10) / 10;
   const MACHINE_TEXT = { running: "settings-workshop-machine-running", stopped: "settings-workshop-machine-stopped", starting: "settings-workshop-machine-starting", absent: "settings-workshop-machine-absent", error: "settings-workshop-machine-error" };
   const machineText = (m: MachineStatus) =>
@@ -187,8 +188,9 @@
     void loadWorkshop();
     const r = await call;
     machineBusy = false;
-    if (!r.ok) workshopError = r.error;
-    void loadWorkshop();
+    await loadWorkshop();
+    // A machine in error says it in its row already.
+    if (!r.ok && machine?.kind !== "error") workshopError = r.error;
   }
   async function startDocker() {
     startingDocker = true;
@@ -447,6 +449,7 @@
                 <div class="grow">
                   <b data-testid="machine-state">{machineText(machine)}</b>
                   {#if machine.kind === "error"}<span class="muted alert appear" out:fade={{ duration: 150 }}>{machine.message}</span>{/if}
+                  {#if machine.waiting}<span class="muted appear" data-testid="machine-waiting" out:fade={{ duration: 150 }}>{t("settings-workshop-machine-waiting")}</span>{/if}
                   {#if usage}<span class="muted appear" data-testid="machine-usage" out:fade={{ duration: 150 }}>{machine.kind === "running" ? t("settings-workshop-machine-usage", { memory: gb(usage.memoryMB), disk: gb(usage.diskMB) }) : t("settings-workshop-machine-usage-disk", { disk: gb(usage.diskMB) })}</span>{/if}
                 </div>
                 {#if machine.kind === "error"}
@@ -455,6 +458,7 @@
                 {:else if machine.kind === "absent" && machine.removed}
                   <button class="appear" data-testid="machine-install" disabled={machineBusy} onclick={() => void machineAct(s.machineInstall)} out:fade={{ duration: 150 }}>{t("settings-workshop-machine-install")}</button>
                 {:else if machine.kind === "running" || machine.kind === "stopped"}
+                  {#if machine.waiting}<button class="appear" data-testid="machine-switch" disabled={!!operation || machineBusy} onclick={() => (askingMachine = "switch")} out:fade={{ duration: 150 }}>{t("settings-workshop-machine-switch")}</button>{/if}
                   <button data-testid="machine-remove" disabled={!!operation || machineBusy} onclick={() => (askingMachine = "remove")}>{t("settings-workshop-machine-remove")}</button>
                 {/if}
               </div>
@@ -469,7 +473,15 @@
               </div>
             {/if}
           </div>
-          {#if askingMachine && !machineBusy}
+          {#if askingMachine === "switch" && !machineBusy}
+            <div class="confirmation" role="alertdialog" aria-label={t("settings-workshop-machine-switch")} out:fade={{ duration: 150 }}>
+              <p>{t("settings-workshop-machine-confirm-switch")}</p>
+              <div class="buttons">
+                <button onclick={() => (askingMachine = null)}>{t("settings-cancel")}</button>
+                <button class="primary" data-testid="confirm-machine-switch" onclick={() => void machineAct(s.machineSwitchNow)}>{t("settings-workshop-machine-switch")}</button>
+              </div>
+            </div>
+          {:else if askingMachine && !machineBusy}
             {@const force = askingMachine === "force"}
             <div class="confirmation" role="alertdialog" aria-label={t(force ? "settings-workshop-machine-force-remove" : "settings-workshop-machine-remove")} out:fade={{ duration: 150 }}>
               <p>{t(force ? "settings-workshop-machine-confirm-force-remove" : "settings-workshop-machine-confirm-remove")}</p>

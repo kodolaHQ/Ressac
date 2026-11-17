@@ -80,6 +80,9 @@ settings-workshop-machine-idle-option = { $minutes ->
    *[other] { $minutes } min
 }
 settings-workshop-machine-idle-help = The longer the machine stays on, the faster the agent answers, but it keeps the memory it took until it stops.
+settings-workshop-machine-waiting = Ready: it will take over once the agent has no open session.
+settings-workshop-machine-switch = Switch now
+settings-workshop-machine-confirm-switch = Open agent sessions stop.
 settings-workshop-machine-retry = Try again
 settings-workshop-machine-remove = Remove the machine
 settings-workshop-machine-confirm-remove = Running agents and apps stop. Your Claude and Codex sign-ins are kept. It will only be downloaded again (about 500 MB) when you click “Install the machine”.

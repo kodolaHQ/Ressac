@@ -74,6 +74,9 @@ settings-workshop-machine-error = Machine de l'atelier : en panne
 settings-workshop-machine-usage = { $memory } Go de mémoire · { $disk } Go sur le disque
 settings-workshop-machine-usage-disk = { $disk } Go sur le disque
 settings-workshop-machine-retry = Réessayer
+settings-workshop-machine-waiting = Prête : elle prendra le relais quand l'agent n'aura plus de session ouverte.
+settings-workshop-machine-switch = Passer maintenant
+settings-workshop-machine-confirm-switch = Les sessions d'agent ouvertes s'arrêtent.
 settings-workshop-machine-idle-label = Arrêter la machine après
 settings-workshop-machine-idle-option = { $minutes ->
     [5] 5 min d'inactivité

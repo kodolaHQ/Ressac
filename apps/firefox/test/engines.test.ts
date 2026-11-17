@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ContainerEngine } from "../../../packages/kernel/src/index.ts";
 import { LOGINS_EXTRACT, copyLogins, createEngines } from "../host/engines";
 import type { MachineStatus } from "../host/machine";
@@ -108,6 +108,19 @@ describe("choosing the engine", () => {
     expect(w.log).toEqual(["idle false", "idle false", "idle true", "docker stop", "machine wake user", "copy"]);
     expect(readFileSync(w.marker, "utf8")).toBe("");
     expect(kind(w)).toBe("machine");
+  });
+
+  it("waiting for Docker's sessions shows, and « Passer maintenant » takes over at once", async () => {
+    const w = world({ idle: [false] });
+    expect(w.engines.waiting()).toBe(false);
+    const settled = w.engines.settle();
+    await vi.waitFor(() => expect(w.engines.waiting()).toBe(true));
+    await w.engines.switchNow();
+    await settled;
+    expect(w.engines.waiting()).toBe(false);
+    expect(w.log.slice(-3)).toEqual(["docker stop", "machine wake user", "copy"]);
+    expect(kind(w)).toBe("machine");
+    await w.engines.switchNow(); // nothing waits: a no-op
   });
 
   it("logins copied once", async () => {

@@ -271,6 +271,35 @@ describe("Settings page", () => {
       await waitUi(m, `return !doc.querySelector('[data-testid="machine-retry"]').disabled`, [], 10_000);
     });
 
+    it("a retry that fails shows its error once, in the machine's row", async () => {
+      await launch({ RESSAC_TEST_MACHINE: "error:HTTP 404" });
+      await openPage();
+      await go("workshop");
+      await click(m, '[data-testid="machine-retry"]');
+      await waitFor(m, "return true", () => calls().includes("install"), 10_000);
+      await waitUi(m, `return !doc.querySelector('[data-testid="machine-retry"]').disabled`, [], 10_000);
+      expect((await text("settings-workshop")).split("HTTP 404").length - 1).toBe(1);
+    });
+
+    it("loaded while absent, the row follows the install that AI on begins", async () => {
+      await launch({ RESSAC_TEST_MACHINE: "absent:auto", RESSAC_TEST_MACHINE_DELAY_MS: "8000" });
+      await openPage();
+      await go("workshop");
+      await shows("machine-state", "pas encore téléchargée");
+      await shows("machine-state", "Machine de l'atelier : démarrée", 20_000);
+    });
+
+    it("a hand-over waiting for Docker's sessions says so; « Passer maintenant » asks, then switches", async () => {
+      await launch({ RESSAC_TEST_MACHINE: "running:waiting" });
+      await openPage();
+      await go("workshop");
+      await shows("machine-waiting", "Prête : elle prendra le relais quand l'agent n'aura plus de session ouverte.");
+      await click(m, '[data-testid="machine-switch"]');
+      await shows("settings-workshop", "Les sessions d'agent ouvertes s'arrêtent.");
+      await click(m, '[data-testid="confirm-machine-switch"]');
+      await waitUi(m, `return !doc.querySelector('[data-testid="machine-waiting"], [data-testid="machine-switch"]')`, [], 10_000);
+    });
+
     it("stopped: the disk only, no memory line", async () => {
       await launch({ RESSAC_TEST_MACHINE: "stopped" });
       await openPage();

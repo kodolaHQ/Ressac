@@ -38,6 +38,8 @@ function setup(over: { state?: string; started?: string; exec?: (argv: string[])
       usage: async () => ({ memoryMB: 614, diskMB: 1843 }),
       install: vi.fn(async () => void calls.push("machine.install")),
       remove: vi.fn(async (r?: { force?: boolean }) => void calls.push(r?.force ? "machine.remove --force" : "machine.remove")),
+      waiting: vi.fn(() => false),
+      switchNow: vi.fn(async () => void calls.push("machine.switchNow")),
     },
     stopApps: vi.fn(async () => void calls.push("stopApps")),
     relaunchSessions: vi.fn(async () => void calls.push("relaunch")),
@@ -92,6 +94,18 @@ describe("settings host", () => {
     expect(await h["settings.machineRemove"]!({})).toEqual({ ok: false, error: "kept" });
     o.machine.install.mockRejectedValueOnce(new Error("no download"));
     expect(await h["settings.machineInstall"]!({})).toEqual({ ok: false, error: "no download" });
+  });
+
+  it("a hand-over waiting for Docker's sessions shows, and « Passer maintenant » stops the apps, switches, relaunches the sessions", async () => {
+    const { h, o, calls } = setup();
+    expect(await h["settings.machineSwitchNow"]!({})).toEqual({ ok: true });
+    expect(calls).toEqual([]); // nothing waits: nothing done
+    o.machine.waiting.mockReturnValue(true);
+    expect(await h["settings.machine"]!({})).toEqual({ kind: "running", waiting: true });
+    expect(await h["settings.machineSwitchNow"]!({})).toEqual({ ok: true });
+    await vi.waitFor(() => expect(calls).toEqual(["stopApps", "machine.switchNow", "relaunch"]));
+    o.machine.switchNow.mockRejectedValueOnce(new Error("docker stop: no"));
+    expect(await h["settings.machineSwitchNow"]!({})).toEqual({ ok: false, error: "docker stop: no" });
   });
 
   it("container stopped", async () => {
