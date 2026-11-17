@@ -107,7 +107,7 @@ Ressac repose sur le travail d'autres projets :
 - [surfer](https://github.com/zen-browser/surfer) de l'équipe de Zen Browser (MPL 2.0), l'outil de build.
 - [Node.js](https://nodejs.org) et [node-pty](https://github.com/microsoft/node-pty) (MIT), embarqués pour l'hôte de l'agent.
 - [d1-2B](https://huggingface.co/LiquidAI/d1-2B-GGUF) de Liquid AI (LFM Open License v1.0), le petit modèle qui trie les articles des widgets et surveille l'agent ; Ressac le télécharge lui-même, il n'est pas inclus.
-- [EmbeddingGemma](https://ai.google.dev/gemma/docs/embeddinggemma) 300M de Google, le modèle de recherche de la barre ⌘T ; Ressac le télécharge lui-même (GGUF Q8_0), il n'est pas inclus. Gemma is provided under and subject to the Gemma Terms of Use found at [ai.google.dev/gemma/terms](https://ai.google.dev/gemma/terms).
+- [EmbeddingGemma](https://ai.google.dev/gemma/docs/embeddinggemma) 300M de Google, le modèle de recherche de la barre ⌘T ; Ressac le télécharge lui-même depuis Hugging Face ([le GGUF Q8_0 de ggml-org](https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF)), il n'est pas inclus. Gemma is provided under and subject to the Gemma Terms of Use found at [ai.google.dev/gemma/terms](https://ai.google.dev/gemma/terms).
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), son `llama-server` est livré dans l'app et fait tourner d1-2B et EmbeddingGemma.
 - [Claude Code](https://claude.com/claude-code) d'Anthropic et [Codex](https://github.com/openai/codex) d'OpenAI, les agents, installés dans le conteneur et utilisés avec ton propre compte.
 - [Svelte](https://svelte.dev), [Vite](https://vite.dev), et les polices [Geist](https://vercel.com/font) et [Funnel Display](https://fonts.google.com/specimen/Funnel+Display) (OFL).

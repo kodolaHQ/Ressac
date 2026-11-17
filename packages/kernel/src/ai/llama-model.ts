@@ -333,16 +333,17 @@ export class LlamaModel {
   }
 }
 
-/** shortcut: placeholder until the file is published under the update feed's secret folder (Task 8 builds the real URL); dev and e2e use RESSAC_EMBED_URL. */
-export const EMBED_URL = "https://updates.getressac.app/models/embeddinggemma-300m-Q8_0.gguf";
+export const EMBED_FILE = "embeddinggemma-300M-Q8_0.gguf";
+export const EMBED_REVISION = "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12";
+export const EMBED_URL = `https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/${EMBED_REVISION}/${EMBED_FILE}`;
 
-/** EmbeddingGemma 300M (Google, Gemma licence), Q8_0: the vectors ⌘T Demander compares pages with. */
+/** EmbeddingGemma 300M (Google, Gemma Terms of Use), ggml-org's Q8_0 GGUF: the vectors ⌘T Demander compares pages with. */
 export const EMBED_MODEL: LlamaModelSpec = {
   name: "embed",
-  file: "embeddinggemma-300m-Q8_0.gguf",
+  file: EMBED_FILE,
   url: EMBED_URL,
-  sha256: "56d087bf9409431cadfd43fb0b774c83afc4a3f28c14db84c79d2978b313e04d",
-  bytes: 333590976,
+  sha256: "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63",
+  bytes: 333590944,
   port: 8010,
   // A whole page document in one batch (the 512-token default refuses a long one).
   args: ["--embedding", "--pooling", "mean", "-ngl", "99", "-ub", "2048", "-b", "2048"],
