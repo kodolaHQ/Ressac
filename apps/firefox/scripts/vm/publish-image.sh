@@ -1,14 +1,15 @@
 #!/bin/zsh
 # Uploads the machine image build-image.sh made (dist/vm/) to R2, public under updates.getressac.app/vm/, with its package
 # list and GPL sources next to it, then mirrors the same files in a GitHub release `vm-<version>` tagged on the commit
-# whose recipe built it (dist/vm/commit.txt, written by build-image.sh) (the app downloads from R2 only). Needs a one-time `npx wrangler login` and
-# `gh auth login`, and that commit pushed. A published version is never rewritten: the app pins the image's SHA-256.
+# whose recipe built it (dist/vm/commit.txt, written by build-image.sh) (the app downloads from R2 only). Uploads through R2's S3 API with curl (wrangler caps files at 300 MiB), with an R2 API
+# token for the bucket in ~/.config/ressac/r2.env (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT; RESSAC_R2_ENV for
+# another file); needs `gh auth login` and that commit pushed. A published version is never rewritten: the app pins the image's SHA-256.
 # RESSAC_PUBLISH_DRY_RUN=1 prints the uploads instead of running them.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 bucket=${RESSAC_R2_BUCKET:-ressac-update}
 public=https://updates.getressac.app
-wrangler=wrangler@4.153.0
+r2env=${RESSAC_R2_ENV:-$HOME/.config/ressac/r2.env}
 repo=kodolaHQ/Ressac
 
 fail() { print -u2 -- "publish-image: $*"; exit 1 }
@@ -26,9 +27,17 @@ commit=$(<dist/vm/commit.txt)
 [[ -n $(git branch -r --contains $commit 2>/dev/null) ]] || fail "commit $commit is not pushed: the release tag must point at a public recipe"
 gh release view vm-${name#ressac-vm-} --repo $repo >/dev/null 2>&1 && fail "GitHub release vm-${name#ressac-vm-} already exists"
 
+if [[ -z ${RESSAC_PUBLISH_DRY_RUN:-} ]]; then
+  [[ -f $r2env ]] || fail "$r2env is missing (an R2 API token with Object Read & Write on $bucket)"
+  . $r2env # not exported: only the print builtin below reads the key
+  [[ -n ${R2_ACCESS_KEY_ID:-} && -n ${R2_SECRET_ACCESS_KEY:-} && ${R2_ENDPOINT:-} == https://* ]] || fail "$r2env needs R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_ENDPOINT"
+fi
 put() {
-  local cmd=(r2 object put "$bucket/vm/$1" --remote --file $2 --content-type $3)
-  if [[ -n ${RESSAC_PUBLISH_DRY_RUN:-} ]]; then print -r -- "wrangler $cmd"; else npx --yes $wrangler $cmd; fi
+  if [[ -n ${RESSAC_PUBLISH_DRY_RUN:-} ]]; then print -r -- "PUT $bucket/vm/$1 <- $2 ($3)"; return; fi
+  print -r -- "==> $bucket/vm/$1"
+  # The key goes through curl's config on stdin, never on the command line.
+  print -r -- "user = \"$R2_ACCESS_KEY_ID:$R2_SECRET_ACCESS_KEY\"" | curl -K - --fail-with-body -sS --aws-sigv4 aws:amz:auto:s3 \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" -H "content-type: $3" -T $2 "${R2_ENDPOINT%/}/$bucket/vm/$1" >/dev/null
 }
 put $name.packages.txt dist/vm/packages.txt text/plain
 put $name.sources.tar dist/vm/sources.tar application/x-tar

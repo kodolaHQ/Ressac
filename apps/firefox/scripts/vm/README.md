@@ -28,7 +28,7 @@ the upstream files abuild fetches). The temp dir, the instance and the Docker ta
 `VM_VERSION` = `<alpine>-<podman>-<dockerfile hash>`, also in `/etc/ressac-vm-version` in the guest. A new
 Dockerfile hash means a new image to build, publish and pin.
 
-Then, when the app should use it: `publish-image.sh` (after `npx wrangler login` once), and pin the version, SHA-256
+Then, when the app should use it: `publish-image.sh` (once before: an R2 API token with Object Read & Write on the bucket in `~/.config/ressac/r2.env` as `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`; wrangler caps uploads at 300 MiB; and `gh auth login`), and pin the version, SHA-256
 and byte size in `host/machine.ts`.
 
 ## What the bake changes in the guest
