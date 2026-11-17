@@ -32,7 +32,7 @@ export interface ApplicationsHost {
   wake(): void;
   /** toutArreter, arreterSurveillance, then the memory written. */
   stop(): Promise<void>;
-  /** Runs `run` (the sweep before a first session) with every app stopped cleanly (« arrêtée », not an error); the user relaunches them. */
+  /** Runs `run` (the sweep before a first session) with every app stopped cleanly (« arrêtée », not an error); the running ones start again after it. */
   whileStopped(run: () => Promise<void>): Promise<void>;
 }
 
@@ -247,6 +247,8 @@ export function createApplicationsHost(o: {
       manager.start().catch((e) => console.error("[applications] start failed:", e));
     },
     async whileStopped(run) {
+      // The apps the user had running start again after it (a first panel opening must not cost them their apps).
+      const was = (await manager.list()).filter((a) => a.state === "running").map((a) => a.folder);
       const sweep = (async () => {
         try {
           await manager.stopAll();
@@ -257,6 +259,8 @@ export function createApplicationsHost(o: {
       })();
       sweeping = sweep.catch(() => {});
       await sweep;
+      // Through the host's own launch: the window opens again on the new port.
+      for (const f of was) void manager.launch(f).catch(report(f, "relaunched"));
     },
     async stop() {
       docker = undefined;

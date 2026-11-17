@@ -556,7 +556,7 @@ describe("each with its own Ressac", () => {
     expect(await answers(port)).toBe(false);
   });
 
-  it("a first agent session stops the running app (« arrêtée », window closed); during its sweep launch_app is refused and a click waits", async () => {
+  it("a first agent session stops the running app during its sweep (launch_app refused, a click waits), then starts it again with its window", async () => {
     i = await start();
     const m = i.m;
     const root = path.join(i.dataDir, "workspace");
@@ -585,6 +585,8 @@ describe("each with its own Ressac", () => {
     expect(await appState()).toBe("stopped");
     rmSync(hold);
     await expect.poll(appState, { timeout: 15_000 }).toBe("running");
+    // It was running before the sweep: it starts again, its window too.
+    await expect.poll(() => appWindows(m), { timeout: 15_000 }).toBe(1);
   });
 
   it("host killed: the app window closes, the restarted host stops the orphan", async () => {

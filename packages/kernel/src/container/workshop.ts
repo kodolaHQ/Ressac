@@ -574,8 +574,8 @@ export class Workshop {
   /**
    * Before a session when none runs: every process of the agent's user but the container's PID 1 is killed. A process the
    * agent detached with a new group and an empty environment (`setsid env -i …`) escapes both marks of `stopSession` and
-   * would keep reading `.ressac` tokens for later conversations. The apps go too (the host stops them first and refuses
-   * agent launches until the sweep ends; the user relaunches them).
+   * would keep reading `.ressac` tokens for later conversations. The apps go too (the host stops them first, refuses
+   * agent launches until the sweep ends, then starts the running ones again).
    * shortcut: an app the user launches afterwards runs agent code as the same user, with the same reach on the tokens;
    * only a per-conversation token the container cannot read closes it.
    */
