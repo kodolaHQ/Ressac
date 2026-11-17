@@ -83,9 +83,12 @@ const exec = (cmd: string, args: string[]) =>
     p.on("close", (code) => ok({ code, stderr })).on("error", (e) => ok({ code: -1, stderr: e.message }));
   });
 
+/** In the machine's logins volume while a copy runs: a copy cut short (quit) is done again at the next launch. */
+const COPYING = "/v/.ressac-copying";
+
 /**
  * `docker run … tar -cf -` of the logins volume (read-only) piped into the machine's same volume. Copies nothing when
- * Docker has no such volume, or the machine already has one (never overwritten). Both sides must succeed.
+ * Docker has no such volume, or the machine already has a whole one (never overwritten). Both sides must succeed.
  */
 export async function copyLogins(o: { docker: string; podman: string; podmanArgs: string[]; timeoutMs?: number }): Promise<void> {
   const fail = (what: string, r: { code: number | null; stderr: string }) => new Error(`logins copy failed (${what} ${r.code}): ${r.stderr.trim().split("\n").at(-1) ?? ""}`);
@@ -95,11 +98,15 @@ export async function copyLogins(o: { docker: string; podman: string; podmanArgs
     throw fail("docker volume inspect", source);
   }
   const target = await exec(o.podman, [...o.podmanArgs, "volume", "exists", VOLUME_HOME]);
-  if (target.code === 0) return;
-  if (target.code !== 1) throw fail("podman volume exists", target); // 1 is "no such volume"
+  if (target.code !== 0 && target.code !== 1) throw fail("podman volume exists", target); // 1 is "no such volume"
+  if (target.code === 0) {
+    const cut = await exec(o.podman, [...o.podmanArgs, "run", "--rm", "--pull", "never", "--network", "none", "-u", "root", "-v", `${VOLUME_HOME}:/v:ro`, IMAGE, "test", "-e", COPYING]);
+    if (cut.code === 1) return;
+    if (cut.code !== 0) throw fail("podman copy check", cut);
+  }
   const signal = AbortSignal.timeout(o.timeoutMs ?? 10 * 60_000);
   const from = spawn(o.docker, ["run", "--rm", "--pull", "never", "--network", "none", "-u", "root", "-v", `${VOLUME_HOME}:/v:ro`, IMAGE, "tar", "-C", "/v", "-cf", "-", "."], { stdio: ["ignore", "pipe", "pipe"], signal });
-  const to = spawn(o.podman, [...o.podmanArgs, "run", "--rm", "-i", "--pull", "never", "--network", "none", "-u", "root", "-v", `${VOLUME_HOME}:/v`, IMAGE, "tar", "-C", "/v", "-xf", "-"], { stdio: ["pipe", "ignore", "pipe"], signal });
+  const to = spawn(o.podman, [...o.podmanArgs, "run", "--rm", "-i", "--pull", "never", "--network", "none", "-u", "root", "-v", `${VOLUME_HOME}:/v`, IMAGE, "sh", "-c", `touch ${COPYING} && tar -C /v -xf - && rm ${COPYING}`], { stdio: ["pipe", "ignore", "pipe"], signal });
   to.stdin.on("error", () => {}); // a podman that dies early: its exit code tells
   from.stdout.pipe(to.stdin);
   let err = "";

@@ -178,7 +178,7 @@ describe("copyLogins", () => {
       "volume inspect webaios-home\nrun --rm --pull never --network none -u root -v webaios-home:/v:ro ressac-workshop:1 tar -C /v -cf - .\n",
     );
     expect(readFileSync(join(d, "podman.log"), "utf8")).toBe(
-      "--url unix:///s volume exists webaios-home\n--url unix:///s run --rm -i --pull never --network none -u root -v webaios-home:/v ressac-workshop:1 tar -C /v -xf -\n",
+      "--url unix:///s volume exists webaios-home\n--url unix:///s run --rm -i --pull never --network none -u root -v webaios-home:/v ressac-workshop:1 sh -c touch /v/.ressac-copying && tar -C /v -xf - && rm /v/.ressac-copying\n",
     );
   });
 
@@ -199,10 +199,27 @@ describe("copyLogins", () => {
   it("the machine already has a logins volume: never overwritten", async () => {
     const d = tmp();
     const docker = tool(d, "docker", "");
-    const podman = tool(d, "podman", "");
+    const podman = tool(d, "podman", `case "$*" in *"-e /v/.ressac-copying"*) exit 1;; esac`);
     await copyLogins({ docker, podman, podmanArgs: [] });
-    expect(readFileSync(join(d, "podman.log"), "utf8")).toBe("volume exists webaios-home\n");
+    expect(readFileSync(join(d, "podman.log"), "utf8")).toBe(
+      "volume exists webaios-home\nrun --rm --pull never --network none -u root -v webaios-home:/v:ro ressac-workshop:1 test -e /v/.ressac-copying\n",
+    );
     expect(readFileSync(join(d, "docker.log"), "utf8")).toBe("volume inspect webaios-home\n");
+  });
+
+  it("a copy cut short (quit mid-copy) left its marker: copied again", async () => {
+    const d = tmp();
+    const docker = tool(d, "docker", `case "$1" in run) printf 'LOGINS';; esac`);
+    const podman = tool(d, "podman", `case "$*" in *"tar -C"*) cat > ${join(d, "received")};; esac`);
+    await copyLogins({ docker, podman, podmanArgs: [] });
+    expect(readFileSync(join(d, "received"), "utf8")).toBe("LOGINS");
+  });
+
+  it("a marker check that fails (not 0 or 1) rejects, nothing copied", async () => {
+    const d = tmp();
+    const podman = tool(d, "podman", `case "$*" in *"-e /v/.ressac-copying"*) exit 125;; esac`);
+    await expect(copyLogins({ docker: tool(d, "docker", ""), podman, podmanArgs: [] })).rejects.toThrow();
+    expect(readFileSync(join(d, "podman.log"), "utf8")).not.toContain("tar");
   });
 
   it("either side failing rejects", async () => {
