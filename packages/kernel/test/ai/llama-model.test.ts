@@ -62,15 +62,15 @@ async function fakeFile(data: Buffer, o: { hold?: boolean } = {}) {
 }
 
 describe("LlamaModel: the server", () => {
-  it("the embedding model's spec: ggml-org's file at a pinned revision, its own port, mean-pooled embeddings, 2 min idle", () => {
+  it("the embedding model's spec: ggml-org's file at a pinned revision, no fixed port, mean-pooled embeddings, 2 min idle", () => {
     expect(EMBED_MODEL).toMatchObject({
       file: "embeddinggemma-300M-Q8_0.gguf",
       url: "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/0f741b5a6585bd53aeb15cd1372c56f2a0f65e12/embeddinggemma-300M-Q8_0.gguf",
       bytes: 333590944,
       sha256: "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63",
-      port: 8010,
       idleMs: 120_000,
     });
+    expect(EMBED_MODEL.port).toBeUndefined(); // a free port per launch
     expect(EMBED_MODEL.args).toEqual(["--embedding", "--pooling", "mean", "-ngl", "99", "-ub", "2048", "-b", "2048"]);
   });
 
@@ -195,6 +195,43 @@ describe("LlamaModel: the server", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(m.state().state).toBe("stopped");
     expect(stopped).toBe(1);
+  });
+
+  it("the old server's late exit does not cancel the new server's idle stop", async () => {
+    const kev = keep(await fakeKev());
+    let now = 1000;
+    const exits: ((c: number | null) => void)[] = [];
+    const launch = (): AiProcess => ({ stop() {}, onOutput(r) { exits.push(r); } });
+    const m = model({ folder: await installed(), launch, clock: () => now }, { port: portOf(kev), idleMs: 600_000 });
+    await m.ready();
+    await m.stop();
+    await m.ready();
+    exits[0]!(null); // the first server only exits now
+    expect(m.state().state).toBe("active");
+    now += 601_000;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(m.state().state).toBe("stopped");
+  });
+
+  it("no fixed port: each launch asks the OS for a free port, and ready() answers that process's URL", async () => {
+    const servers: FakeServer[] = [];
+    const ports: number[] = [];
+    // A fake llama-server: listens on the port it was given and names the model.
+    const launch = (_cmd: string, args: string[]): AiProcess => {
+      const port = Number(args[args.indexOf("--port") + 1]);
+      ports.push(port);
+      const s = createServer((_q, res) => res.end(JSON.stringify({ data: [{ id: SPEC.file }] })));
+      s.listen(port, "127.0.0.1");
+      servers.push(keep({ url: "", requests: [], close: () => new Promise<void>((ok) => { s.closeAllConnections(); s.close(() => ok()); }) }));
+      return { stop() {}, onOutput() {} };
+    };
+    const m = model({ folder: await installed(), launch }, { port: undefined });
+    expect(await m.ready()).toBe(`http://127.0.0.1:${ports[0]}`);
+    await m.stop();
+    await servers[0]!.close();
+    expect(await m.ready()).toBe(`http://127.0.0.1:${ports[1]}`);
+    expect(ports).toHaveLength(2);
+    for (const p of ports) expect(p).toBeGreaterThan(1024);
   });
 
   it("stop() allows a relaunch; close() then refuses ready(), warm() and install() without launching anything", async () => {

@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, open, rename, rm, stat } from "node:fs/promises";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { toolsPath, forgetGroup, keepGroup, killGroup } from "../container/runner.js";
 
@@ -15,8 +16,11 @@ export interface AiProcess {
   onLine?(callback: (line: string) => void): void;
 }
 
-/** A GGUF model Ressac downloads into `<folder>/<name>/` and serves with the shipped llama-server on its own port. */
-export type LlamaModelSpec = { name: string; file: string; url: string; sha256: string; bytes: number; port: number; args: string[]; idleMs: number };
+/**
+ * A GGUF model Ressac downloads into `<folder>/<name>/` and serves with the shipped llama-server. `port` fixes the server's
+ * port (tests); absent, each launch takes a free port from the OS, so a foreign server can never hold it.
+ */
+export type LlamaModelSpec = { name: string; file: string; url: string; sha256: string; bytes: number; port?: number; args: string[]; idleMs: number };
 
 export interface LlamaModelOptions {
   /** `<browser profile>/local-ai`; the model goes into `<folder>/<spec.name>/`. */
@@ -52,6 +56,18 @@ const KILL_DELAY_MS = 5000;
 const CANCEL_DELAY_MS = 3000;
 
 const wait = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
+
+/** A port free right now on 127.0.0.1 (the OS picks it; released before llama-server binds it). */
+function freePort(): Promise<number> {
+  return new Promise((ok, ko) => {
+    const s = createServer();
+    s.on("error", ko);
+    s.listen(0, "127.0.0.1", () => {
+      const port = (s.address() as { port: number }).port;
+      s.close(() => ok(port));
+    });
+  });
+}
 
 /**
  * Launches the command in its own process group (the server may launch children: killing the parent alone could leave
@@ -123,12 +139,13 @@ export class LlamaModel {
   private closed = false;
   /** Install in progress: its cancellation and its end (successful or not). */
   private installation?: { controller: AbortController; end: Promise<unknown> };
-  private readonly baseUrl: string;
+  /** The running (or starting) server's URL: `serverUrl`, else 127.0.0.1 on the port of the last launch. */
+  private baseUrl: string;
   private readonly clock: () => number;
   private readonly launch: NonNullable<LlamaModelOptions["launch"]>;
 
   constructor(readonly spec: LlamaModelSpec, private readonly o: LlamaModelOptions) {
-    this.baseUrl = o.serverUrl ?? `http://127.0.0.1:${spec.port}`;
+    this.baseUrl = o.serverUrl ?? `http://127.0.0.1:${spec.port ?? 0}`;
     this.clock = o.clock ?? Date.now;
     this.launch = o.launch ?? defaultLaunch;
   }
@@ -281,9 +298,20 @@ export class LlamaModel {
     }
     const gen = ++this.generation;
     this.change("starting");
+    let port: number;
+    try {
+      port = this.spec.port ?? (await freePort());
+    } catch (e) {
+      if (gen !== this.generation) return this.baseUrl;
+      const msg = this.say("kernel-ai-llama-start-failed", { detail: (e as Error).message });
+      this.change("error", msg);
+      throw new Error(msg);
+    }
+    if (gen !== this.generation) return this.baseUrl; // stop() or close() came during the wait
+    this.baseUrl = `http://127.0.0.1:${port}`;
     const lines: string[] = [];
     let output: number | null | undefined;
-    const args = ["-m", this.modelFile, "--host", "127.0.0.1", "--port", String(this.spec.port), ...this.spec.args];
+    const args = ["-m", this.modelFile, "--host", "127.0.0.1", "--port", String(port), ...this.spec.args];
     const p = this.launch(this.o.llamaServer, args, { cwd: this.folder });
     this.process = p;
     p.onLine?.((l) => { lines.push(l); if (lines.length > 20) lines.shift(); });
@@ -291,8 +319,11 @@ export class LlamaModel {
     p.onOutput((code) => {
       dead = true;
       output = code;
+      if (this.process !== p) return; // an older server: the current one keeps its idle timer
       if (this.timeout) clearInterval(this.timeout);
-      if (this.process === p) { this.process = undefined; if (this.currentState === "active") this.change("stopped"); }
+      this.timeout = undefined;
+      this.process = undefined;
+      if (this.currentState === "active") this.change("stopped");
     });
     const step = this.o.pollMs ?? 500;
     const end = Date.now() + STARTUP_DELAY_MS;
@@ -344,7 +375,6 @@ export const EMBED_MODEL: LlamaModelSpec = {
   url: EMBED_URL,
   sha256: "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63",
   bytes: 333590944,
-  port: 8010,
   // A whole page document in one batch (the 512-token default refuses a long one).
   args: ["--embedding", "--pooling", "mean", "-ngl", "99", "-ub", "2048", "-b", "2048"],
   // Short: the page indexer works in passes and ⌘T warms it, so 334 MB need not stay up between them.

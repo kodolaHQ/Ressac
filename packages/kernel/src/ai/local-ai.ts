@@ -50,7 +50,6 @@ export const D1_MODEL: LlamaModelSpec = {
   url: D1_URL,
   sha256: D1_SHA256,
   bytes: D1_BYTES,
-  port: 8008,
   args: ["-ngl", "99", "-np", String(D1_SLOTS), "-c", String(D1_CONTEXT * D1_SLOTS)],
   idleMs: 600_000,
 };
@@ -84,7 +83,7 @@ export class LocalAi {
     const imposed = o.kevUrl ?? process.env.RESSAC_KEV_URL;
     const common = { folder: o.folder, llamaServer: o.llamaServer, launch: o.launch, clock: o.clock, pollMs: o.pollMs, idleCheckMs: o.idleCheckMs, cancelDelayMs: o.cancelDelayMs, locale: o.locale };
     this.d1 = new LlamaModel(
-      { ...D1_MODEL, port: o.port ?? D1_MODEL.port, idleMs: o.inactivityMs ?? D1_MODEL.idleMs },
+      { ...D1_MODEL, port: o.port, idleMs: o.inactivityMs ?? D1_MODEL.idleMs },
       { ...common, urlOverride: o.decisionUrl, sha256Override: o.decisionSha256, bytesOverride: o.decisionBytes, serverUrl: imposed, onState: o.onState },
     );
     // RESSAC_EMBED_SERVER_URL (or `embedServerUrl`): a search server already running (tests), taken as installed.
@@ -164,7 +163,7 @@ export class LocalAi {
   /** An access for a kernel, closed with it (see AiAccess). */
   access(): AiAccess {
     let closed = false;
-    // Checked before the call: kev() launches llama-server synchronously, before its first await; close() stops it afterwards.
+    // Checked before the call: a closed access never starts llama-server; a close() during a startup cancels the launch.
     return {
       kev: (body, o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.kev(body, o)),
       gemma: (o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.gemma(o)),
