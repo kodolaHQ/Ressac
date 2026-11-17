@@ -5,6 +5,7 @@
   import { t } from "../i18n.svelte";
   import SiteIcon from "./SiteIcon.svelte";
   import { openMenu } from "./menu.svelte";
+  import { toEssentials } from "./site-placement";
 
   /** The site apps placed in the sidebar bar: one icon each, a click opens (or shows) the app's window. */
   let sites = $state<ShownSite[]>([]);
@@ -21,12 +22,6 @@
   // In the bar's order; an id the host does not know (folder gone) is hidden.
   const shown = $derived((appState.value?.siteBar ?? []).flatMap((id) => sites.filter((s) => s.id === id)));
 
-  function toEssentials(s: ShownSite) {
-    if (!s.start) return;
-    // Its tab takes over from its window.
-    api.sites.act(s.id, "close");
-    api.dispatch({ type: "placeSite", id: s.id, placement: "essentials", url: s.start, title: s.name, favicon: s.icon });
-  }
 </script>
 
 {#if shown.length}

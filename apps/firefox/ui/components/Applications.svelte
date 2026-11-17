@@ -7,6 +7,7 @@
   import Icon from "./Icon.svelte";
   import ExternalProjects from "./ExternalProjects.svelte";
   import { openMenu, type MenuEntry } from "./menu.svelte";
+  import { openSite, toEssentials } from "./site-placement";
 
   type Filter = "all" | "app" | "poc" | "no-manifest" | "running" | "stopped" | "error";
 
@@ -61,22 +62,12 @@
   });
 
   const actSite = (s: ShownSite, action: ActionSite) => api.sites.act(s.id, action);
-  const essentialOf = (s: ShownSite) => appState.value?.essentials.find((x) => x.site === s.id);
-  /** « Ouvrir »: an app in the essentials shows its tab in this window, the others open their window. */
-  function openSite(s: ShownSite) {
-    const favorite = essentialOf(s);
-    const win = currentWindow();
-    if (favorite && win) api.dispatch({ type: "openFavorite", windowId: win.id, kind: "essential", id: favorite.id });
-    else actSite(s, "open");
-  }
-  /** Where the app lives: its window closes when it becomes an essential (its tab takes over). */
-  function place(s: ShownSite, placement: "essentials" | "bar" | "none") {
-    if (placement === "essentials") actSite(s, "close");
-    api.dispatch({ type: "placeSite", id: s.id, placement, ...(placement === "essentials" ? { url: s.start!, title: s.name, favicon: s.icon } : {}) });
-  }
+  /** Where the app lives (none and the bar need no start address). */
+  const place = (s: ShownSite, placement: "essentials" | "bar" | "none") =>
+    placement === "essentials" ? toEssentials(s) : api.dispatch({ type: "placeSite", id: s.id, placement });
   const placements = (s: ShownSite): MenuEntry[] => {
     const current = appState.value ? sitePlacement(appState.value, s.id) : "none";
-    return (["essentials", "bar", "none"] as const).map((p) => ({ label: t(`home-apps-place-${p}`), checked: current === p, disabled: s.start === null, dispatch: () => place(s, p) }));
+    return (["essentials", "bar", "none"] as const).map((p) => ({ label: t(`home-apps-place-${p}`), checked: current === p, disabled: p === "essentials" && s.start === null, dispatch: () => place(s, p) }));
   };
   const siteRows = $derived.by(() => {
     const searches = text.trim().toLowerCase();
@@ -283,7 +274,7 @@
               {#if !s.noActions}
               <div class="actions">
                 {#if s.error === undefined}
-                  <button data-testid="site-{s.id}-open" onclick={() => openSite(s)}>{t("home-apps-open")}</button>
+                  <button data-testid="site-{s.id}-open" onclick={() => openSite(s.id, currentWindow()?.id)}>{t("home-apps-open")}</button>
                 {/if}
                 <button data-testid="site-{s.id}-edit" onclick={() => actSite(s, "edit")}>{t("home-apps-site-edit")}</button>
                 <!-- The rest in a menu, as for the apps: a row of six buttons wrapped into a column in a narrow window. -->

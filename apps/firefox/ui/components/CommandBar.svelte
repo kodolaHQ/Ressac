@@ -25,6 +25,7 @@
   import type { ActionShown } from "../../shared/actions";
   import type { Visit } from "../../shared/model";
   import SiteIcon from "./SiteIcon.svelte";
+  import { openSite } from "./site-placement";
   import { t } from "../i18n.svelte";
   import Icon, { type IconName } from "./Icon.svelte";
 
@@ -289,7 +290,7 @@
     else if (l.type === "history" || l.type === "bookmark") api.navigate(target, l.url);
     else if (l.type === "tab") activate(l.tab.id);
     else if (l.app.kind === "project") api.apps.act(l.app.id, l.app.action);
-    else api.sites.act(l.app.id, "open");
+    else openSite(l.app.id, win.id);
     closeCommand(true);
   }
 
