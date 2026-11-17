@@ -10,7 +10,7 @@ export interface RunResult {
 }
 
 /** `signal`: cancels the command (its whole process group is killed), the result then has the code CODE_CANCELLED. */
-export type Runner = (command: string, args: string[], opts?: { delayMs?: number; signal?: AbortSignal; input?: string; onStderr?: (chunk: string) => void; onStdout?: (chunk: string) => void }) => Promise<RunResult>;
+export type Runner = (command: string, args: string[], opts?: { delayMs?: number; signal?: AbortSignal; input?: string; onStderr?: (chunk: string) => void; onStdout?: (chunk: string) => void; env?: Record<string, string> }) => Promise<RunResult>;
 
 /** Code returned when the timeout is exceeded (same convention as timeout(1)). */
 export const CODE_TIMEOUT_EXCEEDED = 124;
@@ -62,13 +62,13 @@ export const toolsPath = (): string => [process.env.PATH ?? "", ...TOOLS_FOLDERS
 
 /** A runner whose own texts (timeout, cancel, command not found) are in the language of `locale()`. */
 export const createRunner = (locale: () => string = () => "en"): Runner => (command, args, opts = {}) => {
-  if (opts.signal) return runCancelable(command, args, opts.signal, opts.delayMs, locale, opts.input);
+  if (opts.signal) return runCancelable(command, args, opts.signal, opts.delayMs, locale, opts.input, opts.env);
   return new Promise((resolve) => {
     const PATH = toolsPath();
     const child = execFile(
       command,
       args,
-      { timeout: opts.delayMs, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, PATH } },
+      { timeout: opts.delayMs, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, PATH, ...opts.env } },
       (error, stdout, stderr) => {
         if (!error) return resolve({ code: 0, stdout, stderr });
         const e = error as NodeJS.ErrnoException & { killed?: boolean; code?: number | string };
@@ -93,10 +93,10 @@ export const defaultRunner: Runner = createRunner();
  * compilations; execFile cannot create one). Cancelling, or exceeding the timeout, sends SIGTERM to the group, then
  * SIGKILL after 2 s if it is still alive; if Node exits before, the group is killed at exit.
  */
-function runCancelable(command: string, args: string[], signal: AbortSignal, delayMs: number | undefined, locale: () => string, input?: string): Promise<RunResult> {
+function runCancelable(command: string, args: string[], signal: AbortSignal, delayMs: number | undefined, locale: () => string, input?: string, env?: Record<string, string>): Promise<RunResult> {
   return new Promise((resolve) => {
     if (signal.aborted) return resolve({ code: CODE_CANCELLED, stdout: "", stderr: say(locale(), "kernel-run-cancelled") });
-    const child = spawn(command, args, { env: { ...process.env, PATH: toolsPath() }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], detached: true });
+    const child = spawn(command, args, { env: { ...process.env, PATH: toolsPath(), ...env }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], detached: true });
     // A command that exits without reading its input closes the pipe: EPIPE is not an error here.
     if (input !== undefined) child.stdin?.on("error", () => {}).end(input);
     const pid = child.pid;
