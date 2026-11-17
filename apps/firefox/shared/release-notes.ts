@@ -1,6 +1,16 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.13",
+    date: "novembre 2026",
+    items: [
+      "Vos applis de site se lancent depuis la barre latérale : dans Applications, le menu « … » d'une appli propose « Dans les essentiels », « Dans la barre » ou « Nulle part ».",
+      "Dans les essentiels, l'appli s'ouvre en onglet et reste chargée : WhatsApp continue d'envoyer ses notifications. Elle garde sa session et ses retouches, et son accueil s'affiche par-dessus le site ; recliquez sur l'essentiel pour y revenir.",
+      "Dans la barre, une rangée d'icônes au-dessus des espaces ouvre l'appli dans sa fenêtre ; un point indique qu'elle est ouverte. Un clic droit change de place (« Mettre dans les essentiels », « Ouvrir en fenêtre »).",
+      "Une question posée depuis ⌘T ou une remarque du mode design n'est plus perdue quand l'agent démarre.",
+    ],
+  },
+  {
     version: "0.1.12",
     date: "novembre 2026",
     items: [
