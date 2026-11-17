@@ -138,7 +138,7 @@ describe("Settings page, permissions and data", () => {
     await waitFor(m, "return true", () => read(join(dataDir, "session.json")).includes(old), 15_000);
     await openPage();
     await click(m, '[data-testid="data-reset"]');
-    await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("installation de Kev (IA locale, à réinstaller)) sont mises de côté")`);
+    await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("données des widgets et des actions) sont mises de côté")`);
     await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("les connexions de Claude et de Codex (boutons Se déconnecter, section Agents), la clé de l'API compatible de Codex (Trousseau macOS)")`);
     await click(m, '[data-testid="confirm-reset"]');
     const alive = () => {

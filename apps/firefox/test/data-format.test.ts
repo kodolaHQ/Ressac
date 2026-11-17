@@ -11,6 +11,7 @@ async function seed(dir: string, marker?: string) {
   await writeFile(join(dir, "session.json"), "{}");
   await writeFile(join(dir, "workspace/projects/a.txt"), "a");
   await mkdir(join(dir, "ollama/0.40.13"), { recursive: true });
+  await mkdir(join(dir, "local-ai/d1"), { recursive: true });
   if (marker !== undefined) await writeFile(join(dir, FORMAT_FILE), marker);
 }
 async function expectSetAside(dir: string, result: { backup: string; reason: string } | null) {
@@ -22,6 +23,8 @@ async function expectSetAside(dir: string, result: { backup: string; reason: str
   expect(await readdir(backup!)).not.toContain("workspace");
   expect(await readdir(backup!)).not.toContain("ollama");
   expect(await readdir(join(dir, "ollama"))).toEqual(["0.40.13"]);
+  // The local models (1.4 GB) are a program, not data: a reset does not download them again.
+  expect(await readdir(join(dir, "local-ai"))).toEqual(["d1"]);
   expect(await readFile(join(dir, FORMAT_FILE), "utf8")).toBe(NEW);
 }
 
@@ -35,7 +38,7 @@ describe("checkDataFormat", () => {
     const dir = await tmp();
     await seed(dir, NEW);
     expect(await checkDataFormat(dir)).toBeNull();
-    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "ollama", "session.json", "workspace"]);
+    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "local-ai", "ollama", "session.json", "workspace"]);
   });
   it("old marker", async () => {
     const dir = await tmp();
@@ -82,7 +85,7 @@ describe("checkDataFormat", () => {
     expect(r?.reason).toBe("format");
     expect(await readFile(join(r!.backup, "session.json"), "utf8")).toBe("{}");
     expect(await readFile(join(dir, "workspace/projects/a.txt"), "utf8")).toBe("a");
-    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "ollama", "stuck", "workspace"]);
+    expect((await readdir(dir)).sort()).toEqual([FORMAT_FILE, "local-ai", "ollama", "stuck", "workspace"]);
     expect(await readFile(join(dir, FORMAT_FILE), "utf8")).toBe(NEW);
   });
   it("the same during a reset: the request is honoured once, under one backup", async () => {
