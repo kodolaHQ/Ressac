@@ -45,13 +45,15 @@ const onSites = (url: string, sites: string[]) => {
 
 /** Characters of kept text a page's vector is computed from. */
 export const VECTOR_EXCERPT = 300;
-/** A page waiting for its vector: what its document text is made of (see page-indexer's pageDocument). */
-export type PendingPage = { url: string; spaceId: string; title: string; host: string; excerpt: string };
+/** A page waiting for its vector: what its document text is made of (see page-indexer's pageDocument), and when it was last seen. */
+export type PendingPage = { url: string; spaceId: string; title: string; host: string; excerpt: string; lastVisit: string };
 /** Kept as a page's vector when the model refuses the page: it leaves the queue until its title or text changes. */
 export const REFUSED_VECTOR = new Float32Array(0);
 
 /** Lowercase without accents: « Été » and « ete » find each other (SQLite's LIKE only folds ASCII). */
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+/** node:sqlite cuts a string at NUL when it reads it back: a title or text that keeps one never equals what was written. */
+const noNul = (s: string) => s.replaceAll("\0", "");
 
 /** Browsing history: one row per URL and per space, in `<profile>/history.sqlite`. */
 export class History {
@@ -66,13 +68,14 @@ export class History {
   >;
   private byteCap: number;
 
-  constructor(path: string, options: { byteCap?: number } = {}) {
+  /** `vectorModel`: the search model's file name; the vectors of another model are dropped at open. */
+  constructor(path: string, options: { byteCap?: number; vectorModel?: string } = {}) {
     this.byteCap = options.byteCap ?? BYTES_CAP;
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
-    this.db.exec("PRAGMA journal_mode = WAL;");
+    this.db.exec("PRAGMA journal_mode = WAL; PRAGMA secure_delete = ON;");
     this.db.function("fold", { deterministic: true }, (s) => fold(String(s)));
-    this.createTables();
+    this.createTables(options.vectorModel);
     this.req = {
       note: this.db.prepare(`
         INSERT INTO visits (url, space_id, title, last_visit, private, url_fold, title_fold) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -129,9 +132,9 @@ export class History {
           v.url LIKE 'https://' || icons.host || '/%' OR v.url LIKE 'http://' || icons.host || '/%' OR
           v.url LIKE 'https://' || icons.host || ':%' OR v.url LIKE 'http://' || icons.host || ':%')`),
       pendingVectors: this.db.prepare(`
-        SELECT v.url, v.space_id AS spaceId, v.title, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt FROM visits v
-        LEFT JOIN texts t ON t.url = v.url AND t.space_id = v.space_id
-        WHERE v.private = 0 AND NOT EXISTS (SELECT 1 FROM vectors x WHERE x.url = v.url AND x.space_id = v.space_id)
+        SELECT v.url, v.space_id AS spaceId, v.title, v.last_visit AS lastVisit, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt
+        FROM visits v LEFT JOIN texts t ON t.url = v.url AND t.space_id = v.space_id
+        WHERE v.private = 0 AND v.last_visit <= ? AND NOT EXISTS (SELECT 1 FROM vectors x WHERE x.url = v.url AND x.space_id = v.space_id)
         ORDER BY v.last_visit DESC LIMIT ?`),
       // Saved only if the page is still as it was embedded (its title or text may have changed meanwhile) and not private.
       // REFUSED_VECTOR binds as NULL: stored as an empty blob.
@@ -145,8 +148,7 @@ export class History {
         SELECT v.url, v.space_id AS spaceId, v.title, v.last_visit AS lastVisit, v.visits, x.vec, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt
         FROM vectors x JOIN visits v ON v.url = x.url AND v.space_id = x.space_id
         LEFT JOIN texts t ON t.url = x.url AND t.space_id = x.space_id
-        WHERE v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until
-        ORDER BY x.url`),
+        WHERE v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until`),
       excerpt: this.db.prepare(
         `SELECT snippet(texts_fts, 2, '', '', '…', ${SNIPPET_WORDS}) AS excerpt FROM texts_fts WHERE texts_fts MATCH ? AND rowid = ?`,
       ),
@@ -154,7 +156,7 @@ export class History {
   }
 
   /** Creates the tables if they are missing. */
-  private createTables(): void {
+  private createTables(vectorModel?: string): void {
     this.db.exec("BEGIN");
     try {
       this.db.exec(`
@@ -226,7 +228,13 @@ export class History {
         CREATE TRIGGER IF NOT EXISTS texts_update_vector AFTER UPDATE OF text ON texts
         WHEN substr(new.text, 1, ${VECTOR_EXCERPT}) <> substr(old.text, 1, ${VECTOR_EXCERPT}) BEGIN
           DELETE FROM vectors WHERE url = old.url AND space_id = old.space_id;
-        END;`);
+        END;
+        CREATE TABLE IF NOT EXISTS vector_model (name TEXT NOT NULL);`);
+      const model = this.db.prepare("SELECT name FROM vector_model").get() as { name: string } | undefined;
+      if (vectorModel !== undefined && model?.name !== vectorModel) {
+        this.db.exec("DELETE FROM vectors; DELETE FROM vector_model;");
+        this.db.prepare("INSERT INTO vector_model (name) VALUES (?)").run(vectorModel);
+      }
       this.db.exec("COMMIT");
     } catch (e) {
       this.db.exec("ROLLBACK");
@@ -236,7 +244,8 @@ export class History {
 
   note(v: { url: string; title: string; spaceId: string; private: boolean; date?: Date }): void {
     if (!this.db.isOpen) return; // a page can still navigate during the exit
-    this.req.note.run(v.url, v.spaceId, v.title, (v.date ?? new Date()).toISOString(), v.private ? 1 : 0, fold(v.url), fold(v.title));
+    const title = noNul(v.title);
+    this.req.note.run(v.url, v.spaceId, title, (v.date ?? new Date()).toISOString(), v.private ? 1 : 0, fold(v.url), fold(title));
   }
 
   /** Imported visits (http(s) only, within RETENTION_DAYS) in one transaction; returns the rows written or updated. */
@@ -248,7 +257,7 @@ export class History {
       for (const v of visits) {
         const t = v.date.getTime();
         if (!/^https?:\/\//i.test(v.url) || !(t >= oldest)) continue;
-        const title = v.title || v.url;
+        const title = noNul(v.title || v.url);
         count += Number(this.req.importVisit.run(v.url, title, v.date.toISOString(), fold(v.url), fold(title)).changes);
       }
     });
@@ -256,8 +265,9 @@ export class History {
   }
 
   /** The title often arrives after the navigation: it completes the visit without counting a new one. */
-  updateTitle(url: string, spaceId: string, title: string): void {
+  updateTitle(url: string, spaceId: string, raw: string): void {
     if (!this.db.isOpen) return;
+    const title = noNul(raw);
     this.req.updateTitle.run(title, fold(title), url, spaceId);
     this.req.updateTitleText.run(title, url, spaceId, title);
   }
@@ -283,16 +293,17 @@ export class History {
       this.req.makePrivate.run(spaceId);
       this.req.forgetSpaceTexts.run(spaceId);
     });
+    this.checkpoint();
   }
 
   /** Keeps a page's text (truncated to TEXT_MAX characters), replacing that of the previous visit. */
   keep(r: { url: string; spaceId: string; title: string; text: string; date?: Date }): void {
     if (!this.db.isOpen) return;
     if (this.req.isPrivate.get(r.url, r.spaceId)) return; // defense: nothing is kept from a private visit
-    let text = r.text.slice(0, TEXT_MAX);
+    let text = noNul(r.text).slice(0, TEXT_MAX);
     if (/[\uD800-\uDBFF]$/.test(text)) text = text.slice(0, -1); // no half character
     const date = (r.date ?? new Date()).toISOString();
-    this.req.keep.run(r.url, r.spaceId, r.title, date, text, Buffer.byteLength(text, "utf8"));
+    this.req.keep.run(r.url, r.spaceId, noNul(r.title), date, text, Buffer.byteLength(text, "utf8"));
   }
 
   /** Forgets a visit's text without erasing the visit. */
@@ -323,6 +334,7 @@ export class History {
       }
       for (const id of toForget) this.req.forgetTextId.run(id);
     });
+    this.checkpoint();
   }
 
   /** The most recent kept text of this URL, excluding private visits. */
@@ -386,36 +398,43 @@ export class History {
   }
 
   /**
-   * Non-private pages without a vector, most recent first.
-   * Its scan walks past every vectored page (one primary-key lookup each): a few ms per 10k visits, once a minute when idle.
+   * Non-private pages without a vector last seen at or before `before` (an ISO date; any when absent), most recent first.
+   * Its scan walks past every vectored page (one primary-key lookup each): a few ms per 10k visits, once a minute when idle;
+   * a pass passes its last batch's oldest date as `before` so it does not walk past the pages it already did.
    */
-  pendingVectors(limit: number): PendingPage[] {
+  pendingVectors(limit: number, before = "\uffff"): PendingPage[] {
     if (!this.db.isOpen) return [];
-    return (this.req.pendingVectors.all(limit) as Omit<PendingPage, "host">[]).map((r) => {
+    return (this.req.pendingVectors.all(before, limit) as Omit<PendingPage, "host">[]).map((r) => {
       let host = "";
       try {
         host = new URL(r.url).hostname.replace(/^www\./, "");
       } catch { /* no host */ }
-      return { url: r.url, spaceId: r.spaceId, title: r.title, host, excerpt: r.excerpt };
+      return { url: r.url, spaceId: r.spaceId, title: r.title, host, excerpt: r.excerpt, lastVisit: r.lastVisit };
     });
   }
 
-  /** Keeps the vectors (L2-normalised, or REFUSED_VECTOR) of pages read by pendingVectors; a page changed or erased since is skipped. */
-  saveVectors(rows: (PendingPage & { vec: Float32Array })[]): void {
-    if (!this.db.isOpen) return;
+  /**
+   * Keeps the vectors (L2-normalised, or REFUSED_VECTOR) of pages read by pendingVectors; a page changed or erased since
+   * is skipped. Returns the vectors written.
+   */
+  saveVectors(rows: (PendingPage & { vec: Float32Array })[]): number {
+    if (!this.db.isOpen) return 0;
+    let written = 0;
     this.transaction(() => {
       for (const r of rows) {
         // Raw Float32 in the platform's order: little-endian on every machine Ressac runs on.
         const vec = new Uint8Array(r.vec.buffer, r.vec.byteOffset, r.vec.byteLength);
-        this.req.saveVector.run({ url: r.url, spaceId: r.spaceId, title: r.title, excerpt: r.excerpt, vec });
+        written += Number(this.req.saveVector.run({ url: r.url, spaceId: r.spaceId, title: r.title, excerpt: r.excerpt, vec }).changes);
       }
     });
+    return written;
   }
 
   /**
    * The pages nearest to `vec` (L2-normalised: the dot product is the cosine), one per URL with its best score, with
    * non-private visits only, within [since, until], optionally on `sites` (a host or its subdomains).
-   * The vectors are read one row at a time, by URL, and only the `limit` best pages are kept.
+   * The vectors are read one row at a time (unsorted: sorting them all costs a temp B-tree), grouped per URL in a Map of
+   * small hits, and only the `limit` best pages are kept.
    * shortcut: every vector in the period is read and compared in JS (about 3 KB and a few µs per page), fine for tens of
    * thousands of pages; past that, keep the vectors in memory or use a vector index.
    */
@@ -426,18 +445,9 @@ export class History {
       url: string; spaceId: string; title: string; lastVisit: string; visits: number; vec: Uint8Array; excerpt: string;
     }>;
     type Hit = PageHit & { score: number };
-    const top: Hit[] = []; // best first, at most q.limit
+    const hits = new Map<string, Hit>();
     const stale: [url: string, spaceId: string][] = [];
-    let hit: Hit | undefined; // the URL being read: its rows come together
-    const rank = () => {
-      if (!hit) return;
-      const i = top.findIndex((x) => x.score < hit!.score);
-      top.splice(i < 0 ? top.length : i, 0, hit);
-      if (top.length > q.limit) top.pop();
-      hit = undefined;
-    };
     for (const r of rows) {
-      if (hit && hit.url !== r.url) rank();
       if (!onSites(r.url, sites)) continue;
       if (r.vec.byteLength === 0) continue; // refused by the model
       if (r.vec.byteLength !== vec.byteLength) {
@@ -448,16 +458,23 @@ export class History {
       const page = b.byteOffset % 4 === 0 ? new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4) : new Float32Array(b.slice().buffer);
       let score = 0;
       for (let i = 0; i < page.length; i++) score += page[i]! * vec[i]!;
+      const hit = hits.get(r.url);
       if (!hit) {
-        hit = { url: r.url, title: r.title, lastVisit: r.lastVisit, visits: r.visits, excerpt: r.excerpt, favicon: null, score };
+        hits.set(r.url, { url: r.url, title: r.title, lastVisit: r.lastVisit, visits: r.visits, excerpt: r.excerpt, favicon: null, score });
         continue;
       }
       hit.visits += r.visits;
       if (r.lastVisit > hit.lastVisit) Object.assign(hit, { title: r.title, lastVisit: r.lastVisit });
       if (score > hit.score) Object.assign(hit, { score, excerpt: r.excerpt });
     }
-    rank();
-    for (const [url, spaceId] of stale) this.req.dropVector.run(url, spaceId);
+    const top: Hit[] = []; // best first (equal scores by URL), at most q.limit
+    for (const hit of hits.values()) {
+      const i = top.findIndex((x) => x.score < hit.score || (x.score === hit.score && x.url > hit.url));
+      if (i < 0 && top.length >= q.limit) continue;
+      top.splice(i < 0 ? top.length : i, 0, hit);
+      if (top.length > q.limit) top.pop();
+    }
+    if (stale.length) this.transaction(() => { for (const [url, spaceId] of stale) this.req.dropVector.run(url, spaceId); });
     return top.map((x) => ({ ...x, favicon: this.favicon(x.url) }));
   }
 
@@ -500,6 +517,12 @@ export class History {
         this.req.clearIcons.run();
       }
     });
+    this.checkpoint();
+  }
+
+  /** Empties the WAL into the database (where secure_delete zeroes the freed pages): erased text leaves no copy behind. */
+  private checkpoint(): void {
+    this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   }
 
   private transaction(f: () => void): void {

@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -372,6 +372,19 @@ test("importVisits: http(s) only, retention, upsert keeps latest, not private, s
   expect(Date.now() - t).toBeLessThan(2000);
 });
 
+test("erased text leaves no trace in the database files (secure_delete, WAL truncated)", () => {
+  const read = () => ["", "-wal"].map((x) => { try { return readFileSync(path + x).toString("latin1"); } catch { return ""; } }).join("");
+  h.note({ url: "https://a.fr/", spaceId: "s", title: "Zorglubtitle", private: false });
+  h.keep({ url: "https://a.fr/", spaceId: "s", title: "Zorglubtitle", text: "Zorglubsecret ".repeat(50) });
+  expect(read()).toContain("Zorglubsecret");
+  h.erase();
+  expect(read()).not.toContain("Zorglub");
+  h.note({ url: "https://b.fr/", spaceId: "p", title: "Zorglubtitle", private: false });
+  h.keep({ url: "https://b.fr/", spaceId: "p", title: "Zorglubtitle", text: "Zorglubsecret ".repeat(50) });
+  h.makePrivate("p");
+  expect(read()).not.toContain("Zorglubsecret");
+});
+
 describe("site favicons", () => {
   const ICON = "data:image/png;base64,AAAA";
   const visit = (url: string, spaceId = "e", priv = false) => h.note({ url, title: url, spaceId, private: priv });
@@ -441,12 +454,44 @@ describe("page vectors", () => {
     visit("https://new.fr/b", "New", { date: d(5) });
     visit("https://priv.fr/", "Privé", { priv: true, date: d(6) });
     expect(h.pendingVectors(10)).toEqual([
-      { url: "https://new.fr/b", spaceId: "s", title: "New", host: "new.fr", excerpt: "" },
-      { url: "https://www.old.fr/a", spaceId: "s", title: "Old", host: "old.fr", excerpt: "x".repeat(300) },
+      { url: "https://new.fr/b", spaceId: "s", title: "New", host: "new.fr", excerpt: "", lastVisit: d(5).toISOString() },
+      { url: "https://www.old.fr/a", spaceId: "s", title: "Old", host: "old.fr", excerpt: "x".repeat(300), lastVisit: d(1).toISOString() },
     ]);
     expect(h.pendingVectors(1).map((r) => r.url)).toEqual(["https://new.fr/b"]);
     indexAll();
     expect(pending()).toEqual([]);
+  });
+
+  test("pending before a date: only pages last seen at or before it (a pass's cursor, ties included)", () => {
+    visit("https://a.fr/", "A", { date: d(1) });
+    visit("https://b.fr/", "B", { date: d(2) });
+    visit("https://c.fr/", "C", { date: d(2) });
+    visit("https://e.fr/", "E", { date: d(3) });
+    expect(h.pendingVectors(10, d(2).toISOString()).map((r) => r.url).sort()).toEqual(["https://a.fr/", "https://b.fr/", "https://c.fr/"]);
+  });
+
+  test("a NUL character in a title or text is dropped at every write, so the page's vector is saved", () => {
+    visit("https://a.fr/", "a\0b", { text: "x\0y" });
+    h.importVisits([{ url: "https://b.fr/", title: "c\0d", date: new Date() }]);
+    visit("https://c.fr/", "C");
+    h.updateTitle("https://c.fr/", "s", "e\0f");
+    const rows = h.pendingVectors(10);
+    expect(rows.map((r) => [r.title, r.excerpt]).sort()).toEqual([["ab", "xy"], ["cd", ""], ["ef", ""]]);
+    expect(h.saveVectors(rows.map((r) => ({ ...r, vec: v(1, 0) })))).toBe(3);
+    expect(pending()).toEqual([]);
+  });
+
+  test("vectors of another search model are dropped at open; the same model keeps them", () => {
+    h.close();
+    h = new History(path, { vectorModel: "m1.gguf" });
+    visit("https://a.fr/", "A");
+    indexAll();
+    h.close();
+    h = new History(path, { vectorModel: "m1.gguf" });
+    expect(pending()).toEqual([]);
+    h.close();
+    h = new History(path, { vectorModel: "m2.gguf" });
+    expect(pending()).toEqual(["https://a.fr/"]);
   });
 
   test("a private space is never pending, and turning a space private drops its vectors", () => {

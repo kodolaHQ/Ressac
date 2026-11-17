@@ -78,6 +78,34 @@ test("10 000 pages are indexed in batches of 32, most recent first, and a timer 
   expect(firstDocs[0]).toBe("title: Page 0 | text: p0.fr");
 }, 60_000);
 
+test("a pass reads each batch below the last one, without skipping pages that share a date", async () => {
+  const date = new Date();
+  h.importVisits(Array.from({ length: 35 }, (_, i) => ({ url: `https://t${i}.fr/`, title: `T ${i}`, date: i < 30 ? date : new Date(date.getTime() - 1000) })));
+  const befores: (string | undefined)[] = [];
+  const history = {
+    pendingVectors: (n: number, before?: string) => (befores.push(before), h.pendingVectors(n, before)),
+    saveVectors: (rows: Parameters<History["saveVectors"]>[0]) => h.saveVectors(rows),
+  };
+  const { docs, embed } = fake();
+  indexer = createPageIndexer({ history, embed, batch: 10, pauseMs: 0 });
+  indexer.start();
+  await done();
+  expect(new Set(docs).size).toBe(35);
+  expect(docs).toHaveLength(35);
+  expect(befores.slice(0, 2)).toEqual([undefined, date.toISOString()]);
+});
+
+test("a batch that saves nothing ends the pass instead of embedding the same pages again", async () => {
+  fill(5);
+  const history = { pendingVectors: (n: number) => h.pendingVectors(n), saveVectors: () => 0 };
+  const { embed } = fake();
+  indexer = createPageIndexer({ history, embed, pauseMs: 0, idleMs: 20 });
+  indexer.start();
+  await vi.waitFor(() => expect(embed).toHaveBeenCalledTimes(1));
+  await new Promise((r) => setTimeout(r, 100));
+  expect(embed).toHaveBeenCalledTimes(1);
+});
+
 test("resumes after a restart without embedding a page twice (vectors persisted)", async () => {
   fill(200);
   const first = fake();

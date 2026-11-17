@@ -61,6 +61,8 @@ export function createPageIndexer(o: {
   /** When the last pass emptied the queue; -Infinity: a pass runs at the next look (start). */
   let lastPass = -Infinity;
   let inPass = false;
+  /** Within a pass: the oldest date of the last batch; the next batch reads from there down (ties included). */
+  let cursor: string | undefined;
   const later = (ms: number, r: number) => {
     timer = setTimeout(() => void run(r), ms);
     timer.unref();
@@ -73,11 +75,12 @@ export function createPageIndexer(o: {
   const run = async (r: number) => {
     try {
       while (r === round) {
-        const pages = o.history.pendingVectors(batch);
-        if (!pages.length) {
+        const pages = o.history.pendingVectors(batch, inPass ? cursor : undefined);
+        const endPass = () => {
           if (inPass) [inPass, lastPass] = [false, clock()];
           return later(idleMs, r);
-        }
+        };
+        if (!pages.length) return endPass();
         if (!inPass && pages.length < batch && clock() - lastPass < passEveryMs) return later(idleMs, r);
         inPass = true;
         const docs = pages.map(pageDocument);
@@ -93,7 +96,9 @@ export function createPageIndexer(o: {
           }
         }
         if (r !== round) return; // stopped meanwhile: the batch is dropped
-        o.history.saveVectors(pages.map((p, i) => ({ ...p, vec: vecs[i]! })));
+        // Nothing saved (every page changed meanwhile): the same pages would come back, the pass ends here.
+        if (o.history.saveVectors(pages.map((p, i) => ({ ...p, vec: vecs[i]! }))) === 0) return endPass();
+        cursor = pages[pages.length - 1]!.lastVisit;
         await new Promise((ok) => setTimeout(ok, pauseMs));
       }
     } catch (e) {
