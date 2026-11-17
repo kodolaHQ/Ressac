@@ -52,14 +52,18 @@ export function createEngines(o: {
       return e === docker ? o.docker.wake(reason) : e.wake(reason);
     },
   };
-  const current = (): ContainerEngine => (!o.docker.binary() || (mark !== null && o.machine.status().kind !== "unsupported") ? o.machine : docker);
+  const current = (): ContainerEngine => {
+    const s = o.machine.status();
+    // A machine the user removed waits for their « Installer »: Docker serves meanwhile, where there is one.
+    return !o.docker.binary() || (mark !== null && s.kind !== "unsupported" && !(s.kind === "absent" && s.removed)) ? o.machine : docker;
+  };
 
   return {
     current,
     /**
      * Called once the machine is installed. A failure to stop Docker's workshop or wake the machine leaves Docker serving
      * (tried again at the next AI wake or launch). A failed copy still hands over, the copy owed (Docker's volume stays
-     * as it was); a later copy never overwrites a whole logins volume on the machine (copyLogins).
+     * as it was); a later copy only fills what the machine's logins volume lacks (copyLogins).
      */
     settle: (): Promise<void> =>
       (settling ??= (async () => {
@@ -96,12 +100,17 @@ export function createEngines(o: {
 
 const PENDING = "pending";
 
-/** In the machine's logins volume while a copy runs: a copy cut short (quit) is done again at the next launch. */
-const COPYING = "/v/.ressac-copying";
+/**
+ * Run in the machine's workshop image (GNU tar) on its logins volume at /v, Docker's tar on stdin. The stream lands in a
+ * staging folder first, so a copy cut short (quit, AI off) leaves nothing half-written among the logins; then only the
+ * files the volume lacks are added: a login made on the machine is never overwritten.
+ * shortcut: a cut during the second, local tar (well under a second) can still leave one file short; staged renames if it shows.
+ */
+export const LOGINS_EXTRACT = `S=/v/.ressac-incoming; rm -rf "$S" && mkdir "$S" && tar -C "$S" -xf - && tar -C "$S" -cf - . | tar -C /v --skip-old-files -xf - && rm -rf "$S"`;
 
 /**
- * `docker run … tar -cf -` of the logins volume (read-only) piped into the machine's same volume. Copies nothing when
- * Docker has no such volume, or the machine already has a whole one (never overwritten). Both sides must succeed.
+ * `docker run … tar -cf -` of the logins volume (read-only) piped into the machine's same volume (LOGINS_EXTRACT).
+ * Copies nothing when Docker has no such volume. Both sides must succeed.
  */
 export async function copyLogins(o: { docker: string; podman: string; podmanArgs: string[]; timeoutMs?: number; run?: Runner }): Promise<void> {
   const run = o.run ?? createRunner();
@@ -112,16 +121,9 @@ export async function copyLogins(o: { docker: string; podman: string; podmanArgs
     if (/no such volume/i.test(source.stderr)) return;
     throw fail("docker volume inspect", source);
   }
-  const target = await exec(o.podman, [...o.podmanArgs, "volume", "exists", VOLUME_HOME]);
-  if (target.code !== 0 && target.code !== 1) throw fail("podman volume exists", target); // 1 is "no such volume"
-  if (target.code === 0) {
-    const cut = await exec(o.podman, [...o.podmanArgs, "run", "--rm", "--pull", "never", "--network", "none", "-u", "root", "-v", `${VOLUME_HOME}:/v:ro`, IMAGE, "test", "-e", COPYING]);
-    if (cut.code === 1) return;
-    if (cut.code !== 0) throw fail("podman copy check", cut);
-  }
   const signal = AbortSignal.timeout(o.timeoutMs ?? 10 * 60_000);
   const from = spawn(o.docker, ["run", "--rm", "--pull", "never", "--network", "none", "-u", "root", "-v", `${VOLUME_HOME}:/v:ro`, IMAGE, "tar", "-C", "/v", "-cf", "-", "."], { stdio: ["ignore", "pipe", "pipe"], signal });
-  const to = spawn(o.podman, [...o.podmanArgs, "run", "--rm", "-i", "--pull", "never", "--network", "none", "-u", "root", "-v", `${VOLUME_HOME}:/v`, IMAGE, "sh", "-c", `touch ${COPYING} && tar -C /v -xf - && rm ${COPYING}`], { stdio: ["pipe", "ignore", "pipe"], signal });
+  const to = spawn(o.podman, [...o.podmanArgs, "run", "--rm", "-i", "--pull", "never", "--network", "none", "-u", "root", "-v", `${VOLUME_HOME}:/v`, IMAGE, "sh", "-c", LOGINS_EXTRACT], { stdio: ["pipe", "ignore", "pipe"], signal });
   to.stdin.on("error", () => {}); // a podman that dies early: its exit code tells
   from.stdout.pipe(to.stdin);
   let err = "";

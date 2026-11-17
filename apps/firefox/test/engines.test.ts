@@ -1,9 +1,10 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ContainerEngine } from "../../../packages/kernel/src/index.ts";
-import { copyLogins, createEngines } from "../host/engines";
+import { LOGINS_EXTRACT, copyLogins, createEngines } from "../host/engines";
 import type { MachineStatus } from "../host/machine";
 
 const dirs: string[] = [];
@@ -69,6 +70,17 @@ const kind = (w: ReturnType<typeof world>) => w.engines.current().kind;
 describe("choosing the engine", () => {
   it("machine ready wins over Docker", async () => {
     for (const k of ["running", "stopped"] as const) expect(kind(world({ status: k, marker: true }))).toBe("machine");
+  });
+
+  it("a machine the user removed: Docker serves where there is one, else the machine (which says how to install it again)", () => {
+    const w = world({ status: "absent", marker: true });
+    w.setStatus("absent");
+    expect(kind(w)).toBe("machine");
+    (w.machine as { status: () => MachineStatus }).status = () => ({ kind: "absent", removed: true });
+    expect(kind(w)).toBe("docker");
+    const alone = world({ docker: false, marker: true });
+    (alone.machine as { status: () => MachineStatus }).status = () => ({ kind: "absent", removed: true });
+    expect(kind(alone)).toBe("machine");
   });
 
   it("machine downloading: Docker serves", () => {
@@ -191,18 +203,35 @@ describe("copyLogins", () => {
     return f;
   };
 
-  it("pipes the Docker volume's tar (read-only) into the machine's new volume", async () => {
+  it("pipes the Docker volume's tar (read-only) into a staging folder of the machine's volume, then fills only the missing files", async () => {
     const d = tmp();
     const docker = tool(d, "docker", `case "$1" in run) printf 'LOGINS';; esac`);
-    const podman = tool(d, "podman", `case "$3" in volume) exit 1;; esac; cat > ${join(d, "received")}`);
+    const podman = tool(d, "podman", `cat > ${join(d, "received")}`);
     await copyLogins({ docker, podman, podmanArgs: ["--url", "unix:///s"] });
     expect(readFileSync(join(d, "received"), "utf8")).toBe("LOGINS");
     expect(readFileSync(join(d, "docker.log"), "utf8")).toBe(
       "volume inspect webaios-home\nrun --rm --pull never --network none -u root -v webaios-home:/v:ro ressac-workshop:1 tar -C /v -cf - .\n",
     );
-    expect(readFileSync(join(d, "podman.log"), "utf8")).toBe(
-      "--url unix:///s volume exists webaios-home\n--url unix:///s run --rm -i --pull never --network none -u root -v webaios-home:/v ressac-workshop:1 sh -c touch /v/.ressac-copying && tar -C /v -xf - && rm /v/.ressac-copying\n",
-    );
+    expect(readFileSync(join(d, "podman.log"), "utf8")).toBe(`--url unix:///s run --rm -i --pull never --network none -u root -v webaios-home:/v ressac-workshop:1 sh -c ${LOGINS_EXTRACT}\n`);
+  });
+
+  const gtar = ["/opt/homebrew/bin/gtar", "/usr/local/bin/gtar"].find((f) => existsSync(f));
+  it.skipIf(!gtar)("the extract (GNU tar, as in the workshop image) never overwrites the machine's files, and a cut stream leaves none half-written", async () => {
+    const d = tmp();
+    const run = (input: Buffer) => spawnSync("/bin/sh", ["-c", LOGINS_EXTRACT.replaceAll("/v", join(d, "v")).replaceAll("tar ", `${gtar} `)], { input });
+    const src = join(d, "src");
+    mkdirSync(join(src, ".claude"), { recursive: true });
+    writeFileSync(join(src, ".claude", ".credentials.json"), "docker-claude");
+    writeFileSync(join(src, ".codex-auth"), "docker-codex");
+    const archive = spawnSync(gtar!, ["-C", src, "-cf", "-", "."]).stdout;
+    mkdirSync(join(d, "v", ".claude"), { recursive: true });
+    writeFileSync(join(d, "v", ".claude", ".credentials.json"), "machine-claude"); // signed in on the machine meanwhile
+    expect(run(archive.subarray(0, 2600)).status).not.toBe(0); // cut inside the last file's data
+    expect(existsSync(join(d, "v", ".codex-auth"))).toBe(false);
+    expect(run(archive).status).toBe(0);
+    expect(readFileSync(join(d, "v", ".claude", ".credentials.json"), "utf8")).toBe("machine-claude");
+    expect(readFileSync(join(d, "v", ".codex-auth"), "utf8")).toBe("docker-codex");
+    expect(readdirSync(join(d, "v")).sort()).toEqual([".claude", ".codex-auth"]);
   });
 
   it("no Docker volume: nothing to copy", async () => {
@@ -219,36 +248,10 @@ describe("copyLogins", () => {
     await expect(copyLogins({ docker, podman: tool(d, "podman", ""), podmanArgs: [] })).rejects.toThrow("Cannot connect");
   });
 
-  it("the machine already has a logins volume: never overwritten", async () => {
-    const d = tmp();
-    const docker = tool(d, "docker", "");
-    const podman = tool(d, "podman", `case "$*" in *"-e /v/.ressac-copying"*) exit 1;; esac`);
-    await copyLogins({ docker, podman, podmanArgs: [] });
-    expect(readFileSync(join(d, "podman.log"), "utf8")).toBe(
-      "volume exists webaios-home\nrun --rm --pull never --network none -u root -v webaios-home:/v:ro ressac-workshop:1 test -e /v/.ressac-copying\n",
-    );
-    expect(readFileSync(join(d, "docker.log"), "utf8")).toBe("volume inspect webaios-home\n");
-  });
-
-  it("a copy cut short (quit mid-copy) left its marker: copied again", async () => {
-    const d = tmp();
-    const docker = tool(d, "docker", `case "$1" in run) printf 'LOGINS';; esac`);
-    const podman = tool(d, "podman", `case "$*" in *"tar -C"*) cat > ${join(d, "received")};; esac`);
-    await copyLogins({ docker, podman, podmanArgs: [] });
-    expect(readFileSync(join(d, "received"), "utf8")).toBe("LOGINS");
-  });
-
-  it("a marker check that fails (not 0 or 1) rejects, nothing copied", async () => {
-    const d = tmp();
-    const podman = tool(d, "podman", `case "$*" in *"-e /v/.ressac-copying"*) exit 125;; esac`);
-    await expect(copyLogins({ docker: tool(d, "docker", ""), podman, podmanArgs: [] })).rejects.toThrow();
-    expect(readFileSync(join(d, "podman.log"), "utf8")).not.toContain("tar");
-  });
-
   it("either side failing rejects", async () => {
     for (const [dockerBody, podmanBody] of [
-      [`case "$1" in run) exit 3;; esac`, `case "$1" in volume) exit 1;; esac; cat >/dev/null`],
-      ["", `case "$1" in volume) exit 1;; esac; cat >/dev/null; exit 4`],
+      [`case "$1" in run) exit 3;; esac`, `cat >/dev/null`],
+      ["", `cat >/dev/null; exit 4`],
     ]) {
       const d = tmp();
       await expect(copyLogins({ docker: tool(d, "docker", dockerBody!), podman: tool(d, "podman", podmanBody!), podmanArgs: [] })).rejects.toThrow();
