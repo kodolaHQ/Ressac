@@ -18,9 +18,9 @@
     type CommandLine,
     type SourceTab,
     type CommandSources,
-    type BrowserCommand,
   } from "./command";
-  import { SHORTCUT_IDS, SHORTCUTS, shortcutLabel } from "../../shared/shortcuts";
+  import { browserCommands } from "../../shared/commands";
+  import { showSection } from "./Settings.svelte";
   import { walkableTabs } from "../../shared/walkable-tabs";
   import type { ActionShown } from "../../shared/actions";
   import type { Visit } from "../../shared/model";
@@ -95,13 +95,8 @@
     });
   });
 
-  // Every remappable shortcut but the two that open this bar, then vim on/off: the browser's own features, typed by name.
-  const commands = $derived.by<BrowserCommand[]>(() => {
-    const s = appState.value?.settings;
-    const list: BrowserCommand[] = SHORTCUT_IDS.filter((id) => id !== "command" && id !== "address").map((id) => ({ id, label: t(SHORTCUTS[id].label), keys: shortcutLabel(id, s) }));
-    list.push({ id: "vim", label: t(s?.vimMode ? "sidebar-command-vim-off" : "sidebar-command-vim-on"), keys: "" });
-    return list;
-  });
+  // The browser's own features, typed by name: its shortcuts, its settings, Réglages' sections.
+  const commands = $derived(appState.value ? browserCommands(appState.value) : []);
 
   const sources: CommandSources = $derived({ actions, commands, tabs: tabs, siteApps: [...projects, ...sites], history: hist, bookmarks: marks });
 
@@ -281,8 +276,13 @@
     if (l.type === "command") {
       // Closed first: the keyboard goes back to the page, then the command may take it (agent panel, design mode).
       closeCommand(true);
-      if (l.command.id === "vim") api.dispatch({ type: "setVimMode", enabled: !appState.value?.settings.vimMode });
-      else api.runShortcut(l.command.id);
+      const r = l.command.run;
+      if (r.kind === "shortcut") api.runShortcut(r.id);
+      else if (r.kind === "dispatch") api.dispatch(r.action);
+      else {
+        showSection(r.section);
+        api.dispatch({ type: "openSettings", windowId: win.id });
+      }
       return;
     }
     if (l.type === "default") api.navigate(target, l.text);

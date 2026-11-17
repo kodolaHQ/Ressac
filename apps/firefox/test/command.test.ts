@@ -3,6 +3,8 @@ import type { ActionShown } from "../shared/actions";
 import type { ApplicationShown } from "../shared/api";
 import type { Visit } from "../shared/model";
 import type { ShownSite } from "../shared/sites";
+import { browserCommands, type BrowserCommand } from "../shared/commands";
+import { initialState } from "../core/state/initial-state";
 import { projectSiteApp, siteSiteApp, paramRequest, commandLines, defaultParam, titleBefore, sectionOf, type SiteApp, type SourceTab, type CommandSources } from "../ui/components/command";
 
 const action = (id: string, name: string): ActionShown => ({ id, name: name, description: "", keywords: [], input: null, account: [], public: [], grant: true, web: false, readsNeeded: false, last: null });
@@ -132,12 +134,38 @@ test("bookmarks: a section after history, capped, without a URL already in a tab
   expect(commandLines("", { ...EMPTY, bookmarks: S.bookmarks }, null).map((x) => x.type)).toEqual(["default"]);
 });
 
-test("commands: found by name after the actions, at most 4, not with an empty field", () => {
-  const cmd = (id: "settings" | "compact" | "design" | "apps" | "history", label: string) => ({ id, label, keys: "⌘," });
-  const S: CommandSources = { ...EMPTY, actions: [action("a", "Mode action")], tabs: [tab("o", "mode")], commands: [cmd("compact", "Mode compact"), cmd("design", "Mode design"), cmd("settings", "Réglages"), cmd("apps", "Mode a"), cmd("history", "Mode b")] };
+test("commands: found by name after the tabs and apps, at most 5, not with an empty field", () => {
+  const cmd = (id: string, label: string): BrowserCommand => ({ id, group: "shortcut", label, keys: "⌘,", words: "", current: false, run: { kind: "shortcut", id: "settings" } });
+  const S: CommandSources = { ...EMPTY, actions: [action("a", "Mode action")], tabs: [tab("o", "mode")], commands: ["a", "b", "c", "d", "e", "f"].map((x) => cmd(x, `Mode ${x}`)) };
   const l = commandLines("MODE", S, null);
-  expect(l.map((x) => x.type)).toEqual(["default", "action", "command", "command", "command", "command", "tab"]);
-  expect(sectionOf(l[2]!)).toBe("commands");
-  expect(titleBefore(l, 2)).toBe("Commandes");
+  expect(l.map((x) => x.type)).toEqual(["default", "action", "tab", "command", "command", "command", "command", "command"]);
+  expect(sectionOf(l[3]!)).toBe("commands");
+  expect(titleBefore(l, 3)).toBe("Commandes");
   expect(commandLines("", S, null).some((x) => x.type === "command")).toBe(false);
+});
+
+test("commands: every typed word in the name or the keywords; the option already chosen is left out", () => {
+  const all = browserCommands({ locale: "fr", settings: { ...initialState().settings, appearance: "dark" } });
+  const S: CommandSources = { ...EMPTY, commands: all };
+  const found = (q: string) => commandLines(q, S, null).flatMap((x) => (x.type === "command" ? [x.command.label] : []));
+  expect(found("thème")).toEqual(["Apparence : Comme le Mac", "Apparence : Claire"]);
+  expect(found("theme sombre")).toEqual([]);
+  expect(found("theme clai")).toEqual(["Apparence : Claire"]);
+  // A word must start a word of the name: « a » alone does not pull every command in.
+  expect(found("page a")).toEqual(["Ne plus ouvrir sur la page d'accueil au lancement"]);
+  expect(found("vie privée")).toEqual(["Réglages › Vie privée"]);
+  expect(found("compact")).toEqual(["Mode compact"]);
+  expect(found("figer l'aura")).toEqual(["Figer l'aura"]);
+});
+
+test("browserCommands: ids do not depend on the state; toggles say what they do next", () => {
+  const base = initialState().settings;
+  const off = browserCommands({ locale: "fr", settings: { ...base, vimMode: false, auraMotion: true } });
+  const on = browserCommands({ locale: "en", settings: { ...base, vimMode: true, auraMotion: false, language: "fr" } });
+  expect(on.map((c) => c.id)).toEqual(off.map((c) => c.id));
+  expect(off.find((c) => c.id === "vim")!.label).toBe("Activer le mode vim");
+  expect(on.find((c) => c.id === "vim")!.run).toEqual({ kind: "dispatch", action: { type: "setVimMode", enabled: false } });
+  expect(off.find((c) => c.id === "aura")!.label).toBe("Figer l'aura");
+  expect(on.find((c) => c.id === "language-fr")!.current).toBe(true);
+  expect(off.some((c) => c.id === "command" || c.id === "address")).toBe(false);
 });

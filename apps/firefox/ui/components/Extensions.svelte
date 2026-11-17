@@ -6,7 +6,7 @@
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import { markSeen } from "./hints";
-  import { showAgentsSection } from "./Settings.svelte";
+  import { showSection } from "./Settings.svelte";
 
   // Everything from a manifest or a console is shown as text (never {@html}): it is data.
   let lines = $state<ExtensionLine[]>([]);
@@ -18,7 +18,7 @@
   const helpShown = $derived(reopened || !appState.value?.settings.hints.seen.includes("extensions"));
   $effect(() => void api.settings.amoAccount().then((a) => (accountSaved = a.saved)));
   function connect() {
-    showAgentsSection();
+    showSection("agents");
     api.dispatch({ type: "openSettings", windowId: api.windowId });
   }
   function closeHelp() {

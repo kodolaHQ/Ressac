@@ -207,6 +207,23 @@ describe("Command bar", () => {
     await pressKeys(m, "Enter");
     await waitBar(false);
     await waitState((s) => s.windows[0]!.compact, (c) => c === true);
+    // A setting typed by its keywords; the option already chosen is not offered.
+    await pressKeys(m, "Meta+t");
+    await type("theme sombre");
+    await waitUi(m, "return doc.querySelector('[data-testid=\"command-row\"][data-type=\"command\"]')?.textContent.includes('Apparence : Sombre')");
+    await pressKeys(m, "ArrowDown");
+    await pressKeys(m, "Enter");
+    await waitState((s) => s.settings.appearance, (a) => a === "dark");
+    await pressKeys(m, "Meta+t");
+    await type("theme");
+    await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"command-row\"][data-type=\"command\"]')].map((r) => r.textContent).join('|').includes('Comme le Mac')");
+    expect(await inUi<string>(m, "return [...doc.querySelectorAll('[data-testid=\"command-row\"]')].map((r) => r.textContent).join('|')")).not.toContain("Sombre");
+    // A section of Réglages.
+    await type("vie privée");
+    await waitUi(m, "return doc.querySelector('[data-testid=\"command-row\"][data-type=\"command\"]')?.textContent.includes('Réglages › Vie privée')");
+    await pressKeys(m, "ArrowDown");
+    await pressKeys(m, "Enter");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"settings-privacy\"]')");
     for (const on of [true, false]) {
       await pressKeys(m, "Meta+t");
       await type("vim");
@@ -229,6 +246,15 @@ describe("Command bar", () => {
     await fire("ressac-command-vim");
     await waitState((s) => s.settings.vimMode, (v) => v === true);
     await waitFor(m, `return document.getElementById("ressac-command-vim").label`, (l) => l === "Désactiver le mode vim");
+    // Réglages' sections and the settings' choices: the one chosen is checked.
+    await fire("ressac-command-settings-shortcuts");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"settings-shortcuts\"]')");
+    await fire("ressac-command-appearance-dark");
+    await waitState((s) => s.settings.appearance, (a) => a === "dark");
+    await waitFor(m, `return document.getElementById("ressac-command-appearance-dark").getAttribute("checked")`, (c) => c === "true");
+    // A click on the chosen option must not untick it (macOS menus flip autocheck items themselves); a toggle has no tick.
+    expect(await m.execute(`return document.getElementById("ressac-command-appearance-dark").getAttribute("autocheck")`)).toBe("false");
+    expect(await m.execute(`return document.getElementById("ressac-command-vim").getAttribute("type")`)).toBe(null);
     // A binding changed in Réglages shows in the menu.
     await dispatch(m, { type: "setShortcut", id: "compact", binding: { key: "k", shift: true, alt: false, ctrl: false, meta: true } });
     await waitFor(m, `return document.getElementById("ressac-command-compact").label`, (l) => l === "Mode compact (⇧⌘K)");
@@ -323,8 +349,9 @@ describe("Command bar", () => {
     await type("Page A");
     await waitUi(m, "return doc.querySelectorAll('[data-testid=\"command-row\"][data-type=\"tab\"]').length === 1");
     expect(await selectedType()).toBe("default");
+    // ↑ from the first row wraps to the last, ↓ from the last back to the first.
     await pressKeys(m, "ArrowUp");
-    expect(await selectedType()).toBe("tab");
+    expect(await inUi<boolean>(m, "return [...doc.querySelectorAll('[data-testid=\"command-row\"]')].at(-1).getAttribute('aria-selected') === 'true'")).toBe(true);
     await pressKeys(m, "ArrowDown");
     expect(await selectedType()).toBe("default");
   });

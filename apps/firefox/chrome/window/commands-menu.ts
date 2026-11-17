@@ -1,15 +1,14 @@
+import { browserCommands, type BrowserCommand } from "../../shared/commands";
 import { format } from "../../shared/i18n";
-import { SHORTCUT_IDS, SHORTCUTS, shortcutLabel, type ShortcutId } from "../../shared/shortcuts";
+import { SHORTCUTS } from "../../shared/shortcuts";
 import type { RessacStore } from "../store";
 import type { WindowController } from "./controller";
 
-/** Every Ressac command the menu lists (ids `ressac-command-<id>`): the remappable shortcuts, then vim on/off. */
-export const MENU_COMMANDS: (ShortcutId | "vim")[] = [...SHORTCUT_IDS, "vim"];
-
 /**
- * « Commandes » in a main window's macOS menu bar, before Fenêtre: Ressac's own features, so the Help menu's search finds
- * them (⌘T's « Commandes » section lists the same). The keys are written in the label, never set as native key
- * equivalents: AppKit would run the command a second time after Ressac's own key handling.
+ * « Commandes » in a main window's macOS menu bar, before Fenêtre: Ressac's own features and settings, so the Help
+ * menu's search finds them (⌘T's « Commandes » lists the same, from shared/commands.ts). Items are `ressac-command-<id>`.
+ * The keys are written in the label, never set as native key equivalents: AppKit would run the command a second time
+ * after Ressac's own key handling. The option already chosen is checked.
  */
 export function installCommandsMenu(win: Window, store: RessacStore, controller: WindowController): void {
   const doc = win.document as Document & { createXULElement(name: string): Element };
@@ -18,29 +17,44 @@ export function installCommandsMenu(win: Window, store: RessacStore, controller:
   const menu = doc.createXULElement("menu");
   menu.id = "ressac-commands-menu";
   const popup = doc.createXULElement("menupopup");
-  const items = MENU_COMMANDS.map((id) => {
+  const run = (c: BrowserCommand) => {
+    const r = c.run;
+    if (r.kind === "shortcut") controller.shortcut(SHORTCUTS[r.id].run);
+    else if (r.kind === "dispatch") store.dispatch(r.action);
+    else controller.shortcut({ type: "shortcut", r: `settings:${r.section}` });
+  };
+  const items = new Map<string, Element>();
+  let group = "";
+  for (const c of browserCommands(store.state)) {
+    if (group && c.group !== group) popup.append(doc.createXULElement("menuseparator"));
+    group = c.group;
     const item = doc.createXULElement("menuitem");
-    item.id = `ressac-command-${id}`;
+    item.id = `ressac-command-${c.id}`;
+    // Choices show the one chosen; only label() sets it (autocheck would untick the chosen one on a click that changes nothing).
+    if (c.group === "setting" && !c.toggle) {
+      item.setAttribute("type", "checkbox");
+      item.setAttribute("autocheck", "false");
+    }
+    // Read again on click: a toggle's action depends on the state now.
     item.addEventListener("command", () => {
-      if (id === "vim") store.dispatch({ type: "setVimMode", enabled: !store.state.settings.vimMode });
-      else controller.shortcut(SHORTCUTS[id].run);
+      const now = browserCommands(store.state).find((x) => x.id === c.id);
+      if (now) run(now);
     });
     popup.append(item);
-    return [id, item] as const;
-  });
-  // Only labels change here, never hidden/collapsed: that rebuilds the native menu under AppKit (0.1.9 crashed on the app menu's).
+    items.set(c.id, item);
+  }
+  // Only labels and checks change here, never hidden/collapsed: that rebuilds the native menu under AppKit (0.1.9 crashed on the app menu's).
   const label = () => {
-    const { locale, settings } = store.state;
-    menu.setAttribute("label", format(locale, "sidebar-section-commands"));
-    for (const [id, item] of items)
-      item.setAttribute(
-        "label",
-        id === "vim" ? format(locale, settings.vimMode ? "sidebar-command-vim-off" : "sidebar-command-vim-on") : `${format(locale, SHORTCUTS[id].label)} (${shortcutLabel(id, settings)})`,
-      );
+    menu.setAttribute("label", format(store.state.locale, "sidebar-section-commands"));
+    for (const c of browserCommands(store.state)) {
+      const item = items.get(c.id)!;
+      item.setAttribute("label", c.keys ? `${c.label} (${c.keys})` : c.label);
+      if (c.group === "setting" && !c.toggle) item.setAttribute("checked", String(c.current));
+    }
   };
   label();
   menu.append(popup);
   bar.insertBefore(menu, doc.getElementById("windowMenu"));
-  const off = store.subscribe((s, p) => (s.locale !== p.locale || s.settings.vimMode !== p.settings.vimMode || s.settings.shortcuts !== p.settings.shortcuts) && label());
+  const off = store.subscribe((s, p) => (s.locale !== p.locale || s.settings !== p.settings) && label());
   win.addEventListener("unload", off, { once: true });
 }

@@ -3,13 +3,11 @@ import type { TabId, Visit } from "../../shared/model";
 import type { ActionShown } from "../../shared/actions";
 import type { ShownSite } from "../../shared/sites";
 import { format } from "../../shared/i18n";
-import type { ShortcutId } from "../../shared/shortcuts";
+import type { BrowserCommand } from "../../shared/commands";
 import { normalize, suggestionsActions } from "./suggestions";
 
 export type SourceTab = { id: TabId; title: string; url: string; favicon: string | null };
 export type SiteApp = { kind: "project" | "site"; id: string; name: string; action: "open" | "launch"; favicon: string | null };
-/** A browser command (a remappable shortcut, or vim on/off); `keys` is its current binding (« ⇧⌘D »), empty for none. */
-export type BrowserCommand = { id: ShortcutId | "vim"; label: string; keys: string };
 export type CommandSources = { actions: ActionShown[]; commands: BrowserCommand[]; tabs: SourceTab[]; siteApps: SiteApp[]; history: Visit[]; bookmarks: { url: string; title: string }[] };
 export type CommandLine =
   | { type: "default"; text: string; label: string }
@@ -21,7 +19,7 @@ export type CommandLine =
   | { type: "history"; url: string; title: string }
   | { type: "bookmark"; url: string; title: string };
 
-export const LIMITS = { actions: 3, commands: 4, tabs: 3, siteApps: 3, history: 5, bookmarks: 5 } as const;
+export const LIMITS = { actions: 3, commands: 5, tabs: 3, siteApps: 3, history: 5, bookmarks: 5 } as const;
 /** Pause in typing before the history and bookmarks are searched: a query per keystroke would queue on the host. */
 export const SEARCH_PAUSE_MS = 120;
 /** Empty field: what the bar offers before any keystroke. */
@@ -36,7 +34,7 @@ function recentActions(actions: ActionShown[]): ActionShown[] {
 }
 
 /**
- * The command bar's rows, in order: default, actions, commands, tabs, apps, history, bookmarks. Empty field: home first (Enter leads
+ * The command bar's rows, in order: default, actions, tabs, apps, commands, history, bookmarks. Empty field: home first (Enter leads
  * there), then actions and the open tabs, without the shown tab (`shownTab`).
  */
 export function commandLines(text: string, sources: CommandSources, urlActive: string | null, shownTab: TabId | null = null, locale = "fr"): CommandLine[] {
@@ -55,10 +53,16 @@ export function commandLines(text: string, sources: CommandSources, urlActive: s
     const param = sources.actions.find((x) => x.id === a.id)?.input?.label ?? null;
     lines.push({ type: "action", id: a.id, name: a.name, input: a.input, param: param });
   }
-  for (const c of sources.commands.filter((c) => normalize(c.label).includes(q)).slice(0, LIMITS.commands)) lines.push({ type: "command", command: c });
   const tabs = sources.tabs.filter((o) => normalize(o.title).includes(q) || normalize(o.url).includes(q)).slice(0, LIMITS.tabs);
   for (const tab of tabs) lines.push({ type: "tab", tab: tab });
   for (const app of sources.siteApps.filter((a) => normalize(a.name).includes(q)).slice(0, LIMITS.siteApps)) lines.push({ type: "app", app: app });
+  // After the tabs and apps (more precise): every typed word starts a word of its name or keywords (« thème sombre »); the option already chosen is left out.
+  const words = q.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const commands = sources.commands.filter((c) => {
+    const own = normalize(`${c.label} ${c.words}`).split(/[^\p{L}\p{N}]+/u);
+    return !c.current && words.every((w) => own.some((o) => o.startsWith(w)));
+  });
+  for (const c of commands.slice(0, LIMITS.commands)) lines.push({ type: "command", command: c });
   const listed = new Set(tabs.map((o) => o.url));
   sources.history
     .filter((v) => v.url !== urlActive && !listed.has(v.url))
@@ -73,7 +77,7 @@ export function commandLines(text: string, sources: CommandSources, urlActive: s
   return lines;
 }
 
-export type Section = "actions" | "commands" | "tabs" | "apps" | "history" | "bookmarks";
+export type Section = "actions" | "tabs" | "apps" | "commands" | "history" | "bookmarks";
 
 const SECTION_TITLES: Record<Section, string> = {
   actions: "sidebar-section-actions",

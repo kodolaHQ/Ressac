@@ -20,7 +20,8 @@
   import Downloads from "./components/Downloads.svelte";
   import TabsPanel from "./components/TabsPanel.svelte";
   import Review from "./components/Review.svelte";
-  import Settings from "./components/Settings.svelte";
+  import Settings, { showSection } from "./components/Settings.svelte";
+  import type { SettingsSection } from "../shared/commands";
   import JumpTabs from "./components/JumpTabs.svelte";
   import ReleaseNotes from "./components/ReleaseNotes.svelte";
   import Welcome from "./components/Welcome.svelte";
@@ -185,6 +186,11 @@
         markSeen("cmd-j");
         if (builderTarget) builderAgent();
       } else if (r === "jumpTab" && !modalOpen && winState) jumping = true;
+      else if (r.startsWith("settings:")) {
+        // The menu's « Réglages › … »: Réglages on that section.
+        showSection(r.slice("settings:".length) as SettingsSection);
+        api.dispatch({ type: "openSettings", windowId: api.windowId });
+      }
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.

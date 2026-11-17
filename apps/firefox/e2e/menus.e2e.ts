@@ -4,7 +4,8 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
-import { MENU_COMMANDS } from "../chrome/window/commands-menu";
+import { browserCommands } from "../shared/commands";
+import { initialState } from "../core/state/initial-state";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
@@ -23,7 +24,7 @@ import { resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "
 /** Every item the menu bar shows, and what it does in Ressac. Keyed by id, else by command, else by l10n id. */
 const REVIEWED: Record<string, string> = {
   "ressac-commands-menu": "Ressac's « Commandes » menu (chrome/window/commands-menu.ts)",
-  ...Object.fromEntries(MENU_COMMANDS.map((id) => [`ressac-command-${id}`, "a Ressac command, as its keys"])),
+  ...Object.fromEntries(browserCommands(initialState()).map(({ id }) => [`ressac-command-${id}`, "a Ressac command, as its keys"])),
   "file-menu": "Fichier",
   menu_newNavigatorTab: "off (FIREFOX_COMMANDS), ⌘T is Ressac's",
   menu_newNavigator: "a new Ressac window",
@@ -88,7 +89,7 @@ const REVIEWED: Record<string, string> = {
 /** Not fired, and why. */
 const NOT_FIRED: Record<string, string> = {
   // Ressac's own commands run as their keys do (close the window, open one…): fired in e2e/command-bar.e2e.ts.
-  ...Object.fromEntries(MENU_COMMANDS.map((id) => [`ressac-command-${id}`, "Ressac's own command"])),
+  ...Object.fromEntries(browserCommands(initialState()).map(({ id }) => [`ressac-command-${id}`, "Ressac's own command"])),
   menu_FileQuitItem: "quits",
   menu_closeWindow: "closes the window under test",
   menu_close: "closes the tab (a popup's: the popup)",

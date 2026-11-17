@@ -1,21 +1,15 @@
 <script lang="ts" module>
   import type { IconName } from "./Icon.svelte";
+  import { SETTINGS_SECTIONS, type SettingsSection } from "../../shared/commands";
 
-  const SECTIONS = [
-    { id: "agents", icon: "agent" },
-    { id: "ai", icon: "cpu" },
-    { id: "workshop", icon: "box" },
-    { id: "permissions", icon: "key" },
-    { id: "data", icon: "database" },
-    { id: "privacy", icon: "lock" },
-    { id: "shortcuts", icon: "keyboard" },
-    { id: "about", icon: "info" },
-  ] as const satisfies readonly { id: string; icon: IconName }[];
-  type SectionId = (typeof SECTIONS)[number]["id"];
+  // The sections' list is shared with ⌘T and the menu's « Réglages › … » (shared/commands.ts): only their icons here.
+  const ICONS: Record<SettingsSection, IconName> = { agents: "agent", ai: "cpu", workshop: "box", permissions: "key", data: "database", privacy: "lock", shortcuts: "keyboard", about: "info" };
+  const SECTIONS = SETTINGS_SECTIONS.map((id) => ({ id, icon: ICONS[id] }));
+  type SectionId = SettingsSection;
   // Module-level: the page is remounted on each tab switch and comes back to the last section seen.
   let current = $state<SectionId>("agents");
-  /** Called before opening Réglages from elsewhere (the Extensions page): it lands on Agents. */
-  export const showAgentsSection = () => (current = "agents");
+  /** Called before opening Réglages from elsewhere: the Extensions page lands on Agents, ⌘T's « Réglages › … » on its section. */
+  export const showSection = (id: SectionId) => (current = id);
 </script>
 
 <script lang="ts">
