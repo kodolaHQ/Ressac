@@ -29,3 +29,8 @@ portForwards:
   guestPortRange: [1, 65535]
   proto: any
   ignore: true
+# Belt and braces for 127.0.0.1 binds, should the rule above ever stop acting as a wildcard.
+- guestIP: 127.0.0.1
+  guestPortRange: [1, 65535]
+  proto: any
+  ignore: true

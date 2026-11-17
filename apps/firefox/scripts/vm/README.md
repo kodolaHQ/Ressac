@@ -61,8 +61,10 @@ Start → `podman --url unix://<instance>/sock/podman.sock info` answers (render
 | cold boot 3 | 6.0 s |
 
 Checked on that machine: the workshop image label matches, the Podman client and server are both 5.8.10, cgroup2,
-the two virtiofs mounts (`RESSAC_ROOT` rw, `ENGINE` ro), Lima forwards a container port on `127.0.0.1:5300` (its log; the Mac port was held by OrbStack, so no curl) while one
-on `0.0.0.0:5400` is not, SSH and DHCP ports are not forwarded.
+the two virtiofs mounts (`RESSAC_ROOT` rw, `ENGINE` ro). Lima's forward decisions (hostagent log): `127.0.0.1:5300`
+forwarded (the Mac port was held by OrbStack, so no curl); not forwarded: container ports on `0.0.0.0:5400` and
+`127.0.0.1:5401`, a guest process on TCP `127.0.0.1:5402` and UDP `127.0.0.1:5403`, SSH, DHCP (curl on 5400-5402: none).
+The Podman service runs `system service --time 0` (Alpine's default `podman_opts`) and still answers after 15 s idle.
 
 The image is not reproducible byte for byte (`apk upgrade`, apt in the Dockerfile, file times): each build gives a new
 SHA-256, pin the one actually published.
