@@ -1,6 +1,16 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.11",
+    date: "novembre 2026",
+    items: [
+      "⌘T trouve aussi les fonctions et les réglages de Ressac par leur nom : tapez « sombre », « langue », « compact », « vim » ou « vie privée » pour changer l'apparence, la langue, le côté de la barre, le moteur de recherche, ou ouvrir une section des Réglages.",
+      "Un menu « Commandes » dans la barre des menus du Mac liste les mêmes fonctions avec leurs raccourcis : la recherche du menu Aide les trouve.",
+      "Aller à un onglet : ⌘E (ou T en mode vim) pose une lettre sur chaque onglet de la barre latérale, tapez-la pour y aller. Si vous aviez mis un de vos raccourcis sur ⌘E, choisissez-en un autre dans Réglages › Raccourcis.",
+      "« À propos de Ressac » ouvre de nouveau la petite fenêtre avec la version et la mise à jour.",
+    ],
+  },
+  {
     version: "0.1.10",
     date: "novembre 2026",
     items: ["Ressac ne plante plus quand vous ouvrez le menu Ressac (« À propos de Ressac », « Réglages… »)."],

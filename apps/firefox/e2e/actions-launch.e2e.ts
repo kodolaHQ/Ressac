@@ -294,7 +294,7 @@ describe("launching from the command bar", () => {
     await openBar();
     await fill("command-input", "Page");
     await q.waitCount(lines("tab"), 1);
-    await waitUi(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent).join() === 'Actions,Onglets ouverts';", [tid("command-section")]);
+    await waitUi(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent).join() === 'Actions,Onglets ouverts,Commandes';", [tid("command-section")]);
     expect(await inUi(m, "return [...doc.querySelectorAll(arguments[0])].map((l) => l.querySelectorAll('.pictogram').length);", [tid("command-row")])).toSatisfy((n: number[]) =>
       n.length > 0 && n.every((x) => x === 1),
     );
