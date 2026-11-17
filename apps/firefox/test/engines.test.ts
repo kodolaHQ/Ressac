@@ -218,7 +218,8 @@ describe("copyLogins", () => {
   const gtar = ["/opt/homebrew/bin/gtar", "/usr/local/bin/gtar"].find((f) => existsSync(f));
   it.skipIf(!gtar)("the extract (GNU tar, as in the workshop image) never overwrites the machine's files, and a cut stream leaves none half-written", async () => {
     const d = tmp();
-    const run = (input: Buffer) => spawnSync("/bin/sh", ["-c", LOGINS_EXTRACT.replaceAll("/v", join(d, "v")).replaceAll("tar ", `${gtar} `)], { input });
+    // The chown to the image's node user is checked on the real machine (security-check.ts): a no-op here.
+    const run = (input: Buffer) => spawnSync("/bin/sh", ["-c", LOGINS_EXTRACT.replace("chown node:node /v", ":").replaceAll("/v", join(d, "v")).replaceAll("tar ", `${gtar} `)], { input });
     const src = join(d, "src");
     mkdirSync(join(src, ".claude"), { recursive: true });
     writeFileSync(join(src, ".claude", ".credentials.json"), "docker-claude");
@@ -232,6 +233,10 @@ describe("copyLogins", () => {
     expect(readFileSync(join(d, "v", ".claude", ".credentials.json"), "utf8")).toBe("machine-claude");
     expect(readFileSync(join(d, "v", ".codex-auth"), "utf8")).toBe("docker-codex");
     expect(readdirSync(join(d, "v")).sort()).toEqual([".claude", ".codex-auth"]);
+  });
+
+  it("the volume's root is node's first: a copy container that creates the volume leaves it root-owned otherwise", () => {
+    expect(LOGINS_EXTRACT).toMatch(/^chown node:node \/v && /);
   });
 
   it("no Docker volume: nothing to copy", async () => {

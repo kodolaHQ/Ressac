@@ -103,10 +103,11 @@ const PENDING = "pending";
 /**
  * Run in the machine's workshop image (GNU tar) on its logins volume at /v, Docker's tar on stdin. The stream lands in a
  * staging folder first, so a copy cut short (quit, AI off) leaves nothing half-written among the logins; then only the
- * files the volume lacks are added: a login made on the machine is never overwritten.
+ * files the volume lacks are added: a login made on the machine is never overwritten. The volume's root is node's first:
+ * this container may be the one that creates the volume (root 755), and --skip-old-files never applies the archive's `./`.
  * shortcut: a cut during the second, local tar (well under a second) can still leave one file short; staged renames if it shows.
  */
-export const LOGINS_EXTRACT = `S=/v/.ressac-incoming; rm -rf "$S" && mkdir "$S" && tar -C "$S" -xf - && tar -C "$S" -cf - . | tar -C /v --skip-old-files -xf - && rm -rf "$S"`;
+export const LOGINS_EXTRACT = `chown node:node /v && S=/v/.ressac-incoming && rm -rf "$S" && mkdir "$S" && tar -C "$S" -xf - && tar -C "$S" -cf - . | tar -C /v --skip-old-files -xf - && rm -rf "$S"`;
 
 /**
  * `docker run … tar -cf -` of the logins volume (read-only) piped into the machine's same volume (LOGINS_EXTRACT).

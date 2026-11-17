@@ -215,6 +215,15 @@ setTimeout(()=>{const r=(f)=>fs.readFileSync('/sys/fs/cgroup/'+f,'utf8').trim();
     `mkdir -p /v/.claude /s/.claude && echo machine > /v/.claude/c && echo docker > /s/.claude/c && echo new > /s/x && tar -C /s -cf - . | { ${LOGINS_EXTRACT}; } && cat /v/.claude/c /v/x && ls -A /v && tar --version | head -1`]);
   line(extract.status === 0 && extract.stdout.startsWith("machine\nnew\n.claude\nx\ntar (GNU tar)"), "workshop image: the logins extract (GNU tar) adds the missing files and keeps the machine's", out(extract));
 
+  // A migrated user's volume: the copy container is the first to mount it (at /v, as root); its root must still be node's.
+  const vol = "rsc-logins-probe";
+  pod(["volume", "rm", "-f", vol]);
+  const copied = pod(["run", "--rm", "--pull", "never", "--network", "none", "-u", "root", "-v", `${vol}:/v`, IMAGE, "sh", "-c",
+    `mkdir -p /s/.claude && echo docker > /s/.claude/c && chown -R node:node /s && tar -C /s -cf - . | { ${LOGINS_EXTRACT}; } && stat -c %U:%a /v`]);
+  const asNode = pod(["run", "--rm", "--pull", "never", "--network", "none", "-u", "node", "-v", `${vol}:/home/node`, IMAGE, "sh", "-c", "mkdir /home/node/.npm && cat /home/node/.claude/c"]);
+  pod(["volume", "rm", "-f", vol]);
+  line(copied.status === 0 && copied.stdout.trim().split("\n").at(-1)!.startsWith("node:") && asNode.status === 0 && asNode.stdout.trim() === "docker", "logins copy into a new volume: its root is node's, node creates ~/.npm there and reads the copied login", `${out(copied)} | ${out(asNode)}`);
+
   // The guest upgrade job, as a boot launches it on an older guest: returns at once, one apk at a time, the mark rewritten by the job.
   const sudo = (input: string) => spawnSync(tools.limactl, ["shell", "--workdir", "/", "ressac", "sudo", "sh"], { encoding: "utf8", env: process.env, input, timeout: 120_000 });
   const setup = vm("sed 's/.*-//' /etc/ressac-vm-version").stdout.trim();
