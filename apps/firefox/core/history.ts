@@ -471,8 +471,10 @@ export class History {
    * non-private visits only, within [since, until], optionally on `sites` (a host or its subdomains).
    * The vectors are read one row at a time (unsorted: sorting them all costs a temp B-tree), grouped per URL in a Map of
    * small hits, and only the `limit` best pages are kept.
-   * shortcut: every vector in the period is read and compared in JS (about 3 KB and a few µs per page), fine for tens of
-   * thousands of pages; past that, keep the vectors in memory or use a vector index.
+   * shortcut: every vector in the period is read and compared in JS (3 KB per page): ~0.7 s and ~460 MB read per question
+   * at 149k vectors. Past ~50k pages, keep the vectors in memory or use a vector index. Cutting them to 256 dims
+   * (Matryoshka) was measured on bench-cmdt v4 and costs quality (hard set best 78.2 % → 75.9 %, threshold 0.31 → 0.36);
+   * 512 dims kept it (79.3 % @ 0.315) for half the cost.
    */
   findSimilar(vec: Float32Array, q: { since?: Date; until?: Date; sites?: string[]; limit: number }): (PageHit & { score: number })[] {
     if (!this.db.isOpen) return [];
