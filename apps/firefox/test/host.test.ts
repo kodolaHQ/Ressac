@@ -437,6 +437,51 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(readFileSync(join(h.root, "fake-docker-stops.log"), "utf8")).toContain("ressac-session");
   });
 
+  describe("the local AI servers at quit", () => {
+    /** A fake llama-server: notes its PID (its group, launched detached) in its model folder and waits. */
+    const withLlama = (env: Record<string, string> = {}) => {
+      const bin = join(realpathSync(mkdtempSync(join(tmpdir(), "ressac-llama-"))), "llama-server");
+      writeFileSync(bin, '#!/bin/sh\necho $$ > llama.pid\nexec sleep 60\n', { mode: 0o755 });
+      const h = startHost({ RESSAC_LLAMA_SERVER: bin, ...env }, (dataDir) => {
+        mkdirSync(join(dataDir, "local-ai", "d1"), { recursive: true });
+        writeFileSync(join(dataDir, "local-ai", "d1", "d1-2B-Q4_K_M.gguf"), "gguf");
+      });
+      const pidFile = join(h.dataDir, "local-ai", "d1", "llama.pid");
+      const alive = () => {
+        try {
+          process.kill(-Number(readFileSync(pidFile, "utf8")), 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      return { h, pidFile, alive };
+    };
+    const warm = async (h: Host, pidFile: string) => {
+      await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+      await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } }); // warms the decision server
+      await until(() => existsSync(pidFile) && readFileSync(pidFile, "utf8").trim() !== "");
+    };
+
+    it("stop stops the llama-servers first, before a slow session stop", async () => {
+      const { h, pidFile, alive } = withLlama({ FAKE_DOCKER_SLOW_SESSION_STOP: "4" });
+      await warm(h, pidFile);
+      expect(alive()).toBe(true);
+      const stopped = h.rpc.request("stop").catch(() => {});
+      await until(() => !alive(), 2000); // well before the 4 s session stop ends
+      await stopped;
+      expect(await h.exited).toBe(0);
+    });
+
+    it("SIGTERM (Firefox's kill after its 5 s): exits 0 and kills the llama-servers' groups", async () => {
+      const { h, pidFile, alive } = withLlama();
+      await warm(h, pidFile);
+      h.child.kill("SIGTERM");
+      expect(await h.exited).toBe(0);
+      await until(() => !alive(), 2000);
+    });
+  });
+
   it("open_workflow: the window's selection on its open workflow, forgotten when the window closes", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });

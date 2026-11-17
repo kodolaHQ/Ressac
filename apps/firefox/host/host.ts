@@ -12,6 +12,8 @@ console.log = console.info = console.debug = console.error;
 // Firefox gone: its pipe breaks, and the end of stdin stops everything below.
 process.stdout.on("error", () => {});
 process.on("unhandledRejection", (e) => console.error("[ressac] unhandled rejection:", e));
+// Firefox's kill after its 5 s stop delay: a clean exit runs the "exit" handler that kills the llama-servers' groups (runner.ts).
+process.on("SIGTERM", () => process.exit(0));
 
 process.env.RESSAC_CONTAINER ||= "ressac-workshop-firefox";
 // The existing container's name and host ports: renaming them would orphan it.
@@ -347,6 +349,8 @@ const relay = await startRelay({
 let stopping: Promise<void> | undefined;
 const stop = () =>
   (stopping ??= (async () => {
+    // First: nothing else needs them, and a slow stop below must not leave them running when Firefox kills the host.
+    void ai.stopServers().catch(() => {});
     // Started first (spike S8) but not awaited before the others: a slow docker must not eat the 5 s quit delay
     // before the history is closed. Settled alone:
     // its failure never skips the stops below. RESSAC_TEST_APPS_STOP_FAILS: tests only.
