@@ -47,6 +47,15 @@ async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 10_0
     await new Promise((r) => setTimeout(r, 100));
   }
 }
+/**
+ * The kernel up and the agent's session open: the home page's panel starts it at launch, and its start takes back every
+ * access (a card asked before it is withdrawn). Tools are called after it.
+ */
+async function sessionStarted() {
+  const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
+  await until(async () => existsSync(config), Boolean, 20_000);
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')", [], 20_000, "agent");
+}
 const win = async () => (await state(m)).windows[0]!.id;
 const open = (url: string, windowId?: string) =>
   win().then((f) => dispatch(m, { type: "openTab", windowId: windowId ?? f, url }));
@@ -202,8 +211,7 @@ describe("history noted in the kernel", () => {
   });
 
   it("the agent finds a visited page by its title", async () => {
-    const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
-    await until(async () => existsSync(config), Boolean, 20_000);
+    await sessionStarted();
     await open(`${base}/a.html`);
     await loaded("/a.html");
     await until(recents, (r) => r.some((x) => x.title === "Page A"));
@@ -212,6 +220,7 @@ describe("history noted in the kernel", () => {
   });
 
   it("a space turned private while the host is down marks its visits once the host is back", async () => {
+    await sessionStarted();
     await open(`${base}/a.html`);
     await loaded("/a.html");
     await until(recents, (r) => r.some((x) => x.title === "Page A"));
@@ -251,6 +260,7 @@ describe("the agent's memory retains page text", () => {
   // Needs the rebuilt page actor (getParts): fails until `pnpm build:ui`. YouTube parts are covered by unit tests only
   // (a watch page can't be served from youtube.com offline).
   it("the meta description is retained before the body", async () => {
+    await sessionStarted();
     await open(`${base}/description`);
     await retained("/description");
     await answerHistory(m, w.dataDir);
