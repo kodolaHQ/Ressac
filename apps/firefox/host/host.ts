@@ -189,8 +189,9 @@ const ai = new LocalAi({
 // The ⌘T bar's Demander mode: rules and the search model, outside the workflows' dispatcher queue.
 const ask = createAsk({ embed: ai.embed, history: () => hist ?? null });
 // The pages' vectors for ⌘T Demander, computed in the background while AI is on and the search model is installed.
-// RESSAC_TEST_INDEX_IDLE_MS (e2e): pages seeded after launch get their vectors without waiting a minute.
-const indexer = hist && createPageIndexer({ history: hist, embed: llamaEmbed(() => ai.embed.ready()), idleMs: Number(process.env.RESSAC_TEST_INDEX_IDLE_MS) || undefined });
+// RESSAC_TEST_INDEX_IDLE_MS (e2e): pages seeded after launch get their vectors without waiting for a pass.
+const testIndexIdle = Number(process.env.RESSAC_TEST_INDEX_IDLE_MS);
+const indexer = hist && createPageIndexer({ history: hist, embed: llamaEmbed(() => ai.embed.ready()), ...(testIndexIdle ? { idleMs: testIndexIdle, passEveryMs: 0 } : {}) });
 const startIndexer = () => {
   if (aiOn && ai.embed.installed()) indexer?.start();
 };

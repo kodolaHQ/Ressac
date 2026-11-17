@@ -2,8 +2,8 @@
 // page, and the question without its period words (what is embedded). Port of the measured bench-cmdt/v4/rules.py.
 // A period not understood is no filter, never a failure.
 
-export const VIDEO_WORDS = /\b(vid[ée]os?|youtube)\b/i;
-export const VIDEO_SITES = ["youtube.com", "vimeo.com", "dailymotion.com"];
+const VIDEO_WORDS = /\b(vid[ée]os?|youtube)\b/i;
+const VIDEO_SITES = ["youtube.com", "vimeo.com", "dailymotion.com"];
 
 /** Lower case, accents and curly apostrophes dropped, one character for one: a match's span cuts the original question. */
 const fold = (s: string) =>

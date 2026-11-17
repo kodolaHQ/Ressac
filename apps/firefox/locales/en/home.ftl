@@ -56,7 +56,11 @@ home-welcome-ai-triage = sort for you: when Ressac follows a topic on your behal
 home-welcome-ai-search = find your pages by their meaning, when you ask a question with ⌘T.
 home-welcome-ai-needs = It uses two models Ressac downloads for you: d1-2B (1.1 GB) to watch and sort, and EmbeddingGemma (334 MB) for search.
 home-welcome-models-started = Download in progress. Progress is in Settings › Local AI.
-home-welcome-models-missing = The local AI models are missing (1.4 GB).
+home-welcome-models-missing = { $missing ->
+    [decision] The local AI model d1-2B is missing (1.1 GB).
+    [search] The search model EmbeddingGemma is missing (334 MB).
+   *[both] The local AI models are missing (1.4 GB).
+}
 home-welcome-models-pull = Download in the background
 home-welcome-models-ready = The models are installed.
 home-welcome-models-unreachable = Can't check right now.

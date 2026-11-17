@@ -56,7 +56,11 @@ home-welcome-ai-triage = trier pour vous : quand Ressac suit un sujet à votre p
 home-welcome-ai-search = retrouver vos pages par leur sens, quand vous posez une question avec ⌘T.
 home-welcome-ai-needs = Elle utilise deux modèles que Ressac télécharge pour vous : d1-2B (1,1 Go) pour surveiller et trier, et EmbeddingGemma (334 Mo) pour la recherche.
 home-welcome-models-started = Téléchargement en cours. Le suivi est dans Réglages › IA locale.
-home-welcome-models-missing = Il manque les modèles d'IA locale (1,4 Go).
+home-welcome-models-missing = { $missing ->
+    [decision] Il manque le modèle d'IA locale d1-2B (1,1 Go).
+    [search] Il manque le modèle de recherche EmbeddingGemma (334 Mo).
+   *[both] Il manque les modèles d'IA locale (1,4 Go).
+}
 home-welcome-models-pull = Télécharger en arrière-plan
 home-welcome-models-ready = Les modèles sont installés.
 home-welcome-models-unreachable = Impossible de vérifier pour l'instant.

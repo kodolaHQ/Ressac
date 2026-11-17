@@ -239,7 +239,7 @@
             {:else if pulling}
               {@render status("welcome-models", "ok", t("home-welcome-models-started"))}
             {:else if missing.length}
-              {@render status("welcome-models", "warn", pullError ?? t("home-welcome-models-missing"))}
+              {@render status("welcome-models", "warn", pullError ?? t("home-welcome-models-missing", { missing: missing.length > 1 ? "both" : missing[0] === DECISION_MODEL ? "decision" : "search" }))}
               <button type="button" data-testid="welcome-pull" onclick={() => void pullInBackground()}>{t("home-welcome-models-pull")}</button>
             {:else}
               {@render status("welcome-models", "ok", t("home-welcome-models-ready"))}

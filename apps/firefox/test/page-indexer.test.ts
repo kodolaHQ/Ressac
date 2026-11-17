@@ -43,7 +43,7 @@ test("a page the model refuses is marked and skipped: the 39 others get vectors 
     if (texts.some((t) => t.includes("POISON"))) throw new EmbedRefused("HTTP 500");
     return texts.map(() => Float32Array.from([1, 0]));
   });
-  indexer = createPageIndexer({ history: h, embed, pauseMs: 0, idleMs: 20 });
+  indexer = createPageIndexer({ history: h, embed, pauseMs: 0, idleMs: 20, passEveryMs: 0 });
   indexer.start();
   await done();
   const calls = embed.mock.calls.length;
@@ -128,11 +128,49 @@ test("an error stops the loop; it retries later", async () => {
 test("a page whose title changes is embedded again with its new title", async () => {
   h.note({ url: "https://www.a.fr/x", spaceId: "s", title: "A", private: false });
   const { docs, embed } = fake();
-  indexer = createPageIndexer({ history: h, embed, pauseMs: 0, idleMs: 20 });
+  indexer = createPageIndexer({ history: h, embed, pauseMs: 0, idleMs: 20, passEveryMs: 0 });
   indexer.start();
   await done();
   h.updateTitle("https://www.a.fr/x", "s", "A2");
   await vi.waitFor(() => expect(docs).toEqual(["title: A | text: a.fr", "title: A2 | text: a.fr"]));
+});
+
+test("a history error (read or write) does not end indexing: it retries later", async () => {
+  fill(5);
+  const history = {
+    pendingVectors: vi.fn((n: number) => h.pendingVectors(n)).mockImplementationOnce(() => { throw new Error("database is locked"); }),
+    saveVectors: vi.fn((rows: Parameters<History["saveVectors"]>[0]) => h.saveVectors(rows)).mockImplementationOnce(() => { throw new Error("disk full"); }),
+  };
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  indexer = createPageIndexer({ history, embed: fake().embed, pauseMs: 0, retryMs: 20 });
+  indexer.start();
+  await done();
+  expect(history.saveVectors).toHaveBeenCalledTimes(2);
+  expect(error.mock.calls.map((c) => c[1])).toEqual(["database is locked", "disk full"]);
+  error.mockRestore();
+});
+
+test("between passes a few new pages wait: a pass runs at start, then at 32 pages waiting or 10 min after the last pass", async () => {
+  let now = 0;
+  const add = (from: number, n: number) => h.importVisits(Array.from({ length: n }, (_, i) => ({ url: `https://q${from + i}.fr/`, title: `Q ${from + i}`, date: new Date() })));
+  fill(3);
+  const { docs, embed } = fake();
+  indexer = createPageIndexer({ history: h, embed, pauseMs: 0, idleMs: 10, clock: () => now });
+  indexer.start();
+  await done(); // at start, whatever the count
+  add(0, 31);
+  now += 9 * 60_000;
+  await new Promise((r) => setTimeout(r, 100));
+  expect(docs).toHaveLength(3); // 31 waiting, 9 min: the search server stays off
+  add(31, 1);
+  await done(); // 32 waiting
+  expect(docs).toHaveLength(35);
+  add(32, 1);
+  await new Promise((r) => setTimeout(r, 100));
+  expect(docs).toHaveLength(35);
+  now += 10 * 60_000;
+  await done(); // 10 min since the last pass
+  expect(docs).toHaveLength(36);
 });
 
 describe("llamaEmbed", () => {

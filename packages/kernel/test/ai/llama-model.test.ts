@@ -62,14 +62,14 @@ async function fakeFile(data: Buffer, o: { hold?: boolean } = {}) {
 }
 
 describe("LlamaModel: the server", () => {
-  it("the embedding model's spec: ggml-org's file at a pinned revision, its own port, mean-pooled embeddings, 10 min idle", () => {
+  it("the embedding model's spec: ggml-org's file at a pinned revision, its own port, mean-pooled embeddings, 2 min idle", () => {
     expect(EMBED_MODEL).toMatchObject({
       file: "embeddinggemma-300M-Q8_0.gguf",
       url: "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/0f741b5a6585bd53aeb15cd1372c56f2a0f65e12/embeddinggemma-300M-Q8_0.gguf",
       bytes: 333590944,
       sha256: "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63",
       port: 8010,
-      idleMs: 600_000,
+      idleMs: 120_000,
     });
     expect(EMBED_MODEL.args).toEqual(["--embedding", "--pooling", "mean", "-ngl", "99", "-ub", "2048", "-b", "2048"]);
   });

@@ -347,5 +347,6 @@ export const EMBED_MODEL: LlamaModelSpec = {
   port: 8010,
   // A whole page document in one batch (the 512-token default refuses a long one).
   args: ["--embedding", "--pooling", "mean", "-ngl", "99", "-ub", "2048", "-b", "2048"],
-  idleMs: 600_000,
+  // Short: the page indexer works in passes and ⌘T warms it, so 334 MB need not stay up between them.
+  idleMs: 120_000,
 };

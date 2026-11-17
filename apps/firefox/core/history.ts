@@ -145,7 +145,8 @@ export class History {
         SELECT v.url, v.space_id AS spaceId, v.title, v.last_visit AS lastVisit, v.visits, x.vec, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt
         FROM vectors x JOIN visits v ON v.url = x.url AND v.space_id = x.space_id
         LEFT JOIN texts t ON t.url = x.url AND t.space_id = x.space_id
-        WHERE v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until`),
+        WHERE v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until
+        ORDER BY x.url`),
       excerpt: this.db.prepare(
         `SELECT snippet(texts_fts, 2, '', '', '…', ${SNIPPET_WORDS}) AS excerpt FROM texts_fts WHERE texts_fts MATCH ? AND rowid = ?`,
       ),
@@ -414,40 +415,50 @@ export class History {
   /**
    * The pages nearest to `vec` (L2-normalised: the dot product is the cosine), one per URL with its best score, with
    * non-private visits only, within [since, until], optionally on `sites` (a host or its subdomains).
+   * The vectors are read one row at a time, by URL, and only the `limit` best pages are kept.
    * shortcut: every vector in the period is read and compared in JS (about 3 KB and a few µs per page), fine for tens of
    * thousands of pages; past that, keep the vectors in memory or use a vector index.
    */
   findSimilar(vec: Float32Array, q: { since?: Date; until?: Date; sites?: string[]; limit: number }): (PageHit & { score: number })[] {
     if (!this.db.isOpen) return [];
     const sites = (q.sites ?? []).map((s) => s.toLowerCase());
-    const rows = this.req.similar.all({ since: q.since?.toISOString() ?? "", until: q.until?.toISOString() ?? "\uffff" }) as {
+    const rows = this.req.similar.iterate({ since: q.since?.toISOString() ?? "", until: q.until?.toISOString() ?? "\uffff" }) as Iterable<{
       url: string; spaceId: string; title: string; lastVisit: string; visits: number; vec: Uint8Array; excerpt: string;
-    }[];
-    const best = new Map<string, PageHit & { score: number }>();
+    }>;
+    type Hit = PageHit & { score: number };
+    const top: Hit[] = []; // best first, at most q.limit
+    const stale: [url: string, spaceId: string][] = [];
+    let hit: Hit | undefined; // the URL being read: its rows come together
+    const rank = () => {
+      if (!hit) return;
+      const i = top.findIndex((x) => x.score < hit!.score);
+      top.splice(i < 0 ? top.length : i, 0, hit);
+      if (top.length > q.limit) top.pop();
+      hit = undefined;
+    };
     for (const r of rows) {
+      if (hit && hit.url !== r.url) rank();
       if (!onSites(r.url, sites)) continue;
       if (r.vec.byteLength === 0) continue; // refused by the model
       if (r.vec.byteLength !== vec.byteLength) {
-        this.req.dropVector.run(r.url, r.spaceId); // another model's vector: computed again
+        stale.push([r.url, r.spaceId]); // another model's vector: computed again (dropped after the read)
         continue;
       }
       const b = r.vec;
       const page = b.byteOffset % 4 === 0 ? new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4) : new Float32Array(b.slice().buffer);
       let score = 0;
       for (let i = 0; i < page.length; i++) score += page[i]! * vec[i]!;
-      const hit = best.get(r.url);
       if (!hit) {
-        best.set(r.url, { url: r.url, title: r.title, lastVisit: r.lastVisit, visits: r.visits, excerpt: r.excerpt, favicon: null, score });
+        hit = { url: r.url, title: r.title, lastVisit: r.lastVisit, visits: r.visits, excerpt: r.excerpt, favicon: null, score };
         continue;
       }
       hit.visits += r.visits;
       if (r.lastVisit > hit.lastVisit) Object.assign(hit, { title: r.title, lastVisit: r.lastVisit });
       if (score > hit.score) Object.assign(hit, { score, excerpt: r.excerpt });
     }
-    return [...best.values()]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, q.limit)
-      .map((x) => ({ ...x, favicon: this.favicon(x.url) }));
+    rank();
+    for (const [url, spaceId] of stale) this.req.dropVector.run(url, spaceId);
+    return top.map((x) => ({ ...x, favicon: this.favicon(x.url) }));
   }
 
   /** Substring insensitive to case and accents on the URL and title; `%`, `_` and `\` are literal. */

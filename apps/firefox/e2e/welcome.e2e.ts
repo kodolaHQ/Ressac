@@ -159,6 +159,14 @@ describe("welcome", () => {
     }
   });
 
+  it("only the decision model missing: the welcome gives its own size", async () => {
+    // A search server imposed by address counts its model as installed.
+    await launch({ env: { FAKE_DOCKER_ABSENT: "1", RESSAC_EMBED_SERVER_URL: "http://127.0.0.1:9" } });
+    await forward(1, 5);
+    await press("welcome-later");
+    await shows("welcome-models", "Il manque le modèle d'IA locale d1-2B (1,1 Go).");
+  });
+
   it("a container app installed but stopped: the welcome offers to start it", async () => {
     await launch({ env: { RESSAC_TEST_DOCKER_KIND: "stopped", FAKE_DOCKER_ABSENT: "1" } });
     await forward(1, 5);

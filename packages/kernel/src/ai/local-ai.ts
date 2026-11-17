@@ -77,13 +77,11 @@ export class LocalAi {
   private closed = false;
   /** The decision model; RESSAC_KEV_URL (or `kevUrl`) points it at a server already running. */
   private readonly d1: LlamaModel;
-  private readonly kevForced: boolean;
   /** The search model (⌘T Demander): its own llama-server and port, started by its users. */
   readonly embed: LlamaModel;
 
   constructor(private readonly o: LocalAiOptions) {
     const imposed = o.kevUrl ?? process.env.RESSAC_KEV_URL;
-    this.kevForced = Boolean(imposed);
     const common = { folder: o.folder, llamaServer: o.llamaServer, launch: o.launch, clock: o.clock, pollMs: o.pollMs, idleCheckMs: o.idleCheckMs, cancelDelayMs: o.cancelDelayMs, locale: o.locale };
     this.d1 = new LlamaModel(
       { ...D1_MODEL, port: o.port ?? D1_MODEL.port, idleMs: o.inactivityMs ?? D1_MODEL.idleMs },
@@ -104,7 +102,7 @@ export class LocalAi {
 
   /** Which of Ressac's models are in place. */
   async check(): Promise<{ decision: boolean; embed: boolean }> {
-    return { decision: this.kevForced || this.d1.installed(), embed: this.embed.installed() };
+    return { decision: this.d1.installed(), embed: this.embed.installed() };
   }
 
   /** Downloads the decision model into `d1/` (see LlamaModel.install). */
