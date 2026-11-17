@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { cpus, homedir } from "node:os";
@@ -43,11 +43,16 @@ const SOCKET_MAX = 103;
 /** Lima's vz network: the Mac seen from the guest. */
 const HOST_ADDRESS = "192.168.5.2";
 const BLOCK = 4096;
-/** $1 limactl, $2 instance, $3 grace (s), $4 1 when a start may be in flight: waits up to 5 min for it to run. */
+/**
+ * $1 limactl, $2 instance, $3 grace (s), $4 1 when a start may be in flight: waits up to 5 min for it to run, $5 the
+ * launch's token: once a newer launch wrote its own to $LIMA_HOME/launch, the machine is its, never stopped from here.
+ */
 export const QUIT_STOP = [
-  `L=$1 N=$2; sleep "$3"`,
+  `L=$1 N=$2 T=$5; sleep "$3"`,
+  `mine() { [ "$(cat "$LIMA_HOME/launch" 2>/dev/null)" = "$T" ] || exit 0; }`,
   `st() { "$L" list --format '{{.Status}}' "$N" 2>/dev/null; }`,
-  `if [ "$4" = 1 ]; then i=0; while [ $i -lt 300 ] && [ "$(st)" != Running ]; do sleep 1; i=$((i + 1)); done; fi`,
+  `if [ "$4" = 1 ]; then i=0; while mine && [ $i -lt 300 ] && [ "$(st)" != Running ]; do sleep 1; i=$((i + 1)); done; fi`,
+  `mine`,
   `[ "$(st)" = Running ] || exit 0`,
   `"$L" stop "$N" || "$L" stop --force "$N"`,
 ].join("\n");
@@ -122,10 +127,21 @@ export function createMachine(o: {
   const supported = () => (hv ??= o.supported ? o.supported() : run("sysctl", ["-n", "kern.hv_support"]).then((r) => r.stdout.trim() === "1"));
   /** Throws why the machine cannot run on this Mac. */
   let closed = false;
+  const token = randomUUID();
+  /** This launch now owns the machine: an older launch's quit stop leaves it alone. */
+  const claim = async () => {
+    await mkdir(home, { recursive: true });
+    await writeFile(join(home, "launch"), token);
+  };
+  let claimed: Promise<void> | undefined;
   async function usable(): Promise<void> {
     if (closed) throw new Error(hostSay("host-machine-cancelled"));
     if (tooLong) throw new Error((status as { message: string }).message);
-    if (await supported()) return;
+    if (await supported())
+      return (claimed ??= claim().catch((e) => {
+        claimed = undefined; // tried again at the next change
+        throw e;
+      }));
     set({ kind: "unsupported" });
     throw new Error(hostSay("host-machine-unsupported"));
   }
@@ -393,7 +409,8 @@ export function createMachine(o: {
       downloads?.abort();
       if (tooLong || !(await supported())) return;
       const inFlight = pending > 0 || status.kind === "starting";
-      (o.detach ?? detached)([QUIT_STOP, "ressac-vm-stop", limactl, NAME, String(o.quitGraceS ?? 3), inFlight ? "1" : "0"], { LIMA_HOME: home });
+      await claim().catch(() => {}); // the stop duty is this launch's: a script of an older one stands down
+      (o.detach ?? detached)([QUIT_STOP, "ressac-vm-stop", limactl, NAME, String(o.quitGraceS ?? 3), inFlight ? "1" : "0", token], { LIMA_HOME: home });
     },
     async usage(): Promise<{ memoryMB: number; diskMB: number } | null> {
       if (tooLong || (await instance().catch(() => "absent")) === "absent") return null;

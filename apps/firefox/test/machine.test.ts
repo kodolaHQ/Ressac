@@ -305,7 +305,7 @@ describe("the workshop machine", () => {
     const m = machine(w, { idleMs: 10_000, detach });
     await m.wake("user");
     await m.close();
-    expect(detach).toHaveBeenCalledWith([QUIT_STOP, "ressac-vm-stop", join(w.resources, "bin", "limactl"), "ressac", "3", "0"], { LIMA_HOME: w.home });
+    expect(detach).toHaveBeenCalledWith([QUIT_STOP, "ressac-vm-stop", join(w.resources, "bin", "limactl"), "ressac", "3", "0", expect.any(String)], { LIMA_HOME: w.home });
     const n = w.s.calls.length;
     await new Promise((r) => setTimeout(r, 30));
     expect(w.s.calls.length).toBe(n);
@@ -319,7 +319,7 @@ describe("the workshop machine", () => {
     const m = machine(w, { detach });
     const waking = m.wake("user").catch(() => {});
     await m.close();
-    expect(detach.mock.calls[0]![0].at(-1)).toBe("1");
+    expect(detach.mock.calls[0]![0].at(-2)).toBe("1");
     await waking;
   });
 
@@ -330,9 +330,38 @@ describe("the workshop machine", () => {
       const l = join(d, "limactl");
       writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo ${state}; exit 0; }\necho "$*" >> ${join(d, "log")}\n[ "$2" = --force ] || exit ${plain}\n`);
       chmodSync(l, 0o755);
-      execFileSync("/bin/sh", ["-c", QUIT_STOP, "x", l, "ressac", "0", "0"]);
+      writeFileSync(join(d, "launch"), "t1");
+      execFileSync("/bin/sh", ["-c", QUIT_STOP, "x", l, "ressac", "0", "0", "t1"], { env: { ...process.env, LIMA_HOME: d } });
       expect(existsSync(join(d, "log")) ? readFileSync(join(d, "log"), "utf8") : "").toBe(expected);
     }
+  });
+
+  it("the quit script leaves alone a machine a newer launch took over, even while it waits", async () => {
+    for (const wait of ["0", "1"]) {
+      const d = mkdtempSync(join(tmpdir(), "q-"));
+      dirs.push(d);
+      const l = join(d, "limactl");
+      writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo Running; exit 0; }\necho "$*" >> ${join(d, "log")}\n`);
+      chmodSync(l, 0o755);
+      writeFileSync(join(d, "launch"), "t2");
+      execFileSync("/bin/sh", ["-c", QUIT_STOP, "x", l, "ressac", "0", wait, "t1"], { env: { ...process.env, LIMA_HOME: d } });
+      expect(existsSync(join(d, "log"))).toBe(false);
+    }
+  });
+
+  it("each launch that uses or closes the machine writes its own token, and hands it to the quit script", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    const detach = vi.fn();
+    const m = machine(w, { detach });
+    await m.wake("user");
+    const token = readFileSync(join(w.home, "launch"), "utf8");
+    expect(token).toMatch(/^[0-9a-f-]{36}$/);
+    const other = machine(w, { detach: () => {} });
+    await other.wake("user");
+    expect(readFileSync(join(w.home, "launch"), "utf8")).not.toBe(token);
+    await m.close(); // a close takes the duty back: its own token again
+    expect(readFileSync(join(w.home, "launch"), "utf8")).toBe(token);
+    expect(detach.mock.calls[0]![0].at(-1)).toBe(token);
   });
 });
 
