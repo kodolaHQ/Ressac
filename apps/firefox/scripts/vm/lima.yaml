@@ -1,0 +1,31 @@
+# The Ressac machine (Lima). Rendered by apps/firefox/host/machine.ts, which fills {{IMAGE}} (the decompressed
+# ressac-vm-*.raw), {{RESSAC_ROOT}} (~/Ressac), {{ENGINE}} (the app's docker/engine folder) and {{CPUS}}.
+# {{.Dir}} is left to Lima. Everything is baked into the image: no provisioning, no download at start.
+vmType: vz
+cpus: {{CPUS}}
+memory: 3GiB
+images:
+- location: "{{IMAGE}}"
+  arch: aarch64
+mountType: virtiofs
+# Only these two folders, at the same paths in the guest: never the home folder.
+mounts:
+- location: "{{RESSAC_ROOT}}"
+  writable: true
+- location: "{{ENGINE}}"
+  writable: false
+containerd: {system: false, user: false}
+video: {display: none}
+ssh: {loadDotSSHPubKeys: false}
+# Auto forwards limited to the Podman socket and the apps' ports on 127.0.0.1; every other port, TCP or UDP, stays inside.
+portForwards:
+- guestSocket: /run/podman/podman.sock
+  hostSocket: "{{.Dir}}/sock/podman.sock"
+- guestIP: 127.0.0.1
+  guestPortRange: [5300, 5319]
+# guestIP 0.0.0.0 so the rule also catches ports bound on 0.0.0.0: Lima skips a 127.0.0.1 ignore rule for those, and its
+# built-in last rule would forward them to the Mac's 127.0.0.1.
+- guestIP: 0.0.0.0
+  guestPortRange: [1, 65535]
+  proto: any
+  ignore: true
