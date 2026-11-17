@@ -92,6 +92,9 @@ export const OLD_AGENTS = new Set([
   "4f0bb4cefb55d27210fbdd477d2290313829673432f171d169dad8bf9e0becc9",
   "68c45b6530e17813c57ed0adcabe36e6da5f85b0f4befcf29df008f326c4f45e",
   "aea61be7ae7507f4555440e52eddef6c6d4331c0d1d20e5da843223ba9757b0e",
+  // Before the kernel kept the browsing notes (note_lesson): fr, en.
+  "2c2667b528edf83b2eb01334e3f9b22557480db6fbfdaf49a438f23520c28097",
+  "5600b474da619c8ef707d20082156cdff61cf22e9929ffdddae09ee78ef04819",
 ]);
 
 const hash = (content: Buffer) => createHash("sha256").update(content).digest("hex");
@@ -142,7 +145,7 @@ async function currentHashes(models: string, langs: string[], rel: string): Prom
  * AGENTS.md leaves to a task (widgets, actions…): the agent reads one when its task comes, a local model keeps its window.
  */
 const GUIDES = ["guides/widgets.md", "guides/extensions.md", "guides/actions.md", "guides/site-apps.md"];
-const LOCALIZED_TEXTS = ["AGENTS.md", "CLAUDE.md", "browsing-notes.md", ...GUIDES];
+const LOCALIZED_TEXTS = ["AGENTS.md", "CLAUDE.md", ...GUIDES];
 
 /**
  * Template file → destination in the workspace, and the hashes of the shipped versions the destination may be replaced
@@ -253,13 +256,16 @@ async function swapWidget(c: SpacePaths, models: string, lang: string, langs: st
   return toWrite.map(([, file]) => file);
 }
 
+/** sha256 of the shipped `/workspace/browsing-notes.md` (fr, en), from before the kernel kept the notebook. */
+const OLD_NOTES: ReadonlySet<string> = new Set(["997a8211e65aae107d60266f0d3b5f94496ce55322908c37b0b5177f5dc7b913", "a9d905aaf30ca5127824c3da0e29860f7b392b9ffc9137bcc2a618a6124d0c67"]);
+
 /** sha256 of old shipped versions of the `CLAUDE.md` template: a copy left as shipped is replaced. */
 // The old ones only asked the agent to read AGENTS.md: it skipped it when the first message was a task.
 export const OLD_CLAUDE_MD: ReadonlySet<string> = new Set([
   "11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b",
   "4690fb441d1ffb32d9e9915a8fc65545f25de774d368c48041e86de43d7a8cab",
 ]);
-/** The hashes of every old shipped version of the language texts (browsing-notes.md and the other guides: none, only the current ones). */
+/** The hashes of every old shipped version of the language texts (the other guides: none, only the current ones). */
 const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   "AGENTS.md": OLD_AGENTS,
   "CLAUDE.md": OLD_CLAUDE_MD,
@@ -298,13 +304,16 @@ export async function realInternal(c: SpacePaths): Promise<void> {
 
 /**
  * Creates the workspace from the templates of `locale` (English when the templates lack it), without overwriting an
- * existing file, except a copy left at a shipped version: AGENTS.md, CLAUDE.md, browsing-notes.md and the starter
+ * existing file, except a copy left at a shipped version: AGENTS.md, CLAUDE.md and the starter
  * widgets follow the language while untouched, AGENTS.md and CLAUDE.md are refreshed when old.
  * Run again on a language change.
  */
 export async function initSpace(c: SpacePaths, locale = FALLBACK, models = DEFAULT_TEMPLATES): Promise<{ created: string[] }> {
   // First, before anything writes under .ressac or a container mounts it.
   await realInternal(c);
+  // The notebook moved to .ressac (search/notes.ts): an untouched old copy goes; an edited one stays, never read again.
+  const oldNotes = join(c.root, "browsing-notes.md");
+  if (existsSync(oldNotes) && OLD_NOTES.has(createHash("sha256").update(await readFile(oldNotes)).digest("hex"))) await rm(oldNotes, { force: true });
   const langs = await languagesOf(models);
   // Only a language the templates have: `locale` never builds a path out of the templates folder.
   const lang = langs.includes(locale) ? locale : FALLBACK;

@@ -1,10 +1,11 @@
 import { say, replyLanguageLine } from "./i18n.js";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { basename, join, posix } from "node:path";
 import { CONTAINER_PATH, sessionConfigPath, pathInContainer, spacePaths, type SpacePaths } from "./paths.js";
-import { initSpace } from "./workspace/initialize.js";
+import { DEFAULT_TEMPLATES, initSpace } from "./workspace/initialize.js";
+import { BrowsingNotes } from "./search/notes.js";
 import { readHome, readOneWidget } from "./home/read.js";
 import type { HomeState, WidgetState, WidgetRead } from "./home/schemas.js";
 import { writeWidgetState, readData, readWidgetState, deleteData } from "./home/data.js";
@@ -436,11 +437,18 @@ export async function createKernel(o: {
   const sweeper = recaps ? setInterval(() => void sweepRecaps(), Math.min(3600_000, dayMs)) : null;
   sweeper?.unref();
   if (recaps) void sweepRecaps();
+  // In .ressac, read-only in the container: only note_lesson writes it.
+  const notes = new BrowsingNotes(join(paths.internal, "browsing-notes.md"), () => {
+    const base = templates ?? DEFAULT_TEMPLATES;
+    return readFile(join(base, loc(), "browsing-notes.md"), "utf8").catch(() => readFile(join(base, "en", "browsing-notes.md"), "utf8"));
+  });
+  await notes.ensure().catch((e) => console.error("[ressac] browsing notes:", e));
   const server = await startMcpServer({
     bridge: o.bridge,
     policy: policy,
     search: search,
     ...(aiAccess ? { watcher: createWatcher(aiAccess) } : {}),
+    notes: notes,
     token: token,
     agent: profile.name,
     profiles: profileFiles(paths, o.profilingFolder),

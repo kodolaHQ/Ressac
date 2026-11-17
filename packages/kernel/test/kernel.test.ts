@@ -181,7 +181,7 @@ test("relocalize swaps the untouched templates to the new language", async () =>
   order = ["fr", "en"];
   await Promise.all([kernel.relocalize(), kernel.relocalize()]);
   expect(order).toEqual([]);
-  for (const f of ["AGENTS.md", "CLAUDE.md", "browsing-notes.md"]) expect(await readFile(join(root, f), "utf8"), f).toBe(await readFile(join(templates, "en", f), "utf8"));
+  for (const f of ["AGENTS.md", "CLAUDE.md"]) expect(await readFile(join(root, f), "utf8"), f).toBe(await readFile(join(templates, "en", f), "utf8"));
   for (const id of ["meteo", "actus-tech", "daily-dev"]) {
     for (const f of await readdir(join(templates, "en", "widgets", id))) {
       expect(await readFile(join(root, "home", "widgets", id, f), "utf8"), `${id}/${f}`).toBe(await readFile(join(templates, "en", "widgets", id, f), "utf8"));
