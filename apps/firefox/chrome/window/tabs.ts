@@ -262,7 +262,8 @@ export class TabSync {
     try {
       const profile = tabProfile(state, o);
       const userContextId = this.store.containerFor(profile);
-      this.siteApp = profile.startsWith("site-") ? profile.slice("site-".length) : undefined;
+      // Only the essential itself is the app: tabs it opened share its container, not its tweaks or bridge.
+      this.siteApp = o.link?.type === "essential" && profile.startsWith("site-") ? profile.slice("site-".length) : undefined;
       // The URL may come from the agent (open_tab, navigate on a tab without one): a web page is never loaded with the
       // system principal, whoever asked; internal pages (about:) need it.
       const triggeringPrincipal = /^https?:/i.test(o.url)
