@@ -372,17 +372,39 @@ test("importVisits: http(s) only, retention, upsert keeps latest, not private, s
   expect(Date.now() - t).toBeLessThan(2000);
 });
 
-test("erased text leaves no trace in the database files (secure_delete, WAL truncated)", () => {
-  const read = () => ["", "-wal"].map((x) => { try { return readFileSync(path + x).toString("latin1"); } catch { return ""; } }).join("");
-  h.note({ url: "https://a.fr/", spaceId: "s", title: "Zorglubtitle", private: false });
-  h.keep({ url: "https://a.fr/", spaceId: "s", title: "Zorglubtitle", text: "Zorglubsecret ".repeat(50) });
-  expect(read()).toContain("Zorglubsecret");
+test("erased text leaves no trace in the database files, the full-text index's lowercase tokens included", () => {
+  // The FTS5 index keeps tokens lowercased: « zorglub » is what a tombstone would leave behind.
+  const read = () => ["", "-wal"].map((x) => { try { return readFileSync(path + x).toString("latin1"); } catch { return ""; } }).join("").toLowerCase();
+  const keep = (url: string, spaceId: string, date = new Date()) => {
+    h.note({ url, spaceId, title: "Zorglubtitle", private: false, date });
+    h.keep({ url, spaceId, title: "Zorglubtitle", text: "Zorglubsecret ".repeat(50), date });
+    expect(read()).toContain("zorglubsecret");
+  };
+  keep("https://a.fr/", "s");
   h.erase();
-  expect(read()).not.toContain("Zorglub");
-  h.note({ url: "https://b.fr/", spaceId: "p", title: "Zorglubtitle", private: false });
-  h.keep({ url: "https://b.fr/", spaceId: "p", title: "Zorglubtitle", text: "Zorglubsecret ".repeat(50) });
+  expect(read()).not.toContain("zorglub");
+  keep("https://a.fr/", "s");
+  h.erase(new Date(Date.now() - 3_600_000));
+  expect(read()).not.toContain("zorglub");
+  keep("https://c.fr/", "s", new Date(Date.now() - 200 * 86_400_000));
+  h.purge();
+  expect(read()).not.toContain("zorglub");
+  keep("https://b.fr/", "p");
   h.makePrivate("p");
-  expect(read()).not.toContain("Zorglubsecret");
+  expect(read()).not.toContain("zorglubsecret"); // the private visit keeps its title
+});
+
+test("an index written before secure-delete is rebuilt once at open: its old tombstoned tokens are gone", () => {
+  h.close();
+  const db = new DatabaseSync(path);
+  db.exec("INSERT INTO texts_fts (texts_fts, rank) VALUES ('secure-delete', 0); PRAGMA user_version = 1");
+  db.prepare("INSERT INTO texts (url, space_id, title, date, text, bytes) VALUES ('https://a.fr/', 's', 't', '2026-01-01', 'Zorglubsecret', 13)").run();
+  db.exec("DELETE FROM texts; PRAGMA wal_checkpoint(TRUNCATE)");
+  db.close();
+  expect(readFileSync(path).toString("latin1")).toContain("zorglubsecret");
+  h = new History(path);
+  h.erase(); // a checkpoint: the rebuilt index reaches the main file
+  expect(readFileSync(path).toString("latin1")).not.toContain("zorglubsecret");
 });
 
 describe("site favicons", () => {

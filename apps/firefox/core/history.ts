@@ -233,7 +233,14 @@ export class History {
       // Rows written with a NUL before noNul existed, cleaned once (user_version 1: the scan reads every text). Read as
       // blobs: node:sqlite and SQLite's replace() both stop at the NUL; a 0 byte is never inside a UTF-8 sequence.
       // texts_update keeps the full-text index in sync.
-      if ((this.db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version < 1) this.dropNul();
+      const version = (this.db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+      if (version < 1) this.dropNul();
+      // An FTS5 'delete' only appends a tombstone: the erased page's words stay in the index. secure-delete (a persistent
+      // option) removes them; the rebuild, once (user_version 2), drops those an older file kept.
+      if (version < 2) {
+        this.db.exec(`INSERT INTO texts_fts (texts_fts, rank) VALUES ('secure-delete', 1);
+          INSERT INTO texts_fts (texts_fts) VALUES ('rebuild'); PRAGMA user_version = 2;`);
+      }
       const model = this.db.prepare("SELECT name FROM vector_model").get() as { name: string } | undefined;
       if (vectorModel !== undefined && model?.name !== vectorModel) {
         this.db.exec("DELETE FROM vectors; DELETE FROM vector_model;");
