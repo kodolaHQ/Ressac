@@ -44,7 +44,8 @@ Le *ressac*, c'est la vague qui revient vers le rivage. Tu envoies l'agent sur l
 <p align="center"><img src="docs/images/live-recap-fr.gif" alt="L'agent compare les plus grands mascarets du monde et remplit un récap en direct"></p>
 
 **L'IA locale**
-- Des **workflows** et des **veilles** qui tournent sur ton Mac avec Ollama : un petit modèle local décide, et ton compte Claude Code ou Codex écrit (ça compte dans les limites de ton abonnement).
+- La **barre ⌘T** retrouve une page visitée par son sujet, en français comme en anglais, avec un petit modèle de recherche qui tourne sur ton Mac.
+- Des **workflows** et des **veilles** qui tournent sur ton Mac : un petit modèle local décide, et ton compte Claude Code ou Codex écrit (ça compte dans les limites de ton abonnement).
 - Une page d'accueil avec des widgets.
 
 <table>
@@ -66,7 +67,7 @@ Le *ressac*, c'est la vague qui revient vers le rivage. Tu envoies l'agent sur l
 
 - **Pas de compte.** Ressac n'en demande aucun. L'agent utilise ton propre compte Claude ou ChatGPT, une clé d'API, ou des modèles locaux.
 - **Ta navigation reste sur ton Mac.** L'agent ne voit que les pages qu'il ouvre dans son onglet et ce que tu lui donnes.
-- **L'IA reste éteinte tant que tu ne l'actives pas.** Docker, Ollama et l'agent ne démarrent qu'une fois que tu as dit oui.
+- **L'IA reste éteinte tant que tu ne l'actives pas.** Docker, les modèles locaux et l'agent ne démarrent qu'une fois que tu as dit oui.
 - **Open source.** Construit sur Firefox, sous licence MPL 2.0.
 
 Pendant la bêta, Ressac envoie à son développeur les plantages et les erreurs (sans adresse de page) et un identifiant d'installation anonyme, pour corriger les bugs ; désactivable dans Réglages › Vie privée.
@@ -76,8 +77,8 @@ Pendant la bêta, Ressac envoie à son développeur les plantages et les erreurs
 Ressac est en bêta fermée, avec un petit groupe de testeurs. Ils reçoivent un DMG signé et notarisé par Apple, puis Ressac se met à jour tout seul. **Pour en faire partie, demandez une invitation sur [getressac.app](https://getressac.app/fr/#invite).**
 
 - **Pour naviguer** : macOS 13.3 ou plus récent, puce Apple.
-- **Pour l'agent** : Docker ([OrbStack](https://orbstack.dev) ou Docker Desktop) et un compte Claude ou ChatGPT (ou une clé d'API). Ressac démarre lui-même l'app de conteneurs si elle est installée.
-- **Pour l'IA locale** : [Ollama](https://ollama.com). Ressac le démarre, ou le télécharge pour toi (190 Mo). Les résumés des widgets et les pages d'actions sont écrits par ton compte Claude Code ou Codex, il faut donc que l'un des deux soit connecté.
+- **Pour l'agent** : Docker ([OrbStack](https://orbstack.dev) ou Docker Desktop) et un compte Claude ou ChatGPT (ou une clé d'API, ou ton propre [Ollama](https://ollama.com) pour des modèles locaux). Ressac démarre lui-même l'app de conteneurs si elle est installée.
+- **Pour l'IA locale** : rien à installer. Quand tu actives l'IA, Ressac télécharge une fois ses deux petits modèles, chacun vérifié par son SHA-256 : d1-2B (1,1 Go) et EmbeddingGemma (334 Mo). Les résumés des widgets et les pages d'actions sont écrits par ton compte Claude Code ou Codex, il faut donc que l'un des deux soit connecté.
 
 Tu viens de WebAiOs, l'ancien nom de Ressac ? Quitte-le d'abord : au premier lancement, Ressac reprend tes données, ton profil, tes mots de passe et tes extensions.
 
@@ -105,10 +106,9 @@ Ressac repose sur le travail d'autres projets :
 - [Firefox](https://www.mozilla.org/firefox/) de Mozilla (MPL 2.0), le moteur et l'essentiel du navigateur.
 - [surfer](https://github.com/zen-browser/surfer) de l'équipe de Zen Browser (MPL 2.0), l'outil de build.
 - [Node.js](https://nodejs.org) et [node-pty](https://github.com/microsoft/node-pty) (MIT), embarqués pour l'hôte de l'agent.
-- [Ollama](https://ollama.com) (MIT), pour les modèles locaux, téléchargé à la demande.
-- [Gemma 4](https://ai.google.dev/gemma) de Google (Apache 2.0), modèle local téléchargé à la demande via Ollama, utilisé pour la barre ⌘T.
 - [d1-2B](https://huggingface.co/LiquidAI/d1-2B-GGUF) de Liquid AI (LFM Open License v1.0), le petit modèle qui trie les articles des widgets et surveille l'agent ; Ressac le télécharge lui-même, il n'est pas inclus.
-- [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), son `llama-server` est livré dans l'app et fait tourner d1-2B.
+- [EmbeddingGemma](https://ai.google.dev/gemma/docs/embeddinggemma) 300M de Google, le modèle de recherche de la barre ⌘T ; Ressac le télécharge lui-même (GGUF Q8_0), il n'est pas inclus. Gemma is provided under and subject to the Gemma Terms of Use found at [ai.google.dev/gemma/terms](https://ai.google.dev/gemma/terms).
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), son `llama-server` est livré dans l'app et fait tourner d1-2B et EmbeddingGemma.
 - [Claude Code](https://claude.com/claude-code) d'Anthropic et [Codex](https://github.com/openai/codex) d'OpenAI, les agents, installés dans le conteneur et utilisés avec ton propre compte.
 - [Svelte](https://svelte.dev), [Vite](https://vite.dev), et les polices [Geist](https://vercel.com/font) et [Funnel Display](https://fonts.google.com/specimen/Funnel+Display) (OFL).
 

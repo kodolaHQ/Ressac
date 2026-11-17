@@ -20,7 +20,7 @@ Ressac is Firefox with a new interface on top and an agent beside it. Firefox do
 │  │ Svelte)      │  │ (terminal) │             │                    │                      │
 │  └──────────────┘  └────────────┘             │ docker             │ HTTP                 │
 │                                               ▼                    ▼                      │
-│  page actors (chrome/agent) ◄── MCP ── workshop container      Ollama                     │
+│  page actors (chrome/agent) ◄── MCP ── workshop container      llama-server               │
 │  read/act in tabs for the agent        (Claude Code / Codex)   (local models)             │
 └───────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -28,7 +28,7 @@ Ressac is Firefox with a new interface on top and an agent beside it. Firefox do
 - **Firefox side** (privileged JavaScript, written in TypeScript and bundled by Vite): the window controller, the store, the UI iframes and the JSWindowActors that read and act in pages.
 - **Node side**: a separate process started by Firefox. It hosts the kernel, which owns everything that is not a browser concern: the agent's container, its sessions, the MCP server the agent talks to, workflows, widgets, recaps.
 - **The agent** runs in a Docker container (`ressac-workshop`), signed in with the user's own Claude or ChatGPT account. It reaches the browser only through the kernel's MCP server, which asks the browser over the same JSON-RPC link.
-- **Local AI**: workflows, watches and widgets call Ollama on `127.0.0.1:11434`. A workflow's web harvest runs in a throwaway container with no network.
+- **Local AI**: two small models run in the `llama-server` shipped with the app: d1-2B decides for workflows, watches and widgets (`127.0.0.1:8008`), EmbeddingGemma finds pages for ⌘T (`127.0.0.1:8010`). A workflow's web harvest runs in a throwaway container with no network.
 
 ## Where things live
 
@@ -42,7 +42,7 @@ Ressac is Firefox with a new interface on top and an agent beside it. Firefox do
 | `apps/firefox/ui/` | The Svelte UI: sidebar, command bar, settings, home, agent panel, workflow builder. |
 | `apps/firefox/core/` | Pure logic shared by the UI and the chrome, with no Firefox or DOM access: the state and its actions, tab cycling, history, sites. Easiest place to unit test. |
 | `apps/firefox/shared/` | Types and helpers used on both sides of a boundary (RPC messages, settings schema, release notes, i18n). |
-| `apps/firefox/host/` | The Node host: JSON-RPC server, Docker and Ollama runtimes, agent engines, keychain. |
+| `apps/firefox/host/` | The Node host: JSON-RPC server, Docker runtime, agent engines, keychain. |
 | `apps/firefox/locales/` | Fluent files, French and English. |
 | `packages/kernel/src/` | The kernel: `container/` (the workshop), `pty/` (agent sessions), `mcp/` (tools exposed to the agent), `access/` (what the agent may read), `workflows/`, `widgets/`, `recaps/`, `search/`… |
 | `packages/kernel/templates/` | Instructions shipped to the agent (`AGENTS.md`, `CLAUDE.md`, and `guides/` read per task). |
