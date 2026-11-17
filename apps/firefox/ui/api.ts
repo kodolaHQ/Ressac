@@ -5,6 +5,7 @@ import type { HomeTheme } from "../../../packages/kernel/src/home/theme.ts";
 import type { FreePlacement } from "../../../packages/kernel/src/home/schemas.ts";
 import type { Execution, ResumeExecution } from "../../../packages/kernel/src/workflows/executions.ts";
 import { format } from "../shared/i18n";
+import { SHORTCUTS } from "../shared/shortcuts";
 import { HOST_EXITED } from "../chrome/agent/host";
 import { validFolder } from "../chrome/store/app-folder";
 import type { WindowController } from "../chrome/window/controller";
@@ -155,6 +156,7 @@ export function createApi(win: WindowController): ApiFirefox {
     // shortcut: zoom, find in page and devtools are out of step 2 and do nothing.
     command: (id, c) => void (typeof c === "string" && c !== "endFind" && c !== "devtools" && win.command(id, c)),
     returnFocusToPage: () => win.focusPage(),
+    runShortcut: (id) => win.shortcut(SHORTCUTS[id].run),
     pagePreview: async () => null,
     // The visits live in the kernel host: the UI gets copies made in this realm.
     history: {

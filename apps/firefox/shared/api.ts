@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AURA_IDS } from "./aura";
 import { HINT_IDS } from "./hints";
-import { SHORTCUT_IDS } from "./shortcuts";
+import { SHORTCUT_IDS, type ShortcutId } from "./shortcuts";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "./search";
 import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type AccessState, type BrowserState, type SpaceId, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
 import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile } from "@ressac/kernel";
@@ -222,6 +222,8 @@ export interface ApiRessac {
   /** `ongletId` null: the input opens a new tab (blank page). */
   navigate(tabId: TabId | null, input: string): void;
   command(tabId: TabId, c: TabCommand): void;
+  /** Runs a remappable shortcut's action, as its keys would (the ⌘T bar's « Commandes »). */
+  runShortcut(id: ShortcutId): void;
   contentBounds(b: BoundsRange): void;
   /** macOS: the window buttons follow the sidebar (hidden with it in compact mode). */
   windowButtons(visible: boolean): void;

@@ -196,6 +196,27 @@ describe("Command bar", () => {
     await waitBar(false);
   });
 
+  it("« Commandes »: a browser feature typed by name runs, with its keys shown; vim turns on then off", async () => {
+    await withPageA();
+    await pressKeys(m, "Meta+t");
+    await type("compact");
+    await waitUi(m, "return doc.querySelector('[data-testid=\"command-row\"][data-type=\"command\"]')?.textContent.includes('⇧⌘S')");
+    expect(await inUi<string>(m, "return doc.querySelector('[data-testid=\"command-section\"]')?.textContent")).toBe("Commandes");
+    await pressKeys(m, "ArrowDown");
+    expect(await selectedType()).toBe("command");
+    await pressKeys(m, "Enter");
+    await waitBar(false);
+    await waitState((s) => s.windows[0]!.compact, (c) => c === true);
+    for (const on of [true, false]) {
+      await pressKeys(m, "Meta+t");
+      await type("vim");
+      await waitUi(m, "return doc.querySelector('[data-testid=\"command-row\"][data-type=\"command\"]')?.textContent.includes(arguments[0])", [on ? "Activer" : "Désactiver"]);
+      await pressKeys(m, "ArrowDown");
+      await pressKeys(m, "Enter");
+      await waitState((s) => s.settings.vimMode, (v) => v === on);
+    }
+  });
+
   it("⌘L fills in the active URL, all selected; Enter loads in the same tab", async () => {
     const a = await withPageA();
     await pressKeys(m, "Meta+l");

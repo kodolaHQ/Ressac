@@ -390,6 +390,25 @@ it("closing and reopening the panel keeps the conversation", async () => {
   expect(await terminalText()).toContain("received: souvenir");
 });
 
+it("⌘T › « Panneau de l'agent » on home opens the panel with the terminal focused, not the home field", async () => {
+  await launch();
+  await terminalShows("fake agent ready>");
+  await pressKeys(m, "Meta+j");
+  await hidden();
+  await pressKeys(m, "Meta+t");
+  await waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input'");
+  await inUi(m, `const f = doc.activeElement; f.value = "agent"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`);
+  await waitUi(m, "return doc.querySelector('[data-testid=\"command-row\"][aria-selected=\"false\"][data-type=\"command\"]')?.textContent.includes('⌘J')");
+  await pressKeys(m, "ArrowDown");
+  await pressKeys(m, "Enter");
+  await shown();
+  await waitFor(m, "return document.activeElement?.id", (v) => v === "ressac-agent");
+  await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 10_000, "agent");
+  // The home field's late focus (closeCommand's counter) must not take it back.
+  await new Promise((r) => setTimeout(r, 500));
+  expect(await m.execute("return document.activeElement?.id")).toBe("ressac-agent");
+});
+
 it("Docker absent → message and Réessayer", async () => {
   await launch({ FAKE_DOCKER_ABSENT: "1" });
   await shown();

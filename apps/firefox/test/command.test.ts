@@ -9,7 +9,7 @@ const action = (id: string, name: string): ActionShown => ({ id, name: name, des
 const tab = (id: string, title: string, url = `https://${id}.fr/`): SourceTab => ({ id, title: title, url, favicon: null });
 const visit = (url: string, title = url): Visit => ({ url, title: title, lastVisit: "2026-01-01T00:00:00Z", visits: 1, spaceId: "e", private: false, kept: false, favicon: null });
 const app = (id: string, name: string): SiteApp => ({ kind: "site", id, name: name, action: "open", favicon: null });
-const EMPTY: CommandSources = { actions: [], tabs: [], siteApps: [], history: [], bookmarks: [] };
+const EMPTY: CommandSources = { actions: [], commands: [], tabs: [], siteApps: [], history: [], bookmarks: [] };
 
 test("empty text without sources: a single default line « Page d'accueil »", () => {
   expect(commandLines("", EMPTY, null)).toEqual([{ type: "default", text: "", label: "Page d'accueil" }]);
@@ -21,7 +21,7 @@ test("address: « Ouvrir exemple.fr » first; words: « Rechercher »", () => {
 });
 
 test("group order: default, actions, tabs, apps, history", () => {
-  const S: CommandSources = { actions: [action("a", "Chat action")], tabs: [tab("o", "chat")], siteApps: [app("p", "Chat appli")], history: [visit("https://h.fr/", "chat h")], bookmarks: [] };
+  const S: CommandSources = { ...EMPTY, actions: [action("a", "Chat action")], tabs: [tab("o", "chat")], siteApps: [app("p", "Chat appli")], history: [visit("https://h.fr/", "chat h")], bookmarks: [] };
   expect(commandLines("chat", S, null).map((l) => l.type)).toEqual(["default", "action", "tab", "app", "history"]);
 });
 
@@ -84,7 +84,7 @@ test("an action that expects an entry carries its label; typed with its entry, i
 });
 
 test("titles: one per section, on its first line; none for the default line", () => {
-  const S: CommandSources = { actions: [action("a", "Chat action")], tabs: [tab("o", "chat"), tab("p", "chat 2")], siteApps: [], history: [visit("https://h.fr/", "chat h")], bookmarks: [] };
+  const S: CommandSources = { ...EMPTY, actions: [action("a", "Chat action")], tabs: [tab("o", "chat"), tab("p", "chat 2")], siteApps: [], history: [visit("https://h.fr/", "chat h")], bookmarks: [] };
   const l = commandLines("chat", S, null);
   expect(l.map((_, i) => titleBefore(l, i))).toEqual([null, "Actions", "Onglets ouverts", null, "Historique"]);
 });
@@ -102,6 +102,7 @@ test("default parameter: the web address displayed without an anchor, nothing fo
 test("empty field: the home first, then the actions (last launched first) and the open tabs without the displayed tab", () => {
   const launched = (id: string, name: string, start: string): ActionShown => ({ ...action(id, name), last: { run: start, start: start, status: "succeeded" } as ActionShown["last"] });
   const S: CommandSources = {
+    ...EMPTY,
     actions: [action("b", "Bravo"), launched("z", "Zulu", "2026-11-02T10:00:00Z"), action("a", "Alpha"), { ...action("x", "Cassée"), error: "invalide" }, withEntry("r", "Résumé", "Vidéo"), action("c", "Charlie")],
     tabs: [1, 2, 3, 4, 5, 6, 7].map((i) => tab(`o${i}`, `Onglet ${i}`)),
     siteApps: [app("p", "Appli")],
@@ -129,4 +130,14 @@ test("bookmarks: a section after history, capped, without a URL already in a tab
   expect(sectionOf(l[3]!)).toBe("bookmarks");
   expect(titleBefore(l, 3)).toBe("Favoris");
   expect(commandLines("", { ...EMPTY, bookmarks: S.bookmarks }, null).map((x) => x.type)).toEqual(["default"]);
+});
+
+test("commands: found by name after the actions, at most 4, not with an empty field", () => {
+  const cmd = (id: "settings" | "compact" | "design" | "apps" | "history", label: string) => ({ id, label, keys: "⌘," });
+  const S: CommandSources = { ...EMPTY, actions: [action("a", "Mode action")], tabs: [tab("o", "mode")], commands: [cmd("compact", "Mode compact"), cmd("design", "Mode design"), cmd("settings", "Réglages"), cmd("apps", "Mode a"), cmd("history", "Mode b")] };
+  const l = commandLines("MODE", S, null);
+  expect(l.map((x) => x.type)).toEqual(["default", "action", "command", "command", "command", "command", "tab"]);
+  expect(sectionOf(l[2]!)).toBe("commands");
+  expect(titleBefore(l, 2)).toBe("Commandes");
+  expect(commandLines("", S, null).some((x) => x.type === "command")).toBe(false);
 });

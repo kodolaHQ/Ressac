@@ -18,7 +18,9 @@
     type CommandLine,
     type SourceTab,
     type CommandSources,
+    type BrowserCommand,
   } from "./command";
+  import { SHORTCUT_IDS, SHORTCUTS, shortcutLabel } from "../../shared/shortcuts";
   import { walkableTabs } from "../../shared/walkable-tabs";
   import type { ActionShown } from "../../shared/actions";
   import type { Visit } from "../../shared/model";
@@ -93,7 +95,15 @@
     });
   });
 
-  const sources: CommandSources = $derived({ actions, tabs: tabs, siteApps: [...projects, ...sites], history: hist, bookmarks: marks });
+  // Every remappable shortcut but the two that open this bar, then vim on/off: the browser's own features, typed by name.
+  const commands = $derived.by<BrowserCommand[]>(() => {
+    const s = appState.value?.settings;
+    const list: BrowserCommand[] = SHORTCUT_IDS.filter((id) => id !== "command" && id !== "address").map((id) => ({ id, label: t(SHORTCUTS[id].label), keys: shortcutLabel(id, s) }));
+    list.push({ id: "vim", label: t(s?.vimMode ? "sidebar-command-vim-off" : "sidebar-command-vim-on"), keys: "" });
+    return list;
+  });
+
+  const sources: CommandSources = $derived({ actions, commands, tabs: tabs, siteApps: [...projects, ...sites], history: hist, bookmarks: marks });
 
   let text = $state("");
   let denial = $state("");
@@ -268,6 +278,13 @@
       else launchAction(l.id, l.input);
       return;
     }
+    if (l.type === "command") {
+      // Closed first: the keyboard goes back to the page, then the command may take it (agent panel, design mode).
+      closeCommand(true);
+      if (l.command.id === "vim") api.dispatch({ type: "setVimMode", enabled: !appState.value?.settings.vimMode });
+      else api.runShortcut(l.command.id);
+      return;
+    }
     if (l.type === "default") api.navigate(target, l.text);
     else if (l.type === "history" || l.type === "bookmark") api.navigate(target, l.url);
     else if (l.type === "tab") activate(l.tab.id);
@@ -381,7 +398,7 @@
   }
 
   const label = (l: CommandLine): string =>
-    l.type === "default" ? l.label : l.type === "action" ? l.name : l.type === "tab" ? l.tab.title : l.type === "app" ? l.app.name : l.title || l.url;
+    l.type === "default" ? l.label : l.type === "action" ? l.name : l.type === "command" ? l.command.label : l.type === "tab" ? l.tab.title : l.type === "app" ? l.app.name : l.title || l.url;
   // The UI has no network: history gives the site's last favicon seen, as a data: URL.
   const visitFavicon = (url: string): string | null => hist.find((v) => v.url === url)?.favicon ?? null;
   const host = (url: string): string => {
@@ -402,7 +419,9 @@
   const badgeText = (l: CommandLine): string =>
     l.type === "default" ? "" : t(`sidebar-badge-${l.type}`);
   const detail = (l: CommandLine): string =>
-    l.type === "tab"
+    l.type === "command"
+      ? l.command.keys
+      : l.type === "tab"
       ? l.tab.url
       : l.type === "history" || l.type === "bookmark"
         ? l.url
@@ -420,6 +439,8 @@
           : "find"
       : l.type === "action"
         ? "actions"
+        : l.type === "command"
+          ? "keyboard"
         : l.type === "tab"
           ? "tab"
           : l.type === "app"
