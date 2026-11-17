@@ -26,7 +26,7 @@ interface Call {
 }
 
 /** A fake world: one Lima instance, a Podman that answers when it runs, the guest's version file and the logins volume. */
-function world(o: { instance?: { status: string; disk?: boolean } | null; guestVersion?: string; upgradedTo?: string; volume?: boolean; volumeExistsCode?: number; failStops?: number; home?: string } = {}) {
+function world(o: { instance?: { status: string; disk?: boolean } | null; guestVersion?: string; upgradedTo?: string; volume?: boolean; volumeExistsCode?: number; failStops?: number; home?: string; brokenPodman?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), "m-"));
   dirs.push(root);
   const home = o.home ?? join(root, "h");
@@ -34,7 +34,7 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
   mkdirSync(resources, { recursive: true });
   writeFileSync(join(resources, "lima.yaml"), TEMPLATE);
   const dir = join(home, "ressac");
-  const s = { instance: o.instance === undefined ? null : o.instance, guestVersion: o.guestVersion ?? VM_IMAGE.version, volume: o.volume ?? false, calls: [] as Call[], starts: 0, failStops: o.failStops ?? 0, imageSeen: null as Buffer | null };
+  const s = { instance: o.instance === undefined ? null : o.instance, guestVersion: o.guestVersion ?? VM_IMAGE.version, volume: o.volume ?? false, calls: [] as Call[], starts: 0, apk: 0, healed: false, failStops: o.failStops ?? 0, imageSeen: null as Buffer | null };
   if (s.instance) {
     mkdirSync(dir, { recursive: true });
     if (s.instance.disk !== false) writeFileSync(join(dir, "disk"), "");
@@ -66,6 +66,8 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
       }
       if (line === "delete --force ressac") return rmSync(dir, { recursive: true, force: true }), (s.instance = null), ok();
       if (line.endsWith("cat /etc/ressac-vm-version")) return ok(s.guestVersion + "\n");
+      if (line.endsWith("pgrep -x apk")) return s.apk > 0 ? (s.apk--, ok("1")) : { code: 1, stdout: "", stderr: "" };
+      if (line.endsWith("ressac sudo sh") && String(opts.input).includes("apk fix")) return (s.healed = true), ok();
       if (line.endsWith("sudo tee /etc/ressac-vm-version")) return (s.guestVersion = String(opts.input).trim()), ok();
       // The detached upgrade job: what apk delivered (alpine-release, podman), the setup hash kept.
       if (line.endsWith("ressac sudo sh") && String(opts.input).includes("apk upgrade")) return (s.guestVersion = o.upgradedTo ?? VM_IMAGE.version), ok();
@@ -73,7 +75,7 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
     }
     if (cmd.endsWith("podman")) {
       const running = s.instance?.status === "Running";
-      if (args.includes("info")) return { code: running ? 0 : 125, stdout: "", stderr: "" };
+      if (args.includes("info")) return { code: running && (!o.brokenPodman || s.healed) ? 0 : 125, stdout: "", stderr: "" };
       if (args.includes("exists")) return { code: o.volumeExistsCode ?? (s.volume ? 0 : 1), stdout: "", stderr: "socket hiccup" };
       if (args.includes("export")) return writeFileSync(args[args.indexOf("--output") + 1] as string, "logins"), ok();
       return ok();
@@ -466,7 +468,7 @@ describe("the workshop machine", () => {
       const d = mkdtempSync(join(tmpdir(), "q-"));
       dirs.push(d);
       const l = join(d, "limactl");
-      writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo ${state}; exit 0; }\necho "$*" >> ${join(d, "log")}\n[ "$2" = --force ] || exit ${plain}\n`);
+      writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo ${state}; exit 0; }\n[ "$1" = shell ] && exit 1\necho "$*" >> ${join(d, "log")}\n[ "$2" = --force ] || exit ${plain}\n`);
       chmodSync(l, 0o755);
       writeFileSync(join(d, "launch"), "t1");
       execFileSync("/bin/sh", ["-c", QUIT_STOP, "x", l, "ressac", "0", "0", "t1"], { env: { ...process.env, LIMA_HOME: d } });
@@ -479,7 +481,7 @@ describe("the workshop machine", () => {
       const d = mkdtempSync(join(tmpdir(), "q-"));
       dirs.push(d);
       const l = join(d, "limactl");
-      writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo Running; exit 0; }\necho "$*" >> ${join(d, "log")}\n`);
+      writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo Running; exit 0; }\n[ "$1" = shell ] && exit 1\necho "$*" >> ${join(d, "log")}\n`);
       chmodSync(l, 0o755);
       writeFileSync(join(d, "launch"), "t2");
       execFileSync("/bin/sh", ["-c", QUIT_STOP, "x", l, "ressac", "0", wait, "t1"], { env: { ...process.env, LIMA_HOME: d } });
@@ -517,7 +519,7 @@ describe("the workshop machine", () => {
       const d = mkdtempSync(join(tmpdir(), "q-"));
       dirs.push(d);
       const l = join(d, "limactl");
-      writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo Running; exit 0; }\necho "$*" >> ${join(d, "log")}\n`);
+      writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo Running; exit 0; }\n[ "$1" = shell ] && exit 1\necho "$*" >> ${join(d, "log")}\n`);
       chmodSync(l, 0o755);
       writeFileSync(join(d, "launch"), launch);
       const host = spawn("sleep", ["0.5"]);
@@ -700,6 +702,71 @@ describe("the workshop machine", () => {
     expect(w.s.calls.some((c) => c.args.includes("export"))).toBe(true);
   });
 
+  it("a stop waits for a running apk (bounded), and a running apk counts as busy for the idle poll", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    const m = machine(w, { idleMs: 10 });
+    await m.wake("harvest");
+    w.s.apk = 3; // two polls see it busy; then the stop itself waits for it once more
+    await vi.waitFor(() => expect(stops(w)).toBe(1), { timeout: 10_000 });
+    const l = limactl(w);
+    expect(w.s.apk).toBe(0);
+    expect(l.lastIndexOf("shell --workdir / ressac pgrep -x apk")).toBeLessThan(l.findIndex((x) => x.startsWith("stop")));
+  });
+
+  it("the quit script waits for a running apk before its stop", async () => {
+    const d = mkdtempSync(join(tmpdir(), "q-"));
+    dirs.push(d);
+    const l = join(d, "limactl");
+    // apk runs for the first two probes.
+    writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo Running; exit 0; }\nif [ "$1" = shell ]; then echo p >> ${join(d, "probes")}; [ $(wc -l < ${join(d, "probes")}) -le 2 ]; exit $?; fi\necho "$*" >> ${join(d, "log")}\n`);
+    chmodSync(l, 0o755);
+    writeFileSync(join(d, "launch"), "t1");
+    execFileSync("/bin/sh", ["-c", QUIT_STOP.replace("sleep 2", "sleep 0.05"), "x", l, "ressac", "0", "0", "t1"], { env: { ...process.env, LIMA_HOME: d } });
+    expect(readFileSync(join(d, "probes"), "utf8").split("\n").filter(Boolean)).toHaveLength(3);
+    expect(readFileSync(join(d, "log"), "utf8")).toBe("stop ressac\n");
+  });
+
+  it("a Podman that never answers after a cut upgrade is healed once by apk, then the boot goes on", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-20062535e787", brokenPodman: true });
+      let done = false;
+      const p = machine(w).wake("user").finally(() => (done = true));
+      while (!done) await vi.advanceTimersByTimeAsync(1000);
+      await p;
+      expect(w.s.healed).toBe(true);
+      // Not owed (a guest on the image): no heal, the boot fails as before.
+      const ok = world({ instance: { status: "Stopped" }, brokenPodman: true });
+      done = false;
+      const q = machine(ok).wake("user").catch((e) => e).finally(() => (done = true));
+      while (!done) await vi.advanceTimersByTimeAsync(1000);
+      expect(await q).toBeInstanceOf(Error);
+      expect(ok.s.healed).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a failed launch probe with no instance folder stays absent (no download from a harvest)", async () => {
+    const w = world();
+    const run: Runner = (cmd, args, o) => (args.join(" ") === "list --json" ? Promise.resolve({ code: 1, stdout: "", stderr: "lima: boom" }) : w.run(cmd, args, o));
+    const m = machine(w, { run });
+    expect(await m.harvestable()).toBe(false);
+    expect(m.status().kind).toBe("absent");
+  });
+
+  it("the removed mark is written before the delete: a delete cut short never reinstalls at the next AI on; a failed one leaves no mark", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    let marked: boolean | undefined;
+    const run: Runner = (cmd, args, o) => (args[0] === "delete" && (marked = existsSync(join(w.home, "removed"))), w.run(cmd, args, o));
+    await machine(w, { run }).remove({ force: true });
+    expect(marked).toBe(true);
+    const f = world({ instance: { status: "Stopped" } });
+    const failing: Runner = (cmd, args, o) => (args[0] === "delete" ? Promise.resolve({ code: 1, stdout: "", stderr: "boom" }) : f.run(cmd, args, o));
+    await expect(machine(f, { run: failing }).remove({ force: true })).rejects.toThrow();
+    expect(existsSync(join(f.home, "removed"))).toBe(false);
+  });
+
   it("a fresh boot deletes the older versioned engine folders; a machine already running keeps them mounted", async () => {
     for (const status of ["Stopped", "Running"]) {
       const w = world({ instance: { status } });
@@ -722,7 +789,7 @@ describe("the guest upgrade job", () => {
     const bin = join(d, "bin");
     mkdirSync(bin);
     const tool = (name: string, body: string) => (writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`), chmodSync(join(bin, name), 0o755));
-    tool("apk", `echo "$*" >> ${d}/apk.log; touch ${d}/apk.running; sleep 1; rm ${d}/apk.running`);
+    tool("apk", `echo "$*" >> ${d}/apk.log; touch ${d}/apk.running; while [ ! -e ${d}/release ]; do sleep 0.05; done; rm ${d}/apk.running`);
     tool("pgrep", `[ "$*" = "-x apk" ] && [ -e ${d}/apk.running ]`);
     tool("podman", "echo 5.8.10");
     writeFileSync(join(d, "alpine-release"), "3.24.4\n");
@@ -734,10 +801,11 @@ describe("the guest upgrade job", () => {
       p.on("close", () => ok(Date.now() - began));
       p.stdin.end(input);
     });
-    expect(await launch(script)).toBeLessThan(800);
+    expect(await launch(script)).toBeLessThan(5000); // returns while apk still runs (it waits for the release below)
     await vi.waitFor(() => expect(existsSync(join(d, "apk.running"))).toBe(true));
-    expect(await launch(script)).toBeLessThan(800);
+    expect(await launch(script)).toBeLessThan(5000);
     expect(readFileSync(join(d, "version"), "utf8").trim()).toBe("3.24.0-5.8.0-20062535e787");
+    writeFileSync(join(d, "release"), "");
     await vi.waitFor(() => expect(readFileSync(join(d, "version"), "utf8").trim()).toBe("3.24.4-5.8.10-20062535e787"), { timeout: 3000 });
     expect(readFileSync(join(d, "apk.log"), "utf8")).toBe("upgrade --no-cache\n");
   });

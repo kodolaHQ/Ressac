@@ -56,6 +56,9 @@ export const QUIT_STOP = [
   `if [ "$4" = 1 ]; then i=0; while mine && [ $i -lt 300 ] && [ "$(st)" != Running ]; do sleep 1; i=$((i + 1)); done; fi`,
   `mine`,
   `[ "$(st)" = Running ] || exit 0`,
+  // An apk upgrade in the guest is never cut (a broken Podman would follow): waited for, up to 5 min.
+  `i=0; while [ $i -lt 150 ] && "$L" shell --workdir / "$N" pgrep -x apk >/dev/null 2>&1; do sleep 2; i=$((i + 1)); done`,
+  `mine`,
   `"$L" stop "$N" || "$L" stop --force "$N"`,
 ].join("\n");
 const detached = (args: string[], env: Record<string, string>) =>
@@ -325,20 +328,29 @@ export function createMachine(o: {
       if (r.code !== 0) throw startFailed(detail(r));
       await pruneEngines();
     }
-    for (let i = 0; ; i++) {
+    const guestVersion = async () => parts((await shell(["cat", "/etc/ressac-vm-version"])).stdout.trim());
+    const want = parts(image.version);
+    const owed = (g: ReturnType<typeof parts>) => g.branch === want.branch && g.setup === want.setup && (older(g.alpine, want.alpine) || older(g.podman, want.podman));
+    for (let i = 0, healed = false; ; i++) {
       const r = await pod(["info"], 10_000);
       if (r.code === 0) break;
-      if (i >= 30) throw startFailed(detail(r));
+      if (i >= 30) {
+        if (healed || !owed(await guestVersion())) throw startFailed(detail(r));
+        // An upgrade cut short (a crash, a stop past its wait) can leave Podman broken: apk completes it, once, then Podman is asked again.
+        healed = true;
+        i = 0;
+        await shell(["sudo", "sh"], { input: "apk fix --no-cache; apk upgrade --no-cache\n", delayMs: 10 * 60_000 });
+        continue;
+      }
       await sleep(500);
     }
     if (running) return;
-    const guest = parts((await shell(["cat", "/etc/ressac-vm-version"])).stdout.trim());
-    const want = parts(image.version);
+    const guest = await guestVersion();
     // apk stays on the guest's Alpine branch and never runs guest-setup.sh: only a new machine brings those.
     if (guest.branch !== want.branch || guest.setup !== want.setup) {
       console.warn(`[ressac] the machine (${guest.alpine}, setup ${guest.setup}) differs from its image ${image.version}: removing it in Réglages brings the new one`);
-    } else if (older(guest.alpine, want.alpine) || older(guest.podman, want.podman)) {
-      // shortcut: a machine stop (idle, quit) during the job still cuts apk; an apk-aware stop if a broken guest shows.
+    } else if (owed(guest)) {
+      // A stop waits for it (stopInner, QUIT_STOP); one cut anyway (crash, past 5 min) is healed at the next boot.
       await shell(["sudo", "sh"], { input: UPGRADE });
     }
     await rm(raw, { force: true }); // the instance has its own disk now
@@ -356,6 +368,9 @@ export function createMachine(o: {
     const parent = dirname(o.engine);
     for (const f of await readdir(parent).catch(() => [])) if (f.startsWith("engine-") && f !== name) await rm(join(parent, f), { recursive: true, force: true }).catch(() => {});
   }
+
+  /** An apk (the detached upgrade) runs in the guest. */
+  const upgrading = async () => (await shell(["pgrep", "-x", "apk"], { delayMs: 10_000 })).code === 0;
 
   let timer: ReturnType<typeof setInterval> | undefined;
   let mode: WakeReason = "user";
@@ -379,7 +394,7 @@ export function createMachine(o: {
       // A harvest that woke the machine since the previous poll may not have started its container yet: one poll of grace.
       const quiet = seen === polled;
       polled = seen;
-      if (await o.busy()) idle = 0;
+      if ((await o.busy()) || (await upgrading())) idle = 0;
       else if (mode === "harvest" ? quiet : (idle += pollMs) >= idleMs)
         await serial(async () => {
           if (wakes === seen && timer) await stopInner(); // a wake since the busy check wins
@@ -398,6 +413,7 @@ export function createMachine(o: {
   /** On failure the poll stays armed and tries again. */
   async function stopInner(): Promise<void> {
     if ((await instance()) === "Running") {
+      for (let i = 0; i < 150 && (await upgrading()); i++) await sleep(2000); // apk is never cut: at most 5 min
       await shell(["sudo", "fstrim", "-a"], { delayMs: 60_000 }); // gives freed blocks back to the Mac's disk
       if ((await lima(["stop", NAME], { delayMs: 60_000 })).code !== 0) {
         const f = await lima(["stop", "--force", NAME]);
@@ -483,7 +499,7 @@ export function createMachine(o: {
       set(was === "damaged" ? { kind: "error", message: damaged().message, forceRemovable: true } : was === "Running" ? { kind: "running" } : was === "Stopped" ? { kind: "stopped" } : absent());
     }).catch(() => {
       // Lima did not answer: an installed machine must not vanish from the harvests (the wake tells the real state).
-      if (status.kind === "absent" && !existsSync(removedMark)) set({ kind: "stopped" });
+      if (status.kind === "absent" && !existsSync(removedMark) && existsSync(dir)) set({ kind: "stopped" });
     });
 
   return {
@@ -550,17 +566,20 @@ export function createMachine(o: {
               await rename(`${tar}.part`, tar);
             }
           }
+          // Before the delete: one cut short (quit) must not have the next AI on install it again.
+          await ownHome();
+          await writeFile(removedMark, "");
           if (was !== "absent") {
             const d = await lima(["delete", "--force", NAME]);
             if (d.code !== 0) throw new Error(hostSay("host-machine-remove-failed", { detail: detail(d) }));
           }
         } catch (e) {
+          const left = await instance().catch(() => null);
+          if (left !== "absent") await rm(removedMark, { force: true }); // still there: not removed
           // Kept, maybe running: the idle rule stops it again.
-          if ((await instance().catch(() => null)) === "Running") watch("user");
+          if (left === "Running") watch("user");
           throw e;
         }
-        await ownHome();
-        await writeFile(removedMark, "");
         set(absent());
       }),
     /**
