@@ -307,6 +307,15 @@ export function createApi(win: WindowController): ApiFirefox {
         host.notify("sites.act", { id, action, window: windowId });
         if (action === "edit") win.openAgent();
       },
+      showHome(id) {
+        const state = win.store.state;
+        const favorite = state.essentials.find((f) => f.site === id);
+        const tab = favorite && Object.values(state.tabs).find((t) => t.windowId === windowId && t.link?.type === "essential" && t.link.id === favorite.id);
+        // A tab without its XUL tab yet starts on the home anyway (sites.attachTab).
+        const browser = tab && win.browserOf(tab.id);
+        if (browser) win.store.sites.showTabHome(browser);
+      },
+      hasHome: (id) => win.store.sites.tabHasHome(id),
     },
     // The section « Projets externes »: the external MCP server, kept by the kernel host.
     external: createExternalApi({ host, window: windowId, dispatch: (a) => win.store.dispatch(a), untilUnload }),

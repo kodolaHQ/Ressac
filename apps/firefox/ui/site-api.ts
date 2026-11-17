@@ -4,6 +4,32 @@ import { local } from "./design-api";
 
 const off = () => () => {};
 
+// The controller outlives this document: a listener into a dead document would throw on every call.
+const untilUnload = (unsubscribe: () => void) => {
+  window.addEventListener("unload", unsubscribe, { once: true });
+  return unsubscribe;
+};
+
+/** What the home's frame (ui/SiteHomeFrame.svelte) uses of its API, in an app window or over an essential tab. */
+export type HomeApi = Pick<ApiSite, "memory" | "open" | "image" | "onMemory" | "enter"> & { onState(callback: () => void): () => void };
+
+/** The home's API on its chrome controller (the window's or the essential tab's); what comes out is copied. */
+export function createHomeApi(c: Pick<SiteWindowController, "enter" | "memory" | "onMemory" | "openFromHome" | "image"> & { onState(cb: () => void): () => void }): HomeApi {
+  return {
+    onState: (cb) => untilUnload(c.onState(() => cb())),
+    enter: () => c.enter(),
+    // Rejects when the memory cannot be read: HomeFrame then sends nothing.
+    memory: async () => {
+      const m = await c.memory();
+      if (!m) throw new Error("site app memory unavailable");
+      return structuredClone(m);
+    },
+    onMemory: (cb) => untilUnload(c.onMemory((m) => cb(structuredClone(m)))),
+    open: async (url) => c.openFromHome(url),
+    image: async (url) => c.image(url),
+  };
+}
+
 /**
  * The API of the site bar (SiteWindow.svelte), on the window's controller. What comes out of the chrome is
  * copied (structuredClone): the bar never holds the store's objects. The extension members do nothing: the add-on
@@ -11,16 +37,11 @@ const off = () => () => {};
  * The design mode is the window's: the controller knows the app, the bar sends no target.
  */
 export function createSiteApi(c: SiteWindowController): ApiSite {
-  // The controller outlives this document: a listener into a dead document would throw on every call.
-  const untilUnload = (unsubscribe: () => void) => {
-    window.addEventListener("unload", unsubscribe, { once: true });
-    return unsubscribe;
-  };
   let lastDesign: Awaited<ReturnType<SiteWindowController["design"]["state"]>> | null = null;
   return {
+    ...createHomeApi(c),
     state: async () => structuredClone(c.state()),
     onState: (cb) => untilUnload(c.onState((e) => cb(structuredClone(e)))),
-    enter: () => c.enter(),
     home: () => c.home(),
     previous: () => c.back(),
     next: () => c.forward(),
@@ -32,15 +53,6 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
       if (typeof yes !== "boolean" || (hash !== undefined && (typeof hash !== "string" || hash.length > 128))) throw new Error("invalid accord request");
       await c.grant(yes, hash ?? "");
     },
-    // Rejects when the memory cannot be read: HomeFrame then sends nothing.
-    memory: async () => {
-      const m = await c.memory();
-      if (!m) throw new Error("site app memory unavailable");
-      return structuredClone(m);
-    },
-    onMemory: (cb) => untilUnload(c.onMemory((m) => cb(structuredClone(m)))),
-    open: async (url) => c.openFromHome(url),
-    image: async (url) => c.image(url),
     extensions: {
       list: async () => [],
       toggle: async () => ({ ok: false, error: "Pas encore disponible dans Ressac." }),

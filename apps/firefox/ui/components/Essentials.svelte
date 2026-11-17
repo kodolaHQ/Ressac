@@ -20,6 +20,8 @@
 
   function open(f: Favorite) {
     api.dispatch({ type: "openFavorite", windowId: win.id, kind: "essential", id: f.id });
+    // A site app's essential: its home over the tab, as its window opens on it (none for an app without one).
+    if (f.site) api.sites.showHome(f.site);
   }
 </script>
 
@@ -69,6 +71,7 @@
         const site = favorite.site;
         openMenu(e, [
           // A site app's essential: to its window (and the sidebar bar), or out of the essentials.
+          ...(site && api.sites.hasHome(site) ? [{ label: t("chrome-site-home"), dispatch: () => open(favorite) }] : []),
           ...(site ? [{ label: t("chrome-ui-open-window"), dispatch: () => (api.dispatch({ type: "placeSite", id: site, placement: "bar" }), api.sites.act(site, "open")) }] : []),
           ...(tabOf(favorite) && !tabOf(favorite)?.unloaded ? [{ label: t("chrome-ui-unload"), dispatch: () => api.dispatch({ type: "unloadEssential", windowId: win.id, favoriteId: favorite.id }) }] : []),
           site

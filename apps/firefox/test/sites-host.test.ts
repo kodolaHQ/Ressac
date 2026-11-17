@@ -363,6 +363,23 @@ describe("tabSite", () => {
     expect(await m.sites.memoryOp(op)).toMatchObject({ ok: false });
   });
 
+  it("an essential tab's home hears its app's memory change without a window", async () => {
+    const m = mount();
+    await storeSiteGrant(m.dataDir, "vidola", DeclarationSite.parse(declaration));
+    await m.sites.tabSite("vidola");
+    expect(await m.sites.homeMemory("vidola")).not.toBeNull();
+    expect(await m.sites.memoryOp({ id: "vidola", url: "/serie/x", op: "remember", key: "k", value: 1 })).toEqual({ ok: true });
+    await vi.waitFor(() => expect(m.memories.map((x) => x.id)).toContain("vidola"));
+  });
+
+  it("a home change reaches the chrome with no window open (it keeps the served copy for the essentials' tabs)", async () => {
+    const m = mount();
+    await new Promise((r) => setTimeout(r, 400));
+    mkdirSync(join(m.paths.sites, "vidola", "home"), { recursive: true });
+    writeFileSync(join(m.paths.sites, "vidola", "home", "index.html"), "<p>x</p>");
+    await vi.waitFor(() => expect(m.calls.home).toContain("vidola"), { timeout: 5000 });
+  });
+
   it("revoking the grant with no window open tells the essentials' tabs to read their app again", async () => {
     const m = mount();
     await storeSiteGrant(m.dataDir, "vidola", DeclarationSite.parse(declaration));

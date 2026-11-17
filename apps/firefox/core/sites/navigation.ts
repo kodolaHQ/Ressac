@@ -1,4 +1,6 @@
 import { localUrl, hostInSite } from "@ressac/kernel";
+import { urlOnDomain } from "../../../../packages/kernel/src/sites/urls";
+import { HOME_OPEN_GAP_MS } from "../../shared/sites";
 
 /**
  * Effective domains of the app, and those of its login (OAuth…). `adressesLocales` (tests only,
@@ -39,4 +41,17 @@ export function openDecision(url: string, c: NavigationContext): "in-app" | "sma
   if (host === null) return "block";
   if (hostInSite(host, c.domains)) return "in-app";
   return hostInSite(host, c.login) ? "small-window" : "block";
+}
+
+/**
+ * Where a home's open goes (an app window's home or its essential tab's): on the app's current domain (its start
+ * address's), at most one per HOME_OPEN_GAP_MS after `last`; null if refused. The caller checks the real gesture.
+ */
+export function homeOpenUrl(address: unknown, site: { domains: readonly string[]; start: string }, last: number, now: number, localAddresses: boolean): string | null {
+  if (typeof address !== "string" || now - last < HOME_OPEN_GAP_MS) return null;
+  let current = "";
+  try {
+    current = new URL(site.start).hostname;
+  } catch {}
+  return urlOnDomain(address, current, site.domains, site.start, { localAddresses });
 }

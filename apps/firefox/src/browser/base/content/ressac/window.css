@@ -535,3 +535,34 @@
 :root[ressac-main] :is(#sidebar-container, #sidebar-box, #sidebar-splitter, #sidebar-launcher-splitter) {
   display: none !important;
 }
+
+/* A site app's home over its essential tab's page (store/sites.ts renderTab): in the tab's browser stack, so it takes the
+   page's size and hides with its tab. Enters on the spring, leaves on a short fade. */
+:root[ressac-main] .browserStack > .ressac-tab-home {
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bg);
+  transition: opacity 150ms ease-out;
+  animation: ressac-tab-home-in 460ms linear(0, .06 2.4%, .24 5.1%, .55 9.4%, .84 14.6%, 1.01 19.4%, 1.07 23.2%, 1.08 26.6%, 1.05 32.8%, 1 41%, .99 50%, 1);
+}
+
+:root[ressac-main] .browserStack > .ressac-tab-home[leaving] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes ressac-tab-home-in {
+  from { opacity: 0; transform: scale(0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[ressac-main] .browserStack > .ressac-tab-home {
+    animation: ressac-tab-home-fade 150ms ease-out;
+  }
+}
+
+@keyframes ressac-tab-home-fade {
+  from { opacity: 0; }
+}

@@ -27,7 +27,7 @@
   <SiteBar state={appState} {api} />
   <!-- Under the bar: the site's view (set by the main process) in « site » view, home otherwise. -->
   {#if appState.viewState === "home"}
-    <HomeFrame id={appState.id} {api} />
+    <HomeFrame {api} controller={window.parent.ressacSiteWindow!} />
   {:else if appState.viewState === "grant" && appState.grant}
     <SiteGrantCard grant={appState.grant} onGrant={(yes, hash) => api.grant(yes, hash)} />
   {/if}

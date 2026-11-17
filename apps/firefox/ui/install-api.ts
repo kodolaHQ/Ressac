@@ -16,6 +16,10 @@ if (params.has("site")) {
   window.ressac = inertRessac({ site: createSiteApi(site) }) as ApiFirefox;
   // Its aura and the window's keys: the controller does not see this frame's load.
   window.parent.ressacSiteBarStarted?.(window);
+} else if (params.has("tabhome")) {
+  // An essential tab's home: SiteHomeFrame mounted by sidebar.ts on the frame's controller, nothing else of the UI.
+  if (!(window.frameElement as (Element & { ressacOverlay?: unknown }) | null)?.ressacOverlay) throw new Error("Ressac tab home loaded before its controller");
+  window.ressac = inertRessac({}) as ApiFirefox;
 } else if (params.has("badge")) {
   const overlay = (window.frameElement as (Element & { ressacOverlay?: { api: BadgeChrome } }) | null)?.ressacOverlay;
   if (!overlay) throw new Error("Ressac badge loaded before its window controller");

@@ -2,19 +2,20 @@
   import { onMount } from "svelte";
   import { ts } from "./site/locale.svelte";
   import { HomeMessage, type MessageToHome } from "../shared/sites";
-  import type { ApiSite } from "../shared/api";
+  import type { HomeChrome } from "../chrome/store/sites";
+  import type { HomeApi } from "./site-api";
 
   /**
    * The app's home screen, written by the agent, in a sandboxed opaque frame
    * (`sandbox="allow-scripts"`) served from its sanitized copy (chrome/store/site-home.ts). Its `parent.postMessage`
    * reaches the chrome as a `ressac-home` event (the copy's bridge), listened above the frame on the window root,
    * before it loads. A message counts only from this frame showing this app's home; real presses are seen on the
-   * frame's window (isTrusted), as for the widgets (WidgetFrame.svelte).
+   * frame's window (isTrusted), as for the widgets (WidgetFrame.svelte). `controller`: the app window's, or the
+   * essential tab's (sidebar.html?tabhome).
    */
-  let { id, api }: { id: string; api: ApiSite } = $props();
+  let { api, controller }: { api: HomeApi; controller: HomeChrome } = $props();
   let frame = $state<HTMLIFrameElement>();
   let src = $state<string | null>(null);
-  const controller = window.parent.ressacSiteWindow!;
 
   /** The frame's document is a page of this app's served home copy (never an address it navigated to). */
   function ours(): boolean {

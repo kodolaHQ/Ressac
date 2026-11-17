@@ -430,9 +430,9 @@ export function createSites(o: {
     stopWatching = watchSites(o.paths, (id, what) => {
       // The « Sites » section of the Applications page re-reads the list (app written, changed or removed by the agent).
       if (what === "declaration") o.broadcast();
-      if (what === "home") {
-        if (opened.has(id)) o.chrome.homeChange(id);
-      } else void reread(id);
+      // Always: the chrome keeps each app's served home for its window and its essentials' tabs, open or not.
+      if (what === "home") o.chrome.homeChange(id);
+      else void reread(id);
     });
   } catch (e) {
     console.error("[sites] watch not started:", e);
@@ -610,6 +610,9 @@ export function createSites(o: {
     },
     tabDetached(id) {
       tabSites.delete(id);
+      if (opened.has(id)) return;
+      subscriptions.get(id)?.();
+      subscriptions.delete(id);
     },
     async dispatch(id, a, win) {
       if (!ID_SITE.test(id)) return;
@@ -636,8 +639,8 @@ export function createSites(o: {
     async homeMemory(id) {
       try {
         const m = await memory(id);
-        // Subscribed once per open window (unsubscribed at its close); a window already closed is not.
-        if (opened.has(id)) subscribe(id, m);
+        // Subscribed once while the window or an essential's tab is open (unsubscribed when both are gone).
+        if (opened.has(id) || tabSites.has(id)) subscribe(id, m);
         return await memoryMessage(id, m);
       } catch (e) {
         console.error(`[sites] memory of ${id} unavailable:`, e);
@@ -654,8 +657,10 @@ export function createSites(o: {
       positions.closed(id);
       opened.delete(id);
       forget(id);
-      subscriptions.get(id)?.();
-      subscriptions.delete(id);
+      if (!tabSites.has(id)) {
+        subscriptions.get(id)?.();
+        subscriptions.delete(id);
+      }
       reviews.delete(id);
       searches.get(id)?.abort();
       searches.delete(id);

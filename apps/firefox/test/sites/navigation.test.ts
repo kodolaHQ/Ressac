@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
-import { decisionNavigation, openDecision, type NavigationContext } from "../../core/sites/navigation";
+import { decisionNavigation, homeOpenUrl, openDecision, type NavigationContext } from "../../core/sites/navigation";
+import { HOME_OPEN_GAP_MS } from "../../shared/sites";
 
 const c: NavigationContext = { domains: ["vidola-a.example"], login: ["accounts.google.com"] };
 
@@ -65,4 +66,15 @@ test("test mode: a local host's http allowed; a public host's http always refuse
   expect(decisionNavigation("http://vidola-a.example/", t)).toBe("block");
   expect(openDecision("http://pub.localhost:4321/", t)).toBe("block");
   expect(decisionNavigation("http://u:p@vidola-a.localhost:4321/", t)).toBe("block");
+});
+
+test("a home's open: on the app's domains, at most one per HOME_OPEN_GAP_MS, never a non-string", () => {
+  const site = { domains: ["vidola-a.example"], start: "https://vidola-a.example/" };
+  expect(homeOpenUrl("/films", site, -Infinity, 5000, false)).toBe("https://vidola-a.example/films");
+  expect(homeOpenUrl("https://www.vidola-a.example/x", site, -Infinity, 5000, false)).toBe("https://vidola-a.example/x");
+  expect(homeOpenUrl("https://pub.example/", site, -Infinity, 5000, false)).toBeNull();
+  expect(homeOpenUrl(42, site, -Infinity, 5000, false)).toBeNull();
+  // Just after the last open: refused; once the gap is over: allowed.
+  expect(homeOpenUrl("/films", site, 5000 - HOME_OPEN_GAP_MS + 1, 5000, false)).toBeNull();
+  expect(homeOpenUrl("/films", site, 5000 - HOME_OPEN_GAP_MS, 5000, false)).toBe("https://vidola-a.example/films");
 });

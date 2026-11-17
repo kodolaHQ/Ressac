@@ -6,12 +6,12 @@ import { testActor } from "./agent-extensions";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { grantSite, inBrowser, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
+import { SITE_HOME, grantSite, inBrowser, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
 import { click, missingApi, waitUi } from "./ui";
 
 // Plan 76 Task 3: where a site app lives — an essential (its own container), the sidebar bar, or nowhere.
 
-const HOSTS = ["vidola-a.localhost", "autre-a.localhost"];
+const HOSTS = ["vidola-a.localhost", "autre-a.localhost", "maison-a.localhost"];
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
 let w: LaunchedRessac;
@@ -21,6 +21,7 @@ let profile: string;
 
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
 const vidola = () => ({ name: "Vidola", url: url("/"), domains: ["vidola-a.localhost"], login: [], tweaks: [{ matches: ["/*"], js: ["marque.js"] }] });
+const maison = () => ({ name: "Maison", url: url("/", "maison-a.localhost"), domains: ["maison-a.localhost"], login: [] });
 const autre = () => ({ name: "Autre", url: url("/", "autre-a.localhost"), domains: ["autre-a.localhost"], login: [] });
 
 async function openPage(): Promise<void> {
@@ -60,10 +61,13 @@ beforeAll(async () => {
   server = await startSitesServer();
   server.define("vidola-a.localhost", "/", "<title>Vidola</title><p>vidola</p>");
   server.define("autre-a.localhost", "/", "<title>Autre</title><p>autre</p>");
+  server.define("maison-a.localhost", "/", "<title>Maison</title><p>maison</p>");
+  server.define("maison-a.localhost", "/serie", "<title>Série</title><p>serie</p>");
   dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
   profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   writeSite(dataDir, "vidola", { declaration: vidola(), files: { "tweaks/marque.js": 'document.documentElement.dataset.retouche = "oui";' } });
   writeSite(dataDir, "autre", { declaration: autre() });
+  writeSite(dataDir, "maison", { declaration: maison(), files: { "home/index.html": SITE_HOME } });
   await grantSite(dataDir, "vidola", vidola());
   const actor = testActor(profile);
   w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
@@ -148,5 +152,63 @@ describe("site app placement", () => {
     const s = await state(m);
     expect(s.essentials.some((x) => x.site)).toBe(false);
     expect(s.siteBar).toEqual([]);
+  });
+});
+
+// An app with a home, in the essentials: the home over its tab, as its window opens on it.
+describe("an app essential's home", () => {
+  /** Chrome expression: the home's frame over the tab's page (store/sites.ts renderTab), if shown and not leaving. */
+  const homeOver = (tab: string) => `${xulTab(tab)}?.linkedBrowser.parentNode.querySelector(".ressac-tab-home:not([leaving])")`;
+  /** The home page's window (Xrays waived) once it shows the app's served copy, else null. */
+  const homePage = (tab: string, body: string, args: unknown[] = []) =>
+    m.execute(
+      `const f = ${homeOver(tab)}?.contentDocument?.querySelector('[data-testid="site-home-frame"]');
+       const fw = f?.contentDocument?.defaultView?.wrappedJSObject;
+       if (!fw || !String(f.contentDocument.documentURI).startsWith("resource://ressac-site-")) return null;
+       ${body}`,
+      args,
+    );
+  const homeShown = (tab: string) => homePage(tab, "return (fw.recus ?? []).length > 0;").then((x) => x === true, () => false);
+  const tabUrl = (tab: string) => m.execute<string>(`return ${xulTab(tab)}?.linkedBrowser.currentURI?.spec ?? "";`);
+
+  /** A real click on `selector` in the tab's home (WebDriver actions in the main window, through both frames). */
+  async function realClick(tab: string, selector: string): Promise<void> {
+    const [x, y] = await m.execute<[number, number]>(
+      `const o = ${homeOver(tab)}, f = o.contentDocument.querySelector('[data-testid="site-home-frame"]');
+       const a = o.getBoundingClientRect(), b = f.getBoundingClientRect(), e = f.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
+       return [Math.round(a.left + b.left + e.left + e.width / 2), Math.round(a.top + b.top + e.top + e.height / 2)];`,
+      [selector],
+    );
+    await m.command("WebDriver:PerformActions", {
+      actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", origin: "viewport", x, y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }] }],
+    });
+    await m.command("WebDriver:ReleaseActions");
+  }
+
+  it("a click on the essential shows the home over the loaded site; an open from the home goes there; the essential and « Accueil de l'appli » bring it back", async () => {
+    await dispatch(m, { type: "placeSite", id: "maison", placement: "essentials", url: url("/", "maison-a.localhost"), title: "Maison", favicon: null });
+    await shown("essential-site-maison");
+    const tab = await essentialTab((await essential("maison"))!.id);
+    await click(m, '[data-testid="essential-site-maison"]');
+    await expect.poll(() => homeShown(tab), { timeout: 15_000 }).toBe(true);
+    // The site is loaded under the home.
+    await expect.poll(() => tabUrl(tab), { timeout: 15_000 }).toBe(url("/", "maison-a.localhost"));
+
+    await homePage(tab, 'fw.adresse = "/serie"; return true;');
+    await realClick(tab, "#ouvrir");
+    await expect.poll(() => tabUrl(tab), { timeout: 15_000 }).toBe(url("/serie", "maison-a.localhost"));
+    await expect.poll(() => m.execute<boolean>(`return !${homeOver(tab)};`), { timeout: 5_000 }).toBe(true);
+
+    // A click on the selected essential: the home again, the page under it unchanged.
+    await click(m, '[data-testid="essential-site-maison"]');
+    await expect.poll(() => homeShown(tab), { timeout: 15_000 }).toBe(true);
+    expect(await tabUrl(tab)).toBe(url("/serie", "maison-a.localhost"));
+
+    // « Entrer dans le site » hides it; right click › « Accueil de l'appli » shows it.
+    await m.execute(`${homeOver(tab)}.contentDocument.querySelector('[data-testid="site-enter"]').click(); return true;`);
+    await expect.poll(() => m.execute<boolean>(`return !${homeOver(tab)};`), { timeout: 5_000 }).toBe(true);
+    await click(m, '[data-testid="essential-site-maison"]', { button: 2 });
+    await click(m, '[role="menuitem"]', { text: "Accueil de l'appli" });
+    await expect.poll(() => homeShown(tab), { timeout: 15_000 }).toBe(true);
   });
 });

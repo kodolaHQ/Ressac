@@ -4,10 +4,10 @@
 import type { Action, DesignState } from "../../shared/api";
 import type { FrameBounds } from "../../shared/model";
 import { DEFAULT_AURA, type AuraId } from "../../shared/aura";
-import { INFO_NOTICE_DURATION_MS, HOME_OPEN_GAP_MS, ICON_MAX, type BarNotice, type SiteWindowState, type MessageToHome } from "../../shared/sites";
+import { INFO_NOTICE_DURATION_MS, ICON_MAX, type BarNotice, type SiteWindowState, type MessageToHome } from "../../shared/sites";
 import type { TweakError } from "../../core/sites/injection";
-import { decisionNavigation, openDecision, type NavigationContext } from "../../core/sites/navigation";
-import { relativeUrl, urlOnDomain, hostInSite } from "../../../../packages/kernel/src/sites/urls";
+import { decisionNavigation, homeOpenUrl, openDecision, type NavigationContext } from "../../core/sites/navigation";
+import { relativeUrl, hostInSite } from "../../../../packages/kernel/src/sites/urls";
 import type { TweaksRead } from "../../../../packages/kernel/src/sites/read";
 import { ID_SITE } from "../../../../packages/kernel/src/sites/schemas";
 import type { SiteChrome } from "../../host/sites";
@@ -19,6 +19,7 @@ import { isSiteContainer, removeSiteContainer, siteContainer } from "./container
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
 import { frameError, frameInjection, frameMemory, framePosition, frameResume, inheritedProfile, openedFromTab, siteOfFrame, type FrameSite } from "./site-frames";
 import { forgetHome, serveHome, servedHost, siteImage } from "./site-home";
+import { cutFrameNetwork } from "../window/frame-network";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
 const SITE_FRAMES = "ressac-sites";
@@ -74,6 +75,17 @@ export interface SiteWindowController {
   design: { state(): Promise<DesignState>; toggle(): void; review(): void; openCart(): void; onChange(cb: () => void): () => void };
 }
 
+/** What the home's frame (ui/SiteHomeFrame.svelte) asks of the chrome, in an app window or over an essential tab. */
+export type HomeChrome = Pick<SiteWindowController, "homeUrl" | "homeGesture" | "guardHome">;
+
+/** What the home shown over an app essential's tab drives (sidebar.html?tabhome, set on its frame as `ressacOverlay.api`). */
+export interface TabHomeController extends HomeChrome, Pick<SiteWindowController, "enter" | "memory" | "onMemory" | "openFromHome" | "image"> {
+  id: string;
+  locale(): string;
+  /** The tab's home changed (served again, hidden): the frame reads homeUrl again. */
+  onState(cb: () => void): () => void;
+}
+
 /** Where the design mode aims in an app's window. */
 export interface SiteDesignView {
   win: Window;
@@ -112,8 +124,6 @@ interface OpenSite {
   /** The hosts of the blocked navigations and opens, in order (read by the e2e). */
   blocked: string[];
   notice: BlockedNotice;
-  /** The served home copy, until the home's files change. */
-  home: Promise<string | null> | null;
   /** When the home last opened an address. */
   lastHomeOpen: number;
   /** The address of the last load Ressac started in the view: the address follow reads it back. */
@@ -135,7 +145,19 @@ const byContainer = new Map<number, OpenSite>();
  * A site.json, tweak or grant change reads them again (sites.tabsChange).
  */
 const tabSites = new Map<any, TabSite>();
-type TabSite = { id: string; s?: FrameSite; ready?: Promise<void> };
+/**
+ * `home`: the tab wants its app's home over its page (from its creation, and at each click on its essential); shown
+ * once the host's reading says the app has a home and needs no grant. `frame`: the home's frame over the page.
+ */
+type TabSite = { id: string; s?: FrameSite; ready?: Promise<void>; home: boolean; frame?: HTMLIFrameElement; leaving?: ReturnType<typeof setTimeout>; lastHomeOpen: number; listeners: Set<() => void> };
+
+/** The served home copy of each app, shared by its window and its essentials' tabs, until its files change. */
+const served = new Map<string, Promise<string | null>>();
+const servedHome = (id: string): Promise<string | null> => {
+  let p = served.get(id);
+  if (!p) served.set(id, (p = serveHome(dataDir, id, (id, token) => (host ? host.request<string[] | null>("sites.copyHome", { id, token }) : Promise.resolve(null)))));
+  return p;
+};
 
 /**
  * The host's reading of a tab's app: its frame decisions, or the tab dropped if it never had any (unknown app, being deleted).
@@ -148,8 +170,10 @@ function readTab(browser: any, t: TabSite): Promise<void> {
   });
   t.ready = read.then((p) => {
     if (tabSites.get(browser) !== t) return;
-    if (p) t.s = { site: p.site, tweaks: p.tweaks, view: browser, errors: t.s?.errors ?? [] };
-    else if (!t.s) {
+    if (p) {
+      t.s = { site: p.site, tweaks: p.tweaks, view: browser, errors: t.s?.errors ?? [] };
+      renderTab(browser, t);
+    } else if (!t.s) {
       tabSites.delete(browser);
       publishOpen();
     }
@@ -312,10 +336,11 @@ function isTabOfMainWindow(browser: any): boolean {
   }
 }
 
-/** A browser whose window closed (no TabClose then). */
+/** A browser whose window closed (no TabClose then). Not ownerGlobal: undefined from this module (measured), so every tab looked gone. */
 function gone(browser: any): boolean {
   try {
-    return !browser.isConnected || browser.ownerGlobal.closed;
+    const win = browser.ownerDocument?.defaultView;
+    return !browser.isConnected || !win || win.closed;
   } catch {
     return true;
   }
@@ -456,6 +481,107 @@ function broadcast(s: OpenSite): void {
   for (const cb of s.listeners) cb(e);
 }
 
+function listenMemory(id: string, cb: (m: MessageToHome & { type: "memory" }) => void): () => void {
+  let set = memoryListeners.get(id);
+  if (!set) memoryListeners.set(id, (set = new Set()));
+  set.add(cb);
+  return () => void set.delete(cb);
+}
+
+/** Watches a home's frame: any document load in it other than a page of app `id`'s served copy is cancelled before it starts. */
+function guardHome(id: string, frame: HTMLIFrameElement): void {
+  const progress = (frame as any).browsingContext?.docShell?.QueryInterface(Ci.nsIWebProgress);
+  if (!progress) return;
+  const L = Ci.nsIWebProgressListener;
+  const listener = {
+    QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
+    onStateChange(_progress: unknown, request: any, flags: number) {
+      if (flags & L.STATE_START && flags & L.STATE_IS_DOCUMENT && !homePage(id, request.QueryInterface(Ci.nsIChannel).originalURI)) request.cancel(Cr.NS_BINDING_ABORTED);
+    },
+  };
+  progress.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
+  // Kept on the frame, and gone with it (with its docShell): the docShell holds its progress listeners weakly.
+  (frame as any).ressacHomeGuard = listener;
+}
+
+const TAB_HOME_SRC = "chrome://browser/content/ressac/sidebar.html?tabhome";
+/** The home's exit fade over a tab (window.css .ressac-tab-home[leaving]). */
+const TAB_HOME_FADE_MS = 150;
+/** The last real presses in each essential tab's home (one allows one open), by its <browser>. */
+const tabGestures = gestureGuard<any>();
+
+/**
+ * The home over an essential tab's page, as the tab wants it: shown in a frame of the tab's browser stack (it follows the
+ * tab's size and is hidden with it), or taken down on a fade. An app without a home, or whose tweaks wait for a grant
+ * (no card in a tab), shows its site: the tab stops wanting the home until the next click on its essential.
+ */
+function renderTab(browser: any, t: TabSite): void {
+  const site = t.s?.site;
+  if (site && (!site.hasHome || site.grantRequired)) t.home = false;
+  const show = !!site && t.home && tabSites.get(browser) === t && !gone(browser) && !!browser.parentNode;
+  const f = t.frame;
+  if (show && f) {
+    clearTimeout(t.leaving);
+    f.removeAttribute("leaving");
+  } else if (show) {
+    const nf = browser.ownerDocument.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement & { ressacOverlay?: { api: TabHomeController } };
+    nf.className = "ressac-tab-home";
+    nf.setAttribute("data-testid", "tab-home");
+    browser.parentNode.append(nf);
+    t.frame = nf;
+    nf.ressacOverlay = { api: tabHomeController(browser, t) };
+    if (cutFrameNetwork(nf)) nf.src = TAB_HOME_SRC;
+  } else if (f && !f.hasAttribute("leaving")) {
+    f.setAttribute("leaving", "");
+    t.leaving = setTimeout(() => {
+      f.remove();
+      if (t.frame === f) t.frame = undefined;
+    }, TAB_HOME_FADE_MS);
+  }
+  for (const cb of t.listeners) cb();
+}
+
+/** The window's home rules for an essential tab: its app's served copy, opens on its domains after a real press, loaded in the tab. */
+function tabHomeController(browser: any, t: TabSite): TabHomeController {
+  const live = () => tabSites.get(browser) === t && !gone(browser);
+  const shown = () => live() && t.home && !!t.frame && !t.frame.hasAttribute("leaving");
+  return {
+    id: t.id,
+    locale: () => shownLocale(),
+    onState(cb) {
+      t.listeners.add(cb);
+      return () => void t.listeners.delete(cb);
+    },
+    enter() {
+      if (!live()) return;
+      t.home = false;
+      renderTab(browser, t);
+    },
+    memory: () => (live() && host ? host.request<(MessageToHome & { type: "memory" }) | null>("sites.homeMemory", { id: t.id }).catch(() => null) : Promise.resolve(null)),
+    onMemory: (cb) => listenMemory(t.id, cb),
+    openFromHome(address) {
+      const s = t.s;
+      if (!s || !shown()) return false;
+      const now = Date.now();
+      const url = homeOpenUrl(address, s.site, t.lastHomeOpen, now, !!context(s).localAddresses);
+      // Without a recent real press in this tab's home nothing opens, as in the window.
+      if (!url || !tabGestures.accept(browser, t.id)) return false;
+      t.lastHomeOpen = now;
+      const uri = Services.io.newURI(url);
+      browser.loadURI(uri, { triggeringPrincipal: Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: siteContainer(t.id) }) });
+      t.home = false;
+      renderTab(browser, t);
+      return true;
+    },
+    image: async (url) => (live() && t.s && typeof url === "string" ? siteImage(siteContainer(t.id), url, t.s.site.domains) : null),
+    homeUrl: () => (live() && t.s?.site.hasHome ? servedHome(t.id) : Promise.resolve(null)),
+    homeGesture() {
+      if (shown()) tabGestures.gesture(browser, t.id);
+    },
+    guardHome: (frame) => guardHome(t.id, frame),
+  };
+}
+
 function controllerOf(s: OpenSite): SiteWindowController {
   const id = s.site.id;
   return {
@@ -503,17 +629,11 @@ function controllerOf(s: OpenSite): SiteWindowController {
       openTab(url);
     },
     memory: () => host?.request<(MessageToHome & { type: "memory" }) | null>("sites.homeMemory", { id }).catch(() => null) ?? Promise.resolve(null),
-    onMemory(cb) {
-      let set = memoryListeners.get(id);
-      if (!set) memoryListeners.set(id, (set = new Set()));
-      set.add(cb);
-      return () => void set.delete(cb);
-    },
+    onMemory: (cb) => listenMemory(id, cb),
     openFromHome(address) {
-      if (open.get(id) !== s || typeof address !== "string") return false;
+      if (open.get(id) !== s) return false;
       const now = Date.now();
-      if (now - s.lastHomeOpen < HOME_OPEN_GAP_MS) return false;
-      const url = urlOnDomain(address, httpHost(s.site.start) ?? "", s.site.domains, s.site.start, { localAddresses: !!context(s).localAddresses });
+      const url = homeOpenUrl(address, s.site, s.lastHomeOpen, now, !!context(s).localAddresses);
       // Without a recent real gesture nothing opens: a home that asks on load would send back to the site at each ⌂.
       if (!url || !gestures.accept(id, id) || s.viewState !== "home") return false;
       loadInView(s, url);
@@ -522,22 +642,9 @@ function controllerOf(s: OpenSite): SiteWindowController {
       s.lastHomeOpen = now;
       return true;
     },
-    guardHome(frame) {
-      const progress = (frame as any).browsingContext?.docShell?.QueryInterface(Ci.nsIWebProgress);
-      if (!progress) return;
-      const L = Ci.nsIWebProgressListener;
-      const listener = {
-        QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
-        onStateChange(_progress: unknown, request: any, flags: number) {
-          if (flags & L.STATE_START && flags & L.STATE_IS_DOCUMENT && !homePage(id, request.QueryInterface(Ci.nsIChannel).originalURI)) request.cancel(Cr.NS_BINDING_ABORTED);
-        },
-      };
-      progress.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
-      // Kept on the frame, and gone with it (with its docShell): the docShell holds its progress listeners weakly.
-      (frame as any).ressacHomeGuard = listener;
-    },
+    guardHome: (frame) => guardHome(id, frame),
     image: async (url) => (open.get(id) === s && typeof url === "string" ? siteImage(s.userContextId, url, s.site.domains) : null),
-    homeUrl: () => (open.get(id) === s && s.site.hasHome ? (s.home ??= serveHome(dataDir, id, (id, token) => (host ? host.request<string[] | null>("sites.copyHome", { id, token }) : Promise.resolve(null)))) : Promise.resolve(null)),
+    homeUrl: () => (open.get(id) === s && s.site.hasHome ? servedHome(id) : Promise.resolve(null)),
     homeGesture() {
       if (open.get(id) === s) gestures.gesture(id, id);
     },
@@ -634,7 +741,8 @@ function closed(s: OpenSite): void {
   // Reopened before this close: the sign-in windows are the new app's.
   if (open.get(id) !== s) return;
   open.delete(id);
-  memoryListeners.delete(id);
+  // An essential's tab may still show the home: its frame unsubscribes as it goes.
+  if (![...tabSites.values()].some((t) => t.id === id)) memoryListeners.delete(id);
   host?.notify("sites.closed", { id });
   for (const cb of closeListeners)
     try {
@@ -671,7 +779,7 @@ export const sites = {
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(frame));
     // The card first if the tweaks need their grant: the view loads nothing until it is answered (nextView).
-    const s: OpenSite = { site, aura: activeAura(), tweaks: tweaks, errors: [], userContextId, window: win, view: null, viewState: site.grantRequired ? "grant" : site.hasHome ? "home" : "site", toLoad: null, agentToLoad: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
+    const s: OpenSite = { site, aura: activeAura(), tweaks: tweaks, errors: [], userContextId, window: win, view: null, viewState: site.grantRequired ? "grant" : site.hasHome ? "home" : "site", toLoad: null, agentToLoad: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
     publishOpen();
@@ -709,6 +817,7 @@ export const sites = {
     // every tab of its container closes before the container is wiped (TabSync would create it again).
     dispatch({ type: "forgetSite", id });
     await removeSiteContainer(id);
+    served.delete(id);
     if (dataDir) await forgetHome(dataDir, id);
   },
   /**
@@ -718,7 +827,7 @@ export const sites = {
   async attachTab(id: string, browser: any): Promise<void> {
     if (typeof id !== "string" || !ID_SITE.test(id) || !browser || tabSites.get(browser)?.id === id) return;
     for (const b of tabSites.keys()) if (gone(b)) sites.detachTab(b);
-    const t: TabSite = { id };
+    const t: TabSite = { id, home: true, lastHomeOpen: -Infinity, listeners: new Set() };
     tabSites.set(browser, t);
     publishOpen();
     await readTab(browser, t);
@@ -727,8 +836,22 @@ export const sites = {
   detachTab(browser: any): void {
     const t = tabSites.get(browser);
     if (!t || !tabSites.delete(browser)) return;
+    clearTimeout(t.leaving);
+    t.frame?.remove();
+    t.listeners.clear();
     publishOpen();
     if (![...tabSites.values()].some((x) => x.id === t.id)) host?.notify("sites.tabDetached", { id: t.id });
+  },
+  /** A click on the app's essential (or « Accueil de l'appli »): its tab shows the app's home, if it has one usable in a tab. */
+  showTabHome(browser: any): void {
+    const t = tabSites.get(browser);
+    if (!t) return;
+    t.home = true;
+    renderTab(browser, t);
+  },
+  /** Whether app `id`'s essential tabs can show its home (a home, no grant waiting), as last read. */
+  tabHasHome(id: string): boolean {
+    return [...tabSites.values()].some((t) => t.id === id && !!t.s?.site.hasHome && !t.s.site.grantRequired);
   },
   /** The login profile a page's new tab at `url` takes from its opener's `profile`. */
   childProfile<P extends string>(profile: P | undefined, url: string): P | undefined {
@@ -1019,10 +1142,12 @@ export const sites = {
     "sites.tabsChange": ([id]: [string]) => {
       for (const [b, t] of [...tabSites]) if (t.id === id && !gone(b)) void readTab(b, t);
     },
+    // Served again at the next homeUrl; the essentials' tabs read their app again (a home that appeared or went).
     "sites.homeChange": ([id]: [string]) => {
+      served.delete(id);
+      for (const [b, t] of [...tabSites]) if (t.id === id && !gone(b)) void readTab(b, t);
       const s = open.get(id);
       if (!s || s.window.closed) return;
-      s.home = null;
       broadcast(s);
     },
   },

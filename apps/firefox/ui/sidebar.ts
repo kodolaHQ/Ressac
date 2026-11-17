@@ -8,6 +8,10 @@ import AppBadge from "./BadgeApp.svelte";
 import AgentPill from "./AgentPill.svelte";
 import App from "./App.svelte";
 import SiteWindow from "./SiteWindow.svelte";
+import SiteHomeFrame from "./SiteHomeFrame.svelte";
+import { site } from "./site/locale.svelte";
+import { createHomeApi } from "./site-api";
+import type { TabHomeController } from "../chrome/store/sites";
 
 // Gecko fires `click` for the right and middle buttons in chrome documents: only a left click is a click here.
 window.addEventListener("click", (e) => { if (e.button !== 0) e.stopImmediatePropagation(); }, true);
@@ -18,7 +22,15 @@ if (params.has("site")) mount(SiteWindow, { target: document.body.appendChild(Ob
 // sidebar.html?badge=app:<dossier>: an app window's badge, over its page (transparent).
 // sidebar.html?overlay: a design overlay, the bubble, the message or the cart (transparent).
 // sidebar.html?agentview: the pill of the agent's last tab, over a main window's pages (transparent).
-else if (params.has("badge") || params.has("overlay") || params.has("agentview")) {
+// sidebar.html?tabhome: an app's home over its essential tab's page (chrome/store/sites.ts renderTab).
+else if (params.has("tabhome")) {
+  const controller = (window.frameElement as Element & { ressacOverlay: { api: TabHomeController } }).ressacOverlay.api;
+  site.locale = controller.locale();
+  document.documentElement.style.cssText = document.body.style.cssText = "margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 var(--font-ui); overflow: hidden";
+  const target = document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" }));
+  target.style.cssText = "display: flex; flex-direction: column; height: 100%";
+  mount(SiteHomeFrame, { target, props: { api: createHomeApi(controller), controller } });
+} else if (params.has("badge") || params.has("overlay") || params.has("agentview")) {
   document.documentElement.style.background = "transparent";
   document.body.style.background = "transparent";
   const target = document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" }));

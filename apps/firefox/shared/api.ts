@@ -437,6 +437,10 @@ export interface ApiRessac {
     /** A site app appeared, changed, opened or closed: re-read. */
     onChange(callback: () => void): () => void;
     act(id: string, action: ActionSite): void;
+    /** A click on app `id`'s essential (or « Accueil de l'appli »): its tab in this window shows the app's home over its page. */
+    showHome(id: string): void;
+    /** Whether app `id`'s essential tab can show a home (one written, no grant waiting). */
+    hasHome(id: string): boolean;
   };
   extensions: {
     /** The installed or granted extensions, and the agent's folders never granted, seen from this space. */
