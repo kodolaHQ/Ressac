@@ -73,6 +73,13 @@ settings-workshop-machine-downloading-unknown = Downloading the workshop…
 settings-workshop-machine-error = Workshop machine: failed
 settings-workshop-machine-usage = { $memory } GB of memory · { $disk } GB on disk
 settings-workshop-machine-usage-disk = { $disk } GB on disk
+settings-workshop-machine-idle-label = Stop the machine after
+settings-workshop-machine-idle-option = { $minutes ->
+    [5] 5 min idle
+    [60] 1 h
+   *[other] { $minutes } min
+}
+settings-workshop-machine-idle-help = The longer the machine stays on, the faster the agent answers, but it keeps the memory it took until it stops.
 settings-workshop-machine-retry = Try again
 settings-workshop-machine-remove = Remove the machine
 settings-workshop-machine-confirm-remove = Running agents and apps stop. Your Claude and Codex sign-ins are kept. It will only be downloaded again (about 500 MB) when you click “Install the machine”.

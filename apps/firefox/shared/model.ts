@@ -3,7 +3,7 @@ import type { HintId } from "./hints";
 import type { DevRight, TabAccessState, Owner } from "@ressac/kernel";
 import type { Binding, ShortcutId } from "./shortcuts";
 import type { ExtensionCard } from "./extensions";
-import type { ClaudeEngine, CodexEngine } from "./settings";
+import type { ClaudeEngine, CodexEngine, MachineIdleMinutes } from "./settings";
 
 /** The look: the Mac's, light or dark (Réglages and the welcome, in this order). */
 export const APPEARANCES = ["system", "light", "dark"] as const;
@@ -250,6 +250,8 @@ export interface BrowserState {
     aiEnabled: boolean;
     /** Extra domains the agent's container may reach (shared/settings.ts validAgentDomain). */
     agentDomains: string[];
+    /** Minutes the idle workshop machine keeps running before it stops (shared/settings.ts MACHINE_IDLE_MINUTES). */
+    machineIdleMinutes: MachineIdleMinutes;
   };
   /** The app update, as Firefox's updater reports it; null until known. Volatile, never saved. */
   update: UpdateShown | null;

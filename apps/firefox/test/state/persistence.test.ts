@@ -493,6 +493,15 @@ test("startOnHome: each window loads on the home page, its tabs kept; off, on th
   expect((await loadSession(d)).settings.startOnHome).toBe(true);
 });
 
+test("machineIdleMinutes: a valid delay kept; missing or other, 5", async () => {
+  const d = folder();
+  const saved = initialState();
+  for (const [v, want] of [[60, 60], [10, 5], [undefined, 5]] as const) {
+    writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: { ...saved.settings, machineIdleMinutes: v } }));
+    expect((await loadSession(d)).settings.machineIdleMinutes).toBe(want);
+  }
+});
+
 test("auraMotion: off kept; missing, on", async () => {
   const d = folder();
   const saved = initialState();

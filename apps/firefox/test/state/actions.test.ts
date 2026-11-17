@@ -1,4 +1,4 @@
-import { validAgentDomain } from "../../shared/settings";
+import { MachineIdleSchema, validAgentDomain } from "../../shared/settings";
 import { beforeEach, expect, test, vi } from "vitest";
 import { apply, withEssentials } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
@@ -1069,6 +1069,16 @@ test("setAuraMotion turns the aura's drift off and on", () => {
   const before = e;
   ag({ type: "setAuraMotion", enabled: false });
   expect(e).toBe(before);
+});
+
+test("chooseMachineIdle keeps one of the four delays; the IPC schema refuses any other", () => {
+  e = initialState(genId);
+  expect(e.settings.machineIdleMinutes).toBe(5);
+  ag({ type: "chooseMachineIdle", minutes: 30 });
+  expect(e.settings.machineIdleMinutes).toBe(30);
+  for (const minutes of [5, 15, 30, 60]) expect(SchemaAction.safeParse({ type: "chooseMachineIdle", minutes }).success).toBe(true);
+  for (const minutes of [0, 10, 120, "30", null]) expect(SchemaAction.safeParse({ type: "chooseMachineIdle", minutes }).success).toBe(false);
+  for (const minutes of [10, "30"]) expect(MachineIdleSchema.safeParse(minutes).success).toBe(false); // the host's own check
 });
 
 test("shortcut actions store, refuse and reset bindings", () => {

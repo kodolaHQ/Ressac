@@ -277,6 +277,16 @@ describe("Settings page", () => {
       await go("workshop");
       await shows("machine-usage", "1,8 Go sur le disque");
       expect(await text("machine-usage")).not.toContain("mémoire");
+      // The idle delay: 5 min by default, 30 min kept after leaving and reopening the section.
+      const idle = () => inUi<string>(m, `return doc.querySelector('[data-testid="machine-idle"]')?.value ?? ""`);
+      expect(await idle()).toBe("5");
+      await shows("settings-workshop", "Arrêter la machine après");
+      await inUi(m, `const s = doc.querySelector('[data-testid="machine-idle"]'); s.value = "30"; s.dispatchEvent(new Event("change", { bubbles: true }));`);
+      await waitFor(m, "return window.ressacWindow.store.state.settings.machineIdleMinutes", (v) => v === 30);
+      await go("about");
+      await go("workshop");
+      await shows("machine-usage", "1,8 Go sur le disque");
+      expect(await idle()).toBe("30");
     });
 
     it("unsupported, Docker stopped: today's Docker texts, no machine row", async () => {
@@ -284,7 +294,7 @@ describe("Settings page", () => {
       await openPage();
       await go("workshop");
       await shows("docker-start", "Démarrer OrbStack");
-      expect(await inUi(m, `return !!doc.querySelector('[data-testid="machine"]')`)).toBe(false);
+      expect(await inUi(m, `return !!doc.querySelector('[data-testid="machine"], [data-testid="machine-idle"]')`)).toBe(false);
     });
   });
 

@@ -15,7 +15,7 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { DECISION_MODEL, SEARCH_MODEL, validAgentDomain, type DockerStatus, type MachineStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
+  import { DECISION_MODEL, MACHINE_IDLE_MINUTES, SEARCH_MODEL, validAgentDomain, type MachineIdleMinutes, type DockerStatus, type MachineStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
   import { updateStatusText } from "../../core/update";
   import { aiOn, api, appState } from "../state.svelte";
   import AiAsleep from "./AiAsleep.svelte";
@@ -457,6 +457,15 @@
                 {:else if machine.kind === "running" || machine.kind === "stopped"}
                   <button data-testid="machine-remove" disabled={!!operation || machineBusy} onclick={() => (askingMachine = "remove")}>{t("settings-workshop-machine-remove")}</button>
                 {/if}
+              </div>
+              <div class="row appear" out:fade={{ duration: 150 }}>
+                <div class="grow">
+                  <label for="settings-machine-idle"><b>{t("settings-workshop-machine-idle-label")}</b></label>
+                  <span class="muted" id="machine-idle-help">{t("settings-workshop-machine-idle-help")}</span>
+                </div>
+                <select id="settings-machine-idle" data-testid="machine-idle" aria-describedby="machine-idle-help" value={appState.value?.settings.machineIdleMinutes ?? 5} onchange={(e) => api.dispatch({ type: "chooseMachineIdle", minutes: Number(e.currentTarget.value) as MachineIdleMinutes })}>
+                  {#each MACHINE_IDLE_MINUTES as minutes (minutes)}<option value={minutes}>{t("settings-workshop-machine-idle-option", { minutes })}</option>{/each}
+                </select>
               </div>
             {/if}
           </div>

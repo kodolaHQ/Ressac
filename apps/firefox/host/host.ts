@@ -47,7 +47,7 @@ const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { ollamaRelayTarget } = await import("./ollama-models.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
-const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DECISION_MODEL, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
+const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DECISION_MODEL, MachineIdleSchema, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
 const {
@@ -134,6 +134,8 @@ const idRecap = (v: unknown): v is string => typeof v === "string" && ID_RECAP.t
 // One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (kernel.ts:389).
 // The user's extra domains (Settings), sent by the chrome at start and on change.
 let agentDomains: string[] = [];
+// How long the idle machine keeps running (Settings), sent by the chrome at start and on change.
+let machineIdleMinutes = 5;
 // An apply while the kernel is down leaves the MCP port closed on purpose: openAgentSession applies again before any session.
 // Without `network` the kernel applies no firewall: it must stay passed. The MCP port is known once the kernel is up, read at each apply.
 // The workshop's engines: Ressac's machine, Docker while the machine is not ready (or for good where it cannot run).
@@ -172,6 +174,7 @@ const machine: ReturnType<typeof createMachine> = testMachine
       ressacRoot: root,
       run: runTool,
       busy: () => workshop.busy(machine),
+      idleMs: () => machineIdleMinutes * 60_000,
       image: vmImage(),
       ...(process.env.RESSAC_TEST_NO_SYSTEM ? { supported: async () => false } : {}),
     });
@@ -595,6 +598,10 @@ const rpc = createRpc({
           console.error("[ressac] agent domains not applied:", e);
           return sessions.relaunchActive();
         });
+    },
+    "settings.machineIdle": (p: { minutes: unknown }) => {
+      const r = MachineIdleSchema.safeParse(p?.minutes);
+      if (r.success) machineIdleMinutes = r.data;
     },
     "agent.claudeEngine": (p: { engine: unknown }) => {
       const r = ClaudeEngineSchema.safeParse(p?.engine);

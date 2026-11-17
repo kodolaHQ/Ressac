@@ -74,6 +74,13 @@ settings-workshop-machine-error = Machine de l'atelier : en panne
 settings-workshop-machine-usage = { $memory } Go de mémoire · { $disk } Go sur le disque
 settings-workshop-machine-usage-disk = { $disk } Go sur le disque
 settings-workshop-machine-retry = Réessayer
+settings-workshop-machine-idle-label = Arrêter la machine après
+settings-workshop-machine-idle-option = { $minutes ->
+    [5] 5 min d'inactivité
+    [60] 1 h
+   *[other] { $minutes } min
+}
+settings-workshop-machine-idle-help = Plus la machine reste allumée, plus l'agent répond vite, mais elle garde la mémoire qu'elle a prise jusqu'à son arrêt.
 settings-workshop-machine-remove = Supprimer la machine
 settings-workshop-machine-confirm-remove = Les agents et les applis en cours s'arrêtent. Vos connexions Claude et Codex sont gardées. Elle ne sera téléchargée de nouveau (environ 500 Mo) que si vous cliquez sur « Installer la machine ».
 settings-workshop-machine-force-remove = Supprimer quand même

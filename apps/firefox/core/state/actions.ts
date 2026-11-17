@@ -728,6 +728,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.agentDomains = domains;
       return true;
     }
+    case "chooseMachineIdle": {
+      if (d.settings.machineIdleMinutes === a.minutes) return false;
+      d.settings.machineIdleMinutes = a.minutes;
+      return true;
+    }
     case "setVimMode": {
       if (d.settings.vimMode === a.enabled) return false;
       d.settings.vimMode = a.enabled;

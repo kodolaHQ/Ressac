@@ -8,6 +8,11 @@ export function validAgentDomain(d: unknown): d is string {
   return labels.length >= 2 && labels.every((l) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(l) && l.length <= 63) && !/^[0-9.]+$/.test(d.replace(/^\*\./, ""));
 }
 
+/** Minutes an idle workshop machine keeps running before it stops (Réglages); the first is the default. */
+export const MACHINE_IDLE_MINUTES = [5, 15, 30, 60] as const;
+export type MachineIdleMinutes = (typeof MACHINE_IDLE_MINUTES)[number];
+export const MachineIdleSchema = z.literal(MACHINE_IDLE_MINUTES);
+
 /** The saved list: valid entries only, no duplicate, at most MAX_AGENT_DOMAINS. */
 export const cleanAgentDomains = (list: unknown[]): string[] => [...new Set(list.filter(validAgentDomain))].slice(0, MAX_AGENT_DOMAINS);
 

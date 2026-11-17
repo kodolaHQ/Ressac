@@ -161,6 +161,17 @@ describe("the workshop machine", () => {
     await vi.waitFor(() => expect(stops(w)).toBe(1));
   });
 
+  it("the idle delay is read at each poll: a change applies to a machine already running", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    let delay = 60_000;
+    const m = machine(w, { idleMs: () => delay });
+    await m.wake("user");
+    await new Promise((r) => setTimeout(r, 40));
+    expect(stops(w)).toBe(0);
+    delay = 30;
+    await vi.waitFor(() => expect(stops(w)).toBe(1));
+  });
+
   it("a harvest wake on a machine already running for the user keeps the idle rule", async () => {
     const w = world({ instance: { status: "Stopped" } });
     const m = machine(w);

@@ -138,7 +138,8 @@ export function createMachine(o: {
   ressacRoot: string;
   run?: Runner;
   busy: () => Promise<boolean>;
-  idleMs?: number;
+  /** Read at each poll: a change applies to a machine already running. */
+  idleMs?: number | (() => number);
   pollMs?: number;
   supported?: () => Promise<boolean>;
   /** Runs the quit stop script (`sh -c <script> <args>`) so that it outlives the host; tests replace it. */
@@ -150,7 +151,8 @@ export function createMachine(o: {
   const home = o.home ?? MACHINE_HOME;
   const run = o.run ?? createRunner(hostLocale);
   const image = o.image ?? VM_IMAGE;
-  const idleMs = o.idleMs ?? 5 * 60_000; // short: the VM never gives back memory it touched until it stops
+  const idleOption = o.idleMs ?? 5 * 60_000; // short: the VM never gives back memory it touched until it stops
+  const idleMs = typeof idleOption === "function" ? idleOption : () => idleOption;
   const pollMs = o.pollMs ?? 60_000;
   const dir = join(home, NAME);
   const socket = join(dir, "sock", "podman.sock");
@@ -395,7 +397,7 @@ export function createMachine(o: {
       const quiet = seen === polled;
       polled = seen;
       if ((await o.busy()) || (await upgrading())) idle = 0;
-      else if (mode === "harvest" ? quiet : (idle += pollMs) >= idleMs)
+      else if (mode === "harvest" ? quiet : (idle += pollMs) >= idleMs())
         await serial(async () => {
           if (wakes === seen && timer) await stopInner(); // a wake since the busy check wins
         });

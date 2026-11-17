@@ -292,6 +292,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
     if (state.settings.aiEnabled !== previous.settings.aiEnabled) host.notify("ai.enabled", { on: state.settings.aiEnabled });
     if (changed(state.settings.codexEngine, previous.settings.codexEngine)) host.notify("agent.codexEngine", { engine: state.settings.codexEngine });
     if (changed(state.settings.agentDomains, previous.settings.agentDomains)) host.notify("settings.agentDomains", { domains: state.settings.agentDomains });
+    if (state.settings.machineIdleMinutes !== previous.settings.machineIdleMinutes) host.notify("settings.machineIdle", { minutes: state.settings.machineIdleMinutes });
     if (state.locale !== previous.locale) host.notify("settings.locale", { locale: state.locale });
     if (changed(state.settings.claudeEngine, previous.settings.claudeEngine)) host.notify("agent.claudeEngine", { engine: state.settings.claudeEngine });
     if (state.settings.agentMode !== previous.settings.agentMode) host.notify("agent.mode", { mode: state.settings.agentMode });
