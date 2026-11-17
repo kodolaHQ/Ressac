@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { History, ICON_MAX, IMPORTED_SPACE, REFUSED_VECTOR } from "../core/history";
+import { History, ICON_MAX, IMPORTED_SPACE, REFUSED_VECTOR, TITLE_MAX } from "../core/history";
 
 let h: History;
 let path: string;
@@ -237,6 +237,22 @@ test("beyond the cap, purger erases the oldest text first", () => {
   visit("https://3.fr/", "3", "c".repeat(10), { date: "2026-10-03T00:00:00Z" });
   h.purge(date("2026-10-04T00:00:00Z"));
   expect(["https://1.fr/", "https://2.fr/", "https://3.fr/"].map((u) => h.keptText(u) !== null)).toEqual([false, true, true]);
+});
+
+test("titles are cut to TITLE_MAX characters at every write, and a kept title counts in the byte cap", () => {
+  const long = "T".repeat(TITLE_MAX - 1) + "😀".repeat(10);
+  visit("https://a.fr/", long, "x");
+  h.importVisits([{ url: "https://b.fr/", title: long, date: new Date() }]);
+  h.note({ url: "https://c.fr/", title: "c", spaceId: "", private: false });
+  h.updateTitle("https://c.fr/", "", long);
+  for (const v of h.recents()) expect(v.title).toBe("T".repeat(TITLE_MAX - 1)); // no half emoji
+  expect(h.keptText("https://a.fr/")!.title).toBe("T".repeat(TITLE_MAX - 1));
+  h.close();
+  h = new History(path, { byteCap: 300 });
+  visit("https://1.fr/", "t".repeat(200), "a", { date: "2026-10-01T00:00:00Z" });
+  visit("https://2.fr/", "t".repeat(200), "b", { date: "2026-10-02T00:00:00Z" });
+  h.purge(date("2026-10-04T00:00:00Z"));
+  expect(["https://1.fr/", "https://2.fr/"].map((u) => h.keptText(u) !== null)).toEqual([false, true]);
 });
 
 test("erase(depuis) also erases the retained text since that date; erase() erases everything", () => {

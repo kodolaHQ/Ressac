@@ -16,7 +16,9 @@ export const TEXT_MAX = 20_000; // characters per page
 export const RETENTION_DAYS = 183;
 /** Space id of the visits imported from another browser. */
 export const IMPORTED_SPACE = "import";
-export const BYTES_CAP = 1_000_000_000; // UTF-8 of `text`, all pages together
+export const BYTES_CAP = 1_000_000_000; // UTF-8 of `text` and `title`, all pages together
+/** Characters kept of a title (Firefox's tab label maximum): a page cannot fill the history through its title. */
+export const TITLE_MAX = 256;
 const AGENT_LIMIT = { default: 20, max: 50 };
 /** Words of the excerpt returned to the agent (64 at most for FTS5): about 300 characters. */
 const SNIPPET_WORDS = 54;
@@ -54,6 +56,8 @@ export const REFUSED_VECTOR = new Float32Array(0);
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 /** node:sqlite cuts a string at NUL when it reads it back: a title or text that keeps one never equals what was written. */
 const noNul = (s: string) => s.replaceAll("\0", "");
+/** A title as stored: without NUL, at most TITLE_MAX characters, no half character. */
+const cleanTitle = (s: string) => noNul(s).slice(0, TITLE_MAX).replace(/[\uD800-\uDBFF]$/, "");
 
 /** Browsing history: one row per URL and per space, in `<profile>/history.sqlite`. */
 export class History {
@@ -273,7 +277,7 @@ export class History {
 
   note(v: { url: string; title: string; spaceId: string; private: boolean; date?: Date }): void {
     if (!this.db.isOpen) return; // a page can still navigate during the exit
-    const title = noNul(v.title);
+    const title = cleanTitle(v.title);
     this.req.note.run(v.url, v.spaceId, title, (v.date ?? new Date()).toISOString(), v.private ? 1 : 0, fold(v.url), fold(title));
   }
 
@@ -286,7 +290,7 @@ export class History {
       for (const v of visits) {
         const t = v.date.getTime();
         if (!/^https?:\/\//i.test(v.url) || !(t >= oldest)) continue;
-        const title = noNul(v.title || v.url);
+        const title = cleanTitle(v.title || v.url);
         count += Number(this.req.importVisit.run(v.url, title, v.date.toISOString(), fold(v.url), fold(title)).changes);
       }
     });
@@ -296,7 +300,7 @@ export class History {
   /** The title often arrives after the navigation: it completes the visit without counting a new one. */
   updateTitle(url: string, spaceId: string, raw: string): void {
     if (!this.db.isOpen) return;
-    const title = noNul(raw);
+    const title = cleanTitle(raw);
     this.req.updateTitle.run(title, fold(title), url, spaceId);
     this.req.updateTitleText.run(title, url, spaceId, title);
   }
@@ -332,7 +336,8 @@ export class History {
     let text = noNul(r.text).slice(0, TEXT_MAX);
     if (/[\uD800-\uDBFF]$/.test(text)) text = text.slice(0, -1); // no half character
     const date = (r.date ?? new Date()).toISOString();
-    this.req.keep.run(r.url, r.spaceId, noNul(r.title), date, text, Buffer.byteLength(text, "utf8"));
+    const title = cleanTitle(r.title);
+    this.req.keep.run(r.url, r.spaceId, title, date, text, Buffer.byteLength(text, "utf8") + Buffer.byteLength(title, "utf8"));
   }
 
   /** Forgets a visit's text without erasing the visit. */

@@ -8,6 +8,8 @@ const { LOCATION_CHANGE_ERROR_PAGE, LOCATION_CHANGE_SAME_DOCUMENT, STATE_START, 
 const CAPTURE_DELAY_MS = 1500;
 /** A page's own URL changes (pushState, #) are noted at most this often per tab, then its latest one. */
 const SAME_DOCUMENT_GAP_MS = 3000;
+/** After a page's own URL change, its text is read at most this often per tab, then the latest URL's: a pushState loop would keep a page per change. */
+const SAME_DOCUMENT_TEXT_GAP_MS = 30_000;
 
 type Context = { spaceId: string; private: boolean } | null;
 
@@ -37,6 +39,7 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
   const idOf = (tab: any): string | null => tab?.getAttribute(TAB_ID) ?? null;
   // Per browser: the pending read, and whether this page must not be retained (error page, authentication).
   const timers = new WeakMap<object, number>();
+  const readAt = new WeakMap<object, number>();
   const skipped = new WeakSet<object>();
   // Per browser, whether its last top-level document response was authenticated. Separate from `skipped`: the response
   // comes before the parent's STATE_START, which resets `skipped`.
@@ -76,13 +79,17 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
   };
   Services.obs.addObserver(observer, "http-on-examine-response");
   window.addEventListener("unload", () => Services.obs.removeObserver(observer, "http-on-examine-response"), { once: true });
-  const plan = (browser: any) => {
+  const plan = (browser: any, delay = CAPTURE_DELAY_MS) => {
     cancel(browser);
     const url: string = browser.currentURI?.spec ?? "";
     const id = idOf(gBrowser.getTabForBrowser(browser));
     const c = id && context(id);
     if (!c || c.private || !/^https?:\/\//.test(url) || skipped.has(browser)) return;
-    timers.set(browser, window.setTimeout(() => void retain(browser, id, url, c.spaceId).catch(() => {}), CAPTURE_DELAY_MS));
+    const read = () => {
+      readAt.set(browser, Date.now());
+      void retain(browser, id, url, c.spaceId).catch(() => {});
+    };
+    timers.set(browser, window.setTimeout(read, delay));
   };
   const retain = async (browser: any, id: string, url: string, spaceId: string) => {
     timers.delete(browser);
@@ -111,7 +118,8 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
     onLocationChange: (browser: any, progress: any, _request: unknown, location: any, flags: number) => {
       if (progress.isTopLevel) {
         if (flags & LOCATION_CHANGE_ERROR_PAGE) skipped.add(browser);
-        if (flags & LOCATION_CHANGE_SAME_DOCUMENT) plan(browser);
+        if (flags & LOCATION_CHANGE_SAME_DOCUMENT)
+          plan(browser, Math.max(CAPTURE_DELAY_MS, (readAt.get(browser) ?? -Infinity) + SAME_DOCUMENT_TEXT_GAP_MS - Date.now()));
         else cancel(browser);
       }
       if (!progress.isTopLevel || flags & LOCATION_CHANGE_ERROR_PAGE) return;
