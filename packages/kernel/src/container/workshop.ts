@@ -148,8 +148,6 @@ export interface AgentNetwork {
 /** `machine-stopped`: the engine is Ressac's machine and it is not running (startable); `docker-absent`: the same for Docker. */
 export type WorkshopState = "docker-absent" | "machine-stopped" | "absent" | "arrete" | "demarre";
 
-export { findDocker } from "./engine.js";
-
 function sessionFile(id: string): string {
   if (!/^[a-z0-9]+$/.test(id)) throw new Error(`id de session invalide : ${id}`);
   return `/tmp/ressac-session-${id}.pid`;
@@ -288,12 +286,15 @@ export class Workshop {
   }
 
   /**
-   * Background runs (widgets, actions) may go: the workshop started, or Ressac's machine, which `stageHarvest` wakes;
-   * its container stays stopped after a wake for a harvest (spec §6 ter).
+   * Background runs (widgets, actions) may go: the workshop started, or Ressac's machine, which `stageHarvest` wakes
+   * unless it refuses (removed, failing). A harvest needs only the image: its container stays stopped after a wake for a
+   * harvest (spec §6 ter), and right after the install it was never created.
    */
   async harvestReady(): Promise<boolean> {
-    const s = await this.state().catch(() => "absent" as const);
-    return s === "demarre" || (this.engine().kind === "machine" && (s === "machine-stopped" || s === "arrete"));
+    const s = await this.state().catch(() => null);
+    if (s === "demarre") return true;
+    const e = this.engine();
+    return e.kind === "machine" && (s === "machine-stopped" || s === "arrete" || s === "absent") && (await e.harvestable?.().catch(() => false)) !== false;
   }
 
   /** Is the existing container mounted on the right root and built from the current Dockerfile? */

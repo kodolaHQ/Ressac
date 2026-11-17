@@ -1,13 +1,13 @@
 import { spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
-import { appendFile, chmod, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { cpus, homedir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createZstdDecompress } from "node:zlib";
-import { HashMismatchError, VOLUME_HOME, createRunner, downloadVerified, type ContainerEngine, type RunResult, type Runner, type WakeReason } from "../../../packages/kernel/src/index.ts";
+import { HashMismatchError, VOLUME_HOME, createRunner, downloadVerified, sha256File, type ContainerEngine, type RunResult, type Runner, type WakeReason } from "../../../packages/kernel/src/index.ts";
 import { hostLocale, hostSay } from "./locale.ts";
 import type { MachineStatus } from "../shared/settings.ts";
 
@@ -45,9 +45,12 @@ const BLOCK = 4096;
 /**
  * $1 limactl, $2 instance, $3 grace (s), $4 1 when a start may be in flight: waits up to 5 min for it to run, $5 the
  * launch's token: once a newer launch wrote its own to $LIMA_HOME/launch, the machine is its, never stopped from here.
+ * $6 (the crash watcher): the host's pid, waited for first.
  */
 export const QUIT_STOP = [
-  `L=$1 N=$2 T=$5; sleep "$3"`,
+  `L=$1 N=$2 T=$5`,
+  `[ -z "$6" ] || while kill -0 "$6" 2>/dev/null; do sleep 10; done`,
+  `sleep "$3"`,
   `mine() { [ "$(cat "$LIMA_HOME/launch" 2>/dev/null)" = "$T" ] || exit 0; }`,
   `st() { "$L" list --format '{{.Status}}' "$N" 2>/dev/null; }`,
   `if [ "$4" = 1 ]; then i=0; while mine && [ $i -lt 300 ] && [ "$(st)" != Running ]; do sleep 1; i=$((i + 1)); done; fi`,
@@ -58,6 +61,19 @@ export const QUIT_STOP = [
 const detached = (args: string[], env: Record<string, string>) =>
   spawn("/bin/sh", ["-c", ...args], { detached: true, stdio: "ignore", env: { ...process.env, ...env } }).unref();
 const ZERO = Buffer.alloc(BLOCK);
+/** Rewrites the guest's mark from what it really runs (apk may deliver less than the image), keeping its setup hash. */
+const MARK = `h=$(sed 's/.*-//' /etc/ressac-vm-version); echo "$(cat /etc/alpine-release)-$(podman version -f '{{.Client.Version}}')-$h" >/etc/ressac-vm-version\n`;
+/** `<alpine>-<podman>-<setup hash>`, as guest-setup.sh writes it. */
+const parts = (v: string) => {
+  const [alpine = "", podman = "", setup = ""] = v.split("-");
+  return { alpine, podman, setup, branch: alpine.split(".").slice(0, 2).join(".") };
+};
+const older = (a: string, b: string): boolean => {
+  const x = a.split(".").map(Number);
+  const y = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0);
+  return false;
+};
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -135,19 +151,24 @@ export function createMachine(o: {
     await mkdir(home, { recursive: true, mode: 0o700 });
     await chmod(home, 0o700);
   };
-  const claim = async () => {
+  const claim = async (t: string = token) => {
     await ownHome();
-    await writeFile(join(home, "launch"), token);
+    await writeFile(join(home, "launch"), t);
   };
+  const detach = o.detach ?? detached;
   let claimed: Promise<void> | undefined;
   async function usable(): Promise<void> {
     if (closed) throw new Error(hostSay("host-machine-cancelled"));
     if (tooLong) throw new Error((status as { message: string }).message);
     if (await supported())
-      return (claimed ??= claim().catch((e) => {
-        claimed = undefined; // tried again at the next change
-        throw e;
-      }));
+      return (claimed ??= claim().then(
+        // Should the host die without its quit (crash, kill -9), this stops the machine; a quit or a newer launch takes the token from it.
+        () => detach([QUIT_STOP, "ressac-vm-watch", limactl, NAME, "0", "0", token, String(process.pid)], { LIMA_HOME: home }),
+        (e) => {
+          claimed = undefined; // tried again at the next change
+          throw e;
+        },
+      ));
     set({ kind: "unsupported" });
     throw new Error(hostSay("host-machine-unsupported"));
   }
@@ -190,13 +211,13 @@ export function createMachine(o: {
   async function fetchImage(): Promise<void> {
     if (existsSync(raw)) return;
     await ownHome();
+    // An older version's download or image (cut short, or left by a failed create) is never read again.
+    for (const f of await readdir(home)) if (f.startsWith("ressac-vm-") && !f.startsWith(`ressac-vm-${image.version}.raw`)) await rm(join(home, f), { force: true });
     const local = image.url.startsWith("file:");
     const zst = local ? fileURLToPath(image.url) : `${raw}.zst`;
     try {
       if (local) {
-        const hash = createHash("sha256");
-        for await (const chunk of createReadStream(zst)) hash.update(chunk as Buffer);
-        if (hash.digest("hex") !== image.sha256) throw new HashMismatchError();
+        if ((await sha256File(zst)) !== image.sha256) throw new HashMismatchError();
       } else if (!existsSync(zst)) {
         downloads = new AbortController();
         set({ kind: "downloading", percent: null });
@@ -262,9 +283,15 @@ export function createMachine(o: {
       await sleep(500);
     }
     if (running) return;
-    if ((await shell(["cat", "/etc/ressac-vm-version"])).stdout.trim() !== image.version) {
-      const u = await shell(["sudo", "apk", "upgrade", "--no-cache"], { delayMs: 10 * 60_000 });
-      if (u.code === 0) await shell(["sudo", "tee", "/etc/ressac-vm-version"], { input: `${image.version}\n` });
+    const guest = parts((await shell(["cat", "/etc/ressac-vm-version"])).stdout.trim());
+    const want = parts(image.version);
+    // apk stays on the guest's Alpine branch and never runs guest-setup.sh: only a new machine brings those.
+    if (guest.branch !== want.branch || guest.setup !== want.setup) {
+      console.warn(`[ressac] the machine (${guest.alpine}, setup ${guest.setup}) differs from its image ${image.version}: removing it in Réglages brings the new one`);
+    } else if (older(guest.alpine, want.alpine) || older(guest.podman, want.podman)) {
+      // Capped: one cut short (slow network) leaves the boot going and is tried again at the next one.
+      const u = await shell(["sudo", "apk", "upgrade", "--no-cache"], { delayMs: 2 * 60_000 });
+      if (u.code === 0) await shell(["sudo", "sh"], { input: MARK });
     }
     await rm(raw, { force: true }); // the instance has its own disk now
     if (existsSync(tar)) {
@@ -325,10 +352,38 @@ export function createMachine(o: {
     set({ kind: "stopped" });
   }
 
+  /**
+   * Up and answering. A Running machine this launch saw running whose Podman is gone (stale after the Mac slept) is
+   * force-stopped and booted again; asked twice, so one hiccup never cuts the sessions in it.
+   */
+  async function ensureUp(was: "Running" | "Stopped" | "damaged"): Promise<void> {
+    if (was === "Running" && status.kind === "running") {
+      const answers = async () => (await pod(["info"], 10_000)).code === 0;
+      if ((await answers()) || (await sleep(1000).then(answers))) return;
+      await lima(["stop", "--force", NAME]);
+      was = "Stopped";
+    }
+    await start(was === "Running");
+  }
+
+  async function boot(reason: WakeReason, was: "Running" | "Stopped"): Promise<void> {
+    const booted = was === "Running" ? await readFile(join(dir, "lima.yaml"), "utf8").catch(() => null) : null;
+    if (booted !== null && booted !== (await render())) {
+      // Booted by another Ressac (a dev build next to the app) with its own folders mounted, not this one's.
+      if (await o.busy()) throw new Error(hostSay("host-machine-in-use"));
+      await stopInner();
+      was = "Stopped";
+    }
+    await ensureUp(was);
+    watch(reason);
+    set({ kind: "running" });
+  }
+
   async function installInner(reason: WakeReason): Promise<void> {
     await usable();
     const was = await instance();
-    if (was === "Running" || was === "Stopped") return;
+    // « Réessayer » after a failed boot boots it again; an installed machine is otherwise left as it is.
+    if (was === "Running" || was === "Stopped") return status.kind === "error" ? boot(reason, was) : undefined;
     if (was === "damaged") throw damaged();
     if (was === "empty") await lima(["delete", "--force", NAME]);
     await fetchImage();
@@ -343,19 +398,22 @@ export function createMachine(o: {
   }
 
   /** Runs a change; a failure shows as the `error` status (unless the Mac cannot run the machine at all). */
-  const guarded = <T>(f: () => Promise<T>): Promise<T> =>
-    serial(async () => {
-      try {
-        return await f();
-      } catch (e) {
-        if (status.kind !== "unsupported") set({ kind: "error", message: (e as Error).message, ...((e as { forceRemovable?: true }).forceRemovable && { forceRemovable: true as const }) });
-        throw e;
-      }
-    });
+  const guard = async <T>(f: () => Promise<T>): Promise<T> => {
+    try {
+      return await f();
+    } catch (e) {
+      if (status.kind !== "unsupported") set({ kind: "error", message: (e as Error).message, ...((e as { forceRemovable?: true }).forceRemovable && { forceRemovable: true as const }) });
+      throw e;
+    }
+  };
+  const guarded = <T>(f: () => Promise<T>): Promise<T> => serial(() => guard(f));
+  /** A harvest never re-creates a removed machine nor retries a failing one: background work waits for the user. */
+  const harvestable = () => status.kind !== "absent" && status.kind !== "error";
 
   // The status at launch; a machine left running (crash) gets the idle rule.
-  if (!tooLong)
-    void serial(async () => {
+  const known = tooLong
+    ? Promise.resolve()
+    : serial(async () => {
       if (!(await supported())) return set({ kind: "unsupported" });
       const was = await instance();
       if (was === "Running") watch("user");
@@ -372,22 +430,18 @@ export function createMachine(o: {
       return (await instance().catch(() => "absent")) === "Running" && (await pod(["info"], 10_000)).code === 0;
     },
     wake: (reason: WakeReason) =>
-      guarded(async () => {
-        await usable();
-        const was = await instance();
-        if (was === "absent" || was === "empty" || was === "damaged") return installInner(reason);
-        if (was === "Running" && status.kind === "running") {
-          // Running for Lima but Podman gone (a stale machine after the Mac slept): restarted. Asked twice, so one
-          // hiccup never cuts the sessions running in it.
-          const answers = async () => (await pod(["info"], 10_000)).code === 0;
-          if (!(await answers()) && !(await sleep(1000).then(answers))) {
-            await lima(["stop", "--force", NAME]);
-            await start(false);
-          }
-        } else await start(was === "Running");
-        watch(reason);
-        set({ kind: "running" });
+      serial(async () => {
+        // Checked in turn (after the launch's status and any removal before it), outside `guard`: the status stays.
+        if (reason === "harvest" && !harvestable()) throw new Error(hostSay("kernel-err-machine-stopped"));
+        return guard(async () => {
+          await usable();
+          const was = await instance();
+          if (was === "absent" || was === "empty" || was === "damaged") return installInner(reason);
+          await boot(reason, was);
+        });
       }),
+    /** False when a harvest's wake would be refused (the machine removed, or failing): the background work then waits. */
+    harvestable: async () => (await known, harvestable()),
     status: () => status,
     onStatus(l: (s: MachineStatus) => void) {
       listeners.add(l);
@@ -411,11 +465,11 @@ export function createMachine(o: {
       guarded(async () => {
         if (tooLong) return;
         unwatch();
-        const was = await instance();
         try {
+          const was = await instance();
           if (!r.force && was !== "absent" && was !== "empty" && !existsSync(tar)) {
             // An instance that cannot start leaves only the forced removal.
-            await start(was === "Running").catch((e) => {
+            await ensureUp(was).catch((e) => {
               throw was === "damaged" ? damaged() : forceable((e as Error).message);
             });
             const exists = await pod(["volume", "exists", VOLUME_HOME]);
@@ -429,12 +483,15 @@ export function createMachine(o: {
               await rename(`${tar}.part`, tar);
             }
           }
+          if (was !== "absent") {
+            const d = await lima(["delete", "--force", NAME]);
+            if (d.code !== 0) throw new Error(hostSay("host-machine-remove-failed", { detail: detail(d) }));
+          }
         } catch (e) {
           // Kept, maybe running: the idle rule stops it again.
           if ((await instance().catch(() => null)) === "Running") watch("user");
           throw e;
         }
-        if (was !== "absent") await lima(["delete", "--force", NAME]);
         set({ kind: "absent" });
       }),
     /**
@@ -447,8 +504,10 @@ export function createMachine(o: {
       downloads?.abort();
       if (tooLong || !(await supported())) return;
       const inFlight = pending > 0 || status.kind === "starting";
-      await claim().catch(() => {}); // the stop duty is this launch's: a script of an older one stands down
-      (o.detach ?? detached)([QUIT_STOP, "ressac-vm-stop", limactl, NAME, String(o.quitGraceS ?? 3), inFlight ? "1" : "0", token], { LIMA_HOME: home });
+      // The stop duty is this quit's: a script of an older launch, and this launch's crash watcher, stand down.
+      const quit = `${token}-quit`;
+      await claim(quit).catch(() => {});
+      detach([QUIT_STOP, "ressac-vm-stop", limactl, NAME, String(o.quitGraceS ?? 3), inFlight ? "1" : "0", quit], { LIMA_HOME: home });
     },
     async usage(): Promise<{ memoryMB: number; diskMB: number } | null> {
       if (tooLong || (await instance().catch(() => "absent")) === "absent") return null;
@@ -485,6 +544,7 @@ export function fakeMachine(spec: string, log: string, delayMs = 0): ReturnType<
     hostAddress: () => HOST_ADDRESS,
     up: async () => false,
     wake: async () => {},
+    harvestable: async () => true,
     status: () => status,
     onStatus: () => () => {},
     install: () => note("install"),

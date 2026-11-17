@@ -54,16 +54,24 @@ export async function downloadVerified(o: {
     if ((e as Error).message === "too many bytes") await rm(part, { force: true });
     throw e;
   }
-  const hash = createHash("sha256");
   // Checked per chunk: hashing a big file takes seconds, and the caller's slot stays taken until the cancel lands.
-  for await (const chunk of createReadStream(part)) {
+  const digest = await sha256File(part, () => {
     if (o.signal.aborted) throw o.cancelled();
-    hash.update(chunk as Buffer);
-  }
+  });
   if (o.signal.aborted) throw o.cancelled();
-  if (hash.digest("hex") !== o.sha256) {
+  if (digest !== o.sha256) {
     await rm(part, { force: true });
     throw new HashMismatchError();
   }
   await rename(part, o.file);
+}
+
+/** The file's SHA-256 (hex); `each` runs before every chunk (a cancel check). */
+export async function sha256File(path: string, each?: () => void): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) {
+    each?.();
+    hash.update(chunk as Buffer);
+  }
+  return hash.digest("hex");
 }

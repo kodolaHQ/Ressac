@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
+import { promisify } from "node:util";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,7 +25,7 @@ interface Call {
 }
 
 /** A fake world: one Lima instance, a Podman that answers when it runs, the guest's version file and the logins volume. */
-function world(o: { instance?: { status: string; disk?: boolean } | null; guestVersion?: string; volume?: boolean; volumeExistsCode?: number; failStops?: number; home?: string } = {}) {
+function world(o: { instance?: { status: string; disk?: boolean } | null; guestVersion?: string; upgradedTo?: string; volume?: boolean; volumeExistsCode?: number; failStops?: number; home?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), "m-"));
   dirs.push(root);
   const home = o.home ?? join(root, "h");
@@ -65,6 +66,8 @@ function world(o: { instance?: { status: string; disk?: boolean } | null; guestV
       if (line === "delete --force ressac") return rmSync(dir, { recursive: true, force: true }), (s.instance = null), ok();
       if (line.endsWith("cat /etc/ressac-vm-version")) return ok(s.guestVersion + "\n");
       if (line.endsWith("sudo tee /etc/ressac-vm-version")) return (s.guestVersion = String(opts.input).trim()), ok();
+      // The mark script: what apk delivered (alpine-release, podman), the setup hash kept.
+      if (line.endsWith("ressac sudo sh")) return (s.guestVersion = o.upgradedTo ?? VM_IMAGE.version), ok();
       return ok();
     }
     if (cmd.endsWith("podman")) {
@@ -264,14 +267,52 @@ describe("the workshop machine", () => {
     expect(w.s.calls).toEqual([]);
   });
 
-  it("version mismatch upgrades in place", async () => {
-    const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-000000000000" });
+  it("an older guest on the image's Alpine branch and setup is upgraded in place, capped at 2 min, and marked as apk left it", async () => {
+    const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-20062535e787" });
     const m = machine(w);
     await m.wake("user");
     await m.stop();
     await m.wake("user");
-    expect(limactl(w).filter((l) => l === "shell --workdir / ressac sudo apk upgrade --no-cache")).toHaveLength(1);
+    const upgrades = w.s.calls.filter((c) => c.args.join(" ") === "shell --workdir / ressac sudo apk upgrade --no-cache");
+    expect(upgrades).toHaveLength(1);
+    expect(w.s.calls.find((c) => c.args.join(" ").endsWith("ressac sudo sh"))?.cmd).toMatch(/limactl$/);
     expect(w.s.guestVersion).toBe(VM_IMAGE.version);
+  });
+
+  it("an upgrade that falls short of the image is marked as delivered, never as the image, and tried again at the next boot", async () => {
+    const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-20062535e787", upgradedTo: "3.24.3-5.8.10-20062535e787" });
+    const m = machine(w);
+    await m.wake("user");
+    expect(w.s.guestVersion).toBe("3.24.3-5.8.10-20062535e787");
+    await m.stop();
+    await m.wake("user");
+    expect(limactl(w).filter((l) => l.endsWith("sudo apk upgrade --no-cache"))).toHaveLength(2);
+    expect(w.s.calls.find((c) => c.args.join(" ").endsWith("sudo apk upgrade --no-cache"))?.env).toBeDefined();
+  });
+
+  it("the in-boot upgrade is capped at 2 minutes", async () => {
+    const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-20062535e787" });
+    const delays: (number | undefined)[] = [];
+    const run: Runner = (cmd, args, o) => (args.join(" ").endsWith("sudo apk upgrade --no-cache") && delays.push(o?.delayMs), w.run(cmd, args, o));
+    await machine(w, { run }).wake("user");
+    expect(delays).toEqual([120_000]);
+  });
+
+  it("a guest on another Alpine branch, another setup, or newer than the image is not upgraded: it boots as it is", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      for (const guestVersion of ["3.23.9-5.8.10-20062535e787", "3.24.4-5.8.10-000000000000", "3.24.9-5.9.0-20062535e787"]) {
+        const w = world({ instance: { status: "Stopped" }, guestVersion });
+        const m = machine(w);
+        await m.wake("user");
+        expect(limactl(w).some((l) => l.includes("apk upgrade"))).toBe(false);
+        expect(w.s.guestVersion).toBe(guestVersion);
+        expect(m.status().kind).toBe("running");
+      }
+      expect(warn).toHaveBeenCalledTimes(2); // the branch and the setup: only a new machine brings them
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("remove exports the logins volume first, and the next install imports it after create", async () => {
@@ -337,7 +378,7 @@ describe("the workshop machine", () => {
   it("a harvest that woke the machine just before a poll gets one poll of grace", async () => {
     const w = world({ instance: { status: "Stopped" } });
     let polls = 0;
-    const m = machine(w, { pollMs: 100, busy: async () => (polls++, false) });
+    const m = machine(w, { pollMs: 300, busy: async () => (polls++, false) });
     await m.wake("harvest");
     await m.wake("harvest"); // a second harvest, its podman run not started yet
     await vi.waitFor(() => expect(polls).toBe(1));
@@ -429,7 +470,8 @@ describe("the workshop machine", () => {
     const m = machine(w, { detach });
     const waking = m.wake("user").catch(() => {});
     await m.close();
-    expect(detach.mock.calls[0]![0].at(-2)).toBe("1");
+    expect(detach.mock.calls.at(-1)![0][1]).toBe("ressac-vm-stop");
+    expect(detach.mock.calls.at(-1)![0].at(-2)).toBe("1");
     await waking;
   });
 
@@ -469,9 +511,138 @@ describe("the workshop machine", () => {
     const other = machine(w, { detach: () => {} });
     await other.wake("user");
     expect(readFileSync(join(w.home, "launch"), "utf8")).not.toBe(token);
-    await m.close(); // a close takes the duty back: its own token again
-    expect(readFileSync(join(w.home, "launch"), "utf8")).toBe(token);
-    expect(detach.mock.calls[0]![0].at(-1)).toBe(token);
+    await m.close(); // a close takes the duty back with its quit token: its own crash watcher stands down
+    expect(readFileSync(join(w.home, "launch"), "utf8")).toBe(`${token}-quit`);
+    expect(detach.mock.calls.at(-1)![0].at(-1)).toBe(`${token}-quit`);
+  });
+
+  it("the first use leaves a watcher that stops the machine should the host die without quitting", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    const detach = vi.fn();
+    const m = machine(w, { detach });
+    await m.wake("user");
+    await m.wake("user");
+    const token = readFileSync(join(w.home, "launch"), "utf8");
+    expect(detach.mock.calls).toEqual([[[QUIT_STOP, "ressac-vm-watch", join(w.resources, "bin", "limactl"), "ressac", "0", "0", token, String(process.pid)], { LIMA_HOME: w.home }]]);
+  });
+
+  it("the watcher waits for the host's end, then stops the machine unless a newer launch or a quit took it", async () => {
+    for (const [launch, expected] of [["t1", "stop ressac\n"], ["t1-quit", ""], ["t2", ""]] as const) {
+      const d = mkdtempSync(join(tmpdir(), "q-"));
+      dirs.push(d);
+      const l = join(d, "limactl");
+      writeFileSync(l, `#!/bin/sh\n[ "$1" = list ] && { echo Running; exit 0; }\necho "$*" >> ${join(d, "log")}\n`);
+      chmodSync(l, 0o755);
+      writeFileSync(join(d, "launch"), launch);
+      const host = spawn("sleep", ["0.5"]);
+      const began = Date.now();
+      // Async: a sync run would block the reaping of `host`, whose zombie answers kill -0.
+      await promisify(execFile)("/bin/sh", ["-c", QUIT_STOP.replace("sleep 10", "sleep 0.1"), "x", l, "ressac", "0", "0", "t1", String(host.pid)], { env: { ...process.env, LIMA_HOME: d } });
+      expect(Date.now() - began).toBeGreaterThanOrEqual(400);
+      expect(existsSync(join(d, "log")) ? readFileSync(join(d, "log"), "utf8") : "").toBe(expected);
+    }
+  });
+
+  it("a harvest never re-creates a removed machine nor boots a failing one; harvestable says so", async () => {
+    const gone = world();
+    const removed = machine(gone);
+    expect(await removed.harvestable()).toBe(false);
+    await expect(removed.wake("harvest")).rejects.toThrow();
+    expect(limactl(gone).some((l) => l.startsWith("create") || l.startsWith("start"))).toBe(false);
+    expect(removed.status().kind).toBe("absent");
+
+    const w = world({ instance: { status: "Stopped" } });
+    let fails = true;
+    const run: Runner = (cmd, args, o) => (args[0] === "start" && fails ? Promise.resolve({ code: 1, stdout: "", stderr: "vz: boom" }) : w.run(cmd, args, o));
+    const m = machine(w, { run });
+    expect(await m.harvestable()).toBe(true);
+    await expect(m.wake("user")).rejects.toThrow("vz: boom");
+    const message = (m.status() as { message: string }).message;
+    fails = false;
+    expect(await m.harvestable()).toBe(false);
+    await expect(m.wake("harvest")).rejects.toThrow();
+    expect(w.s.starts).toBe(0);
+    expect(m.status()).toMatchObject({ kind: "error", message });
+  });
+
+  it("« Réessayer » (install) boots again a stopped machine whose boot failed; a plain stopped one stays stopped", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    let fails = true;
+    const run: Runner = (cmd, args, o) => (args[0] === "start" && fails ? Promise.resolve({ code: 1, stdout: "", stderr: "vz: boom" }) : w.run(cmd, args, o));
+    const m = machine(w, { run, idleMs: 60_000 });
+    await m.install();
+    expect(w.s.starts).toBe(0);
+    await expect(m.wake("user")).rejects.toThrow();
+    fails = false;
+    await m.install();
+    expect(w.s.starts).toBe(1);
+    expect(m.status().kind).toBe("running");
+  });
+
+  it("remove restarts a stale machine (Podman gone after a Mac sleep) to save the logins, without a 5 min wait", async () => {
+    const w = world({ instance: { status: "Running" }, volume: true });
+    let stale = true;
+    const run: Runner = async (cmd, args, o) => {
+      if (cmd.endsWith("podman") && args.includes("info") && stale) return { code: 125, stdout: "", stderr: "connection refused" };
+      if (args.join(" ") === "stop --force ressac") stale = false;
+      return w.run(cmd, args, o);
+    };
+    const m = machine(w, { run });
+    await vi.waitFor(() => expect(m.status().kind).toBe("running"));
+    await m.remove();
+    expect(w.s.calls.filter((c) => c.args.includes("info")).length).toBeLessThan(5);
+    expect(w.s.calls.some((c) => c.args.includes("export"))).toBe(true);
+    expect(m.status().kind).toBe("absent");
+  });
+
+  it("a removal cut by a failed delete or a failed listing keeps the machine under the idle rule", async () => {
+    for (const fail of ["delete --force ressac", "list --json"]) {
+      const w = world({ instance: { status: "Running" } });
+      let listed = 0;
+      const run: Runner = (cmd, args, o) => {
+        const line = args.join(" ");
+        // The listing fails once, during the removal (the launch probe is the first).
+        const failing = line === fail && (fail !== "list --json" || ++listed === 2);
+        return failing ? Promise.resolve({ code: 1, stdout: "", stderr: "lima: boom" }) : w.run(cmd, args, o);
+      };
+      let busy = true; // until the removal: the launch's own idle rule must not stop it first
+      const m = machine(w, { run, idleMs: 10, busy: async () => busy });
+      await vi.waitFor(() => expect(m.status().kind).toBe("running"));
+      await expect(m.remove({ force: true })).rejects.toThrow();
+      expect(m.status().kind).toBe("error");
+      busy = false;
+      await vi.waitFor(() => expect(stops(w)).toBe(1));
+    }
+  });
+
+  it("a running machine booted with other mounts (another Ressac) is restarted when idle, refused when busy", async () => {
+    for (const busy of [false, true]) {
+      const w = world({ instance: { status: "Running" } });
+      writeFileSync(join(w.dir, "lima.yaml"), TEMPLATE.replace("{{RESSAC_ROOT}}", "/elsewhere/Ressac"));
+      const m = machine(w, { busy: async () => busy, idleMs: 60_000 });
+      await vi.waitFor(() => expect(m.status().kind).toBe("running"));
+      if (busy) {
+        await expect(m.wake("user")).rejects.toThrow(/autre Ressac|another Ressac/);
+        expect(stops(w)).toBe(0);
+        continue;
+      }
+      await m.wake("user");
+      expect(stops(w)).toBe(1);
+      expect(w.s.starts).toBe(1);
+      expect(readFileSync(join(w.dir, "lima.yaml"), "utf8")).toContain(`location: "${w.ressacRoot}"`);
+      await m.wake("user"); // now its own mounts: left running
+      expect(w.s.starts).toBe(1);
+    }
+  });
+
+  it("a new image version deletes the files of the older ones, never the logins", async () => {
+    const w = world();
+    mkdirSync(w.home, { recursive: true });
+    for (const f of ["ressac-vm-old.raw", "ressac-vm-old.raw.zst.part", "ressac-vm-old.raw.part", "webaios-home.tar"]) writeFileSync(join(w.home, f), "x");
+    const { image } = localImage(w.root);
+    await machine(w, { image }).install();
+    for (const f of ["ressac-vm-old.raw", "ressac-vm-old.raw.zst.part", "ressac-vm-old.raw.part"]) expect(existsSync(join(w.home, f))).toBe(false);
+    expect(w.s.calls.some((c) => c.args.includes("import"))).toBe(true); // the saved logins were kept for their import
   });
 });
 

@@ -48,4 +48,6 @@ host-machine-download-failed = Le téléchargement de la machine de l'atelier a 
 host-machine-cancelled = Téléchargement de la machine de l'atelier annulé
 host-machine-start-failed = La machine de l'atelier n'a pas démarré : { $detail }
 host-machine-export-failed = Les connexions de l'atelier n'ont pas pu être sauvegardées, la machine est gardée : { $detail }
+host-machine-in-use = La machine de l'atelier sert à un autre Ressac ouvert sur ce Mac. Quittez-le, puis réessayez.
+host-machine-remove-failed = La machine de l'atelier n'a pas pu être supprimée : { $detail }
 host-machine-damaged = La machine de l'atelier est dans un état inattendu. Redémarrez le Mac ; si elle ne repart pas, supprimez-la quand même dans Réglages › Atelier (il faudra reconnecter Claude et Codex).

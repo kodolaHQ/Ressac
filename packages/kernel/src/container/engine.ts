@@ -17,6 +17,8 @@ export interface ContainerEngine {
   up(): Promise<boolean>;
   /** Starts what is needed (machine boot, Docker app); throws a localized Error when it cannot. */
   wake(reason: WakeReason): Promise<void>;
+  /** False when `wake("harvest")` would be refused (Ressac's machine removed or failing); absent means true. */
+  harvestable?(): Promise<boolean>;
 }
 
 /** Looks for the docker CLI in the PATH then at known locations (Finder does not have the shell's PATH). */

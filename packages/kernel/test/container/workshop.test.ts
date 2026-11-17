@@ -2,7 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 import { spacePaths } from "../../src/paths.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Workshop, BUILD_DELAY_MS, parseBuildStep, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript, findDocker } from "../../src/container/workshop.js";
+import { Workshop, BUILD_DELAY_MS, parseBuildStep, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript } from "../../src/container/workshop.js";
+import { findDocker } from "../../src/container/engine.js";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -898,14 +899,19 @@ describe("container engine", () => {
     expect(reasons).toEqual(["user", "harvest"]);
   });
 
-  test("harvestReady: a started workshop, or the machine (stopped or woken for a harvest); never a stopped Docker workshop", async () => {
+  test("harvestReady: a started workshop, or the machine (stopped, woken for a harvest, or fresh) unless it refuses; never a stopped Docker workshop", async () => {
     const docker = (stdout: string, code = 0) => new Workshop({ paths, run: fakeRunner([[/ inspect /, { code, stdout }]]).run, docker: "docker" });
     expect(await docker("true\n").harvestReady()).toBe(true);
     expect(await docker("false\n").harvestReady()).toBe(false);
     expect(await new Workshop({ paths, run: fakeRunner([]).run, engine: () => machine(async () => false) }).harvestReady()).toBe(true);
     // Its container stays stopped after a wake for a harvest: the next harvest still goes.
     expect(await new Workshop({ paths, run: fakeRunner([[/ inspect /, { code: 0, stdout: "false\n" }]]).run, engine: () => machine() }).harvestReady()).toBe(true);
-    expect(await new Workshop({ paths, run: fakeRunner([[/ inspect /, { code: 1 }]]).run, engine: () => machine() }).harvestReady()).toBe(false);
+    // Right after the install: the machine runs, its workshop container was never created; the harvest needs only the image.
+    expect(await new Workshop({ paths, run: fakeRunner([[/ inspect /, { code: 1 }]]).run, engine: () => machine() }).harvestReady()).toBe(true);
+    expect(await new Workshop({ paths, run: fakeRunner([[/ inspect /, { code: 1 }]]).run, docker: "docker" }).harvestReady()).toBe(false);
+    // A machine that refuses a harvest's wake (removed, failing): background work waits, as for a stopped workshop.
+    const refusing = { ...machine(async () => false), harvestable: async () => false };
+    expect(await new Workshop({ paths, run: fakeRunner([]).run, engine: () => refusing }).harvestReady()).toBe(false);
   });
 
   test("harvestCommand and execCommand start with the engine binary and args", () => {
