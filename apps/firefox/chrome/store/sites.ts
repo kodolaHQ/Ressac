@@ -137,8 +137,11 @@ const byContainer = new Map<number, OpenSite>();
 const tabSites = new Map<any, TabSite>();
 type TabSite = { id: string; s?: FrameSite; ready?: Promise<void> };
 
-/** The host's reading of a tab's app: its frame decisions, or the tab dropped (unknown app, being deleted). */
-function readTab(browser: any, t: TabSite): Promise<void> {
+/**
+ * The host's reading of a tab's app: its frame decisions, or, at attach only, the tab dropped (unknown app, being deleted).
+ * A re-read that gets nothing (site.json half written, host restarting) keeps the last decisions: a deletion closes the tab anyway.
+ */
+function readTab(browser: any, t: TabSite, attach = false): Promise<void> {
   const read = (host ? host.request<{ site: SiteChrome; tweaks: TweaksRead } | null>("sites.tabSite", { id: t.id }) : Promise.resolve(null)).catch((e) => {
     console.warn(`[sites] ${t.id}: tab without its app:`, e);
     return null;
@@ -146,7 +149,7 @@ function readTab(browser: any, t: TabSite): Promise<void> {
   t.ready = read.then((p) => {
     if (tabSites.get(browser) !== t) return;
     if (p) t.s = { site: p.site, tweaks: p.tweaks, view: browser, errors: t.s?.errors ?? [] };
-    else {
+    else if (attach || !t.s) {
       tabSites.delete(browser);
       publishOpen();
     }
@@ -718,7 +721,7 @@ export const sites = {
     const t: TabSite = { id };
     tabSites.set(browser, t);
     publishOpen();
-    await readTab(browser, t);
+    await readTab(browser, t, true);
   },
   /** The essential's XUL tab closed; the host forgets the app's tab once its last one is gone. */
   detachTab(browser: any): void {
