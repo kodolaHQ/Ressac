@@ -8,7 +8,7 @@ workshop image (`packages/kernel/docker/workshop.Dockerfile`) already loaded, so
 | `lima.yaml` | The machine's Lima template. `host/machine.ts` fills `{{IMAGE}}`, `{{RESSAC_ROOT}}`, `{{ENGINE}}`, `{{CPUS}}`. |
 | `build-image.sh` | Builds `dist/vm/ressac-vm-<VM_VERSION>.raw.zst`, `packages.txt`, `sources.tar`. |
 | `guest-setup.sh` | Runs as root in the throwaway bake machine (`setup`, then `seal`). |
-| `publish-image.sh` | Uploads the three files to R2 under `vm/`. |
+| `publish-image.sh` | Uploads the three files to R2 under `vm/` (where the app downloads from), then mirrors them in a GitHub release `vm-<version>` tagged on the commit that built the image (`dist/vm/commit.txt`; it must be clean and pushed). |
 | `security-check.sh` | Proves the workshop's protections on a throwaway machine (see below). |
 | `../vm-tools.sh` | Pinned Lima and Podman remote client for the Mac (SHA-256 checked, cached in `dist/cache/vm-tools/`). |
 

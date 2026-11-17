@@ -81,7 +81,9 @@ $limactl stop bake
 
 mkdir -p $out
 image=$out/ressac-vm-$version.raw.zst
-rm -f $image $out/packages.txt $out/sources.tar
+rm -f $image $out/packages.txt $out/sources.tar $out/commit.txt
+# The commit whose recipe built this image, for publish-image.sh's GitHub mirror; "-dirty" when the recipe had edits.
+print -r -- "$(git -C $repo rev-parse HEAD)$([[ -n $(git -C $repo status --porcelain -- apps/firefox/scripts/vm packages/kernel/docker) ]] && print -- -dirty)" >$out/commit.txt
 zstd -19 -T0 -q $LIMA_HOME/bake/disk -o $image
 print -r -- $packages >$out/packages.txt
 
