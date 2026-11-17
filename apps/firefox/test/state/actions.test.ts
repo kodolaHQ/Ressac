@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { apply, withEssentials } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
-import { AGENT_PROFILE, siteProfile, sitePlacement, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, urlRecap, recapOfUrl, type BrowserState, type Tab } from "../../shared/model";
+import { AGENT_PROFILE, FAVICON_MAX, permissionProfiles, siteProfile, sitePlacement, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, urlRecap, recapOfUrl, type BrowserState, type Tab } from "../../shared/model";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -922,6 +922,11 @@ test("profilesInUse: by identifier, spaces included", () => {
   expect(profilesInUse(copy)).toEqual(new Set(["default", "autre"]));
 });
 
+test("permissionProfiles: the profiles in use and each app essential's own", () => {
+  ag({ type: "placeSite", id: "whatsapp", url: "https://web.whatsapp.com/", placement: "essentials" });
+  expect(permissionProfiles(e)).toEqual(new Set(["default", "site-whatsapp"]));
+});
+
 // Plan 17, task 11: a project's review page.
 test("openReview opens ressac://review/app-essai titled « Relecture — Essai »; a second call returns to the same tab", async () => {
   const { reviewUrl } = await import("../../shared/model");
@@ -1256,6 +1261,11 @@ test("placeSite bar after essentials: the essential and its tabs are gone", () =
   expect(e).toBe(before);
 });
 
+test("placeSite essentials: an app icon over FAVICON_MAX is not kept in the state (persistence drops it too)", () => {
+  ag({ type: "placeSite", ...WA, favicon: "x".repeat(FAVICON_MAX + 1), placement: "essentials" });
+  expect(e.essentials[0]!.favicon).toBeNull();
+});
+
 test("placeSite none: in neither; essentials needs an http(s) address", () => {
   place("essentials");
   place("none");
@@ -1280,12 +1290,6 @@ test("forgetSite: a deleted app leaves the essentials and the bar, and every tab
   const before = e;
   ag({ type: "forgetSite", id: "whatsapp" });
   expect(e).toBe(before);
-});
-
-test("openTab never takes a site app's container from outside (only an app essential makes one)", () => {
-  expect(SchemaAction.safeParse({ type: "openTab", windowId: F, url: "https://a.fr", profile: "site-whatsapp" }).success).toBe(false);
-  expect(SchemaAction.safeParse({ type: "openTab", windowId: F, url: "https://a.fr", profile: "boulot" }).success).toBe(true);
-  expect(SchemaAction.safeParse({ type: "openTabs", tabs: [{ type: "openTab", windowId: F, url: "https://a.fr", profile: "site-x" }] }).success).toBe(false);
 });
 
 test("openFavorite on an app essential from a private space shows the existing app tab", () => {

@@ -5,7 +5,7 @@ import type { TweakError } from "../core/sites/injection";
 import { MEMORY_DENIAL } from "../host/site-memory";
 import type { SiteChrome } from "../host/sites";
 
-const { frameError, framePosition, frameResume, frameInjection, frameMemory, siteOfFrame } = await import("../chrome/store/site-frames");
+const { frameError, framePosition, frameResume, frameInjection, frameMemory, siteOfFrame, openedFromTab, inheritedProfile } = await import("../chrome/store/site-frames");
 
 // The sender rules on Firefox's WindowGlobalParent: what a frame gets
 // is decided from its browsing context and the view's <browser>, never from what it says.
@@ -218,5 +218,35 @@ describe("framePosition and frameResume", () => {
     const small = browser(PAGE);
     expect(await frameResume(small.main, siteOfFrame(small.main, [s]), { duration: 90 }, false, ask)).toBeNull();
     expect(asked).toHaveLength(1);
+  });
+});
+
+describe("openedFromTab", () => {
+  // A <browser> with its top browsing context; `opener` is the context that window.open'ed it.
+  const make = (opener?: any) => {
+    const el: any = {};
+    el.browsingContext = { embedderElement: el, opener: opener ? { top: opener.browsingContext } : null };
+    return el;
+  };
+  it("a tab of a main window, a popup it opened and that popup's own popup; not a popup of another browser", () => {
+    const tab = make();
+    const popup = make(tab);
+    const step = make(popup);
+    const own = (b: any) => b === tab;
+    expect([tab, popup, step].map((b) => openedFromTab(b, own))).toEqual([true, true, true]);
+    expect(openedFromTab(make(make()), own)).toBe(false);
+    expect(openedFromTab(null, own)).toBe(false);
+  });
+});
+
+describe("inheritedProfile", () => {
+  const { s } = app();
+  it("an app essential's container only for the app's own pages; other profiles and about:blank are kept", () => {
+    expect(inheritedProfile("site-vidola", "https://www.vidola-a.example/serie", [s])).toBe("site-vidola");
+    expect(inheritedProfile("site-vidola", "https://ailleurs.example/", [s])).toBeUndefined();
+    expect(inheritedProfile("site-autre", "https://vidola-a.example/", [s])).toBeUndefined();
+    expect(inheritedProfile("site-vidola", "about:blank", [s])).toBe("site-vidola");
+    expect(inheritedProfile("agent", "https://ailleurs.example/", [s])).toBe("agent");
+    expect(inheritedProfile(undefined, "https://vidola-a.example/", [s])).toBeUndefined();
   });
 });

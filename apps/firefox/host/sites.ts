@@ -87,6 +87,8 @@ export interface SitesChrome {
   rebroadcast(id: string): Promise<void>;
   openSites(): Promise<string[]>;
   homeChange(id: string): void;
+  /** The app's site.json, tweaks or grant changed: its essentials' tabs read them again (tabSite). */
+  tabsChange(id: string): void;
   /** A reading of the reference page starts or ends: the bar's button shows it. */
   search(id: string, yes: boolean): void;
   /** The bar's mention. */
@@ -392,6 +394,7 @@ export function createSites(o: {
    * site.json or a tweak file changed: the open app is read again, then its page reloaded; only the last read counts.
    */
   async function reread(id: string): Promise<void> {
+    o.chrome.tabsChange(id);
     if (!opened.has(id)) return;
     const n = (reviews.get(id) ?? 0) + 1;
     reviews.set(id, n);

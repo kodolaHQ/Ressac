@@ -1,6 +1,6 @@
 import { shortcutLabel } from "../../shared/shortcuts";
 import { DEFAULT_AURA } from "../../shared/aura";
-import { privateTab, tabProfile, profilesInUse, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance } from "../../shared/model";
+import { privateTab, tabProfile, profilesInUse, permissionProfiles, siteProfile, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
 import { checkDataFormat } from "../../core/state/format";
 import { lazySave, loadSession, SessionRecorder } from "../../core/state/persistence";
@@ -203,7 +203,7 @@ async function start(): Promise<RessacStore> {
   apps.onClosed(() => questions.dropStale());
   const sitePermissions = createSitePermissions({
     dataDir,
-    profiles: () => [...profilesInUse(store.state)],
+    profiles: () => [...permissionProfiles(store.state)],
     ask: (d, signal) => questions.askSite(d, signal),
     firefox: firefoxPermissions,
   });
@@ -221,6 +221,8 @@ async function start(): Promise<RessacStore> {
   const flush = () => recorder.clear();
   store.subscribe((state, previous, action) => {
     recorder.schedule(state, lazySave(action));
+    // A deleted app's permissions go with it (sites.erase dispatches this before it wipes the container).
+    if (action?.type === "forgetSite") void sitePermissions.removeProfile(siteProfile(action.id));
     const used = profilesInUse(state);
     for (const id of profilesInUse(previous)) if (!used.has(id)) {
         try {

@@ -63,6 +63,7 @@ function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLink
     tweaks: Parameters<SitesChrome["update"]>[1][];
     reloads: string[];
     home: string[];
+    tabs: string[];
     after: unknown[][];
     rebroadcast: string[];
     tracking: unknown[][];
@@ -75,6 +76,7 @@ function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLink
     tweaks: [],
     reloads: [],
     home: [],
+    tabs: [],
   };
   let chromeErrors: Awaited<ReturnType<SitesChrome["errors"]>> = [];
   let chromeOpened: string[] = [];
@@ -108,6 +110,7 @@ function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLink
     errors: async () => chromeErrors,
     openSites: async () => chromeOpened,
     homeChange: (id) => void calls.home.push(id),
+    tabsChange: (id) => void calls.tabs.push(id),
     search: (...a) => void calls.tracking.push(["cherche", ...a]),
     notice: (...a) => void calls.tracking.push(["avis", ...a]),
     urlChanged: (...a) => void calls.tracking.push(["adresseChangee", ...a]),
@@ -358,6 +361,15 @@ describe("tabSite", () => {
     expect(await m.sites.memoryOp(op)).toEqual({ ok: true });
     m.sites.tabDetached("vidola");
     expect(await m.sites.memoryOp(op)).toMatchObject({ ok: false });
+  });
+
+  it("revoking the grant with no window open tells the essentials' tabs to read their app again", async () => {
+    const m = mount();
+    await storeSiteGrant(m.dataDir, "vidola", DeclarationSite.parse(declaration));
+    expect((await m.sites.tabSite("vidola"))!.site.grantRequired).toBe(false);
+    await m.sites.revokeGrant("vidola");
+    expect(m.calls.tabs).toEqual(["vidola"]);
+    expect((await m.sites.tabSite("vidola"))!.site.grantRequired).toBe(true);
   });
 });
 

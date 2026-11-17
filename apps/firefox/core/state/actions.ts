@@ -11,6 +11,7 @@ import {
   spaceKey,
   siteProfile,
   sitePlacement,
+  FAVICON_MAX,
   AGENT_WIDTH_MAX,
   AGENT_WIDTH_MIN,
   BAR_WIDTH_MAX,
@@ -463,7 +464,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       for (const x of d.essentials.filter((x) => x.site === a.id)) for (const o of Object.values(d.tabs)) if (o.link?.id === x.id) deleteTab(d, o);
       d.essentials = d.essentials.filter((x) => x.site !== a.id);
       d.siteBar = d.siteBar.filter((x) => x !== a.id);
-      if (a.placement === "essentials") d.essentials.push({ id: genId(), url: url!, title: a.title ?? url!, favicon: a.favicon ?? null, site: a.id });
+      if (a.placement === "essentials") d.essentials.push({ id: genId(), url: url!, title: a.title ?? url!, favicon: a.favicon && a.favicon.length <= FAVICON_MAX ? a.favicon : null, site: a.id });
       else if (a.placement === "bar") d.siteBar.push(a.id);
       return true;
     }

@@ -25,8 +25,8 @@ const SchemaOpenTab = z.object({
   spaceId: id.optional(),
   activate: z.boolean().optional(),
   openedByAgent: z.boolean().optional(),
-  /** The tab's own login profile, instead of its space's; never a site app's (only an app essential's tab is in one). */
-  profile: z.string().min(1).refine((p) => !p.startsWith("site-")).optional(),
+  /** The tab's own login profile, instead of its space's. */
+  profile: z.string().min(1).optional(),
   after: id.optional(),
   /** Shown until the page loads (an imported tab is not loaded before it is displayed). */
   title: z.string().optional(),

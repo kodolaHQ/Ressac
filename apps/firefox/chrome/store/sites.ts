@@ -17,7 +17,7 @@ import type { DesignService } from "./design";
 import { apps } from "./apps";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
-import { frameError, frameInjection, frameMemory, framePosition, frameResume, siteOfFrame, type FrameSite } from "./site-frames";
+import { frameError, frameInjection, frameMemory, framePosition, frameResume, inheritedProfile, openedFromTab, siteOfFrame, type FrameSite } from "./site-frames";
 import { forgetHome, serveHome, servedHost, siteImage } from "./site-home";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
@@ -132,7 +132,7 @@ const byContainer = new Map<number, OpenSite>();
 /**
  * App essentials' tabs, by their <browser> (registered at TabOpen, before their first load): their app, and once the
  * host answered (attachTab), what the frame decisions need. They get the window's frame decisions, not its guard.
- * shortcut: an app essential's tab keeps the tweaks read at attach; a site.json change applies at its next attach (tab re-created/restart), upgrade if Thomas edits apps while their tab is open.
+ * A site.json, tweak or grant change reads them again (sites.tabsChange).
  */
 const tabSites = new Map<any, TabSite>();
 type TabSite = { id: string; s?: FrameSite; ready?: Promise<void> };
@@ -237,8 +237,8 @@ const observer = {
     // An agent app's container: its own origin rule (store/apps.ts).
     if (apps.request(ch, li)) return;
     const userContextId = li.originAttributes.userContextId;
-    // An app essential's tab and the tabs it opens are ordinary tabs of a main window: the app window's rules are not theirs.
-    if (isTabOfMainWindow(li.browsingContext?.top?.embedderElement)) return;
+    // An app essential's tab, the tabs and popups it opens are a main window's: the app window's rules are not theirs.
+    if (openedFromTab(li.browsingContext?.top?.embedderElement, isTabOfMainWindow)) return;
     const s = byContainer.get(userContextId);
     if (!s) {
       if (isSiteContainer(userContextId)) ch.cancel(Cr.NS_BINDING_ABORTED);
@@ -727,6 +727,10 @@ export const sites = {
     publishOpen();
     if (![...tabSites.values()].some((x) => x.id === t.id)) host?.notify("sites.tabDetached", { id: t.id });
   },
+  /** The login profile a page's new tab at `url` takes from its opener's `profile`. */
+  childProfile<P extends string>(profile: P | undefined, url: string): P | undefined {
+    return inheritedProfile(profile, url, frameSites());
+  },
   /** A new host knows no tab: each one is read again (its tweaks refreshed too). */
   reattachTabs(): void {
     for (const [b, t] of [...tabSites]) if (!gone(b)) void readTab(b, t);
@@ -1007,6 +1011,10 @@ export const sites = {
       }
       loadInView(s, to);
       broadcast(s);
+    },
+    // The app's site.json, tweaks or grant changed: its essentials' tabs read them again (their next loads apply them).
+    "sites.tabsChange": ([id]: [string]) => {
+      for (const [b, t] of [...tabSites]) if (t.id === id && !gone(b)) void readTab(b, t);
     },
     "sites.homeChange": ([id]: [string]) => {
       const s = open.get(id);

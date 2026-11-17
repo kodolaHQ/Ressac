@@ -286,6 +286,11 @@ export function profilesInUse(state: Pick<BrowserState, "profiles" | "spaces">):
   return new Set([...state.profiles.map((p) => p.id), ...state.spaces.map((e) => e.profile)]);
 }
 
+/** The profiles whose site permissions are loaded at startup: those in use and the app essentials' own. */
+export function permissionProfiles(state: Pick<BrowserState, "profiles" | "spaces" | "essentials">): Set<ProfileId> {
+  return new Set([...profilesInUse(state), ...state.essentials.flatMap((x) => (x.site ? [siteProfile(x.site)] : []))]);
+}
+
 /**
  * The space where to count a visit (and the kept text) of the tab: the one that displays it in its window — a shared
  * essential is seen in the active space —, otherwise its own. Private if that space or the tab's is (unknown: private).

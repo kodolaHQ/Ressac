@@ -112,3 +112,29 @@ export async function frameResume(wgp: any, s: FrameSite | undefined, duration: 
   const d = duration && typeof duration === "object" ? (duration as { duration?: unknown }).duration : undefined;
   return page && typeof d === "number" ? request({ ...page, duration: d }) : null;
 }
+
+/**
+ * A <browser> that is one of `own` (a tab of a main window), or a popup opened from one, directly or through other
+ * popups (a sign-in's steps): popups are plain Firefox windows, only their opener chain tells where they come from.
+ */
+export function openedFromTab(browser: any, own: (browser: any) => boolean): boolean {
+  let bc = browser?.browsingContext;
+  while (bc) {
+    if (own(bc.embedderElement)) return true;
+    bc = bc.opener?.top;
+  }
+  return false;
+}
+
+/**
+ * The login profile a page's new tab takes from its opener's: an app essential's container only for that app's own
+ * pages (a link leaving the app opens a normal tab of the space). `url` still about:blank (window.open before its load):
+ * kept, the page is not known yet.
+ * shortcut: a window.open to another site keeps the app's container, upgrade by re-deciding at the tab's first real load.
+ */
+export function inheritedProfile<P extends string>(profile: P | undefined, url: string, sites: Iterable<FrameSite>): P | undefined {
+  if (!profile?.startsWith("site-") || url === "about:blank") return profile;
+  const id = profile.slice("site-".length);
+  for (const s of sites) if (s.site.id === id && relativeUrl(url, s.site.domains) !== null) return profile;
+  return undefined;
+}

@@ -1018,6 +1018,7 @@ const sites = createSites({
     rebroadcast: (id) => rpc.request("sites.rebroadcast", [id]),
     openSites: () => rpc.request("sites.openIds"),
     homeChange: (id) => rpc.notify("sites.homeChange", [id]),
+    tabsChange: (id) => rpc.notify("sites.tabsChange", [id]),
     search: (id, yes) => rpc.notify("sites.lookingUp", [id, yes]),
     notice: (id, a) => rpc.notify("sites.notice", [id, a]),
     urlChanged: (id, domains, start, to) => rpc.notify("sites.urlChanged", [id, domains, start, to]),
