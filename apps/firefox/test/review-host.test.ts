@@ -215,7 +215,8 @@ describe("review service", () => {
     expect(readFileSync(ref, "utf8")).toBe(before);
     expect(existsSync(join(s.sites, "tuning", ".git"))).toBe(false);
     const v = ok(await s.service.open("site-tuning"));
-    expect(v.comparison.files.map((f) => f.path)).toEqual(["site.json"]);
+    // A site app's first review starts from nothing: the tweak code it came with is shown too.
+    expect(v.comparison.files.map((f) => f.path)).toEqual(["site.json", "tweaks/tuning.css"]);
     expect(v).toMatchObject({ name: "Tuning", destination: "l'agent", noDestination: null });
   });
 
@@ -253,7 +254,7 @@ describe("review service", () => {
     await expect(s.service.file("site-tuning", v.token, "site.json")).rejects.toThrow(UNKNOWN_COMPARISON());
     expect(await s.service.comments("site-tuning")).toEqual([]);
     await s.service.ensure("site-tuning");
-    expect(await s.service.open("site-tuning")).toMatchObject({ state: "ok", comparison: { files: [] } });
+    expect(ok(await s.service.open("site-tuning")).comparison.files.map((f) => f.path)).toEqual(["site.json", "tweaks/tuning.css"]);
   });
 
   it("a snapshot taken between erase and the trash is erased by the second erase, also after the trash", async () => {
