@@ -150,7 +150,7 @@ export function createMachine(o: {
   const home = o.home ?? MACHINE_HOME;
   const run = o.run ?? createRunner(hostLocale);
   const image = o.image ?? VM_IMAGE;
-  const idleMs = o.idleMs ?? 15 * 60_000;
+  const idleMs = o.idleMs ?? 5 * 60_000; // short: the VM never gives back memory it touched until it stops
   const pollMs = o.pollMs ?? 60_000;
   const dir = join(home, NAME);
   const socket = join(dir, "sock", "podman.sock");

@@ -161,7 +161,7 @@ describe("the workshop machine", () => {
     await vi.waitFor(() => expect(stops(w)).toBe(1));
   });
 
-  it("a harvest wake on a machine already running for the user keeps the 15 min rule", async () => {
+  it("a harvest wake on a machine already running for the user keeps the idle rule", async () => {
     const w = world({ instance: { status: "Stopped" } });
     const m = machine(w);
     await m.wake("user");
