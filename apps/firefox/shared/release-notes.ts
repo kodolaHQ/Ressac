@@ -8,6 +8,10 @@ export const RELEASE_NOTES: { version: string; date: string; items: string[] }[]
       "Dans les essentiels, l'appli s'ouvre en onglet et reste chargée : WhatsApp continue d'envoyer ses notifications. Elle garde sa session et ses retouches, et son accueil s'affiche par-dessus le site ; recliquez sur l'essentiel pour y revenir.",
       "Dans la barre, une rangée d'icônes au-dessus des espaces ouvre l'appli dans sa fenêtre ; un point indique qu'elle est ouverte. Un clic droit change de place (« Mettre dans les essentiels », « Ouvrir en fenêtre »).",
       "Une question posée depuis ⌘T ou une remarque du mode design n'est plus perdue quand l'agent démarre.",
+      "Avant d'ouvrir l'agent en mode Navigateur, Ressac montre ce qui a changé dans ses consignes depuis la dernière fois, et vous choisissez de garder ou de revenir. Si vous aviez personnalisé AGENTS.md ou la configuration de Codex, une carte peut apparaître une fois : choisissez « Garder ».",
+      "Le carnet de recherche de l'agent est maintenant tenu par Ressac : l'agent ne peut y ajouter une leçon que juste après vous avoir passé la main.",
+      "Codex n'a plus sa propre recherche web ni son invite de mise à jour : il cherche par le navigateur de Ressac.",
+      "Le panneau de l'agent voit tout de suite une connexion faite ailleurs (Claude avec /login, Codex dans les Réglages), et un panneau étroit garde visibles Navigateur et Atelier.",
     ],
   },
   {
