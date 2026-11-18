@@ -33,6 +33,7 @@ export function readInstructionFiles(input: { files: string[]; trees: string[] }
       const buffer = Buffer.alloc(64 * 1024);
       for (let n; size < head && (n = fs.readSync(fd, buffer, 0, Math.min(buffer.length, head - size), null)) > 0; size += n) chunks.push(Buffer.from(buffer.subarray(0, n)));
       const bytes = Buffer.concat(chunks);
+      // shortcut: same first MiB and size give the same marker, so an edit past the head goes unseen; accepting a too-long file already accepts content nobody read. Upgrade if too-long files become reviewable.
       if (size > limits.file || stat.size > limits.file) return `\u0000too-long:${createHash("sha256").update(bytes).update(String(Math.max(size, stat.size))).digest("hex")}`;
       if ((total += size) > limits.total) throw new Error("instruction files too large");
       const text = bytes.toString("utf8");

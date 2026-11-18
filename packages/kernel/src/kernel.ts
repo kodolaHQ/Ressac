@@ -252,7 +252,10 @@ export interface Kernel {
     extra?: { args: string[]; env: Record<string, string> };
     /** « browser » (default): Claude and Codex run without their shell nor `launch_app` (the command of `ressac.json`). */
     mode?: "browser" | "workshop";
-    /** Browser mode: the instruction files changed since the accepted reference; a rejection aborts the open. */
+    /**
+     * Browser mode: the instruction files changed since the accepted reference; a rejection aborts the open. It must settle:
+     * the host rejects it when its window or panel closes, else the open never ends and no later first session sweeps.
+     */
     review?: (changes: InstructionChange[]) => Promise<"keep" | "revert">;
     /** The first image build's steps, while this call waits for the shared start. */
     onBuildProgress?: (p: BuildProgress) => void;
@@ -685,8 +688,6 @@ export async function createKernel(o: {
       } catch (e) {
         throw new WorkshopError("demarre", (e as Error).message);
       }
-      policy.reset();
-      search.reset();
       // No session running: nothing the agent left behind keeps running into this conversation (stopAgentProcesses).
       if (openSessions.size === 0 && opening === 0) sweep = o.aroundSweep ? o.aroundSweep(() => workshop.stopAgentProcesses()) : workshop.stopAgentProcesses();
       opening++;
@@ -715,6 +716,9 @@ export async function createKernel(o: {
           else await instructions.revert(kind, snapshot);
         }
         if (kind === "claude") await instructions.acceptedAgents();
+        // After the card: a refused card leaves the other windows' grants alone, and nothing granted meanwhile leaks into this conversation.
+        policy.reset();
+        search.reset();
         if (win !== undefined) sessionToken = server.openSession(win, chosen.name);
         let mcpConfig: string;
         let env: Record<string, string> = {};

@@ -120,6 +120,13 @@ test("acceptedAgents writes the reference AGENTS.md (the template on first run)"
   expect(WATCHED.claude.trees).toEqual([]);
 });
 
+test("acceptedAgents writes nothing for a marker: no unread text reaches Claude", async () => {
+  const { review, disk } = await setup();
+  disk.set(AGENTS, "\u0000link:/etc/passwd");
+  await review.keep("claude", (await review.pending("claude")).snapshot);
+  expect(await readFile(await review.acceptedAgents(), "utf8")).toBe("");
+});
+
 test("a created file shows only added lines", async () => {
   const { review } = await setup({ [CODEX_HOME]: "a\nb" });
   expect((await review.pending("codex")).changes[0]?.lines).toEqual([

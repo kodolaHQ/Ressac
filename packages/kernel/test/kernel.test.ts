@@ -362,7 +362,7 @@ async function instructionScript(root: string, args: string[], input: string) {
   return '"done"';
 }
 
-async function createReady(locale: () => string = () => "fr", o: { instructionsFail?: boolean } = {}) {
+async function createReady(locale: () => string = () => "fr", o: { instructionsFail?: boolean; writeFail?: boolean } = {}) {
   const root = await tempFolder();
   const { run } = fakeRunner([
     [/ info$/, { code: 0 }],
@@ -371,7 +371,7 @@ async function createReady(locale: () => string = () => "fr", o: { instructionsF
   const { dockerfileHash } = await import("../src/container/workshop.js");
   const runUpToDate: typeof run = async (c, args, opts) =>
     args.at(-1) === "ressac-instructions"
-      ? o.instructionsFail
+      ? o.instructionsFail || (o.writeFail && !args.some((a) => a.includes("readInstructionFiles")))
         ? { code: 1, stdout: "", stderr: "boom" }
         : { code: 0, stdout: await instructionScript(root, args, opts!.input!), stderr: "" }
       : args.includes("{{.State.Running}}")
@@ -733,7 +733,7 @@ describe("openAgentSession with a profile", () => {
 
 describe("the instruction review before a Navigateur session", () => {
   const agents = (n: Kernel) => join(n.paths.root, "AGENTS.md");
-  async function gate(attempt: (n: Kernel, start: MockInstance<typeof SessionAgent.start>) => Promise<void>, o: { instructionsFail?: boolean } = {}) {
+  async function gate(attempt: (n: Kernel, start: MockInstance<typeof SessionAgent.start>) => Promise<void>, o: { instructionsFail?: boolean; writeFail?: boolean } = {}) {
     const n = await createReady(undefined, o);
     const start = vi.spyOn(SessionAgent, "start");
     try {
@@ -823,6 +823,42 @@ describe("the instruction review before a Navigateur session", () => {
       expect(start).toHaveBeenCalledTimes(1);
       await s.stop();
     });
+  });
+
+  test("the conversation resets after the card: a grant made meanwhile is gone, a refused card leaves the grants", async () => {
+    await gate(async (n) => {
+      await writeFile(agents(n), "mine");
+      n.policy.grantWidgetData("before");
+      await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", review: () => Promise.reject(new Error("closed")) })).rejects.toThrow("closed");
+      expect(n.policy.widgetDataGranted("before")).toBe(true);
+      const s = await n.openAgentSession({
+        cols: 80,
+        rows: 24,
+        window: "f1",
+        profile: "claude",
+        review: async () => {
+          expect(n.policy.widgetDataGranted("before")).toBe(true);
+          n.policy.grantWidgetData("meanwhile");
+          return "keep";
+        },
+      });
+      expect(n.policy.widgetDataGranted("before")).toBe(false);
+      expect(n.policy.widgetDataGranted("meanwhile")).toBe(false);
+      await s.stop();
+    });
+  });
+
+  test("a revert whose write fails fails the open, no session", async () => {
+    await gate(
+      async (n, start) => {
+        await writeFile(agents(n), "evil");
+        await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", review: async () => "revert" })).rejects.toThrow(
+          "Impossible de lire ou de remettre les consignes de l'agent : restoring the instruction files failed: boom",
+        );
+        expect(start).not.toHaveBeenCalled();
+      },
+      { writeFail: true },
+    );
   });
 
   test("a failed read fails the open closed: no card, no session", async () => {

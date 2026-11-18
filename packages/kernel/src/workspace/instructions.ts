@@ -151,8 +151,12 @@ export class InstructionReview {
 
   async acceptedAgents(): Promise<string> {
     const file = join(this.dir, "AGENTS.md");
+    const accepted = (await this.load())["/workspace/AGENTS.md"];
     await mkdir(this.dir, { recursive: true });
-    await writeFile(file, (await this.load())["/workspace/AGENTS.md"] ?? "");
+    const tmp = join(this.dir, `AGENTS.${randomUUID()}.tmp`);
+    // A marker (link, too long, binary) is no text the user read: Claude gets no AGENTS.md at all.
+    await writeFile(tmp, accepted === undefined || isMarker(accepted) ? "" : accepted);
+    await rename(tmp, file);
     return file;
   }
 }
