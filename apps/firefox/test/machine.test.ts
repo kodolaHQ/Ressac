@@ -396,8 +396,9 @@ describe("the workshop machine", () => {
       expect(await memoryCalm({ RESSAC_TEST_PRESSURE_FILE: file })).toBe(calm);
     }
     expect(await memoryCalm({ RESSAC_TEST_PRESSURE_FILE: file + ".missing" })).toBe(true);
-    // The real sysctl answers on this Mac.
-    expect(typeof (await memoryCalm({}))).toBe("boolean");
+    // Under pressure, only « Économiser la mémoire » holds the harvests back.
+    const { memoryAllows } = await import("../host/machine");
+    expect([await memoryAllows(true, { RESSAC_TEST_PRESSURE_FILE: file }), await memoryAllows(false, { RESSAC_TEST_PRESSURE_FILE: file })]).toEqual([false, true]);
   });
 
   it("the VM's memory follows the Mac: 1.5 GiB at 8 GiB or less, 3 GiB above; the workshop container keeps 0.5 GiB for the guest", async () => {

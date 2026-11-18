@@ -52,6 +52,8 @@ export async function memoryCalm(env: NodeJS.ProcessEnv = process.env): Promise<
     : await promisify(execFile)("/usr/sbin/sysctl", ["-n", "kern.memorystatus_vm_pressure_level"]).then((r) => r.stdout, () => "1");
   return Number(level.trim()) <= 1;
 }
+/** Scheduled harvests and page indexing may start: always, unless saving memory under macOS pressure. */
+export const memoryAllows = (saving: boolean, env: NodeJS.ProcessEnv = process.env) => (saving ? memoryCalm(env) : Promise.resolve(true));
 /** macOS's sun_path is 104 bytes with its final NUL. */
 const SOCKET_MAX = 103;
 /** Lima's vz network: the Mac seen from the guest. */

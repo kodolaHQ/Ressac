@@ -79,8 +79,8 @@ const SchemaSession = z.object({
     // A session saved before the setting existed gets the default.
     startOnHome: z.boolean().catch(true),
     auraMotion: z.boolean().catch(true),
-    // Before it existed, only an explicit choice could turn the aura off: kept so (smallMacSession).
-    auraMotionChosen: z.boolean().catch(false),
+    // Missing (saved before it existed): chosen when the aura is off, the only way it could be (see below).
+    auraMotionChosen: z.boolean().optional().catch(undefined),
     saveMemory: z.boolean().catch(false),
     saveMemoryChosen: z.boolean().catch(false),
     appearance: z.enum(APPEARANCES).catch("system"),
@@ -106,7 +106,7 @@ const SchemaSession = z.object({
         return ok;
       })
       .catch(() => ({})),
-  }),
+  }).transform((s) => ({ ...s, auraMotionChosen: s.auraMotionChosen ?? !s.auraMotion })),
 });
 
 /** A login profile used by a space is always listed: otherwise it would be taken for a profile to erase. */

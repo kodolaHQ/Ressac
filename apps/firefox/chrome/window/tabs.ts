@@ -169,13 +169,17 @@ export class TabSync {
    * (not selected), then loaded (15 s at most).
    */
   async ensure(id: TabId): Promise<any> {
+    if (!this.store.state.tabs[id]) throw new Error(`Onglet introuvable : ${id}`);
+    // An unloaded essential (lazy, or unloaded under pressure) loads for the reader: otherwise the next sync removes it.
+    if (this.store.state.tabs[id]!.unloaded) this.store.dispatch({ type: "updateTab", id, fields: { unloaded: false } });
     const state = this.store.state;
-    const o = state.tabs[id];
-    if (!o) throw new Error(`Onglet introuvable : ${id}`);
+    const o = state.tabs[id]!;
     // shortcut: a XUL tab created for reading lives until its tab leaves the state, upgrade when memory matters.
     // One Firefox unloaded under memory pressure has no page to read: it is made again.
     if (this.tabs.get(id)?.linkedBrowser?.isConnected === false) this.recreate(id);
     if (!this.tabs.has(id)) this.create(state, o);
+    // Worked on by the agent: not the first one Firefox unloads.
+    this.tabs.get(id).updateLastAccessed?.();
     const browser = this.tabs.get(id).linkedBrowser;
     // A tab just created is still on its initial about:blank, its load not started yet.
     const pending = () => browser.webProgress?.isLoadingDocument || (browser.currentURI?.spec === "about:blank" && o.url !== "about:blank");
@@ -324,13 +328,17 @@ export class TabSync {
    * its XUL tab, which reloads when selected.
    */
   private onDiscard(tab: any): void {
-    if (Date.now() - relievedAt > 60_000) {
-      relievedAt = Date.now();
-      this.store.agent.notify("memory.pressure");
-    }
     const id = tab.getAttribute(TAB_ID);
-    if (id && this.tabs.get(id) === tab && this.store.state.tabs[id]?.link?.type === "essential")
-      queueMicrotask(() => this.store.dispatch({ type: "updateTab", id, fields: { unloaded: true } }));
+    queueMicrotask(() => {
+      // Firefox's TabUnloader marks its own unloads right after the event; an add-on's tabs.discard is no memory alarm.
+      if (tab._lastUnloaded && Date.now() - relievedAt > 60_000) {
+        relievedAt = Date.now();
+        this.store.agent.notify("memory.pressure");
+      }
+      const o = id && this.tabs.get(id) === tab ? this.store.state.tabs[id] : undefined;
+      // No page left to pause or resume (the media bar); an essential shows unloaded.
+      if (o) this.store.dispatch({ type: "updateTab", id, fields: { playback: null, ...(o.link?.type === "essential" ? { unloaded: true } : {}) } });
+    });
   }
 
   private remove(id: TabId, tab: any): void {

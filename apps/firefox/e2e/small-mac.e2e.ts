@@ -93,6 +93,16 @@ describe("small Mac", () => {
     await new Promise((r) => setTimeout(r, 1500));
     expect(await xul(essential)).toBeNull();
     await waitUi(m, `return !!doc.querySelector('[data-testid="favorite-${fav}"].unloaded')`);
+    // The agent reads it without showing it (the bridge's path): it loads, and the next syncs keep it.
+    const title = await m.execute<string>(`return (async () => {
+      const b = await window.ressacWindow.ensure(arguments[0]);
+      return b.contentTitle;
+    })();`, [essential]);
+    expect(title).toBe("Page A");
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(await xul(essential)).toMatchObject({ url: expect.stringMatching(/\/a\.html$/), discarded: false });
+    expect((await state(m)).tabs[essential]!.unloaded).toBeFalsy();
+    await waitUi(m, `return !doc.querySelector('[data-testid="favorite-${fav}"].unloaded')`);
     // Shown: it loads, and Firefox may unload it later.
     await click(m, `[data-testid="favorite-${fav}"]`);
     const seen = await waitFor(m, "return true", () => true).then(async () => {
@@ -102,7 +112,7 @@ describe("small Mac", () => {
       return x;
     });
     expect(seen).toEqual({ url: expect.stringMatching(/\/a\.html$/), discarded: false, undiscardable: false });
-    expect((await state(m)).tabs[essential]!.unloaded).toBeUndefined();
+    expect((await state(m)).tabs[essential]!.unloaded).toBeFalsy();
   });
 
   it("under a low-memory call Firefox unloads background tabs, essential included, never the blank parking tab; a click reloads them", async () => {
@@ -138,7 +148,7 @@ describe("small Mac", () => {
     await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v: string) => v.endsWith("/a.html"));
   });
 
-  it("under memory pressure a scheduled harvest waits; « Mettre à jour maintenant » still runs", async () => {
+  it("under memory pressure a scheduled harvest waits, « Mettre à jour maintenant » still runs; calm again, it runs at the next check", { timeout: 120_000 }, async () => {
     // The next launch shows the home page, where the widgets are.
     await dispatch(m, { type: "setStartOnHome", enabled: true });
     await w!.close();
@@ -147,15 +157,22 @@ describe("small Mac", () => {
     await widget("manuel", { minutes: 60 });
     const now = new Date().toISOString();
     await writeFile(path.join(dataDir, "widgets", "manuel", "state.json"), JSON.stringify({ status: "ok", lastUpdate: now, lastAttempt: now }));
+    // Data left by a widget whose folder is gone: the launch check erases it, which shows it ran.
+    await mkdir(path.join(dataDir, "widgets", "gone"), { recursive: true });
+    await writeFile(path.join(dataDir, "widgets", "gone", "data.json"), "{}");
     await writeFile(pressure, "4");
     await start();
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-manuel"]')`, [], 15_000);
     await click(m, `[data-testid="widget-manuel"] button[aria-label="Options du widget"]`);
     await click(m, '[role="menuitem"]', { text: "Mettre à jour maintenant" });
     await waitFor(m, "return true", () => data("manuel"), 20_000);
-    // The launch check ran meanwhile (it waits for the same workshop): the due one is held back, its state untouched.
-    await new Promise((r) => setTimeout(r, 3000));
+    // The launch check ran (it erased « gone »): the due one is held back, its state untouched.
+    await waitFor(m, "return true", () => !existsSync(path.join(dataDir, "widgets", "gone")), 20_000);
+    await new Promise((r) => setTimeout(r, 2000));
     expect(data("auto")).toBe(false);
     expect(existsSync(path.join(dataDir, "widgets", "auto", "state.json"))).toBe(false);
+    // Calm again: the next check (every minute) runs it.
+    await writeFile(pressure, "1");
+    await waitFor(m, "return true", () => data("auto"), 75_000);
   });
 });
