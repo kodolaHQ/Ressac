@@ -32,6 +32,8 @@ export const ACCEPTED_AGENTS_IN_CONTAINER = "/workspace/.ressac/instructions/AGE
 export const DIFF_LINES_MAX = 2000;
 /** Codex installs its own system skills here, and reinstalls them on an update or when they go missing. */
 const CODEX_SYSTEM_SKILLS = "/home/node/.codex/skills/.system/";
+/** Reference key (no path, so no kind owns it and keep() never drops it): Codex's first install was taken in once. */
+const CODEX_SYSTEM_SEEN = "\u0000codex-system-seen";
 
 const isMarker = (s: string | undefined) => s?.startsWith("\u0000") ?? false;
 
@@ -114,8 +116,9 @@ export class InstructionReview {
     const changes: InstructionChange[] = [];
     let moved = false;
     // Codex's first install of its system skills is no change anyone made: taken in silently, watched from then on.
-    if (!Object.keys(ref).some((p) => p.startsWith(CODEX_SYSTEM_SKILLS)))
-      for (const [p, c] of Object.entries(snapshot)) if (p.startsWith(CODEX_SYSTEM_SKILLS)) (ref[p] = c), (moved = true);
+    // Once only: a card that drops the .system keys (deleted, link, too-many) must not re-arm it for a planted skill.
+    if (!(CODEX_SYSTEM_SEEN in ref))
+      for (const [p, c] of Object.entries(snapshot)) if (p.startsWith(CODEX_SYSTEM_SKILLS)) (ref[p] = c), (ref[CODEX_SYSTEM_SEEN] = "1"), (moved = true);
     for (const path of new Set([...Object.keys(snapshot), ...Object.keys(ref).filter((p) => this.inKind(kind, p))])) {
       const now = snapshot[path];
       const before = ref[path];

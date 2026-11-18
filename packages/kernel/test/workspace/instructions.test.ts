@@ -182,6 +182,17 @@ test("Codex's own .system skills are accepted silently while the reference has n
   expect((await review.pending("codex")).changes).toMatchObject([{ path: `${SYSTEM}/a/SKILL.md`, status: "changed" }]);
 });
 
+test("the silent .system intake happens once: deleting it, keeping, then planting a skill there shows a card", async () => {
+  const { review, disk } = await setup({ [`${SYSTEM}/a/SKILL.md`]: "a" });
+  expect((await review.pending("codex")).changes).toEqual([]);
+  disk.delete(`${SYSTEM}/a/SKILL.md`);
+  const gone = await review.pending("codex");
+  expect(gone.changes).toMatchObject([{ path: `${SYSTEM}/a/SKILL.md`, status: "deleted" }]);
+  await review.keep("codex", gone.snapshot);
+  disk.set(`${SYSTEM}/evil/SKILL.md`, "evil");
+  expect((await review.pending("codex")).changes).toMatchObject([{ path: `${SYSTEM}/evil/SKILL.md`, status: "created" }]);
+});
+
 test("revert of a too-many tree removes the tree, then writes the reference files back", async () => {
   const tree = "/home/node/.codex/skills";
   const { review, disk, writes } = await setup({ [`${tree}/x/SKILL.md`]: "s" });

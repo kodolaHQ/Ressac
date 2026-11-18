@@ -12,7 +12,7 @@ export const LIMITS: InstructionLimits = { file: FILE_MAX, total: TOTAL_MAX, tre
  * Child side: the `files` and every file under the `trees` (absolute paths), each path walked from `/` with lstat. A link
  * anywhere is recorded as `"\u0000link:" + target` at its own path and nothing under it is read; an absent file has no
  * key; a file over `limits.file` is `"\u0000too-long:" + sha256(first MiB + size)`, one not UTF-8 text (or with a NUL) `"\u0000binary:" + sha256`; a fifo, socket… is `"\u0000other"`;
- * an entry fs refuses (EACCES…) is `"\u0000unreadable:" + size:mtimeMs` (bare when even lstat fails). A tree past
+ * an entry fs refuses (EACCES…) is `"\u0000unreadable:" + size:ctimeMs` (bare when even lstat fails). A tree past
  * `limits.tree` entries (folders count) or reads past `limits.total` bytes is `"\u0000too-many:" + sha256` of its
  * listing at its root: agent-shaped content never makes the read fail, and any change in the tree changes the marker.
  */
@@ -50,7 +50,8 @@ export function readInstructionFiles(input: { files: string[]; trees: string[] }
         const p = `${dir}/${name}`;
         const l = fs.lstatSync(p, { throwIfNoEntry: false });
         const type = !l ? "?" : l.isSymbolicLink() ? "l" : l.isDirectory() ? "d" : l.isFile() ? "f" : "o";
-        seen.push(`${p.slice(root.length)}\u0000${type}\u0000${l?.size ?? ""}\u0000${l?.mtimeMs ?? ""}`);
+        // ctime and inode, not mtime: `node` can set an mtime back (utimes), never a ctime.
+        seen.push(`${p.slice(root.length)}\u0000${type}\u0000${l?.size ?? ""}\u0000${l?.ctimeMs ?? ""}\u0000${l?.ino ?? ""}`);
         if (type === "d") dirs.push(p);
       }
     }
@@ -96,7 +97,7 @@ export function readInstructionFiles(input: { files: string[]; trees: string[] }
       } else out[path] = l.isFile() ? readFile(path) : "\u0000other";
     } catch (e) {
       if (!refused(e)) throw e;
-      mark(path, `\u0000unreadable:${l.size}:${l.mtimeMs}`);
+      mark(path, `\u0000unreadable:${l.size}:${l.ctimeMs}`);
     }
   };
   const walk = (path: string, tree: boolean) => {
