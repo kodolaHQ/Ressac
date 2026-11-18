@@ -156,7 +156,7 @@ home-devtools-performance = Performance and memory
 home-devtools-performance-detail = Profiling, memory snapshots
 home-devtools-act = Act on the page
 home-devtools-act-detail = Run JavaScript, change the DOM, reload
-home-devtools-act-sensitive = the agent can act on your behalf on this site
+home-devtools-act-sensitive = the agent can read everything the page holds, send it elsewhere without asking you, and act on your behalf on this site
 home-devtools-allow = Allow the selection
 home-devtools-note = Valid for this conversation · lapses if the tab changes site
 

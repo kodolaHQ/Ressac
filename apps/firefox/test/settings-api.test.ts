@@ -138,7 +138,7 @@ describe("settings api", () => {
 
   it("revealable", () => {
     const r = (p: string) => revealable("/u/Ressac", "/u/Downloads", p);
-    for (const p of ["/u/Ressac", "/u/Ressac.backup-2026-11-10T13-35-12-345Z", "/u/Downloads/Ressac-donnees-2026-11-10 (2).zip", "/u/Ressac/workspace/browsing-notes.md"]) expect(r(p)).toBe(true);
+    for (const p of ["/u/Ressac", "/u/Ressac.backup-2026-11-10T13-35-12-345Z", "/u/Downloads/Ressac-donnees-2026-11-10 (2).zip", "/u/Ressac/workspace/.ressac/browsing-notes.md"]) expect(r(p)).toBe(true);
     for (const p of ["/u/Ressac/workspace", "/u/Ressac.backup-x", "/u/Downloads/autre.zip", "/u/Downloads/../Ressac-donnees-2026-11-10.zip", "/etc"]) expect(r(p)).toBe(false);
   });
 

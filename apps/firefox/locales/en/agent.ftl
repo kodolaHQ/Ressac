@@ -41,7 +41,7 @@ agent-ollama-silent = Ollama does not answer at this address.
 agent-data-folder = Folder
 agent-data-reveal = Show in Finder
 agent-data-notes = Research notebook
-agent-data-notes-help = The lessons the agent draws from its research: you can read and correct it.
+agent-data-notes-help = The lessons the agent draws from searches where it got lost, dated by Ressac with the sites they come from. It rereads the latest ones at the start of each search: delete any line that reads like an instruction.
 agent-data-import-title = Import
 agent-data-import = Import from another browser
 agent-data-backups = Backups
@@ -137,6 +137,22 @@ agent-panel-mode-browser = Browser
 agent-panel-mode-browser-title = Search and recaps, no terminal
 agent-panel-mode-workshop = Workshop
 agent-panel-mode-workshop-title = Can run commands: install and launch project apps
+agent-review-title = The agent's instructions changed
+agent-review-intro = Since the last session, these files were modified, perhaps by a page the agent read.
+agent-review-created = new
+agent-review-deleted = deleted
+agent-review-too-long = File too long to show
+agent-review-too-many = Too many files to show
+agent-review-unreadable = Unreadable file
+agent-review-binary = Binary file, not shown
+agent-review-other = Special file, not shown
+agent-review-link = Link to { $target }
+agent-review-folded = ⋯ { $count ->
+        [one] { $count } line
+       *[other] { $count } lines
+    }
+agent-review-keep = Keep the changes
+agent-review-revert = Go back to the previous version
 
 ## Review
 

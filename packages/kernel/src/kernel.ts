@@ -1,10 +1,12 @@
 import { say, replyLanguageLine } from "./i18n.js";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { basename, join, posix } from "node:path";
 import { CONTAINER_PATH, sessionConfigPath, pathInContainer, spacePaths, type SpacePaths } from "./paths.js";
-import { initSpace } from "./workspace/initialize.js";
+import { DEFAULT_TEMPLATES, initSpace } from "./workspace/initialize.js";
+import { BrowsingNotes } from "./search/notes.js";
+import { ACCEPTED_AGENTS_IN_CONTAINER, InstructionReview, type InstructionChange } from "./workspace/instructions.js";
 import { readHome, readOneWidget } from "./home/read.js";
 import type { HomeState, WidgetState, WidgetRead } from "./home/schemas.js";
 import { writeWidgetState, readData, readWidgetState, deleteData } from "./home/data.js";
@@ -250,6 +252,11 @@ export interface Kernel {
     extra?: { args: string[]; env: Record<string, string> };
     /** « browser » (default): Claude and Codex run without their shell nor `launch_app` (the command of `ressac.json`). */
     mode?: "browser" | "workshop";
+    /**
+     * Browser mode: the instruction files changed since the accepted reference; a rejection aborts the open. It must settle:
+     * the host rejects it when its window or panel closes, else the open never ends and no later first session sweeps.
+     */
+    review?: (changes: InstructionChange[]) => Promise<"keep" | "revert">;
     /** The first image build's steps, while this call waits for the shared start. */
     onBuildProgress?: (p: BuildProgress) => void;
   }): Promise<SessionAgent>;
@@ -436,11 +443,28 @@ export async function createKernel(o: {
   const sweeper = recaps ? setInterval(() => void sweepRecaps(), Math.min(3600_000, dayMs)) : null;
   sweeper?.unref();
   if (recaps) void sweepRecaps();
+  // In .ressac, read-only in the container: only note_lesson writes it.
+  const notes = new BrowsingNotes(join(paths.internal, "browsing-notes.md"), () => {
+    const base = templates ?? DEFAULT_TEMPLATES;
+    return readFile(join(base, loc(), "browsing-notes.md"), "utf8").catch(() => readFile(join(base, "en", "browsing-notes.md"), "utf8"));
+  });
+  await notes.ensure().catch((e) => console.error("[ressac] browsing notes:", e));
+  // Fail closed: an instruction file that cannot be read or put back never lets a Navigateur session start.
+  const instructionsIo = (e: unknown): never => {
+    throw new Error(say(loc(), "kernel-err-instructions-io", { error: (e as Error).message }));
+  };
+  const instructions = new InstructionReview(
+    paths,
+    { read: (files, trees) => workshop.readInstructions(files, trees).catch(instructionsIo), write: (entries) => workshop.writeInstructions(entries).catch(instructionsIo) },
+    templates ?? DEFAULT_TEMPLATES,
+    loc,
+  );
   const server = await startMcpServer({
     bridge: o.bridge,
     policy: policy,
     search: search,
     ...(aiAccess ? { watcher: createWatcher(aiAccess) } : {}),
+    notes: notes,
     token: token,
     agent: profile.name,
     profiles: profileFiles(paths, o.profilingFolder),
@@ -639,7 +663,7 @@ export async function createKernel(o: {
     locale: loc,
     // Serialized: two quick changes never run two swaps at once (each run reads loc() when it starts, the last one wins).
     relocalize: () => (relocalizing = relocalizing.catch(() => {}).then(() => initSpace(paths, loc(), templates)).then(() => {})),
-    async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, mode = "browser", onBuildProgress }) {
+    async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, extra, mode = "browser", review, onBuildProgress }) {
       const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths, templates)).profiles.find((p) => p.id === profileChoice);
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);
       // A custom profile's command is not held to Navigateur's limits, and one may have been planted while `.ressac` was writable.
@@ -664,8 +688,6 @@ export async function createKernel(o: {
       } catch (e) {
         throw new WorkshopError("demarre", (e as Error).message);
       }
-      policy.reset();
-      search.reset();
       // No session running: nothing the agent left behind keeps running into this conversation (stopAgentProcesses).
       if (openSessions.size === 0 && opening === 0) sweep = o.aroundSweep ? o.aroundSweep(() => workshop.stopAgentProcesses()) : workshop.stopAgentProcesses();
       opening++;
@@ -682,6 +704,21 @@ export async function createKernel(o: {
       };
       try {
         await sweep;
+        const program = chosen.interactive[0];
+        const browser = mode === "browser";
+        // Navigateur: the CLI starts only on instruction files the user accepted (a card per change, at most three rounds).
+        const kind = browser && (program === "claude" || program === "codex") ? program : null;
+        for (let round = 0; kind; round++) {
+          const { snapshot, changes } = await instructions.pending(kind);
+          if (changes.length === 0) break;
+          if (!review || round === 3) throw new Error(say(loc(), "kernel-err-instructions-changed"));
+          if ((await review(changes)) === "keep") await instructions.keep(kind, snapshot);
+          else await instructions.revert(kind, snapshot);
+        }
+        if (kind === "claude") await instructions.acceptedAgents();
+        // After the card: a refused card leaves the other windows' grants alone, and nothing granted meanwhile leaks into this conversation.
+        policy.reset();
+        search.reset();
         if (win !== undefined) sessionToken = server.openSession(win, chosen.name);
         let mcpConfig: string;
         let env: Record<string, string> = {};
@@ -695,7 +732,6 @@ export async function createKernel(o: {
           env = { ...extra?.env };
         }
         // Reply language, for the shipped programs only (a custom profile command is the user's). Read now: an open session keeps its language.
-        const program = chosen.interactive[0];
         const reply = replyLanguageLine(loc());
         const language = program === "claude" ? ["--append-system-prompt", reply] : program === "codex" ? ["-c", `developer_instructions=${JSON.stringify(reply)}`] : [];
         const built = buildCommand(chosen, resume && chosen.resume ? "resume" : "interactive", { mcpConfig: mcpConfig });
@@ -706,10 +742,9 @@ export async function createKernel(o: {
         // Claude reads no user, project or local settings, skills or agents (statusLine, apiKeyHelper… run commands; managed and
         // --settings still apply), so AGENTS.md, which it then skips as CLAUDE.md's import, comes as a system prompt file.
         // Codex: the built-in provider, so no `auth.command` of a provider the agent defines (Ressac's engines set theirs after).
-        const browser = mode === "browser";
         const claudeNoShell =
           browser && program === "claude"
-            ? ["--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", `${CONTAINER_PATH}/AGENTS.md`]
+            ? ["--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", ACCEPTED_AGENTS_IN_CONTAINER]
             : [];
         const codexNoShell = browser && program === "codex" ? ["--disable", "shell_tool", "-c", 'mcp_servers.ressac.disabled_tools=["launch_app"]', "-c", "notify=[]", "-c", 'model_provider="openai"'] : [];
         const command = [built[0]!, ...language, ...claudeNoShell, ...built.slice(1), ...codexNoShell, ...(extra?.args ?? [])];

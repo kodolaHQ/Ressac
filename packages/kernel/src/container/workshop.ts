@@ -11,6 +11,8 @@ import { dockerEngine, type ContainerEngine } from "./engine.js";
 import { CODE_TIMEOUT_EXCEEDED, createRunner, type RunResult, type Runner } from "./runner.js";
 import { inFolder, listFolder, readFiles, type ReadFiles } from "../workspace/confined.js";
 import { realInternal } from "../workspace/initialize.js";
+import type { Snapshot } from "../workspace/instructions.js";
+import { LIMITS, readInstructionFiles, writeInstructionFiles } from "./instruction-files.js";
 
 export const CONTAINER_NAME = "ressac-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
@@ -64,7 +66,9 @@ export function parseBuildStep(line: string, locale: string): Pick<BuildProgress
 const CODEX_REQUIREMENTS = "/etc/codex/requirements.toml";
 /** Codex's managed requirements (root-owned): the URL must match exactly, port included, so it is written per session. */
 export function codexRequirements(url: string): string {
-  return `allow_managed_hooks_only = true\n\n[mcp_servers.ressac.identity]\nurl = ${JSON.stringify(url)}\n`;
+  // No web search: with the sandbox off Codex would use OpenAI's live search, which fetches pages past the browser's rules and the proxy.
+  // No update prompt: its « Update now » runs `npm install -g`, which the agent may not do (and Ressac's image brings Codex).
+  return `allow_managed_hooks_only = true\nallowed_web_search_modes = ["disabled"]\ncheck_for_update_on_startup = false\n\n[mcp_servers.ressac.identity]\nurl = ${JSON.stringify(url)}\n`;
 }
 
 /**
@@ -376,7 +380,7 @@ export class Workshop {
     return r;
   }
 
-  /** Before each Codex session: only managed hooks, and no MCP server but Ressac's at `url` (a stdio server runs a command). */
+  /** Before each Codex session: only managed hooks, no web search, and no MCP server but Ressac's at `url` (a stdio server runs a command). */
   async restrictCodex(url: string): Promise<void> {
     // umask: docker exec runs with 000, which would leave the file writable by the agent.
     const r = await this.launch(
@@ -385,6 +389,27 @@ export class Workshop {
       codexRequirements(url),
     );
     if (r.code !== 0) throw new Error(`Restriction de Codex impossible : ${tail(r.stderr) || `code ${r.code}`}`);
+  }
+
+  /** The agent's instruction files as they are in the container, links never followed (InstructionIo.read). */
+  readInstructions(files: string[], trees: string[]): Promise<Snapshot> {
+    return this.instructionScript("reading", readInstructionFiles, { files, trees }, LIMITS);
+  }
+
+  /** Restores (null deletes) instruction files in the container; throws if any could not be (InstructionIo.write). */
+  async writeInstructions(entries: Record<string, string | null>): Promise<void> {
+    if ((await this.instructionScript("restoring", writeInstructionFiles, entries)) !== "done") throw new Error("restoring the instruction files failed for some of them");
+  }
+
+  /** `fn(input, extra)` run by node as the agent's user in the container, JSON on stdin and stdout. */
+  private async instructionScript<T>(what: "reading" | "restoring", fn: (...args: any[]) => T, input: unknown, extra?: unknown): Promise<T> {
+    if (!this.docker) throw new Error(say(this.locale(), "kernel-workshop-no-engine"));
+    if (!this.secured) await this.secureNetwork();
+    // tsx (esbuild keepNames) wraps inner functions in __name(), absent in the child.
+    const script = `var __name = (f) => f; const input = JSON.parse(process.getBuiltinModule("node:fs").readFileSync(0, "utf8")); process.stdout.write(JSON.stringify((${fn.toString()})(input, ${JSON.stringify(extra) ?? "undefined"})))`;
+    const r = await this.launch(["exec", "-i", "-u", "node", "-w", "/", containerName(), "node", "-e", script, "ressac-instructions"], PROBE_DELAY_MS, JSON.stringify(input));
+    if (r.code !== 0) throw new Error(`${what} the instruction files failed: ${tail(r.stderr) || `code ${r.code}`}`);
+    return JSON.parse(r.stdout) as T;
   }
 
   /** One run at a time, shared: two sessions opening together apply the rules once. */

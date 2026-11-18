@@ -24,7 +24,6 @@ const START_FILES: Record<string, string[]> = {
 const expectedList = [
   "AGENTS.md",
   "CLAUDE.md",
-  "browsing-notes.md",
   "guides/widgets.md",
   "guides/extensions.md",
   "guides/actions.md",
@@ -188,14 +187,25 @@ test("CLAUDE.md is rewritten only when identical to an old template", async () =
   }
 });
 
-test("initSpace creates browsing-notes.md and never overwrites it", async () => {
+test("initSpace no longer puts browsing-notes.md in the workspace (the kernel keeps it in .ressac)", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
-  const notes = join(c.root, "browsing-notes.md");
-  expect(existsSync(notes)).toBe(true);
-  await writeFile(notes, "my lessons\n");
+  expect(existsSync(join(c.root, "browsing-notes.md"))).toBe(false);
+});
+
+test("an old shipped browsing-notes.md is deleted, an edited one is kept", async () => {
+  // The texts shipped until 0.1.13: fr, en.
+  for (const old of ["# Carnet de recherche\n\nLeçons générales de l'agent sur la recherche web : comment reconnaître une situation où il s'est perdu, et que faire la prochaine fois.\nVous pouvez le lire et le modifier ; il n'est jamais remplacé ni effacé par Ressac, et rien n'y est noté d'une vérification ni de ce que vous tapez.\n", "# Browsing notes\n\nThe agent's general lessons about web search: how to recognise a situation where it got lost, and what to do next time.\nYou can read and edit it; Ressac never replaces or erases it, and nothing is noted in it about a verification or about what you type.\n"]) {
+    const c = spacePaths(await tempFolder());
+    const notes = join(c.root, "browsing-notes.md");
+    await writeFile(notes, old);
+    await initSpace(c);
+    expect(existsSync(notes), old).toBe(false);
+  }
+  const c = spacePaths(await tempFolder());
+  await writeFile(join(c.root, "browsing-notes.md"), "my lessons\n");
   await initSpace(c);
-  expect(await readFile(notes, "utf8")).toBe("my lessons\n");
+  expect(await readFile(join(c.root, "browsing-notes.md"), "utf8")).toBe("my lessons\n");
 });
 
 test("the CLAUDE.md and AGENTS.md shipped before the English formats are known old templates", () => {
@@ -205,10 +215,12 @@ test("the CLAUDE.md and AGENTS.md shipped before the English formats are known o
 });
 
 test("the AGENTS.md templates are pinned: before editing one, add its hash to OLD_AGENTS, then update the pin", async () => {
-  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("2c2667b528edf83b2eb01334e3f9b22557480db6fbfdaf49a438f23520c28097");
-  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("5600b474da619c8ef707d20082156cdff61cf22e9929ffdddae09ee78ef04819");
+  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("7b028830acee8f891d9258b5b3f5aab9a8934bd50537b70c0508fa27bee4c2eb");
+  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("f9807f7224851e6bc752fff45cd70a22512f9ad462a9a7564963583d5ebc3527");
   expect(OLD_AGENTS.has("2efd3c8aa133558c7855b6877ced708b8740062bb6e589cde32507d6d308c459")).toBe(true);
   expect(OLD_AGENTS.has("ad517ef63b2ed4f0ea6acf49fdd81579d83168022e96b0838af07beb8bc094e2")).toBe(true);
+  expect(OLD_AGENTS.has("2c2667b528edf83b2eb01334e3f9b22557480db6fbfdaf49a438f23520c28097")).toBe(true);
+  expect(OLD_AGENTS.has("5600b474da619c8ef707d20082156cdff61cf22e9929ffdddae09ee78ef04819")).toBe(true);
   expect(OLD_AGENTS.has("6ecc3a5571398b8490f4b384b32c191e56111e3eebe092e1ccf03790f2ec845b")).toBe(true);
   expect(OLD_AGENTS.has("ff0f49e00a04cec590ee023394221e8bbf28dd0439a628e48ea307acaffa0a8e")).toBe(true);
   expect(OLD_AGENTS.has("08de4118ce41e65b76e8b9795595d41e749c9b60d72a4f3f87691d2cbc99e8ab")).toBe(true);
@@ -323,7 +335,7 @@ async function expectWidgetsIn(c: ReturnType<typeof spacePaths>, models: string)
 test("a new space in English gets the English AGENTS.md, CLAUDE.md, notes and widgets", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c, "en");
-  for (const f of ["AGENTS.md", "CLAUDE.md", "browsing-notes.md"]) expect(await readFile(join(c.root, f), "utf8"), f).toBe(await readFile(join(EN, f), "utf8"));
+  for (const f of ["AGENTS.md", "CLAUDE.md"]) expect(await readFile(join(c.root, f), "utf8"), f).toBe(await readFile(join(EN, f), "utf8"));
   expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
   await expectWidgetsIn(c, EN);
   const tech = DeclarationWidget.parse(JSON.parse(await readFile(join(c.widgets, "actus-tech", "widget.json"), "utf8")));
@@ -353,7 +365,7 @@ test("a French space left untouched switches to English: AGENTS.md, CLAUDE.md, n
   await initSpace(c, "fr");
   await writeFile(join(c.widgets, "meteo", "data.json"), '{"ville":"Bordeaux"}');
   const { created } = await initSpace(c, "en");
-  for (const f of ["AGENTS.md", "CLAUDE.md", "browsing-notes.md"]) expect(await readFile(join(c.root, f), "utf8"), f).toBe(await readFile(join(EN, f), "utf8"));
+  for (const f of ["AGENTS.md", "CLAUDE.md"]) expect(await readFile(join(c.root, f), "utf8"), f).toBe(await readFile(join(EN, f), "utf8"));
   await expectWidgetsIn(c, EN);
   expect(await readFile(join(c.widgets, "meteo", "data.json"), "utf8")).toBe('{"ville":"Bordeaux"}');
   expect(created).toContain(join(c.root, "AGENTS.md"));
@@ -369,10 +381,8 @@ test("edited files stay in their language on a switch", async () => {
   await initSpace(c, "fr");
   const agents = (await readFile(join(c.root, "AGENTS.md"), "utf8")) + "\nMa règle.\n";
   await writeFile(join(c.root, "AGENTS.md"), agents);
-  await writeFile(join(c.root, "browsing-notes.md"), "my lessons\n");
   await initSpace(c, "en");
   expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(agents);
-  expect(await readFile(join(c.root, "browsing-notes.md"), "utf8")).toBe("my lessons\n");
   expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe(await readFile(join(EN, "CLAUDE.md"), "utf8"));
 });
 

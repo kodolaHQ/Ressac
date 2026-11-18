@@ -22,7 +22,7 @@
   const date = (iso: string) => new Date(iso).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" });
   const number = (n: number) => n.toLocaleString(locale(), { maximumFractionDigits: 1 });
   // shortcut: assumes a macOS home under /Users, display only; take the home from the chrome if another OS ships.
-  const notes = `${dir}/workspace/browsing-notes.md`;
+  const notes = `${dir}/workspace/.ressac/browsing-notes.md`;
   const shownDir = dir.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
   const size = (b: number) => (b >= 1e9 ? t("agent-size-gb", { n: number(b / 1e9) }) : t("agent-size-mb", { n: number(b / 1e6) }));
 

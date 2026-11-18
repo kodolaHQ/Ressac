@@ -1,4 +1,6 @@
-# Browsing notes
+# Research notebook
 
-The agent's general lessons about web search: how to recognise a situation where it got lost, and what to do next time.
-You can read and edit it; Ressac never replaces or erases it, and nothing is noted in it about a verification or about what you type.
+The agent's general lessons on web search: how to recognise a situation where it got lost, and what to do next time.
+Ressac writes each lesson after a hand-over where the agent was lost, with the date and the sites of that hand-over. The agent rereads the latest ones at the start of each search, as hints.
+You can read it, correct it or delete a line; nothing is noted from a verification or from what you type.
+

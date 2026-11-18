@@ -502,3 +502,104 @@ test("touched: a text queued to send on a session still starting counts, and sur
   release(new FakeSession());
 });
 
+
+describe("instruction review before a session", () => {
+  const files = [{ path: "/workspace/AGENTS.md", status: "changed" as const, lines: [{ kind: "+" as const, text: "x" }] }];
+  /** `open` asks for a review before returning its session, like the kernel on changed instruction files. */
+  function reviewing() {
+    const answers: (string | Error)[] = [];
+    const sessions: FakeSession[] = [];
+    const sends: { f: string; channel: string; v: unknown }[] = [];
+    const manager = new SessionsAgent({
+      open: async (_f, _t, s) => {
+        try {
+          answers.push(await s.review(files));
+        } catch (err) {
+          answers.push(err as Error);
+          throw err;
+        }
+        const x = new FakeSession();
+        sessions.push(x);
+        return x;
+      },
+      defaultProfile: () => "claude",
+      send: (f, channel, v) => sends.push({ f, channel, v }),
+    });
+    const states = () => sends.filter((e) => e.channel === "state").map((e) => e.v);
+    return { manager, answers, sessions, states };
+  }
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  /** The id of the last review shown. */
+  const lastId = (w: ReturnType<typeof reviewing>) => (w.states().findLast((s) => (s as { state: string }).state === "review") as { id: number }).id;
+
+  test("a review sends the review state and resolves on answerReview, then preparing", async () => {
+    const w = reviewing();
+    const started = w.manager.start("F", size);
+    await tick();
+    expect(w.states()).toEqual([{ state: "preparing" }, { state: "review", id: expect.any(Number), files }]);
+    w.manager.answerReview("F", lastId(w), "revert");
+    await started;
+    expect(w.answers).toEqual(["revert"]);
+    expect(w.states().slice(2)).toEqual([{ state: "preparing" }, { state: "active" }]);
+    expect(w.manager.active("F")).toBe(true);
+  });
+
+  for (const [name, leave] of [
+    ["closeWindow", (m: SessionsAgent) => m.closeWindow("F")],
+    ["switchProfile", (m: SessionsAgent) => m.switchProfile("F", "mine")],
+    ["relaunch", (m: SessionsAgent) => m.relaunch("F")],
+    ["relaunchAll", (m: SessionsAgent) => m.relaunchAll()],
+    ["stopAll", (m: SessionsAgent) => m.stopAll()],
+  ] as const) {
+    test(`a review pending when the window is left (${name}) rejects and no session starts from it`, async () => {
+      const w = reviewing();
+      const started = w.manager.start("F", size);
+      await tick();
+      expect(w.states().at(-1)).toEqual({ state: "review", id: expect.any(Number), files });
+      void leave(w.manager);
+      await started;
+      expect(w.answers[0]).toEqual(new Error("closed"));
+      expect(w.sessions).toHaveLength(0);
+    });
+  }
+
+  test("answerReview for a window without a pending review does nothing", async () => {
+    const w = reviewing();
+    w.manager.answerReview("F", 1, "keep");
+    const started = w.manager.start("F", size);
+    await tick();
+    w.manager.answerReview("G", lastId(w), "keep");
+    expect(w.answers).toEqual([]);
+    w.manager.answerReview("F", lastId(w), "keep");
+    w.manager.answerReview("F", lastId(w), "revert");
+    await started;
+    expect(w.answers).toEqual(["keep"]);
+  });
+
+  test("start while a review is pending re-sends the review state", async () => {
+    const w = reviewing();
+    const started = w.manager.start("F", size);
+    await tick();
+    void w.manager.start("F", size);
+    expect(w.states().at(-1)).toEqual({ state: "review", id: expect.any(Number), files });
+    w.manager.answerReview("F", lastId(w), "keep");
+    await started;
+  });
+
+  test("an answer with the previous review's id leaves the new review pending", async () => {
+    const w = reviewing();
+    const first = w.manager.start("F", size);
+    await tick();
+    const old = lastId(w);
+    void w.manager.relaunch("F"); // the old card is rejected, a new review shows
+    await first;
+    await tick();
+    expect(lastId(w)).not.toBe(old);
+    w.manager.answerReview("F", old, "keep");
+    expect(w.answers).toEqual([new Error("closed")]);
+    expect(w.states().at(-1)).toEqual({ state: "review", id: lastId(w), files });
+    w.manager.answerReview("F", lastId(w), "revert");
+    await tick();
+    expect(w.answers).toEqual([new Error("closed"), "revert"]);
+  });
+});

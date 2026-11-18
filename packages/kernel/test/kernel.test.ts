@@ -4,7 +4,7 @@ import { Workshop } from "../src/container/workshop.js";
 import type { Runner } from "../src/container/runner.js";
 import { spacePaths } from "../src/paths.js";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createKernel, WorkshopError, type Kernel } from "../src/kernel.js";
 import type { LocalAi } from "../src/ai/local-ai.js";
@@ -20,6 +20,7 @@ import { declarationWidget, writeWidget } from "./helpers/home.js";
 import { FakeBridge } from "../src/mcp/fake-bridge.js";
 import { tempFolder } from "./helpers/temp.js";
 import { fakeRunner } from "./helpers/fake-runner.js";
+import type { InstructionChange } from "../src/workspace/instructions.js";
 
 let kernel: Kernel | undefined;
 afterEach(async () => {
@@ -145,7 +146,7 @@ test("at launch, once the container is ready, the agents of a previous app are s
     args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}\n`, stderr: "" }) : run(c, args, o);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
-  await kernel.openAgentSession({ cols: 80, rows: 24 }).then((s) => s.stop(), () => {});
+  await kernel.openAgentSession({ cols: 80, rows: 24, mode: "workshop" }).then((s) => s.stop(), () => {});
   const execs = calls.filter((a) => a.args[0] === "exec").map((a) => a.args.join(" "));
   // The cleanup (all marked sessions), then the sweep before the first session, then this session's own stop.
   expect(execs[0]).toContain("/tmp/ressac-session-*.pid");
@@ -181,7 +182,7 @@ test("relocalize swaps the untouched templates to the new language", async () =>
   order = ["fr", "en"];
   await Promise.all([kernel.relocalize(), kernel.relocalize()]);
   expect(order).toEqual([]);
-  for (const f of ["AGENTS.md", "CLAUDE.md", "browsing-notes.md"]) expect(await readFile(join(root, f), "utf8"), f).toBe(await readFile(join(templates, "en", f), "utf8"));
+  for (const f of ["AGENTS.md", "CLAUDE.md"]) expect(await readFile(join(root, f), "utf8"), f).toBe(await readFile(join(templates, "en", f), "utf8"));
   for (const id of ["meteo", "actus-tech", "daily-dev"]) {
     for (const f of await readdir(join(templates, "en", "widgets", id))) {
       expect(await readFile(join(root, "home", "widgets", id, f), "utf8"), `${id}/${f}`).toBe(await readFile(join(templates, "en", "widgets", id, f), "utf8"));
@@ -348,15 +349,36 @@ test("kernel: rejouer goes through the scheduler queue; surDirect follows the qu
 });
 
 // Docker « ready » (fake executor); the session pty launches a fake binary that sleeps, never the real Docker.
-async function createReady(locale: () => string = () => "fr") {
+/** The instruction script run on the host: /workspace is the space folder, /home/node a sibling folder (trees are not walked). */
+async function instructionScript(root: string, args: string[], input: string) {
+  const host = (p: string) => (p.startsWith("/workspace/") ? join(root, p.slice("/workspace/".length)) : join(`${root}-home`, p.slice("/home/node/".length)));
+  if (args.some((a) => a.includes("readInstructionFiles"))) {
+    const { files } = JSON.parse(input) as { files: string[] };
+    const out: Record<string, string> = {};
+    for (const f of files) if (existsSync(host(f))) out[f] = await readFile(host(f), "utf8");
+    return JSON.stringify(out);
+  }
+  for (const [p, c] of Object.entries(JSON.parse(input) as Record<string, string | null>)) c === null ? await rm(host(p), { force: true }) : await writeFile(host(p), c);
+  return '"done"';
+}
+
+async function createReady(locale: () => string = () => "fr", o: { instructionsFail?: boolean; writeFail?: boolean } = {}) {
   const root = await tempFolder();
   const { run } = fakeRunner([
     [/ info$/, { code: 0 }],
     [/ inspect -f/, { code: 0, stdout: "true\n" }],
   ]);
   const { dockerfileHash } = await import("../src/container/workshop.js");
-  const runUpToDate: typeof run = (c, args, o) =>
-    args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}\n`, stderr: "" }) : run(c, args, o);
+  const runUpToDate: typeof run = async (c, args, opts) =>
+    args.at(-1) === "ressac-instructions"
+      ? o.instructionsFail || (o.writeFail && !args.some((a) => a.includes("readInstructionFiles")))
+        ? { code: 1, stdout: "", stderr: "boom" }
+        : { code: 0, stdout: await instructionScript(root, args, opts!.input!), stderr: "" }
+      : args.includes("{{.State.Running}}")
+        ? run(c, args, opts)
+        : args[0] === "inspect"
+          ? { code: 0, stdout: `${root}|${dockerfileHash()}\n`, stderr: "" }
+          : run(c, args, opts);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
   kernel = await createKernel({ locale: locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
   return kernel;
@@ -659,13 +681,15 @@ describe("openAgentSession with a profile", () => {
       const [browser, workshop, none, codex, codexWorkshop] = start.mock.calls.map((x) => x[0].join(" "));
       const claudeArgs = start.mock.calls[0]![0];
       const sources = claudeArgs.indexOf("--setting-sources");
-      expect(claudeArgs.slice(sources, sources + 6)).toEqual(["--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", "/workspace/AGENTS.md"]);
+      expect(claudeArgs.slice(sources, sources + 6)).toEqual(["--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", "/workspace/.ressac/instructions/AGENTS.md"]);
       expect(browser).toContain("--disallowedTools Bash,mcp__ressac__launch_app --strict-mcp-config --setting-sources");
-      expect(browser).toContain("/workspace/AGENTS.md --disallowedTools WebSearch,WebFetch");
+      expect(browser).toContain("/workspace/.ressac/instructions/AGENTS.md --disallowedTools WebSearch,WebFetch");
       expect(claudeArgs.at(-2)).toBe("--mcp-config");
       expect(workshop).not.toMatch(/Bash|launch_app|strict-mcp-config|setting-sources|AGENTS/);
       expect(none).toContain("--disallowedTools Bash,mcp__ressac__launch_app");
       expect(codex).toContain(`--disable shell_tool -c mcp_servers.ressac.disabled_tools=["launch_app"] -c notify=[] -c model_provider="openai" -m x`);
+      // Codex's interactive TUI (0.169) refuses --ignore-user-config: only `codex exec` takes it.
+      expect(codex).not.toContain("--ignore-user-config");
       expect(codexWorkshop).not.toMatch(/shell_tool|launch_app|notify|model_provider/);
       for (const s of opened) await s.stop();
     });
@@ -706,6 +730,151 @@ describe("openAgentSession with a profile", () => {
       expect((await stat(join(folder, file!))).mode & 0o777).toBe(0o600);
       await s.stop();
     });
+  });
+});
+
+describe("the instruction review before a Navigateur session", () => {
+  const agents = (n: Kernel) => join(n.paths.root, "AGENTS.md");
+  async function gate(attempt: (n: Kernel, start: MockInstance<typeof SessionAgent.start>) => Promise<void>, o: { instructionsFail?: boolean; writeFail?: boolean } = {}) {
+    const n = await createReady(undefined, o);
+    const start = vi.spyOn(SessionAgent, "start");
+    try {
+      await attempt(n, start);
+    } finally {
+      start.mockRestore();
+    }
+  }
+
+  test("a changed AGENTS.md is reviewed before the CLI starts", async () => {
+    await gate(async (n, start) => {
+      await writeFile(agents(n), "mine");
+      let answer!: (a: "keep") => void;
+      const review = vi.fn((_changes: InstructionChange[]) => new Promise<"keep" | "revert">((r) => (answer = r)));
+      const opening = n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", review });
+      await vi.waitFor(() => expect(review).toHaveBeenCalledTimes(1));
+      expect(review.mock.calls[0]![0]).toMatchObject([{ path: "/workspace/AGENTS.md", status: "changed" }]);
+      expect(start).not.toHaveBeenCalled();
+      answer("keep");
+      const s = await opening;
+      expect(start).toHaveBeenCalledTimes(1);
+      expect(await readFile(join(n.paths.internal, "instructions", "AGENTS.md"), "utf8")).toBe("mine");
+      await s.stop();
+    });
+  });
+
+  test("keep accepts only the shown snapshot: a later change shows a new card", async () => {
+    await gate(async (n) => {
+      await writeFile(agents(n), "mine");
+      const review = vi.fn(async () => {
+        if (review.mock.calls.length === 1) await writeFile(agents(n), "mine again");
+        return "keep" as const;
+      });
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", review });
+      expect(review).toHaveBeenCalledTimes(2);
+      expect(JSON.stringify(review.mock.calls[1])).toContain("mine again");
+      await s.stop();
+    });
+  });
+
+  test("revert writes the reference back, then the session starts", async () => {
+    await gate(async (n, start) => {
+      const before = await readFile(agents(n), "utf8");
+      await writeFile(agents(n), "evil");
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", review: async () => "revert" });
+      expect(await readFile(agents(n), "utf8")).toBe(before);
+      expect(start).toHaveBeenCalledTimes(1);
+      await s.stop();
+    });
+  });
+
+  test("a rejected review starts no session and leaves no session config", async () => {
+    await gate(async (n, start) => {
+      await writeFile(agents(n), "mine");
+      await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", review: () => Promise.reject(new Error("closed")) })).rejects.toThrow("closed");
+      expect(start).not.toHaveBeenCalled();
+      expect(await readdir(join(n.paths.internal, "sessions")).catch(() => [])).toEqual([]);
+    });
+  });
+
+  test("no review callback and a change: the open fails", async () => {
+    await gate(async (n, start) => {
+      await writeFile(agents(n), "mine");
+      await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude" })).rejects.toThrow(
+        "Les consignes de l'agent ont changé depuis la dernière session : rouvrez le panneau pour les relire.",
+      );
+      expect(start).not.toHaveBeenCalled();
+    });
+  });
+
+  test("a change on every round fails after three cards", async () => {
+    await gate(async (n, start) => {
+      await writeFile(agents(n), "mine");
+      const review = vi.fn(async () => (await writeFile(agents(n), `v${review.mock.calls.length}`), "keep" as const));
+      await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", review })).rejects.toThrow("Les consignes de l'agent ont changé");
+      expect(review).toHaveBeenCalledTimes(3);
+      expect(start).not.toHaveBeenCalled();
+    });
+  });
+
+  test("workshop mode never reviews", async () => {
+    await gate(async (n, start) => {
+      await writeFile(agents(n), "mine");
+      const review = vi.fn(async () => "keep" as const);
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", mode: "workshop", review });
+      expect(review).not.toHaveBeenCalled();
+      expect(start).toHaveBeenCalledTimes(1);
+      await s.stop();
+    });
+  });
+
+  test("the conversation resets after the card: a grant made meanwhile is gone, a refused card leaves the grants", async () => {
+    await gate(async (n) => {
+      await writeFile(agents(n), "mine");
+      n.policy.grantWidgetData("before");
+      await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", review: () => Promise.reject(new Error("closed")) })).rejects.toThrow("closed");
+      expect(n.policy.widgetDataGranted("before")).toBe(true);
+      const s = await n.openAgentSession({
+        cols: 80,
+        rows: 24,
+        window: "f1",
+        profile: "claude",
+        review: async () => {
+          expect(n.policy.widgetDataGranted("before")).toBe(true);
+          n.policy.grantWidgetData("meanwhile");
+          return "keep";
+        },
+      });
+      expect(n.policy.widgetDataGranted("before")).toBe(false);
+      expect(n.policy.widgetDataGranted("meanwhile")).toBe(false);
+      await s.stop();
+    });
+  });
+
+  test("a revert whose write fails fails the open, no session", async () => {
+    await gate(
+      async (n, start) => {
+        await writeFile(agents(n), "evil");
+        await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", review: async () => "revert" })).rejects.toThrow(
+          "Impossible de lire ou de remettre les consignes de l'agent : restoring the instruction files failed: boom",
+        );
+        expect(start).not.toHaveBeenCalled();
+      },
+      { writeFail: true },
+    );
+  });
+
+  test("a failed read fails the open closed: no card, no session", async () => {
+    await gate(
+      async (n, start) => {
+        const review = vi.fn(async () => "keep" as const);
+        await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", review })).rejects.toThrow(
+          "Impossible de lire ou de remettre les consignes de l'agent : reading the instruction files failed: boom",
+        );
+        expect(review).not.toHaveBeenCalled();
+        expect(start).not.toHaveBeenCalled();
+      },
+      { instructionsFail: true },
+    );
   });
 });
 

@@ -93,7 +93,7 @@ it("the panel runs the real CLI with the session's MCP config", async () => {
     "--settings",
     '{"skipDangerousModePermissionPrompt":true}',
     "--append-system-prompt-file",
-    "/workspace/AGENTS.md",
+    "/workspace/.ressac/instructions/AGENTS.md",
     "--disallowedTools",
     "WebSearch,WebFetch",
     "--dangerously-skip-permissions",
@@ -228,6 +228,9 @@ it("the built-in profiles: Claude Code and Codex in the menu, signed-out ones ma
     "Claude Code (non connecté)",
     "Codex (non connecté)",
   ]);
+  // /login in the terminal while the panel stays open: the mark goes on its own.
+  writeFileSync(join(w!.dataDir, "workspace", "fake-claude-auth.json"), JSON.stringify({ loggedIn: true, email: "ami@example.com" }));
+  await waitUi(m, "return doc.querySelector('[data-testid=\"agent-profile\"]')?.options[0]?.textContent.trim() === 'Claude Code'", [], 15_000, "agent");
 });
 
 it("Claude on Ollama is not marked signed out in the menu: its subscription is not needed", async () => {
@@ -305,6 +308,9 @@ describe("the agent selector", () => {
     await click(m, '[data-testid="agent-login-settings"]', { frame: "agent" });
     for (const end = Date.now() + 10_000; !Object.values((await state(m)).tabs).some((t) => t.url === "ressac://settings"); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > end) throw new Error("Settings did not open");
+    // Signed in elsewhere while the panel stays open: the line goes on its own.
+    writeFileSync(join(w!.dataDir, "workspace", "fake-codex-auth"), "{}");
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"agent-login-settings\"]')", [], 15_000, "agent");
   });
 });
 
@@ -391,6 +397,24 @@ it("agent quits → Relancer starts a new one", async () => {
   await click(m, "button", { text: "Relancer", frame: "agent" });
   await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
   await waitUi(m, "return !doc.querySelector('[data-testid=\"agent-panel\"]').textContent.includes(\"L'agent s'est arrêté.\")", [], 10_000, "agent");
+});
+
+it("a changed AGENTS.md shows the review card; Revenir restores it and the agent starts", async () => {
+  await launch();
+  await homeAgent();
+  const file = join(w!.dataDir, "workspace", "AGENTS.md");
+  const before = read(file);
+  expect(before).not.toBe("");
+  // The first session accepted these files; the agent changes one, then its session ends.
+  writeFileSync(file, `${before}\nPLANTED INSTRUCTION\n`);
+  await send("quit");
+  await panelShows("L'agent s'est arrêté.", 10_000);
+  await click(m, "button", { text: "Relancer", frame: "agent" });
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"agent-review\"]')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('[data-testid=\"agent-review\"]').textContent.includes('PLANTED INSTRUCTION')", [], 10_000, "agent");
+  await click(m, '[data-testid="agent-review-revert"]', { frame: "agent" });
+  await terminalShows("fake agent ready>");
+  expect(read(file)).toBe(before);
 });
 
 it("closing and reopening the panel keeps the conversation", async () => {

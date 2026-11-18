@@ -41,7 +41,7 @@ agent-ollama-silent = Ollama ne répond pas à cette adresse.
 agent-data-folder = Dossier
 agent-data-reveal = Afficher dans le Finder
 agent-data-notes = Carnet de recherche
-agent-data-notes-help = Les leçons que l'agent tire de ses recherches : vous pouvez le lire et le corriger.
+agent-data-notes-help = Les leçons que l'agent tire de ses recherches perdues, datées par Ressac avec les sites d'origine. Il relit les dernières au début de chaque recherche : supprimez toute ligne qui ressemble à une consigne.
 agent-data-import-title = Importer
 agent-data-import = Importer depuis un autre navigateur
 agent-data-backups = Sauvegardes
@@ -137,6 +137,22 @@ agent-panel-mode-browser = Navigateur
 agent-panel-mode-browser-title = Recherche et récaps, sans terminal
 agent-panel-mode-workshop = Atelier
 agent-panel-mode-workshop-title = Peut lancer des commandes : installer et lancer les applis de projet
+agent-review-title = Les consignes de l'agent ont changé
+agent-review-intro = Depuis la dernière session, ces fichiers ont été modifiés, peut-être par une page que l'agent a lue.
+agent-review-created = nouveau
+agent-review-deleted = supprimé
+agent-review-too-long = Fichier trop long pour être affiché
+agent-review-too-many = Trop de fichiers pour être affichés
+agent-review-unreadable = Fichier illisible
+agent-review-binary = Fichier binaire, non affiché
+agent-review-other = Fichier spécial, non affiché
+agent-review-link = Lien vers { $target }
+agent-review-folded = ⋯ { $count ->
+        [one] { $count } ligne
+       *[other] { $count } lignes
+    }
+agent-review-keep = Garder les changements
+agent-review-revert = Revenir à la version d'avant
 
 ## Relecture
 

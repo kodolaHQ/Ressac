@@ -775,10 +775,10 @@ describe("agent network", () => {
 });
 
 describe("Codex requirements", () => {
-  test("only managed hooks, and only the ressac MCP server at the session's URL", async () => {
+  test("only managed hooks, no web search, and only the ressac MCP server at the session's URL", async () => {
     const { codexRequirements } = await import("../../src/container/workshop.js");
     expect(codexRequirements("http://host.docker.internal:4567/mcp")).toBe(
-      'allow_managed_hooks_only = true\n\n[mcp_servers.ressac.identity]\nurl = "http://host.docker.internal:4567/mcp"\n',
+      'allow_managed_hooks_only = true\nallowed_web_search_modes = ["disabled"]\ncheck_for_update_on_startup = false\n\n[mcp_servers.ressac.identity]\nurl = "http://host.docker.internal:4567/mcp"\n',
     );
   });
 
@@ -791,6 +791,27 @@ describe("Codex requirements", () => {
     expect(calls[0]!.opts!.input).toContain('url = "http://host.docker.internal:4567/mcp"');
     const failing = new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ exec /, { code: 1, stderr: "nope" }]]).run });
     await expect(failing.restrictCodex("http://x/mcp")).rejects.toThrow("nope");
+  });
+});
+
+describe("instruction files", () => {
+  test("readInstructions runs node -e as node with the paths on stdin", async () => {
+    const { run, calls } = fakeRunner([[/ressac-instructions/, { code: 0, stdout: '{"/workspace/AGENTS.md":"hi"}' }]]);
+    const workshop = new Workshop({ paths: paths, docker: "docker", run });
+    expect(await workshop.readInstructions(["/workspace/AGENTS.md"], ["/workspace/.codex"])).toEqual({ "/workspace/AGENTS.md": "hi" });
+    const args = calls[0]!.args;
+    expect(args.slice(0, 9)).toEqual(["exec", "-i", "-u", "node", "-w", "/", "ressac-workshop", "node", "-e"]);
+    expect(args.at(-1)).toBe("ressac-instructions");
+    expect(JSON.parse(calls[0]!.opts!.input!)).toEqual({ files: ["/workspace/AGENTS.md"], trees: ["/workspace/.codex"] });
+  });
+
+  test("writeInstructions throws on a non-zero code or a refused write", async () => {
+    const ok = fakeRunner([[/ressac-instructions/, { code: 0, stdout: '"done"' }]]);
+    await new Workshop({ paths: paths, docker: "docker", run: ok.run }).writeInstructions({ "/workspace/AGENTS.md": null });
+    expect(JSON.parse(ok.calls[0]!.opts!.input!)).toEqual({ "/workspace/AGENTS.md": null });
+    await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ressac-instructions/, { code: 0, stdout: '"failed"' }]]).run }).writeInstructions({})).rejects.toThrow();
+    await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ressac-instructions/, { code: 1, stderr: "boom" }]]).run }).readInstructions([], [])).rejects.toThrow("reading the instruction files failed: boom");
+    await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ressac-instructions/, { code: 1, stderr: "boom" }]]).run }).writeInstructions({})).rejects.toThrow("restoring the instruction files failed: boom");
   });
 });
 

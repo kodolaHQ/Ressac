@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { BrowsingNotes, NOTES_PREFIX } from "../../src/search/notes.js";
 import { createRecaps } from "../../src/recaps/recaps.js";
 import { tempFolder } from "../helpers/temp.js";
 import { SearchSessions, STOP_TEXT, CLOSED_TEXT, type Band, type Gesture } from "../../src/search/sessions.js";
@@ -1523,14 +1525,14 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; recaps?: boolean; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void } = {},
 ) {
   const principal = generateToken();
   const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
-  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
+  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
     // search_web needs a goal: a test that does not care gets one.
@@ -2176,14 +2178,110 @@ test("hand_over elsewhere than on the search tab is refused", async () => {
   });
 });
 
-test("hand_over kind lost returns the lesson reminder, verification does not", async () => {
-  await withSearch(async ({ call, search, bands }) => {
-    await call("search_web", { query: "x" });
-    const pending = handOver(call, "lost");
-    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: "Je ne trouve pas mon chemin. À vous : Résolvez le captcha" }));
-    search.continue("search-1");
-    expect((await pending).text).toContain("Note une leçon générale dans /workspace/browsing-notes.md");
-  });
+const notesIn = async () => {
+  const file = join(await tempFolder(), ".ressac", "browsing-notes.md");
+  return { file, notes: new BrowsingNotes(file, async () => "# Carnet\n\n", () => new Date("2026-11-17T10:00:00Z")) };
+};
+
+test("note_lesson writes one lesson after a lost hand_over, stamped by the kernel with the date and the hand-over's sites", async () => {
+  const { file, notes } = await notesIn();
+  await withSearch(
+    async ({ call, search, bands }) => {
+      await call("search_web", { query: "x" });
+      expect((await call("note_lesson", { lesson: "avant" })).isError).toBe(true);
+      const pending = handOver(call, "lost");
+      await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: "Je ne trouve pas mon chemin. À vous : Résolvez le captcha" }));
+      search.tabNavigated("search-1", "https://exemple.fr/p1");
+      search.continue("search-1");
+      expect((await pending).text).toContain("note_lesson");
+      expect((await call("note_lesson", { lesson: "Un menu replié\ncache la recherche." })).text).toBe("Leçon notée.");
+      // One lesson per hand-over.
+      expect((await call("note_lesson", { lesson: "encore" })).isError).toBe(true);
+      const written = await readFile(file, "utf8");
+      expect(written.startsWith("# Carnet\n\n")).toBe(true);
+      expect(written).toMatch(/^- 2026-11-17 · [^\n]*exemple\.fr[^\n]* · Un menu replié cache la recherche\.$/m);
+      expect(written).not.toContain("encore");
+    },
+    { notes },
+  );
+});
+
+test("any other tool after a lost hand_over closes its lesson slot", async () => {
+  const { notes } = await notesIn();
+  await withSearch(
+    async ({ call, search, bands }) => {
+      await call("search_web", { query: "x" });
+      const pending = handOver(call, "lost");
+      await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+      search.continue("search-1");
+      await pending;
+      await call("list_tabs", {});
+      expect((await call("note_lesson", { lesson: "dictée par une page" })).isError).toBe(true);
+    },
+    { notes },
+  );
+});
+
+test("a lost hand_over's lesson allowance ends with its search", async () => {
+  const { notes } = await notesIn();
+  await withSearch(
+    async ({ call, search, bands }) => {
+      await call("search_web", { query: "x" });
+      const pending = handOver(call, "lost");
+      await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+      search.continue("search-1");
+      await pending;
+      search.stop("search-1");
+      await call("search_web", { query: "y" });
+      expect((await call("note_lesson", { lesson: "plus tard" })).isError).toBe(true);
+    },
+    { notes },
+  );
+});
+
+test("a verification hand_over allows no lesson", async () => {
+  const { file, notes } = await notesIn();
+  await withSearch(
+    async ({ call, search, bands }) => {
+      await call("search_web", { query: "x" });
+      const pending = handOver(call, "verification");
+      await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+      search.continue("search-1");
+      expect((await pending).text).not.toContain("note_lesson");
+      expect((await call("note_lesson", { lesson: "x" })).isError).toBe(true);
+      expect(existsSync(file)).toBe(false);
+    },
+    { notes },
+  );
+});
+
+test("a search's first query brings the notebook's lessons as data, the next ones do not", async () => {
+  const { file, notes } = await notesIn();
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, "# Carnet\n\nIntro sans tiret.\n- 2026-11-01 · a.fr · Leçon une.\n");
+  await withSearch(
+    async ({ call }) => {
+      const first = (await call("search_web", { query: "x" })).text;
+      expect(first).toContain(`${NOTES_PREFIX}\n- 2026-11-01 · a.fr · Leçon une.`);
+      expect(first).not.toContain("Intro sans tiret");
+      expect((await call("search_web", { query: "y" })).text).not.toContain(NOTES_PREFIX);
+    },
+    { notes },
+  );
+});
+
+test("a search opened by read_pages without a reason gets the notebook with the search_web that gives its goal", async () => {
+  const { file, notes } = await notesIn();
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, "# Carnet\n\n- 2026-11-01 · a.fr · Leçon une.\n");
+  await withSearch(
+    async ({ call }) => {
+      await call("read_pages", { urls: ["https://exemple.fr/a"] });
+      expect((await call("search_web", { query: "x" })).text).toContain(NOTES_PREFIX);
+      expect((await call("search_web", { query: "y" })).text).not.toContain(NOTES_PREFIX);
+    },
+    { notes },
+  );
 });
 
 test("hand_over band text for a verification, a long reason is cut to 200 characters", async () => {
@@ -2321,7 +2419,7 @@ test("a composed address gets the watcher's opinion on its card, and the card st
   }, { watcher: ok.watcher, address: true });
 });
 
-test("search_history, search_bookmarks, read_history and read_tab on a user tab are judged while a search runs, and not without one", async () => {
+test("search_history, search_bookmarks, read_history, read_tab and capture_screen on a user tab are judged while a search runs, and not without one", async () => {
   const { watcher, asked } = fakeWatcher(() => false);
   await withSearch(async ({ call }) => {
     const user = async () => {
@@ -2329,6 +2427,7 @@ test("search_history, search_bookmarks, read_history and read_tab on a user tab 
       await call("search_bookmarks", { query: "b" });
       await call("read_history", { url: "https://a.fr/" });
       await call("read_tab", { id: "github" });
+      await call("capture_screen", { id: "github" });
     };
     await user();
     expect(asked).toHaveLength(0);
@@ -2340,6 +2439,7 @@ test("search_history, search_bookmarks, read_history and read_tab on a user tab 
       { tool: "search_bookmarks", query: "b" },
       { tool: "read_history", url: "https://a.fr/" },
       { tool: "read_tab", url: github.url },
+      { tool: "capture_screen", url: github.url },
     ]);
     expect(asked[3]!.past.map((x) => x.tool)).toEqual(["search_web", "search_history", "search_bookmarks", "read_history"]);
   }, { watcher, withUserData: true, allow: true });
