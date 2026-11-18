@@ -459,6 +459,34 @@ A tab that uses the camera or the microphone when it is left (`TabSelect`, `chro
 - Media bar: `tab.playback` (`"playing"` / `"paused"`, volatile) follows the tab's `browsingContext.mediaController` (Firefox's media keys' session: `activated`, `deactivated`, `playbackstatechange`), listened to from the first sound or when the tab is left. `"paused"` is kept only for a background tab that was playing (a tab left with nothing playing has no bar). A tab with `playback` that is not the one shown gets a bar above the sidebar's footer (in `CallBar.svelte`, under the calls): back to the tab, play / pause (`mediaController.play()` / `pause("user")`: `pause` needs its reason), sound. A tab in a call has the call bar only. Videos do not float (calls only).
 - Tests: `e2e/media-bar.e2e.ts`. Sound does not decode in a hidden test browser, so real playback (the session's events, play / pause on a real page) is not covered there.
 
+## Memory
+
+« Économiser la mémoire » (Réglages › Général, `settings.saveMemory`) is on by default on Macs with 8 GiB or less (`shared/settings.ts` `isSmallMac`); an explicit choice is kept. While it is on:
+- Essentials load on first display instead of at launch, and Firefox may unload them under memory pressure. An essential is kept loaded, in the first window only, when the user ticks « Garder chargé (notifications) » in its menu, or by default when its host is a messaging or calendar site (`KEEP_LOADED_HOSTS`, `shared/model.ts`) and it may send notifications. WhatsApp Web and Gmail use no Web Push: they notify only while loaded.
+- Scheduled widget harvests and page-indexing passes wait for normal macOS pressure (`kern.memorystatus_vm_pressure_level` = 1); manual and agent harvests do not.
+- One preallocated content process instead of 3, and the aura stays still unless the user chose it.
+
+On every Mac, `browser.lowMemoryResponseMask` is 3: under pressure Firefox unloads background tabs that have been inactive for at least 10 minutes. It never unloads the shown tab, a call, a tab playing sound or in picture-in-picture, or the parking tab. The first unload also tells the host to unload the local models and stop an idle machine (`chrome/window/tabs.ts`).
+
+Measured on an 8 GB VM: 3 spaces, 18 tabs, 7 essentials (logged out) and a call. The figure is the sum of `footprint` over every Ressac process, in GB:
+
+| | 0.1.14 | setting on |
+|---|---|---|
+| Relaunch (90 s after start) | 2.7 | 0.6 |
+| End of a pressure run | 2.4 | 0.8 |
+| Unloaded under pressure | 0 | 7/7 essentials + 9 tabs |
+
+The call kept running, and macOS killed nothing. With everything open the setting saves nothing: its gain is at launch and under pressure. Logged in, essentials weigh far more: Gmail about 730 MB, WhatsApp about 580 MB. That is why a messaging essential is kept loaded only when it may notify.
+
+Not kept: Firefox's « Minimize memory usage » (`minimizeMemoryUsage`) on hidden kept-loaded essentials. It gains 7 to 9 % on logged-in Gmail and WhatsApp, almost all of it JavaScript heap, for a call that runs in every process.
+
+To reproduce:
+- Use a Tart macOS VM with 8 GB and 4 CPUs, running a `run package` build driven over Marionette.
+- Measure with `footprint -p` on every Ressac process. Never use RSS: it counts shared and file-backed pages.
+- Relaunch: start, wait 90 s, measure.
+- Open everything: open every essential and tab, start a loopback call, wait 2 min, measure.
+- Pressure: run node fillers of incompressible memory (2.8 GB, then +1 GB, then +1.5 GB, a few minutes each), sampled every 30 s.
+
 ## Pitfalls
 
 - The macOS 27 SDK breaks Mozilla's linker (unknown `arm64e.x1`): SDK 26.5 is forced (`configs/macos/mozconfig`, `scripts/env.sh`).
