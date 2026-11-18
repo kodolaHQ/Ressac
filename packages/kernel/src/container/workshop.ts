@@ -656,6 +656,8 @@ export class Workshop {
    * the interactive agent sessions out (their ids are hex; a write's, still counted, is a UUID).
    */
   async busy(e: ContainerEngine = this.engine(), o: { agentSessions?: boolean } = {}): Promise<boolean> {
+    // A start or rebuild in progress (container, build, network rules) uses the engine before any process shows in it.
+    if (this.startup || this.rebuilding) return true;
     const binary = e.binary();
     if (!binary || !(await e.up())) return false;
     const run = (args: string[]) => this.run(binary, [...e.args(), ...args], { delayMs: PROBE_DELAY_MS });

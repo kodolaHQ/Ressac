@@ -397,10 +397,6 @@ describe("the workshop machine", () => {
       expect(readFileSync(join(w.dir, "lima.yaml"), "utf8")).toContain(`\nmemory: ${vm}\n`);
       expect(m.memory()).toBe(container);
     }
-    // A forced size (dev measures) wins over the Mac's.
-    const w = world({ instance: { status: "Stopped" } });
-    await machine(w, { totalMemory: 64 * 2 ** 30, memoryGiB: 1.5 }).wake("user");
-    expect(readFileSync(join(w.dir, "lima.yaml"), "utf8")).toContain("\nmemory: 1.5GiB\n");
   });
 
   it("an automatic install (AI on) does not keep the new machine running: it stops as soon as nothing is busy", async () => {

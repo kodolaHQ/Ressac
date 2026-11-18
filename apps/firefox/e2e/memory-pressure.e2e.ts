@@ -28,7 +28,7 @@ afterAll(async () => {
 
 describe("memory pressure", () => {
   it("Firefox answers macOS pressure from « warn » (release builds answer nothing by default)", async () => {
-    expect(await m.execute(`return [Services.prefs.getIntPref("browser.lowMemoryResponseMask"), Services.prefs.getBoolPref("browser.lowMemoryResponseOnWarn")];`)).toEqual([3, true]);
+    expect(await m.execute(`return [Services.prefs.getIntPref("browser.lowMemoryResponseMask"), Services.prefs.getBoolPref("browser.lowMemoryResponseOnWarn")];`)).toEqual([2, true]);
   });
 
   it("each new pressure asks the host to relieve the machine, the ongoing repeats do not", async () => {

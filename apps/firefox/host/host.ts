@@ -176,8 +176,6 @@ const machine: ReturnType<typeof createMachine> = testMachine
       busy: () => workshop.busy(machine),
       idleMs: () => machineIdleMinutes * 60_000,
       image: vmImage(),
-      // RESSAC_VM_MEMORY_GIB: a forced VM size (dev measures of the small Mac's machine).
-      ...(Number(process.env.RESSAC_VM_MEMORY_GIB) ? { memoryGiB: Number(process.env.RESSAC_VM_MEMORY_GIB) } : {}),
       ...(process.env.RESSAC_TEST_NO_SYSTEM ? { supported: async () => false } : {}),
     });
 const engines = createEngines({

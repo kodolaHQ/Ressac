@@ -273,8 +273,8 @@ export class TabSync {
       tab.setAttribute(TAB_ID, o.id);
       // Again once made: an adopted page may live in another <browser> than the one TabOpen saw (a no-op otherwise).
       if (this.siteApp) void this.store.sites.attachTab(this.siteApp, tab.linkedBrowser);
-      // Short of memory, Firefox may unload an essential like any background tab, never a site app's (its notifications).
-      if (this.siteApp) tab.undiscardable = true;
+      // Firefox never unloads an essential to free memory.
+      if (o.link?.type === "essential") tab.undiscardable = true;
       this.tabs.set(o.id, tab);
     } finally {
       this.creating = false;

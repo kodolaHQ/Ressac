@@ -4,7 +4,7 @@ export const RELEASE_NOTES: { version: string; date: string; items: string[] }[]
     version: "0.1.14",
     date: "novembre 2026",
     items: [
-      "Ressac prend moins de mémoire, surtout sur un Mac de 8 Go : la machine de l'agent ne démarre plus au lancement mais quand l'agent, une appli ou un widget en a besoin, et elle est deux fois plus petite sur ces Mac. Quand macOS manque de mémoire, Ressac décharge ses modèles locaux, éteint la machine si rien ne s'en sert, et laisse Firefox décharger les onglets en arrière-plan (les essentiels compris, sauf ceux des applis de site comme WhatsApp).",
+      "Ressac prend moins de mémoire, surtout sur un Mac de 8 Go : la machine de l'agent ne démarre plus au lancement mais quand l'agent, une appli ou un widget en a besoin, et elle est deux fois plus petite sur ces Mac. Quand macOS manque de mémoire, Ressac décharge ses modèles locaux et éteint la machine si rien ne s'en sert.",
     ],
   },
   {

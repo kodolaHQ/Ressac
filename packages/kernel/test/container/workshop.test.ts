@@ -955,6 +955,18 @@ describe("container engine", () => {
     expect(RUN_FLAGS_VERSION).toBe("5");
   });
 
+  test("busy while a start is in progress: memory pressure never stops the machine under it", async () => {
+    let release: () => void = () => {};
+    let held = false;
+    const { run: runCall } = fakeRunner([[/ info$/, { code: 0 }], [/ inspect -f/, () => (held ? { code: 1, stdout: "", stderr: "No such object" } : ((held = true), new Promise((r) => (release = () => r({ code: 1, stdout: "", stderr: "No such object" })))))], [/ run /, { code: 1, stderr: "boom" }]]);
+    const w = new Workshop({ paths: paths, docker: "docker", run: runCall });
+    const start = w.ensureStarted().catch(() => {});
+    await new Promise((r) => setTimeout(r, 10));
+    expect(await w.busy()).toBe(true);
+    release();
+    await start;
+  });
+
   test("a container whose memory cap no longer fits the engine is recreated (the image is kept)", async () => {
     const e = dockerfileHash();
     const { run: runCall, calls } = fakeDocker({ source: paths.root, containerHash: e, imageHash: e, memory: 2 ** 30 });

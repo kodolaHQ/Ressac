@@ -152,8 +152,6 @@ export function createMachine(o: {
   image?: { version: string; url: string; sha256: string; bytes: number };
   /** The Mac's memory in bytes (os.totalmem() by default): it sizes the VM. */
   totalMemory?: number;
-  /** A forced VM size in GiB (dev measures), over the Mac's. */
-  memoryGiB?: number;
 }) {
   const home = o.home ?? MACHINE_HOME;
   const run = o.run ?? createRunner(hostLocale);
@@ -161,7 +159,7 @@ export function createMachine(o: {
   const idleOption = o.idleMs ?? 5 * 60_000; // short: the VM never gives back memory it touched until it stops
   const idleMs = typeof idleOption === "function" ? idleOption : () => idleOption;
   const pollMs = o.pollMs ?? 60_000;
-  const memoryGiB = o.memoryGiB ?? (smallMac(o.totalMemory) ? 1.5 : 3);
+  const memoryGiB = smallMac(o.totalMemory) ? 1.5 : 3;
   const dir = join(home, NAME);
   const socket = join(dir, "sock", "podman.sock");
   const { limactl, podman } = o;
