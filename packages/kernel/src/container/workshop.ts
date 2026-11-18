@@ -67,7 +67,8 @@ const CODEX_REQUIREMENTS = "/etc/codex/requirements.toml";
 /** Codex's managed requirements (root-owned): the URL must match exactly, port included, so it is written per session. */
 export function codexRequirements(url: string): string {
   // No web search: with the sandbox off Codex would use OpenAI's live search, which fetches pages past the browser's rules and the proxy.
-  return `allow_managed_hooks_only = true\nallowed_web_search_modes = ["disabled"]\n\n[mcp_servers.ressac.identity]\nurl = ${JSON.stringify(url)}\n`;
+  // No update prompt: its « Update now » runs `npm install -g`, which the agent may not do (and Ressac's image brings Codex).
+  return `allow_managed_hooks_only = true\nallowed_web_search_modes = ["disabled"]\ncheck_for_update_on_startup = false\n\n[mcp_servers.ressac.identity]\nurl = ${JSON.stringify(url)}\n`;
 }
 
 /**

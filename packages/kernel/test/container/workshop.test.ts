@@ -778,7 +778,7 @@ describe("Codex requirements", () => {
   test("only managed hooks, no web search, and only the ressac MCP server at the session's URL", async () => {
     const { codexRequirements } = await import("../../src/container/workshop.js");
     expect(codexRequirements("http://host.docker.internal:4567/mcp")).toBe(
-      'allow_managed_hooks_only = true\nallowed_web_search_modes = ["disabled"]\n\n[mcp_servers.ressac.identity]\nurl = "http://host.docker.internal:4567/mcp"\n',
+      'allow_managed_hooks_only = true\nallowed_web_search_modes = ["disabled"]\ncheck_for_update_on_startup = false\n\n[mcp_servers.ressac.identity]\nurl = "http://host.docker.internal:4567/mcp"\n',
     );
   });
 
