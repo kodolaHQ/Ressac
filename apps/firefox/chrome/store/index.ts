@@ -46,6 +46,18 @@ import { keepLoadedHosts } from "../window/tabs";
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
 const { TabUnloader } = ChromeUtils.importESModule("moz-src:///browser/components/tabbrowser/TabUnloader.sys.mjs");
+// TabUnloader reads browser.tabs.min_inactive_duration_before_unload once, at its import (before memoryPrefs applies):
+// without an explicit floor, its unloads (the memory watcher's included, it calls this same object) read the live pref.
+const PATCHED = Symbol.for("ressac.unloadFloor");
+if (!TabUnloader[PATCHED]) {
+  TabUnloader[PATCHED] = true;
+  for (const name of ["unloadTabAsync", "unloadLeastRecentlyUsedTab"]) {
+    const original = TabUnloader[name];
+    TabUnloader[name] = function (this: unknown, floor?: number) {
+      return original.call(this, floor ?? Services.prefs.getIntPref("browser.tabs.min_inactive_duration_before_unload"));
+    };
+  }
+}
 
 export interface RessacStore extends Store {
   readonly dataDir: string;

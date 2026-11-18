@@ -330,7 +330,6 @@ describe("small Mac, critical memory pressure", () => {
   });
 
   it("unloads a background tab inactive under 3 min right away, never the shown tab nor a kept essential", { timeout: 90_000 }, async () => {
-    expect(await n.execute(`return Services.prefs.getIntPref("browser.tabs.min_inactive_duration_before_unload")`)).toBe(180_000);
     // Marionette turns tab unloading off for its sessions: back on, as in use.
     await n.execute(`Services.prefs.setBoolPref("browser.tabs.unloadOnLowMemory", true);`);
     const windowId = (await state(n)).windows[0]!.id;
@@ -356,5 +355,29 @@ describe("small Mac, critical memory pressure", () => {
     expect(await xulOf(shown)).toEqual({ discarded: false, selected: true });
     expect(await xulOf(kept)).toEqual({ discarded: false, selected: false });
     await writeFile(level(), "1");
+  });
+
+  it("at warn level, a background tab idle 5 min unloads with the setting on, not with it off", { timeout: 60_000 }, async () => {
+    await n.execute(`Services.prefs.setBoolPref("browser.tabs.unloadOnLowMemory", true);`);
+    const windowId = (await state(n)).windows[0]!.id;
+    // A background tab idle for 5 min, then Firefox's warn-level entry point: unloadTabAsync() with no floor.
+    const idleThenUnload = async () => {
+      const before = new Set(Object.keys((await state(n)).tabs));
+      const shown = await n.execute<string>(`return gBrowser.selectedTab.getAttribute("ressac-tab-id")`);
+      const after = await dispatch(n, { type: "openTab", windowId, url: server.url + "/a.html?idle=" + Date.now(), activate: true });
+      const id = Object.keys(after.tabs).find((t) => !before.has(t))!;
+      await waitFor(n, "return gBrowser.selectedBrowser.currentURI.spec", (v: string) => v.includes("idle="));
+      await dispatch(n, { type: "activateTab", id: shown });
+      await waitFor(n, "return gBrowser.selectedBrowser.currentURI.spec", (v: string) => !v.includes("idle="));
+      await n.execute(
+        `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]); t._lastAccessed = Date.now() - 5 * 60_000;
+         return ChromeUtils.importESModule("moz-src:///browser/components/tabbrowser/TabUnloader.sys.mjs").TabUnloader.unloadTabAsync();`,
+        [id],
+      );
+      return (await xulOf(id))!.discarded;
+    };
+    expect(await idleThenUnload()).toBe(true);
+    await dispatch(n, { type: "setSaveMemory", enabled: false });
+    expect(await idleThenUnload()).toBe(false);
   });
 });
