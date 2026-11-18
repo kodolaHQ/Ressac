@@ -93,7 +93,7 @@ it("the panel runs the real CLI with the session's MCP config", async () => {
     "--settings",
     '{"skipDangerousModePermissionPrompt":true}',
     "--append-system-prompt-file",
-    "/workspace/AGENTS.md",
+    "/workspace/.ressac/instructions/AGENTS.md",
     "--disallowedTools",
     "WebSearch,WebFetch",
     "--dangerously-skip-permissions",
@@ -391,6 +391,24 @@ it("agent quits → Relancer starts a new one", async () => {
   await click(m, "button", { text: "Relancer", frame: "agent" });
   await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
   await waitUi(m, "return !doc.querySelector('[data-testid=\"agent-panel\"]').textContent.includes(\"L'agent s'est arrêté.\")", [], 10_000, "agent");
+});
+
+it("a changed AGENTS.md shows the review card; Revenir restores it and the agent starts", async () => {
+  await launch();
+  await homeAgent();
+  const file = join(w!.dataDir, "workspace", "AGENTS.md");
+  const before = read(file);
+  expect(before).not.toBe("");
+  // The first session accepted these files; the agent changes one, then its session ends.
+  writeFileSync(file, `${before}\nPLANTED INSTRUCTION\n`);
+  await send("quit");
+  await panelShows("L'agent s'est arrêté.", 10_000);
+  await click(m, "button", { text: "Relancer", frame: "agent" });
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"agent-review\"]')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('[data-testid=\"agent-review\"]').textContent.includes('PLANTED INSTRUCTION')", [], 10_000, "agent");
+  await click(m, '[data-testid="agent-review-revert"]', { frame: "agent" });
+  await terminalShows("fake agent ready>");
+  expect(read(file)).toBe(before);
 });
 
 it("closing and reopening the panel keeps the conversation", async () => {
