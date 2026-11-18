@@ -24,7 +24,7 @@ export const keepLoadedHosts: readonly string[] = Services.env.get("RESSAC_TEST_
 /** An essential's tab that stays loaded and that Firefox never unloads: always, unless saving memory and not kept loaded. */
 const stays = (state: BrowserState, o: Tab) => {
   const f = o.link?.type === "essential" ? state.essentials.find((x) => x.id === o.link!.id) : undefined;
-  return !!f && (!state.settings.saveMemory || keepsLoaded(f, keepLoadedHosts));
+  return !!f && (!state.settings.saveMemory || keepsLoaded(f, o.notifies, keepLoadedHosts));
 };
 /** When a tab unload last asked the host to relieve memory: under pressure Firefox unloads one tab every few seconds. */
 let relievedAt = -Infinity;

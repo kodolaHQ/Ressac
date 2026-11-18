@@ -874,14 +874,18 @@ function keepEssentials(d: Draft, genId: () => string): boolean {
 /**
  * The session at launch: saveMemory takes the Mac's default unless the user chose (on at 8 GiB or less), an aura the user
  * never set follows it (still while saving memory), and while saving memory the essentials not shown wait unloaded,
- * loaded on first display like the other tabs, except those kept loaded (keepsLoaded, `hosts`: tests).
+ * loaded on first display like the other tabs, except those kept loaded (keepsLoaded on the tab's `notifies`, set before;
+ * `hosts`: tests).
  */
 export function memorySession(state: BrowserState, smallMac: boolean, hosts: readonly string[] = KEEP_LOADED_HOSTS): BrowserState {
   const { settings } = state;
   const save = settings.saveMemoryChosen ? settings.saveMemory : smallMac;
   const shown = new Set(state.windows.map((f) => f.active[f.activeSpace]));
-  const kept = new Set(state.essentials.filter((f) => keepsLoaded(f, hosts)).map((f) => f.id));
-  const lazy = save ? Object.values(state.tabs).filter((o) => o.link?.type === "essential" && !kept.has(o.link.id) && !o.unloaded && !shown.has(o.id)) : [];
+  const kept = (o: Tab) => {
+    const f = state.essentials.find((x) => x.id === o.link!.id);
+    return !!f && keepsLoaded(f, o.notifies, hosts);
+  };
+  const lazy = save ? Object.values(state.tabs).filter((o) => o.link?.type === "essential" && !kept(o) && !o.unloaded && !shown.has(o.id)) : [];
   const aura = settings.auraMotionChosen ? settings.auraMotion : !save;
   if (!lazy.length && save === settings.saveMemory && aura === settings.auraMotion) return state;
   const draft = structuredClone(state);

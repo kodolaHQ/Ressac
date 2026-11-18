@@ -1093,18 +1093,25 @@ test("save memory at launch: on by default on a small Mac only; essentials not s
   expect(memorySession(on, false)).toBe(on);
 });
 
-test("keep loaded: messaging and calendar hosts by default, the user's choice wins; kept essentials never wait lazy", () => {
+test("keep loaded: a messaging or calendar host allowed to notify by default, the user's choice wins; kept essentials never wait lazy", () => {
   const f = (url: string, keepLoaded?: boolean) => ({ url, ...(keepLoaded === undefined ? {} : { keepLoaded }) });
-  expect(["https://web.whatsapp.com/", "https://mail.google.com/mail/u/0/", "https://acme.slack.com/", "https://app.slack.com/client", "https://outlook.office.com/mail/"].map((u) => keepsLoaded(f(u)))).toEqual([true, true, true, true, true]);
-  expect(["https://www.google.com/", "https://slack.com.evil.test/", "https://whatsapp.com/", "pas une url"].map((u) => keepsLoaded(f(u)))).toEqual([false, false, false, false]);
-  expect([keepsLoaded(f("https://web.whatsapp.com/", false)), keepsLoaded(f("https://example.com/", true))]).toEqual([false, true]);
-  expect(keepsLoaded(f("http://chat.test/"), ["chat.test"])).toBe(true);
+  const listed = ["https://web.whatsapp.com/", "https://mail.google.com/mail/u/0/", "https://acme.slack.com/", "https://app.slack.com/client", "https://outlook.office.com/mail/"];
+  expect(listed.map((u) => keepsLoaded(f(u), true))).toEqual([true, true, true, true, true]);
+  // Not allowed to notify (or not known yet): nothing to keep it for.
+  expect(listed.map((u) => keepsLoaded(f(u), false)).concat(keepsLoaded(f(listed[0]!), undefined))).toEqual([false, false, false, false, false, false]);
+  expect(["https://www.google.com/", "https://slack.com.evil.test/", "https://whatsapp.com/", "pas une url"].map((u) => keepsLoaded(f(u), true))).toEqual([false, false, false, false]);
+  // The user's choice wins, permission or not.
+  expect([keepsLoaded(f("https://web.whatsapp.com/", false), true), keepsLoaded(f("https://example.com/", true), false)]).toEqual([false, true]);
+  expect(keepsLoaded(f("http://chat.test/"), true, ["chat.test"])).toBe(true);
   // At launch while saving memory: the kept one stays, the other waits.
   const chat = open("https://web.whatsapp.com/");
   ag({ type: "addEssential", id: chat });
   const doc = open("https://docs.test/");
   ag({ type: "addEssential", id: doc });
   ag({ type: "openTab", windowId: F, url: "https://other.test/", activate: true });
+  // Not allowed to notify: it waits too.
+  expect(memorySession(e, true).tabs[chat]!.unloaded).toBe(true);
+  e = { ...e, tabs: { ...e.tabs, [chat]: { ...e.tabs[chat]!, notifies: true }, [doc]: { ...e.tabs[doc]!, notifies: true } } };
   const lazy = memorySession(e, true);
   expect([lazy.tabs[chat]!.unloaded, lazy.tabs[doc]!.unloaded]).toEqual([undefined, true]);
   // Kept by the user: saved on the essential, and a lazy one loads now.

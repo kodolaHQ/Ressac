@@ -1,7 +1,8 @@
 import { shortcutLabel } from "../../shared/shortcuts";
 import { DEFAULT_AURA } from "../../shared/aura";
-import { privateTab, tabProfile, profilesInUse, permissionProfiles, siteProfile, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance } from "../../shared/model";
+import { privateTab, tabProfile, profilesInUse, permissionProfiles, siteProfile, type BrowserState, type Tab, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
+import type { Action } from "../../shared/api";
 import { checkDataFormat } from "../../core/state/format";
 import { lazySave, loadSession, SessionRecorder } from "../../core/state/persistence";
 import { memorySession, withEssentials } from "../../core/state/actions";
@@ -129,6 +130,28 @@ const principalOf = (profile: ProfileId, origin: string, create: boolean) => {
   return userContextId === null ? null : Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(origin), userContextId ? { userContextId } : {});
 };
 
+/** An essential's site may notify: Firefox's permission for its origin, in the tab's container (a site app has its own). */
+function notifies(state: BrowserState, o: Tab): boolean {
+  const url = state.essentials.find((f) => f.id === o.link?.id)?.url ?? o.url;
+  const origin = URL.parse(url)?.origin;
+  const principal = origin?.startsWith("http") ? principalOf(tabProfile(state, o), origin, false) : null;
+  return !!principal && Services.perms.testExactPermissionFromPrincipal(principal, "desktop-notification") === Services.perms.ALLOW_ACTION;
+}
+
+/**
+ * Each essential's tab with its `notifies` read again (keepsLoaded). Allowed while saving memory, a lazy one loads now
+ * (unless the user chose otherwise); refused, it only becomes unloadable again.
+ */
+function notifyChanges(state: BrowserState): Action[] {
+  return Object.values(state.tabs).flatMap((o): Action[] => {
+    if (o.link?.type !== "essential") return [];
+    const now = notifies(state, o);
+    if (now === o.notifies) return [];
+    const load = now && o.unloaded && state.essentials.find((f) => f.id === o.link!.id)?.keepLoaded !== false;
+    return [{ type: "updateTab", id: o.id, fields: { notifies: now, ...(load ? { unloaded: false } : {}) } }];
+  });
+}
+
 /** Mirrors the decisions into Firefox's permission manager: without it a page reads "default" after an allow (spike P6). */
 const firefoxPermissions = {
   set(profile: ProfileId, origin: string, p: SitePermission, d: Decision) {
@@ -199,7 +222,17 @@ async function start(): Promise<RessacStore> {
     // A test launch skips the welcome: AI on for a fresh profile unless the test asks for it off.
     const aiEnabled = aiOff ? false : skip && !s.settings.onboarded ? true : s.settings.aiEnabled;
     return skip ? { ...s, settings: { ...s.settings, onboarded: true, aiEnabled, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s;
-  }).then((s) => withEssentials(s)).then((s) => memorySession(s, smallMac, keepLoadedHosts)));
+  }).then((s) => withEssentials(s)).then((s) => {
+    // Before the launch's lazy essentials: one allowed to notify (a messaging site) stays loaded.
+    const draft = structuredClone(s);
+    for (const o of Object.values(draft.tabs)) if (o.link?.type === "essential") o.notifies = notifies(draft, o);
+    return memorySession(draft, smallMac, keepLoadedHosts);
+  }));
+  // Later essentials' tabs, and the notification permission given or taken back: kept loaded or not, live.
+  const refreshNotifies = () => notifyChanges(store.state).forEach((a) => store.dispatch(a));
+  store.subscribe((s) => Object.values(s.tabs).some((o) => o.link?.type === "essential" && o.notifies === undefined) && queueMicrotask(refreshNotifies));
+  // Any permission change (a few essentials, each read in a lookup): only real changes dispatch.
+  Services.obs.addObserver(refreshNotifies, "perm-changed");
   // « Économiser la mémoire »: one preallocated page process instead of 3, applied live (Firefox rereads it).
   const prelaunch = () => Services.prefs.getDefaultBranch("").setIntPref("dom.ipc.processPrelaunch.fission.number", store.state.settings.saveMemory ? 1 : 3);
   prelaunch();

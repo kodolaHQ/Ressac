@@ -215,7 +215,7 @@ describe("small Mac, essentials kept loaded for notifications", () => {
     await rm(prof, { recursive: true, force: true });
   });
 
-  it("a messaging essential loads at launch and stays undiscardable while another waits; its menu flips either live", async () => {
+  it("a messaging essential stays lazy until allowed to notify, then loads and stays undiscardable live; refused, unloadable again; the menu flips another", async () => {
     await launch();
     const windowId = (await state(n)).windows[0]!.id;
     const add = async (url: string) => {
@@ -234,8 +234,23 @@ describe("small Mac, essentials kept loaded for notifications", () => {
     const [chatFav, otherFav] = s.essentials.map((f) => f.id);
     const tabFor = (fav: string) => Object.values(s.tabs).find((o) => o.link?.id === fav)!.id;
     const [chat, other] = [tabFor(chatFav!), tabFor(otherFav!)];
-    expect([s.tabs[chat]!.unloaded, s.tabs[other]!.unloaded]).toEqual([undefined, true]);
+    // A listed host without the notification permission: lazy like the others.
+    expect([s.tabs[chat]!.unloaded, s.tabs[other]!.unloaded, s.tabs[chat]!.notifies]).toEqual([true, true, false]);
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(await tabOf(chat)).toBeNull();
+    // Allowed (the default container's permission): it loads now and Firefox may no longer unload it.
+    const permission = (allow: boolean) =>
+      n.execute(
+        `const p = Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(arguments[0]), {});
+         if (arguments[1]) Services.perms.addFromPrincipal(p, "desktop-notification", Services.perms.ALLOW_ACTION, Services.perms.EXPIRE_NEVER);
+         else Services.perms.removeFromPrincipal(p, "desktop-notification");`,
+        [`http://chat.test:${server.port}`, allow],
+      );
+    await permission(true);
     expect(await until(() => tabOf(chat), (v) => v?.url.endsWith("/a.html"))).toEqual({ url: expect.stringMatching(/chat\.test:\d+\/a\.html$/), undiscardable: true });
+    // Refused again: no unload forced, only unloadable.
+    await permission(false);
+    expect(await until(() => tabOf(chat), (v) => v?.undiscardable === false)).toEqual({ url: expect.stringMatching(/\/a\.html$/), undiscardable: false });
     expect(await tabOf(other)).toBeNull();
 
     // « Garder chargé (notifications) » on the lazy one: it loads now, kept from Firefox's unloading.

@@ -126,6 +126,8 @@ export interface Tab {
   call?: { mic: boolean; camera: boolean };
   /** An essential unloaded by the user: its page is closed until the essential is opened again; volatile, never saved. */
   unloaded?: boolean;
+  /** An essential whose site may notify (Firefox's permission, in its container): see keepsLoaded; volatile, never saved. */
+  notifies?: boolean;
 }
 
 /** Persistent favorite displayed in the sidebar even without an open tab (Arc/Zen model). */
@@ -144,7 +146,8 @@ export interface Favorite {
 
 /**
  * Messaging and calendar sites: their pages notify only while loaded (no Web Push, measured on WhatsApp and Gmail), so
- * their essentials stay loaded while saving memory unless the user says otherwise. `*.` covers every subdomain.
+ * while saving memory their essentials stay loaded once allowed to notify, unless the user says otherwise (a logged-in
+ * Gmail weighs ~730 MB, WhatsApp ~580 MB: not kept for nothing). `*.` covers every subdomain.
  */
 export const KEEP_LOADED_HOSTS = [
   "web.whatsapp.com", "mail.google.com", "chat.google.com", "calendar.google.com", "app.slack.com", "*.slack.com",
@@ -152,9 +155,13 @@ export const KEEP_LOADED_HOSTS = [
   "outlook.live.com", "outlook.office.com", "outlook.office365.com",
 ];
 
-/** The essential stays loaded while saving memory: the user's choice, else whether its host is in `hosts`. */
-export function keepsLoaded(f: Pick<Favorite, "url" | "keepLoaded">, hosts: readonly string[] = KEEP_LOADED_HOSTS): boolean {
+/**
+ * The essential stays loaded while saving memory: the user's choice, else whether its host is in `hosts` and its site
+ * may notify (`notifies`, its tab's).
+ */
+export function keepsLoaded(f: Pick<Favorite, "url" | "keepLoaded">, notifies: boolean | undefined, hosts: readonly string[] = KEEP_LOADED_HOSTS): boolean {
   if (f.keepLoaded !== undefined) return f.keepLoaded;
+  if (!notifies) return false;
   const host = URL.parse(f.url)?.hostname ?? "";
   return hosts.some((h) => (h.startsWith("*.") ? host.endsWith(h.slice(1)) : host === h));
 }
