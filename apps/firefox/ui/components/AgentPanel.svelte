@@ -96,10 +96,10 @@
   const onSubscription = (id: string) =>
     id === "codex" ? browserState.value?.settings.codexEngine.kind === "chatgpt" : id === "claude" ? (browserState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription" : true;
   const signedOutCodex = $derived(current === "codex" && onSubscription("codex") && account("codex")?.state === "logged-out");
-  // The sign-in finishes elsewhere (Réglages, the browser): read the account again until it does, and at each session state.
+  // The sign-in finishes elsewhere (/login in the terminal, Réglages): read the account again until it does.
   $effect(() => {
     void appState;
-    if (!visible || !signedOutCodex) return;
+    if (!visible || !current || !onSubscription(current) || account(current)?.state !== "logged-out") return;
     void refreshAccounts();
     const timer = setInterval(() => void refreshAccounts(), 3000);
     return () => clearInterval(timer);

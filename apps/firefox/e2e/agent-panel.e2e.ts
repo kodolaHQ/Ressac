@@ -228,6 +228,9 @@ it("the built-in profiles: Claude Code and Codex in the menu, signed-out ones ma
     "Claude Code (non connecté)",
     "Codex (non connecté)",
   ]);
+  // /login in the terminal while the panel stays open: the mark goes on its own.
+  writeFileSync(join(w!.dataDir, "workspace", "fake-claude-auth.json"), JSON.stringify({ loggedIn: true, email: "ami@example.com" }));
+  await waitUi(m, "return doc.querySelector('[data-testid=\"agent-profile\"]')?.options[0]?.textContent.trim() === 'Claude Code'", [], 15_000, "agent");
 });
 
 it("Claude on Ollama is not marked signed out in the menu: its subscription is not needed", async () => {
