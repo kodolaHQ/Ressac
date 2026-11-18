@@ -211,13 +211,8 @@ export function createApi(win: WindowController): ApiFirefox {
     // The home page: widgets, their data and state, and the agent's theme, all kept by the kernel host.
     home: {
       read: async () => {
-        let r: HomeRead;
-        try {
-          r = structuredClone((await host.request<HomeRead>("home.read")) ?? { widgets: [], theme: null });
-        } catch {
-          // The host did not answer: an empty list is not evidence that the widgets are gone.
-          return { widgets: [], theme: null };
-        }
+        // The host not answering rejects: an empty list is not evidence that the widgets are gone, the callers keep theirs.
+        const r = structuredClone((await host.request<HomeRead>("home.read")) ?? { widgets: [], theme: null });
         await serveDisplays(r.widgets, win.store.dataDir, prepares);
         return r;
       },
