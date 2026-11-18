@@ -1,6 +1,16 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.15",
+    date: "novembre 2026",
+    items: [
+      "Nouveau réglage « Économiser la mémoire » (Réglages › Général), activé d'office sur les Mac de 8 Go : jusqu'à 2 Go de moins au lancement. Les essentiels se chargent au premier clic et peuvent être déchargés quand la mémoire manque ; les widgets et l'index de recherche attendent qu'elle redevienne calme.",
+      "Les essentiels de messagerie et d'agenda autorisés à notifier restent chargés (dans une seule fenêtre) ; « Garder chargé (notifications) » dans leur menu permet de choisir pour chacun.",
+      "Quand la mémoire manque, Ressac décharge les onglets en arrière-plan inutilisés (après 3 minutes en économie de mémoire, aussitôt si la mémoire devient critique), jamais un appel, un son ou l'onglet affiché ; un clic les recharge.",
+      "Réglages rangés : des onglets en haut (Général, Agent, IA locale, Atelier, Raccourcis, Confidentialité, Données, À propos), et une recherche dans la liste des permissions des sites.",
+    ],
+  },
+  {
     version: "0.1.14",
     date: "novembre 2026",
     items: [
