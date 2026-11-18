@@ -1,9 +1,10 @@
 # The Ressac machine (Lima). Rendered by apps/firefox/host/machine.ts, which fills {{IMAGE}} (the decompressed
-# ressac-vm-*.raw), {{RESSAC_ROOT}} (~/Ressac), {{ENGINE}} (the app's docker/engine folder) and {{CPUS}}.
+# ressac-vm-*.raw), {{RESSAC_ROOT}} (~/Ressac), {{ENGINE}} (the app's docker/engine folder), {{CPUS}}
+# and {{MEMORY}} (1.5GiB on a Mac of 8 GiB or less, 3GiB otherwise).
 # {{.Dir}} is left to Lima. Everything is baked into the image: no provisioning, no download at start.
 vmType: vz
 cpus: {{CPUS}}
-memory: 3GiB
+memory: {{MEMORY}}
 images:
 - location: "{{IMAGE}}"
   arch: aarch64

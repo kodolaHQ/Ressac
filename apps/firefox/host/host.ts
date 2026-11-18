@@ -37,7 +37,7 @@ const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./de
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createWriterChoice } = await import("./writer.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
-const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, vmImage } = await import("./machine.ts");
+const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, smallMac, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
@@ -176,6 +176,8 @@ const machine: ReturnType<typeof createMachine> = testMachine
       busy: () => workshop.busy(machine),
       idleMs: () => machineIdleMinutes * 60_000,
       image: vmImage(),
+      // RESSAC_VM_MEMORY_GIB: a forced VM size (dev measures of the small Mac's machine).
+      ...(Number(process.env.RESSAC_VM_MEMORY_GIB) ? { memoryGiB: Number(process.env.RESSAC_VM_MEMORY_GIB) } : {}),
       ...(process.env.RESSAC_TEST_NO_SYSTEM ? { supported: async () => false } : {}),
     });
 const engines = createEngines({
@@ -244,6 +246,8 @@ const ai = new LocalAi({
   embedUrl: process.env.RESSAC_EMBED_URL,
   embedSha256: process.env.RESSAC_EMBED_SHA256,
   locale: () => hostLocale(),
+  // A small Mac takes the decision model's 1.1 GB back after 2 min idle instead of 10.
+  ...(smallMac() ? { inactivityMs: 120_000 } : {}),
 });
 
 // The ⌘T bar's Demander mode: rules and the search model, outside the workflows' dispatcher queue.
@@ -549,6 +553,11 @@ const rpc = createRpc({
     "ai.enabled": (p: { on?: unknown }) => {
       aiOn = p?.on === true;
       return serialAi(applyAi).catch((e) => console.error(`[ressac] AI ${aiOn ? "on" : "off"} failed:`, e));
+    },
+    // macOS runs short of memory (Firefox's memory-pressure): the local models unload, the machine stops unless in use.
+    "memory.pressure": () => {
+      void ai.stopServers().catch(() => {});
+      void machine.relieve().catch((e) => console.error("[ressac] the machine did not stop:", e));
     },
     // Only new windows take the new default: open agents stay.
     changeProfile: (p: { agentProfile: string }) => {

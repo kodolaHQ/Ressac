@@ -386,6 +386,61 @@ describe("the workshop machine", () => {
     await vi.waitFor(() => expect(stops(w)).toBe(1));
   });
 
+  it("the VM's memory follows the Mac: 1.5 GiB at 8 GiB or less, 3 GiB above; the workshop container keeps 0.5 GiB for the guest", async () => {
+    const { smallMac } = await import("../host/machine");
+    expect(smallMac(8 * 2 ** 30)).toBe(true);
+    expect(smallMac(16 * 2 ** 30)).toBe(false);
+    for (const [total, vm, container] of [[8 * 2 ** 30, "1.5GiB", 2 ** 30], [16 * 2 ** 30, "3GiB", 2.5 * 2 ** 30]] as const) {
+      const w = world({ instance: { status: "Stopped" } });
+      const m = machine(w, { totalMemory: total });
+      await m.wake("user");
+      expect(readFileSync(join(w.dir, "lima.yaml"), "utf8")).toContain(`\nmemory: ${vm}\n`);
+      expect(m.memory()).toBe(container);
+    }
+    // A forced size (dev measures) wins over the Mac's.
+    const w = world({ instance: { status: "Stopped" } });
+    await machine(w, { totalMemory: 64 * 2 ** 30, memoryGiB: 1.5 }).wake("user");
+    expect(readFileSync(join(w.dir, "lima.yaml"), "utf8")).toContain("\nmemory: 1.5GiB\n");
+  });
+
+  it("an automatic install (AI on) does not keep the new machine running: it stops as soon as nothing is busy", async () => {
+    const w = world();
+    const { image } = localImage(w.root);
+    const m = machine(w, { image, idleMs: 60_000 });
+    await m.install({ auto: true });
+    await vi.waitFor(() => expect(stops(w)).toBe(1));
+    // The user's « Installer » keeps the idle rule.
+    const u = world();
+    const mu = machine(u, { image: localImage(u.root).image, idleMs: 60_000 });
+    await mu.install();
+    await new Promise((r) => setTimeout(r, 40));
+    expect(stops(u)).toBe(0);
+  });
+
+  it("memory pressure stops a running machine nothing uses, never a busy one nor one just woken", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    let busy = true;
+    const m = machine(w, { busy: async () => busy, idleMs: 60_000, pollMs: 60_000 });
+    await m.wake("user");
+    await m.relieve();
+    expect(stops(w)).toBe(0); // just woken: its session may not have started yet
+    const idle = world({ instance: { status: "Stopped" } });
+    await machine(idle, { idleMs: 60_000, pollMs: 60_000 }).relieve(); // never woken: nothing to stop, nothing started
+    expect(limactl(idle).filter((l) => l.startsWith("st"))).toEqual([]);
+    // After a poll saw the wake: a busy machine stays, an unused one stops.
+    const w2 = world({ instance: { status: "Stopped" } });
+    let polls = 0;
+    const m2 = machine(w2, { busy: async () => (polls++, busy), idleMs: 60_000, pollMs: 5 });
+    await m2.wake("user");
+    await vi.waitFor(() => expect(polls).toBeGreaterThan(0));
+    await m2.relieve();
+    expect(stops(w2)).toBe(0);
+    busy = false;
+    await m2.relieve();
+    expect(stops(w2)).toBe(1);
+    expect(m2.status().kind).toBe("stopped");
+  });
+
   it("a failed removal leaves the machine running under the idle rule", async () => {
     const w = world({ instance: { status: "Stopped" }, volumeExistsCode: 125 });
     const m = machine(w, { idleMs: 10 });

@@ -66,3 +66,8 @@ pref("network.dns.disablePrefetch", true);
 // So would a <link rel=preconnect> or a speculative connection (DNS and TCP, no HTTP request to cancel).
 pref("network.preconnect", false);
 pref("network.http.speculative-parallel-limit", 0);
+
+// macOS memory pressure (from « warn »): Firefox unloads background tabs and sends « memory-pressure », on which Ressac
+// unloads its local models and stops the agent's machine when unused. Release builds respond to nothing by default.
+pref("browser.lowMemoryResponseMask", 3);
+pref("browser.lowMemoryResponseOnWarn", true);

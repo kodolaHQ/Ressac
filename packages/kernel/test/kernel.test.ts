@@ -72,6 +72,19 @@ test("a stopped machine: openAgentSession throws a WorkshopError that says so, n
   expect(error.message).toBe("La machine de l'atelier n'est pas démarrée : réessayez, ou voyez pourquoi dans Réglages › Atelier.");
 });
 
+test("a stopped machine is not booted at launch: the first session wakes it", async () => {
+  const root = await tempFolder();
+  const wakes: string[] = [];
+  const machine = { kind: "machine" as const, binary: () => "/no/podman", args: () => [], hostAddress: () => "192.168.5.2", up: async () => false, wake: async (r: string) => void wakes.push(r) };
+  const workshop = new Workshop({ paths: spacePaths(root), engine: () => machine });
+  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root, workshop });
+  await new Promise((r) => setTimeout(r, 50));
+  const user = () => wakes.filter((r) => r === "user");
+  expect(user()).toEqual([]);
+  await kernel.openAgentSession({ cols: 80, rows: 24 }).catch(() => {});
+  expect(user()).toEqual(["user"]);
+});
+
 test("the MCP server answers with the token, then arreter closes it", async () => {
   const n = await createWithoutDocker();
   const mcp = await readMcp(n);
@@ -143,7 +156,7 @@ test("at launch, once the container is ready, the agents of a previous app are s
   // Up-to-date container: the mount probe returns the expected root and hash.
   const { dockerfileHash } = await import("../src/container/workshop.js");
   const runUpToDate: typeof run = (c, args, o) =>
-    args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}\n`, stderr: "" }) : run(c, args, o);
+    args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}|2684354560\n`, stderr: "" }) : run(c, args, o);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
   await kernel.openAgentSession({ cols: 80, rows: 24, mode: "workshop" }).then((s) => s.stop(), () => {});
@@ -377,7 +390,7 @@ async function createReady(locale: () => string = () => "fr", o: { instructionsF
       : args.includes("{{.State.Running}}")
         ? run(c, args, opts)
         : args[0] === "inspect"
-          ? { code: 0, stdout: `${root}|${dockerfileHash()}\n`, stderr: "" }
+          ? { code: 0, stdout: `${root}|${dockerfileHash()}|2684354560\n`, stderr: "" }
           : run(c, args, opts);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
   kernel = await createKernel({ locale: locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });

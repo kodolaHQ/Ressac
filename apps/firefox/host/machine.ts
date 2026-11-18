@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { cpSync, createReadStream, existsSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { appendFile, chmod, mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { cpus, homedir } from "node:os";
+import { cpus, homedir, totalmem } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,9 @@ export type { MachineStatus };
 
 const NAME = "ressac";
 export const MACHINE_HOME = join(homedir(), ".ressac-vm");
+
+/** A Mac of 8 GiB or less: the VM boots smaller and the local models unload sooner. */
+export const smallMac = (total = totalmem()) => total <= 8 * 2 ** 30;
 /** macOS's sun_path is 104 bytes with its final NUL. */
 const SOCKET_MAX = 103;
 /** Lima's vz network: the Mac seen from the guest. */
@@ -147,6 +150,10 @@ export function createMachine(o: {
   /** Seconds the quit stop leaves the sessions and apps in the machine to stop cleanly. */
   quitGraceS?: number;
   image?: { version: string; url: string; sha256: string; bytes: number };
+  /** The Mac's memory in bytes (os.totalmem() by default): it sizes the VM. */
+  totalMemory?: number;
+  /** A forced VM size in GiB (dev measures), over the Mac's. */
+  memoryGiB?: number;
 }) {
   const home = o.home ?? MACHINE_HOME;
   const run = o.run ?? createRunner(hostLocale);
@@ -154,6 +161,7 @@ export function createMachine(o: {
   const idleOption = o.idleMs ?? 5 * 60_000; // short: the VM never gives back memory it touched until it stops
   const idleMs = typeof idleOption === "function" ? idleOption : () => idleOption;
   const pollMs = o.pollMs ?? 60_000;
+  const memoryGiB = o.memoryGiB ?? (smallMac(o.totalMemory) ? 1.5 : 3);
   const dir = join(home, NAME);
   const socket = join(dir, "sock", "podman.sock");
   const { limactl, podman } = o;
@@ -255,8 +263,9 @@ export function createMachine(o: {
       RESSAC_ROOT: safe(o.ressacRoot),
       ENGINE: safe(o.engine),
       CPUS: String(Math.max(1, Math.floor(cpus().length / 2))),
+      MEMORY: `${memoryGiB}GiB`,
     };
-    return (await readFile(o.template, "utf8")).replace(/\{\{(IMAGE|RESSAC_ROOT|ENGINE|CPUS)\}\}/g, (_, k: string) => values[k]!);
+    return (await readFile(o.template, "utf8")).replace(/\{\{(IMAGE|RESSAC_ROOT|ENGINE|CPUS|MEMORY)\}\}/g, (_, k: string) => values[k]!);
   }
 
   let downloads: AbortController | undefined;
@@ -488,7 +497,8 @@ export function createMachine(o: {
     serial(async () => {
       if (r.auto && existsSync(removedMark)) throw removedError();
       if (!r.auto) await rm(removedMark, { force: true });
-      return guard(() => installInner("user"));
+      // AI on installs ahead of any use: the new machine stops once idle, as after a harvest (its first boot is owed anyway).
+      return guard(() => installInner(r.auto ? "harvest" : "user"));
     });
 
   // The status at launch; a machine left running (crash) gets the idle rule.
@@ -534,6 +544,17 @@ export function createMachine(o: {
     },
     install,
     stop: () => serial(stopInner),
+    /** The workshop container's memory cap in bytes: the VM's size less 0.5 GiB for the guest (Alpine, Podman, a harvest). */
+    memory: () => (memoryGiB - 0.5) * 2 ** 30,
+    /**
+     * macOS runs short of memory: the machine stops now, as the idle poll would, unless something uses it or a wake came
+     * since the last poll (its session or harvest may not have started yet).
+     */
+    relieve: () =>
+      serial(async () => {
+        if (!timer || wakes !== polled || (await o.busy()) || (await upgrading())) return;
+        await stopInner();
+      }),
     /** AI off: the image download in flight stops (its part is kept for the next try); a machine booting or running stops once up. */
     cancel(): Promise<void> {
       downloads?.abort();
@@ -654,6 +675,8 @@ export function fakeMachine(spec: string, log: string, delayMs = 0): ReturnType<
       if (r.auto) status = { kind: "running" };
     },
     stop: async () => {},
+    memory: () => 2.5 * 2 ** 30,
+    relieve: () => note("relieve"),
     cancel: async () => {},
     remove: async (r = {}) => {
       await note(r.force ? "remove --force" : "remove");

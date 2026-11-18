@@ -76,12 +76,11 @@ export function codexRequirements(url: string): string {
  * recreated (the fake docker of the e2e tests repeats it).
  */
 export const RUN_FLAGS_VERSION = "5";
-/** The network, memory and proxy flags of `docker run` (the part after the ports). */
+/** The network and proxy flags of `docker run` (the part after the ports and the memory cap). */
 export const RUN_FLAGS = [
   "--cap-add", "NET_ADMIN",
   // No setuid route to root for the agent: root alone (docker exec -u root) applies the network rules.
   "--security-opt", "no-new-privileges",
-  "--memory", "2.5g",
   "--pids-limit", "1024",
   "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
   ...["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"].flatMap((k) => ["-e", `${k}=http://127.0.0.1:3128`]),
@@ -90,6 +89,9 @@ export const RUN_FLAGS = [
   "-e", "DISABLE_AUTOUPDATER=1",
   "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
 ];
+
+/** The workshop container's memory cap under Docker (2.5 GiB); Ressac's machine sizes its own (ContainerEngine.memory). */
+export const WORKSHOP_MEMORY = 2.5 * 2 ** 30;
 
 /** Dockerfile folder in the package; a browser that embeds the kernel can provide another. */
 export const DEFAULT_DOCKER_FOLDER = join(KERNEL_ROOT, "docker");
@@ -237,6 +239,10 @@ export class Workshop {
     this.engine = o.engine ?? (() => docker);
   }
 
+  private memory(): number {
+    return this.engine().memory?.() ?? WORKSHOP_MEMORY;
+  }
+
   /** The engine's state when it cannot run commands now, null when it can. */
   private async down(): Promise<WorkshopState | null> {
     const e = this.engine();
@@ -303,10 +309,11 @@ export class Workshop {
 
   /** Is the existing container mounted on the right root and built from the current Dockerfile? */
   private async containerUpToDate(hash: string): Promise<boolean> {
-    const format = `{{range .Mounts}}{{if eq .Destination "${CONTAINER_PATH}"}}{{.Source}}{{end}}{{end}}|{{index .Config.Labels "${HASH_LABEL}"}}`;
+    const format = `{{range .Mounts}}{{if eq .Destination "${CONTAINER_PATH}"}}{{.Source}}{{end}}{{end}}|{{index .Config.Labels "${HASH_LABEL}"}}|{{.HostConfig.Memory}}`;
     const r = await this.launch(["inspect", "-f", format, containerName()], PROBE_DELAY_MS);
-    const [source = "", label = ""] = r.stdout.trim().split("|");
-    return r.code === 0 && normalize(source) === normalize(this.paths.root) && label === hash;
+    const [source = "", label = "", memory = ""] = r.stdout.trim().split("|");
+    // A cap that no longer fits (the machine resized) recreates only the container: the image and the volumes stay.
+    return r.code === 0 && normalize(source) === normalize(this.paths.root) && label === hash && Number(memory) === this.memory();
   }
 
   /**
@@ -506,6 +513,7 @@ export class Workshop {
       "-p", `127.0.0.1:${ports}:${ports}`,
       // AGENTS.md tells the agent to keep its hand-run servers in this range.
       "-e", `RESSAC_PORTS=${ports}`,
+      "--memory", String(this.memory()),
       // The agent reaches the web only through the allowlist proxy (see secureNetwork); the rules need NET_ADMIN.
       ...RUN_FLAGS,
       "-w", CONTAINER_PATH,

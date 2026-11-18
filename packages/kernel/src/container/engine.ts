@@ -19,6 +19,8 @@ export interface ContainerEngine {
   wake(reason: WakeReason): Promise<void>;
   /** False when `wake("harvest")` would be refused (Ressac's machine removed or failing); absent means true. */
   harvestable?(): Promise<boolean>;
+  /** The workshop container's memory cap in bytes; absent: WORKSHOP_MEMORY (Docker). */
+  memory?(): number;
 }
 
 /** Looks for the docker CLI in the PATH then at known locations (Finder does not have the shell's PATH). */

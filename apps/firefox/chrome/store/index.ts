@@ -505,6 +505,9 @@ async function start(): Promise<RessacStore> {
   // A site app's or an agent app's downloads are cancelled: an app downloads nothing (an agent app would drop files in ~/Downloads unasked).
   const downloads = await createDownloads((id) => isSiteContainer(id) || isAppContainer(id));
   refreshMirror = trackState(store, agent, windows);
+  // macOS runs short of memory (browser.lowMemoryResponseMask, ressac.js): the host unloads the models and stops an unused machine.
+  // Once as it starts: « low-memory-ongoing » repeats every 10 s while it lasts, and would kill a model the user just reloaded.
+  Services.obs.addObserver((_s: unknown, _t: string, data: string) => data !== "low-memory-ongoing" && agent.notify("memory.pressure"), "memory-pressure");
   // Registered before any UI listener: the UI reads `access` once it is updated.
   agent.on("access", (e: AccessState) => (access = e));
   agent.on("telemetryError", (e: ReportedError) => telemetry.report({ ...e, source: "host" }));

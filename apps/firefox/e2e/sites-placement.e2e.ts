@@ -102,6 +102,8 @@ describe("site app placement", () => {
     );
     expect(container).toBeGreaterThan(0);
     await expect.poll(() => m.execute<number | null>(`return ${xulTab(tab)}?.userContextId ?? null;`), { timeout: 10_000 }).toBe(container);
+    // Short of memory Firefox never unloads a site app's essential (its notifications).
+    expect(await m.execute<boolean>(`return ${xulTab(tab)}.undiscardable;`)).toBe(true);
     // Shown, the tab loads the app with its tweak.
     await click(m, '[data-testid="essential-site-vidola"]');
     await expect

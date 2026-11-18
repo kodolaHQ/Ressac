@@ -92,7 +92,7 @@ test("ensureStarted on absent: build if the image is missing then run with the r
 test("ensureStarted on arrete → docker start", async () => {
   let started = false;
   const { run: runCall, calls } = fakeRunner([
-    [/ inspect -f .*Mounts/, { code: 0, stdout: `${paths.root}|${dockerfileHash()}\n` }],
+    [/ inspect -f .*Mounts/, { code: 0, stdout: `${paths.root}|${dockerfileHash()}|2684354560\n` }],
     [/ inspect -f/, () => ({ code: 0, stdout: started ? "true\n" : "false\n" })],
     [/ start /, () => ((started = true), { code: 0 })],
   ]);
@@ -137,13 +137,13 @@ test("defaultRunner adds ~/.docker/bin to the PATH (credential helpers)", () => 
 });
 
 // Existing container created on another folder or with an old Dockerfile → recreated.
-function fakeDocker(o: { source: string; containerHash: string; imageHash: string; running?: string }) {
+function fakeDocker(o: { source: string; containerHash: string; imageHash: string; running?: string; memory?: number }) {
   let recreated = false;
   const f = fakeRunner([
     [/ info$/, { code: 0 }],
     [/ image inspect /, { code: 0, stdout: `${o.imageHash}\n` }],
     [/ inspect -f \{\{\.State\.Running\}\}/, () => ({ code: 0, stdout: recreated ? "true\n" : (o.running ?? "true\n") })],
-    [/ inspect -f .*Mounts/, () => ({ code: 0, stdout: recreated ? "" : `${o.source}|${o.containerHash}\n` })],
+    [/ inspect -f .*Mounts/, () => ({ code: 0, stdout: recreated ? "" : `${o.source}|${o.containerHash}|${o.memory ?? 2684354560}\n` })],
     [/ rm -f ressac-workshop/, () => ((recreated = true), { code: 0 })],
   ]);
   return f;
@@ -481,7 +481,7 @@ test("a failed docker run removes the half-created container, so the next start 
 });
 
 describe("restart, rebuild, exec", () => {
-  const upToDate = `${paths.root}|${dockerfileHash()}\n`;
+  const upToDate = `${paths.root}|${dockerfileHash()}|2684354560\n`;
 
   test("restart stops then starts", async () => {
     let started = false;
@@ -637,7 +637,7 @@ describe("the container from before the rename to Ressac", () => {
     const { run: off, calls: offCalls } = fakeRunner([[/ info/, { code: 1, stderr: "Cannot connect" }]]);
     expect(await new Workshop({ paths: paths, docker: "docker", run: off }).ensureStarted()).toBe("docker-absent");
     expect(offCalls.some((c) => c.args[0] === "rm")).toBe(false);
-    const { run: on, calls } = fakeRunner([[/ inspect -f \{\{\.State/, { code: 0, stdout: "true\n" }], [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}\n` }]]);
+    const { run: on, calls } = fakeRunner([[/ inspect -f \{\{\.State/, { code: 0, stdout: "true\n" }], [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}|2684354560\n` }]]);
     expect(await new Workshop({ paths: paths, docker: "docker", run: on }).ensureStarted()).toBe("demarre");
     expect(calls.some((c) => c.args[0] === "rm")).toBe(false);
   });
@@ -661,7 +661,7 @@ describe("agent network", () => {
     const args = calls.find((a) => a.args[0] === "run")!.args;
     const count = (x: string) => args.filter((a) => a === x).length;
     for (const f of ["--cap-add", "--memory", "--pids-limit", "--sysctl"]) expect(count(f)).toBe(1);
-    expect(args.join(" ")).toContain("--cap-add NET_ADMIN --security-opt no-new-privileges --memory 2.5g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1");
+    expect(args.join(" ")).toContain("--cap-add NET_ADMIN --security-opt no-new-privileges --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1");
     for (const e of [
       "HTTPS_PROXY=http://127.0.0.1:3128", "https_proxy=http://127.0.0.1:3128", "HTTP_PROXY=http://127.0.0.1:3128", "http_proxy=http://127.0.0.1:3128",
       "NO_PROXY=localhost,127.0.0.1,host.docker.internal", "no_proxy=localhost,127.0.0.1,host.docker.internal",
@@ -673,7 +673,7 @@ describe("agent network", () => {
     const { RUN_FLAGS, RUN_FLAGS_VERSION } = await import("../../src/container/workshop.js");
     // Changing a flag must bump RUN_FLAGS_VERSION (and the fake docker's copy of it).
     expect(RUN_FLAGS_VERSION).toBe("5");
-    expect(RUN_FLAGS.join(" ")).toMatchInlineSnapshot(`"--cap-add NET_ADMIN --security-opt no-new-privileges --memory 2.5g --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1 -e HTTPS_PROXY=http://127.0.0.1:3128 -e https_proxy=http://127.0.0.1:3128 -e HTTP_PROXY=http://127.0.0.1:3128 -e http_proxy=http://127.0.0.1:3128 -e NO_PROXY=localhost,127.0.0.1,host.docker.internal -e no_proxy=localhost,127.0.0.1,host.docker.internal -e NODE_USE_ENV_PROXY=1 -e DISABLE_AUTOUPDATER=1 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"`);
+    expect(RUN_FLAGS.join(" ")).toMatchInlineSnapshot(`"--cap-add NET_ADMIN --security-opt no-new-privileges --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1 -e HTTPS_PROXY=http://127.0.0.1:3128 -e https_proxy=http://127.0.0.1:3128 -e HTTP_PROXY=http://127.0.0.1:3128 -e http_proxy=http://127.0.0.1:3128 -e NO_PROXY=localhost,127.0.0.1,host.docker.internal -e no_proxy=localhost,127.0.0.1,host.docker.internal -e NODE_USE_ENV_PROXY=1 -e DISABLE_AUTOUPDATER=1 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"`);
   });
 
   test("secureNetwork applies the rules with valid domains only, then probes", async () => {
@@ -739,7 +739,7 @@ describe("agent network", () => {
     let started = false;
     const stopped = fakeRunner([
       [/ inspect -f \{\{\.State/, () => ({ code: 0, stdout: started ? "true\n" : "false\n" })],
-      [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}\n` }],
+      [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}|2684354560\n` }],
       [/ start /, () => ((started = true), { code: 0 })],
       [/curl/, { code: 7 }],
     ]);
@@ -941,10 +941,26 @@ describe("container engine", () => {
     expect(workshop.execCommand(["ls"], { interactive: false }).slice(0, 4)).toEqual(["/b/podman", "--url", "unix:///s", "exec"]);
   });
 
-  test("RUN_FLAGS caps the workshop at 2.5g", async () => {
-    const { RUN_FLAGS, RUN_FLAGS_VERSION } = await import("../../src/container/workshop.js");
-    expect(RUN_FLAGS.join(" ")).toContain("--memory 2.5g");
+  test("the workshop's memory cap: 2.5 GiB under Docker, the engine's own on Ressac's machine", async () => {
+    const { RUN_FLAGS_VERSION } = await import("../../src/container/workshop.js");
+    const runArgs = async (engine?: ContainerEngine) => {
+      const { run: runCall, calls } = fakeRunner([[/ image inspect /, { code: 0 }], [/ inspect -f/, { code: 1 }]]);
+      await new Workshop({ paths: paths, run: runCall, ...(engine ? { engine: () => engine } : { docker: "docker" }) }).ensureStarted();
+      const run = calls.find((a) => a.args.includes("run"))!.args;
+      return run[run.indexOf("--memory") + 1];
+    };
+    expect(await runArgs()).toBe(String(2.5 * 2 ** 30));
+    const machine: ContainerEngine = { kind: "machine", binary: () => "podman", args: () => [], hostAddress: () => "192.168.5.2", up: async () => true, wake: async () => {}, memory: () => 2 ** 30 };
+    expect(await runArgs(machine)).toBe(String(2 ** 30));
     expect(RUN_FLAGS_VERSION).toBe("5");
+  });
+
+  test("a container whose memory cap no longer fits the engine is recreated (the image is kept)", async () => {
+    const e = dockerfileHash();
+    const { run: runCall, calls } = fakeDocker({ source: paths.root, containerHash: e, imageHash: e, memory: 2 ** 30 });
+    await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted();
+    expect(calls.some((a) => a.args.join(" ") === "rm -f ressac-workshop")).toBe(true);
+    expect(calls.some((a) => a.args[0] === "build")).toBe(false);
   });
 
   test("parseBuildStep reads Podman steps", () => {

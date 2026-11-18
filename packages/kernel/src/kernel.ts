@@ -519,7 +519,8 @@ export async function createKernel(o: {
   // The container is prepared from launch. If it fails, the first session returns this failure rather than rebuilding
   // everything right away; the following ones (Réessayer) try again. Once successful, it is re-checked (quick probe).
   // Before any session, the agents left by a previous app are stopped.
-  const workshopReady = workshop.ensureStarted().then(async (state) => {
+  // A stopped machine is left so (its memory is the Mac's): the first session, app or harvest boots it.
+  const workshopReady = workshop.state().catch(() => null).then((s) => (s === "machine-stopped" ? s : workshop.ensureStarted())).then(async (state) => {
     if (state === "demarre") await workshop.stopOrphanSessions();
     return state;
   });

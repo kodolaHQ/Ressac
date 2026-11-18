@@ -456,7 +456,7 @@ describe("Ressac sidebar", () => {
     expect(await count(essentials)).toBe(1);
   });
 
-  it("an essential stays loaded: closed, its page loads again in the background, and Firefox may not unload it", async () => {
+  it("an essential stays loaded: closed, its page loads again in the background; short of memory Firefox may unload it (not a site app's)", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
     await dispatch(m, { type: "addEssential", id: a });
@@ -470,7 +470,7 @@ describe("Ressac sidebar", () => {
     do {
       seen = await m.execute(xul, [fresh]);
     } while (!(seen?.done && seen.url.endsWith("/a.html")) && Date.now() < deadline && (await new Promise((r) => setTimeout(r, 100)), true));
-    expect(seen).toEqual({ url: expect.stringMatching(/\/a\.html$/), done: true, selected: false, kept: true });
+    expect(seen).toEqual({ url: expect.stringMatching(/\/a\.html$/), done: true, selected: false, kept: false });
     expect((await win()).active[(await win()).activeSpace]).toBe(b);
 
     // Right click › Décharger: the page closes and the tile dims; a click loads it again.
