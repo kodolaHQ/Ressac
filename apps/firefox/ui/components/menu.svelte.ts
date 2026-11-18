@@ -4,6 +4,8 @@ export interface MenuEntry {
   dispatch: () => void;
   /** A choice among several (a radio item): ticked when it is the current one. */
   checked?: boolean;
+  /** With `checked`: an on/off item (menuitemcheckbox) rather than one of several. */
+  toggle?: boolean;
   disabled?: boolean;
 }
 

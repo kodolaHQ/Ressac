@@ -7,7 +7,7 @@ import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, waitUi } from "./ui";
+import { click, inUi, waitUi } from "./ui";
 
 // « Économiser la mémoire », on by default on a small Mac (RESSAC_TEST_SMALL_MAC=1): essentials lazy at launch and unloadable under memory pressure, Firefox's tab
 // unloading on, scheduled harvests held back while macOS reports pressure (RESSAC_TEST_PRESSURE_FILE stands for the sysctl).
@@ -174,5 +174,82 @@ describe("small Mac", () => {
     // Calm again: the next check (every minute) runs it.
     await writeFile(pressure, "1");
     await waitFor(m, "return true", () => data("auto"), 75_000);
+  });
+});
+
+describe("small Mac, essentials kept loaded for notifications", () => {
+  // A messaging host stands in for WhatsApp: chat.test (resolved locally), listed by RESSAC_TEST_KEEP_LOADED_HOSTS.
+  let dir: string;
+  let prof: string;
+  let x: LaunchedRessac | undefined;
+  let n: Marionette;
+  const launch = async () => {
+    x = await launchRessac({
+      dataDir: dir,
+      profile: prof,
+      prefs: { "network.dns.localDomains": "chat.test" },
+      env: { RESSAC_TEST_SMALL_MAC: "1", RESSAC_TEST_KEEP_LOADED_HOSTS: "chat.test", RESSAC_TEST_MACHINE: "running", RESSAC_D1_URL: "http://127.0.0.1:9", RESSAC_EMBED_URL: "http://127.0.0.1:9" },
+    });
+    n = x.marionette;
+    await n.setContext("chrome");
+    await waitReady(n);
+  };
+  const tabOf = (id: string) =>
+    n.execute<{ url: string; undiscardable: boolean } | null>(
+      `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]); return t ? { url: t.linkedBrowser.currentURI?.spec ?? "", undiscardable: !!t.undiscardable } : null;`,
+      [id],
+    );
+  const until = async (read: () => Promise<unknown>, ok: (v: any) => boolean) => {
+    const end = Date.now() + 10_000;
+    let v = await read();
+    while (!ok(v) && Date.now() < end) v = (await new Promise((r) => setTimeout(r, 100)), await read());
+    return v;
+  };
+  beforeAll(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+    prof = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+  });
+  afterAll(async () => {
+    await x?.close();
+    await rm(dir, { recursive: true, force: true });
+    await rm(prof, { recursive: true, force: true });
+  });
+
+  it("a messaging essential loads at launch and stays undiscardable while another waits; its menu flips either live", async () => {
+    await launch();
+    const windowId = (await state(n)).windows[0]!.id;
+    const add = async (url: string) => {
+      const before = new Set(Object.keys((await state(n)).tabs));
+      const after = await dispatch(n, { type: "openTab", windowId, url, activate: true });
+      const id = Object.keys(after.tabs).find((t) => !before.has(t))!;
+      await dispatch(n, { type: "addEssential", id });
+    };
+    await add(`http://chat.test:${server.port}/a.html`);
+    await add(server.url + "/b.html");
+    await dispatch(n, { type: "openTab", windowId, url: server.url + "/texte.html", activate: true });
+    await x!.close();
+
+    await launch();
+    const s = await state(n);
+    const [chatFav, otherFav] = s.essentials.map((f) => f.id);
+    const tabFor = (fav: string) => Object.values(s.tabs).find((o) => o.link?.id === fav)!.id;
+    const [chat, other] = [tabFor(chatFav!), tabFor(otherFav!)];
+    expect([s.tabs[chat]!.unloaded, s.tabs[other]!.unloaded]).toEqual([undefined, true]);
+    expect(await until(() => tabOf(chat), (v) => v?.url.endsWith("/a.html"))).toEqual({ url: expect.stringMatching(/chat\.test:\d+\/a\.html$/), undiscardable: true });
+    expect(await tabOf(other)).toBeNull();
+
+    // « Garder chargé (notifications) » on the lazy one: it loads now, kept from Firefox's unloading.
+    const toggle = async (fav: string) => {
+      await click(n, `[data-testid="favorite-${fav}"]`, { button: 2 });
+      await click(n, '[role="menuitemcheckbox"]', { text: "Garder chargé (notifications)" });
+    };
+    await toggle(otherFav!);
+    expect(await until(() => tabOf(other), (v) => v?.url.endsWith("/b.html"))).toEqual({ url: expect.stringMatching(/\/b\.html$/), undiscardable: true });
+    expect((await state(n)).essentials.find((f) => f.id === otherFav)!.keepLoaded).toBe(true);
+    // Off again (the menu shows it ticked): Firefox may unload it now. Not on chat.test: the menu knows only the real hosts.
+    expect(await (async () => (await click(n, `[data-testid="favorite-${otherFav}"]`, { button: 2 }), inUi(n, `return doc.querySelector('[role="menuitemcheckbox"]')?.getAttribute("aria-checked")`)))()).toBe("true");
+    await click(n, '[role="menuitemcheckbox"]', { text: "Garder chargé (notifications)" });
+    expect(await until(() => tabOf(other), (v) => v?.undiscardable === false)).toMatchObject({ undiscardable: false });
+    expect((await state(n)).essentials.find((f) => f.id === otherFav)!.keepLoaded).toBe(false);
   });
 });

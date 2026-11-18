@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { WindowState, Favorite } from "../../shared/model";
+  import { keepsLoaded, type WindowState, type Favorite } from "../../shared/model";
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import SiteIcon from "./SiteIcon.svelte";
@@ -73,6 +73,10 @@
           // A site app's essential: to its window (and the sidebar bar), or out of the essentials.
           ...(site && api.sites.hasHome(site) ? [{ label: t("chrome-site-home"), dispatch: () => open(favorite) }] : []),
           ...(site ? [{ label: t("chrome-ui-open-window"), dispatch: () => (api.dispatch({ type: "placeSite", id: site, placement: "bar" }), api.sites.act(site, "open")) }] : []),
+          // Saving memory: messaging essentials stay loaded for their notifications, the others load on use; the user decides.
+          ...(appState.value?.settings.saveMemory
+            ? [{ label: t("chrome-ui-keep-loaded"), checked: keepsLoaded(favorite), toggle: true, dispatch: () => api.dispatch({ type: "setKeepLoaded", favoriteId: favorite.id, keep: !keepsLoaded(favorite) }) }]
+            : []),
           ...(tabOf(favorite) && !tabOf(favorite)?.unloaded ? [{ label: t("chrome-ui-unload"), dispatch: () => api.dispatch({ type: "unloadEssential", windowId: win.id, favoriteId: favorite.id }) }] : []),
           site
             ? { label: t("chrome-ui-remove-essentials"), dispatch: () => api.dispatch({ type: "placeSite", id: site, placement: "none" }) }

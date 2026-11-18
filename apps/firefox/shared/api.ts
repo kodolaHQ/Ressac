@@ -90,6 +90,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("unpin"), spaceId: id, favoriteId: id }),
   z.object({ type: z.literal("addEssential"), id }),
   z.object({ type: z.literal("removeEssential"), favoriteId: id }),
+  z.object({ type: z.literal("setKeepLoaded"), favoriteId: id, keep: z.boolean() }),
   /** A deleted site app: out of the essentials and the bar, and every tab of its container closed. */
   z.object({ type: z.literal("forgetSite"), id: z.string().regex(/^[a-z0-9-]{1,100}$/) }),
   /** A site app in the essentials (a tab in its own container, `url` required), in the sidebar bar, or nowhere. */

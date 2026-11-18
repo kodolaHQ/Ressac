@@ -1,5 +1,5 @@
 import type { Action } from "../../shared/api";
-import { FAVICON_MAX, hasView, tabProfile, type BrowserState, type WindowId, type TabId, type Tab } from "../../shared/model";
+import { FAVICON_MAX, KEEP_LOADED_HOSTS, hasView, keepsLoaded, tabProfile, type BrowserState, type WindowId, type TabId, type Tab } from "../../shared/model";
 import type { RessacStore } from "../store";
 
 export const TAB_ID = "ressac-tab-id";
@@ -16,6 +16,16 @@ const REFUSED: Record<string, string> = {
 const errorName = (code: string | null) => (code ? (REFUSED[code] ?? code) : "Erreur");
 
 type TabFields = Extract<Action, { type: "updateTab" }>["fields"];
+/**
+ * Hosts whose essentials stay loaded while saving memory; RESSAC_TEST_KEEP_LOADED_HOSTS (tests, comma-separated) replaces
+ * them here only: the essential's menu still ticks by the real list.
+ */
+export const keepLoadedHosts: readonly string[] = Services.env.get("RESSAC_TEST_KEEP_LOADED_HOSTS")?.split(",").filter(Boolean) || KEEP_LOADED_HOSTS;
+/** An essential's tab that stays loaded and that Firefox never unloads: always, unless saving memory and not kept loaded. */
+const stays = (state: BrowserState, o: Tab) => {
+  const f = o.link?.type === "essential" ? state.essentials.find((x) => x.id === o.link!.id) : undefined;
+  return !!f && (!state.settings.saveMemory || keepsLoaded(f, keepLoadedHosts));
+};
 /** When a tab unload last asked the host to relieve memory: under pressure Firefox unloads one tab every few seconds. */
 let relievedAt = -Infinity;
 
@@ -29,8 +39,6 @@ export class TabSync {
   /** XUL tabs whose Ressac tab moved to another window: kept, page running, until that window adopts them. */
   private readonly leaving = new Map<TabId, any>();
   private parking: any;
-  /** The saveMemory setting the essentials' XUL tabs were last set for. */
-  private saving: boolean | undefined;
   private creating = false;
   /** While create() makes an app essential's XUL tab: its app, registered with the site store before the first load. */
   private siteApp: string | undefined;
@@ -252,16 +260,12 @@ export class TabSync {
       if (!o || o.unloaded || this.containerOf(state, o) !== tab.userContextId) this.remove(id, tab);
     }
     if (web && !this.tabs.has(web.id)) this.create(state, web);
-    // Essentials stay loaded: their pages load in the background, without waiting to be shown. Not while saving memory:
-    // then they load on first display, like the other tabs, and Firefox may unload them (live, both ways).
-    const save = state.settings.saveMemory;
-    if (save !== this.saving) {
-      this.saving = save;
-      for (const [id, tab] of this.tabs) if (state.tabs[id]?.link?.type === "essential") tab.undiscardable = !save;
-    }
-    if (!save)
-      for (const o of Object.values(state.tabs))
-        if (o.windowId === this.windowId && o.link?.type === "essential" && hasView(o.url) && !o.crashed && !o.error && !o.unloaded && !this.tabs.has(o.id)) this.create(state, o);
+    // Essentials stay loaded: their pages load in the background, without waiting to be shown. Not while saving memory,
+    // except those kept loaded (notifications): the others load on first display, like the other tabs, and Firefox may
+    // unload them (live, both ways).
+    for (const [id, tab] of this.tabs) if (state.tabs[id]?.link?.type === "essential") tab.undiscardable = stays(state, state.tabs[id]!);
+    for (const o of Object.values(state.tabs))
+      if (o.windowId === this.windowId && stays(state, o) && hasView(o.url) && !o.crashed && !o.error && !o.unloaded && !this.tabs.has(o.id)) this.create(state, o);
     // A crashed or failed page is replaced by the UI's message.
     const target = web && !web.crashed && !web.error ? this.tabs.get(web.id) : this.parking;
     if (this.gBrowser.selectedTab !== target) this.select(() => (this.gBrowser.selectedTab = target));
@@ -293,8 +297,8 @@ export class TabSync {
       tab.setAttribute(TAB_ID, o.id);
       // Again once made: an adopted page may live in another <browser> than the one TabOpen saw (a no-op otherwise).
       if (this.siteApp) void this.store.sites.attachTab(this.siteApp, tab.linkedBrowser);
-      // Firefox never unloads an essential to free memory, unless saving memory.
-      if (o.link?.type === "essential" && !state.settings.saveMemory) tab.undiscardable = true;
+      // Firefox never unloads an essential to free memory, unless saving memory and not kept loaded.
+      if (stays(state, o)) tab.undiscardable = true;
       this.tabs.set(o.id, tab);
     } finally {
       this.creating = false;

@@ -14,7 +14,7 @@ const FILE = "session.json";
 
 /** Icons saved before the cap are dropped at load. */
 const favicon = z.string().nullable().transform((f) => (f && f.length > FAVICON_MAX ? null : f));
-const FavoriteSchema = z.object({ id: z.string(), url: z.string(), title: z.string(), favicon: favicon, folder: z.string().optional(), site: z.string().regex(/^[a-z0-9-]{1,100}$/).optional() });
+const FavoriteSchema = z.object({ id: z.string(), url: z.string(), title: z.string(), favicon: favicon, folder: z.string().optional(), site: z.string().regex(/^[a-z0-9-]{1,100}$/).optional(), keepLoaded: z.boolean().optional().catch(undefined) });
 
 /** A list whose damaged entries are dropped, the rest kept: one bad tab or favorite never costs the whole session. */
 const kept = <T extends z.ZodTypeAny>(schema: T) => z.array(z.unknown()).transform((list) => list.flatMap((v) => { const r = schema.safeParse(v); return r.success ? [r.data as z.infer<T>] : []; }));

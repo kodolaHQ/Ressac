@@ -40,6 +40,7 @@ import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-networ
 import { gestureGuard } from "../../shared/widget-gesture";
 import { resolveLocale } from "../../shared/i18n";
 import { isSmallMac } from "../../shared/settings";
+import { keepLoadedHosts } from "../window/tabs";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
@@ -198,7 +199,7 @@ async function start(): Promise<RessacStore> {
     // A test launch skips the welcome: AI on for a fresh profile unless the test asks for it off.
     const aiEnabled = aiOff ? false : skip && !s.settings.onboarded ? true : s.settings.aiEnabled;
     return skip ? { ...s, settings: { ...s.settings, onboarded: true, aiEnabled, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s;
-  }).then((s) => withEssentials(s)).then((s) => memorySession(s, smallMac)));
+  }).then((s) => withEssentials(s)).then((s) => memorySession(s, smallMac, keepLoadedHosts)));
   // « Économiser la mémoire »: one preallocated page process instead of 3, applied live (Firefox rereads it).
   const prelaunch = () => Services.prefs.getDefaultBranch("").setIntPref("dom.ipc.processPrelaunch.fission.number", store.state.settings.saveMemory ? 1 : 3);
   prelaunch();

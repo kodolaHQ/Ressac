@@ -138,6 +138,25 @@ export interface Favorite {
   folder?: string;
   /** An essential only: the site app (id of an application) it stands for; its tab lives in the app's own container. */
   site?: string;
+  /** An essential only: the user's « Garder chargé (notifications) »; absent, keepsLoaded's default by host. */
+  keepLoaded?: boolean;
+}
+
+/**
+ * Messaging and calendar sites: their pages notify only while loaded (no Web Push, measured on WhatsApp and Gmail), so
+ * their essentials stay loaded while saving memory unless the user says otherwise. `*.` covers every subdomain.
+ */
+export const KEEP_LOADED_HOSTS = [
+  "web.whatsapp.com", "mail.google.com", "chat.google.com", "calendar.google.com", "app.slack.com", "*.slack.com",
+  "www.messenger.com", "messenger.com", "teams.microsoft.com", "teams.live.com", "discord.com", "web.telegram.org",
+  "outlook.live.com", "outlook.office.com", "outlook.office365.com",
+];
+
+/** The essential stays loaded while saving memory: the user's choice, else whether its host is in `hosts`. */
+export function keepsLoaded(f: Pick<Favorite, "url" | "keepLoaded">, hosts: readonly string[] = KEEP_LOADED_HOSTS): boolean {
+  if (f.keepLoaded !== undefined) return f.keepLoaded;
+  const host = URL.parse(f.url)?.hostname ?? "";
+  return hosts.some((h) => (h.startsWith("*.") ? host.endsWith(h.slice(1)) : host === h));
 }
 
 /** A folder of pinned tabs in a space's sidebar (one level, Arc/Zen model). */

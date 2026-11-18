@@ -150,6 +150,7 @@ chrome-ui-compact-leave = Leave compact mode
 chrome-ui-address = Search or enter an address
 chrome-ui-essentials = Essentials
 chrome-ui-unload = Unload
+chrome-ui-keep-loaded = Keep loaded (notifications)
 chrome-ui-remove = Remove
 chrome-ui-remove-essentials = Remove from essentials
 chrome-ui-open-window = Open in a window

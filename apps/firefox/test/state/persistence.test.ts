@@ -663,3 +663,11 @@ test("a session without siteBar loads with []; an essential with a bad site is d
   expect(e.essentials.map((x) => x.id)).toEqual(["a"]);
   expect(e.essentials[0]!.site).toBe("ok-1");
 });
+
+test("an essential's « Garder chargé » is kept; a bad value is dropped, the essential stays", async () => {
+  const d = folder();
+  const saved = initialState();
+  const essentials = [{ id: "a", url: "https://a.test/", title: "A", favicon: null, keepLoaded: false }, { id: "b", url: "https://b.test/", title: "B", favicon: null, keepLoaded: "oui" }];
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, essentials }));
+  expect((await loadSession(d)).essentials.map((f) => [f.id, f.keepLoaded])).toEqual([["a", false], ["b", undefined]]);
+});

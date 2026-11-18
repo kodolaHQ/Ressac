@@ -21,7 +21,7 @@
   >
     {#each menu.open.inputs as entry (entry.label)}
       <button
-        role={entry.checked === undefined ? "menuitem" : "menuitemradio"}
+        role={entry.checked === undefined ? "menuitem" : entry.toggle ? "menuitemcheckbox" : "menuitemradio"}
         aria-checked={entry.checked}
         disabled={entry.disabled}
         onclick={(e) => {
