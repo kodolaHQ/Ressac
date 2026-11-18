@@ -136,7 +136,7 @@ describe("relay", () => {
     key = null;
     const r = await call("/responses");
     expect(r.status).toBe(503);
-    expect(await r.json()).toEqual({ error: { message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agents)." } });
+    expect(await r.json()).toEqual({ error: { message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agent)." } });
     expect(seen).toHaveLength(0);
   });
 

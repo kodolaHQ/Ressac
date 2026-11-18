@@ -5,7 +5,7 @@ import { SEARCH_ENGINES } from "./search";
 import { SHORTCUT_IDS, SHORTCUTS, shortcutLabel, type ShortcutId } from "./shortcuts";
 
 /** Réglages' sections, in its order (ui/components/Settings.svelte). */
-export const SETTINGS_SECTIONS = ["agents", "ai", "workshop", "permissions", "data", "privacy", "shortcuts", "about"] as const;
+export const SETTINGS_SECTIONS = ["general", "agent", "ai", "workshop", "shortcuts", "privacy", "data", "about"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export type CommandRun = { kind: "shortcut"; id: ShortcutId } | { kind: "dispatch"; action: Action } | { kind: "settings"; section: SettingsSection };

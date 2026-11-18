@@ -219,8 +219,8 @@ describe("Command bar", () => {
     await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"command-row\"][data-type=\"command\"]')].map((r) => r.textContent).join('|').includes('Comme le Mac')");
     expect(await inUi<string>(m, "return [...doc.querySelectorAll('[data-testid=\"command-row\"]')].map((r) => r.textContent).join('|')")).not.toContain("Sombre");
     // A section of Réglages.
-    await type("vie privée");
-    await waitUi(m, "return doc.querySelector('[data-testid=\"command-row\"][data-type=\"command\"]')?.textContent.includes('Réglages › Vie privée')");
+    await type("confidentialité");
+    await waitUi(m, "return doc.querySelector('[data-testid=\"command-row\"][data-type=\"command\"]')?.textContent.includes('Réglages › Confidentialité')");
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"settings-privacy\"]')");

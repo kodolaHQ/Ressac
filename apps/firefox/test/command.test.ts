@@ -153,7 +153,7 @@ test("commands: every typed word in the name or the keywords; the option already
   expect(found("theme clai")).toEqual(["Apparence : Claire"]);
   // A word must start a word of the name: « a » alone does not pull every command in.
   expect(found("page a")).toEqual(["Ne plus ouvrir sur la page d'accueil au lancement"]);
-  expect(found("vie privée")).toEqual(["Réglages › Vie privée"]);
+  expect(found("confidentialité")).toEqual(["Réglages › Confidentialité"]);
   expect(found("compact")).toEqual(["Mode compact"]);
   expect(found("figer l'aura")).toEqual(["Figer l'aura"]);
 });

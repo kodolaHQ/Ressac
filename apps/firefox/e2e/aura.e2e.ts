@@ -156,7 +156,7 @@ describe("the window's aura", () => {
     await waitFor(m, web, (v) => v === false);
     await waitFor(m, drift, (v: string[]) => v.every((x) => x === "running"));
     // « Aura animée » off: still behind Ressac's pages too.
-    await waitUi(m, "doc.querySelector('[data-testid=\"settings-nav-privacy\"]')?.click(); return !!doc.querySelector('[data-testid=\"settings-aura-motion\"]')");
+    await waitUi(m, "doc.querySelector('[data-testid=\"settings-nav-general\"]')?.click(); return !!doc.querySelector('[data-testid=\"settings-aura-motion\"]')");
     await waitUi(m, "doc.querySelector('[data-testid=\"settings-aura-motion\"]').click(); return true");
     await waitFor(m, drift, (v: string[]) => v.every((x) => x === "paused"));
   });

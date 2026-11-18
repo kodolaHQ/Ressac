@@ -385,7 +385,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.states.some((e) => (e as { state: string }).state === "error"));
-    expect(h.states.at(-1)).toEqual({ state: "error", message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agents)." });
+    expect(h.states.at(-1)).toEqual({ state: "error", message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agent)." });
   });
 
   it("codex engine incomplete: no key → the panel says why", async () => {
@@ -394,7 +394,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     await h.rpc.request("start", { agentProfile: "codex", aiEnabled: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.states.some((e) => (e as { state: string }).state === "error"));
-    expect(h.states.at(-1)).toEqual({ state: "error", message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agents)." });
+    expect(h.states.at(-1)).toEqual({ state: "error", message: "Aucune clé enregistrée pour l'API compatible (Réglages › Agent)." });
   });
 
   it("docker absent → etat docker-absent", async () => {

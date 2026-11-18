@@ -19,4 +19,4 @@ ai-asleep-actions = Tasks the agent runs from a word, in ⌘T or on the home pag
 ai-asleep-widgets = Widgets on the home page, kept up to date by the AI.
 ai-asleep-workflows = The steps behind a widget or an action, written with the agent.
 ai-asleep-review = What the agent changed in a project, to read and comment on.
-ai-asleep-settings = The agent, local AI and container are set up here once AI is on.
+ai-asleep-settings = The agent, local AI and workshop are set up here once AI is on.

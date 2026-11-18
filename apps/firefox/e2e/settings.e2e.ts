@@ -46,8 +46,8 @@ const openPage = async () => {
   await click(m, '[data-testid="settings-button"]');
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [PAGE]);
 };
-const SECTIONS = ["agents", "ai", "workshop", "permissions", "data", "privacy", "shortcuts", "about"];
-/** Shows one section of the page (Agents is the one it opens on). */
+const SECTIONS = ["general", "agent", "ai", "workshop", "shortcuts", "privacy", "data", "about"];
+/** Shows one section of the page (Général is the one it opens on). */
 const go = async (id: string) => {
   await click(m, `[data-testid="settings-nav-${id}"]`);
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="settings-${id}"]`]);
@@ -71,6 +71,7 @@ describe("Settings page", () => {
   it("Claude Code's account: signed in, sign out, sign in opens the agent panel", async () => {
     await launch({}, { "fake-claude-auth.json": JSON.stringify({ loggedIn: true, email: "ami@example.com" }) });
     await openPage();
+    await go("agent");
     await shows("agent-claude", "Connecté (ami@example.com)");
     expect(await text("agent-claude")).not.toContain("tapez /login");
     await click(m, '[data-testid="agent-claude"] [data-testid="agent-logout"]');
@@ -84,6 +85,7 @@ describe("Settings page", () => {
   it("Domaines autorisés: valid lines are saved, a bad line is listed and not saved", async () => {
     await launch();
     await openPage();
+    await go("agent");
     await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="settings-agent-domains"]']);
     await inUi(
       m,
@@ -107,6 +109,7 @@ describe("Settings page", () => {
   it("Zod never tries eval in the privileged bundles (Firefox reports it, Sentry 0.1.6)", async () => {
     await launch();
     await openPage();
+    await go("agent");
     await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="settings-agent-domains"]']);
     const blocked = await m.execute<string[]>("return Services.console.getMessageArray().map((x) => x.message ?? x.errorMessage ?? String(x)).filter((t) => t.includes('eval()'));");
     expect(blocked).toEqual([]);
@@ -124,6 +127,7 @@ describe("Settings page", () => {
     };
     await relaunch();
     await openPage();
+    await go("agent");
     await waitUi(m, "return !!doc.querySelector(arguments[0])", ['[data-testid="settings-agent-domains"]']);
     await inUi(m, `const t = doc.querySelector(arguments[0]); t.focus(); t.value = "https://example.com/page"; t.dispatchEvent(new Event("input", { bubbles: true }));`, ['[data-testid="settings-agent-domains"]']);
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.agentDomains)();`, (v) => JSON.stringify(v) === '["example.com"]');
@@ -133,6 +137,7 @@ describe("Settings page", () => {
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.agentDomains)();`, (v) => JSON.stringify(v) === '["example.com"]');
     // The page shows it again.
     await openPage();
+    await go("agent");
     await waitUi(m, "return doc.querySelector(arguments[0])?.value === 'example.com'", ['[data-testid="settings-agent-domains"]']);
   });
 
@@ -140,6 +145,7 @@ describe("Settings page", () => {
     // The launch's own start fails (port taken): no container until the agent panel starts it again.
     await launch({ FAKE_DOCKER_NO_CONTAINER: "1", FAKE_DOCKER_RUN_FAILED: "1" });
     await openPage();
+    await go("agent");
     await shows("agent-claude", "L'atelier de l'agent n'est pas démarré");
     await click(m, '[data-testid="agent-claude"] [data-testid="agent-login"]');
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.windows[0].agentPanelOpen)();`, (v) => v === true);
@@ -152,7 +158,8 @@ describe("Settings page", () => {
     await m.execute(`return (async () => { await window.ressacWindow.store.agent.stop(); return true; })();`);
     await waitFor<number | null>(m, `return window.ressacWindow.store.agent.pid;`, (pid) => pid === null);
     await openPage();
-    await shows("settings-agents", "L'agent ne répond pas.");
+    await go("agent");
+    await shows("settings-agent", "L'agent ne répond pas.");
     await go("ai");
     await shows("ai-error", "L'agent ne répond pas");
     expect(await text("settings-ai")).not.toContain("undefined");
@@ -161,7 +168,8 @@ describe("Settings page", () => {
   it("Docker absent: the agents point to the workshop, which offers OrbStack", async () => {
     await launch({ FAKE_DOCKER_ABSENT: "1" });
     await openPage();
-    await shows("settings-agents", "voir Conteneur");
+    await go("agent");
+    await shows("settings-agent", "voir Atelier");
     await go("workshop");
     await shows("settings-workshop", "Installer OrbStack");
   });
@@ -175,9 +183,9 @@ describe("Settings page", () => {
     await go("data");
     await waitUi(m, `return !!doc.querySelector('[data-testid="data-dir"]')?.textContent.trim()`, [], 2_000);
     expect(Date.now() - start).toBeLessThan(4_000);
-    await go("agents");
-    expect(await text("settings-agents")).toContain("Vérification…");
-    await shows("settings-agents", "Non connecté", 40_000);
+    await go("agent");
+    expect(await text("settings-agent")).toContain("Vérification…");
+    await shows("settings-agent", "Non connecté", 40_000);
   });
 
   it("restart and rebuild the workshop", { timeout: 60_000 }, async () => {
@@ -374,7 +382,7 @@ describe("Settings page", () => {
   it("start on home: the switch follows the setting and changes it", async () => {
     await launch();
     await openPage();
-    await go("privacy");
+    await go("general");
     // The test launcher turns it off (tests restart on the tab they left).
     expect(await inUi(m, `return doc.querySelector('[data-testid="settings-start-home"]').checked`)).toBe(false);
     await click(m, '[data-testid="settings-start-home"]');
@@ -384,7 +392,7 @@ describe("Settings page", () => {
   it("search engine: a known one at once; « Autre… » takes an https address with %s, refused otherwise", async () => {
     await launch();
     await openPage();
-    await go("privacy");
+    await go("general");
     const engine = () => waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings)();`, () => true) as Promise<BrowserState["settings"]>;
     const pick = (value: string) => inUi(m, `const s = doc.querySelector('[data-testid="settings-engine"]'); s.value = arguments[0]; s.dispatchEvent(new Event("change", { bubbles: true }));`, [value]);
     await pick("duckduckgo");
@@ -408,7 +416,7 @@ describe("Settings page", () => {
   it("language: switching to English retitles the page without reload, and back; Firefox's menus follow", async () => {
     await launch();
     await openPage();
-    await go("privacy");
+    await go("general");
     const pick = (value: string) => inUi(m, `const s = doc.querySelector('[data-testid="settings-language"]'); s.value = arguments[0]; s.dispatchEvent(new Event("change", { bubbles: true }));`, [value]);
     const language = () => waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.language)();`, () => true);
     // Firefox's own menu bar, from Mozilla's translations packed in the build (scripts/locales.sh).
@@ -429,7 +437,7 @@ describe("Settings page", () => {
   it("default browser: the button asks, then the row says it is the default", async () => {
     await launch();
     await openPage();
-    await go("privacy");
+    await go("general");
     await click(m, '[data-testid="default-browser-set"]');
     await shows("settings-default-browser", "Par défaut");
     expect(await inUi(m, `return !doc.querySelector('[data-testid="default-browser-set"]')`)).toBe(true);
@@ -439,7 +447,7 @@ describe("Settings page", () => {
     await launch({ RESSAC_TEST_NO_SYSTEM: "", RESSAC_TEST_MACHINE: "unsupported" }); // never the real machine
     const real = await m.execute<boolean>(`return ChromeUtils.importESModule(arguments[0]).ShellService.isDefaultBrowser(false)`, [SHELL_SERVICE]);
     await openPage();
-    await go("privacy");
+    await go("general");
     await waitUi(m, `return !!doc.querySelector('[data-testid="default-browser-state"], [data-testid="default-browser-set"]')`);
     expect(await inUi(m, `return !!doc.querySelector('[data-testid="default-browser-state"]')`)).toBe(real);
   });
@@ -463,12 +471,12 @@ describe("Settings page", () => {
     await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.enabled", true)`, (v) => v === false);
   });
 
-  it("privacy: the navigation sidebar's side is saved", async () => {
+  it("general: the navigation sidebar's side is saved", async () => {
     await launch();
     await openPage();
-    await go("privacy");
+    await go("general");
     const radio = (side: string) => `[data-testid="settings-sidebar-${side}"]`;
-    await shows("settings-privacy", "Barre de navigation");
+    await shows("settings-general", "Barre de navigation");
     expect(await inUi(m, "return doc.querySelector(arguments[0]).checked", [radio("left")])).toBe(true);
     await click(m, radio("right"));
     const saved = () => {
@@ -496,7 +504,7 @@ describe("Settings page", () => {
     await launch();
     await openPage();
     const shown = () => inUi<string[]>(m, "return arguments[0].filter((id) => doc.querySelector(`[data-testid=\"settings-${id}\"]`))", [SECTIONS]);
-    expect(await shown()).toEqual(["agents"]);
+    expect(await shown()).toEqual(["general"]);
     for (const id of SECTIONS) {
       await go(id);
       expect(await shown()).toEqual([id]);

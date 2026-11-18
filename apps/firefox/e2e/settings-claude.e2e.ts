@@ -51,6 +51,7 @@ async function launch(o: { env?: Record<string, string>; prefs?: Record<string, 
   await waitReady(m);
   await click(m, '[data-testid="settings-button"]');
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [PAGE]);
+  await click(m, '[data-testid="settings-nav-agent"]');
 }
 const inCard = (id: string) => `${CARD} [data-testid="${id}"]`;
 const shows = (selector: string, wanted: string, ms = 10_000) =>

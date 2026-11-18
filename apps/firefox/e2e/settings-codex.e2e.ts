@@ -61,6 +61,7 @@ async function launch(o: { env?: Record<string, string>; output?: string; prefs?
   await waitReady(m);
   await click(m, '[data-testid="settings-button"]');
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [PAGE]);
+  await click(m, '[data-testid="settings-nav-agent"]');
 }
 const shows = (id: string, wanted: string, ms = 10_000) =>
   waitUi(m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').includes(arguments[1])", [`[data-testid="${id}"]`, wanted], ms);
@@ -125,7 +126,7 @@ describe("Codex in Settings", () => {
   it("engine persists; an invalid field says so and changes nothing", async () => {
     await launch();
     await shows("codex-engine", "Moteur de Codex");
-    await shows("codex-engine", "S'applique à la prochaine conversation avec Codex.");
+    await shows("codex-engine", "Un changement s'applique à la prochaine session ; l'agent ouvert propose de se relancer.");
     await click(m, `${CARD} [data-testid="engine-ollama"]`);
     await fill("ollama-url", server.url);
     // The model is picked from the installed ones; the default gpt-oss:20b is not among them.

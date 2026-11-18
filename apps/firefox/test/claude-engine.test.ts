@@ -25,17 +25,17 @@ describe("claudeEngineEnv", () => {
     expect(() => claudeEngineEnv(e({ kind: "ollama", ollamaUrl: "http://127.0.0.1:11434/", ollamaModel: "m" }), null)).toThrow("Réglez");
   });
   it("ollama without a model", () => {
-    expect(() => claudeEngineEnv(e({ kind: "ollama", ollamaModel: "" }), null)).toThrow("Réglez l'adresse et le modèle d'Ollama dans Réglages › Agents.");
+    expect(() => claudeEngineEnv(e({ kind: "ollama", ollamaModel: "" }), null)).toThrow("Réglez l'adresse et le modèle d'Ollama dans Réglages › Agent.");
   });
   it("api", () => {
     const api = e({ kind: "api", apiUrl: "https://x.test", apiModel: "m1" });
-    expect(() => claudeEngineEnv(api, null)).toThrow("Aucune clé enregistrée pour l'API compatible (Réglages › Agents).");
+    expect(() => claudeEngineEnv(api, null)).toThrow("Aucune clé enregistrée pour l'API compatible (Réglages › Agent).");
     expect(claudeEngineEnv(api, { url: "http://host.docker.internal:5555", token: "t" })).toEqual({
       args: [],
       env: { ANTHROPIC_BASE_URL: "http://host.docker.internal:5555", ANTHROPIC_AUTH_TOKEN: "t", ...models("m1") },
     });
   });
   it("api: a bad address names the problem", () => {
-    expect(() => claudeEngineEnv(e({ kind: "api", apiUrl: "http://example.com", apiModel: "m" }), { url: "http://h:1", token: "t" })).toThrow("Adresse invalide (https://…) (Réglages › Agents)");
+    expect(() => claudeEngineEnv(e({ kind: "api", apiUrl: "http://example.com", apiModel: "m" }), { url: "http://h:1", token: "t" })).toThrow("Adresse invalide (https://…) (Réglages › Agent)");
   });
 });

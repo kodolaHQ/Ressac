@@ -11,8 +11,9 @@
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import OllamaModelPicker from "./OllamaModelPicker.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
 
-  // An agent's engine (Settings › Agents): its subscription, Ollama or a compatible API whose key stays in the keychain.
+  // An agent's engine (Settings › Agent): its subscription, Ollama or a compatible API whose key stays in the keychain.
   let { agent }: { agent: "claude" | "codex" } = $props();
   const s = api.settings;
   type Engine = ClaudeEngine | CodexEngine;
@@ -95,52 +96,51 @@
   </label>
 {/snippet}
 
-<div class="engine" data-testid="{agent}-engine">
-  <b>{t("agent-engine-title", { name: A.name })}</b>
-  <span class="muted" data-testid="{agent}-engine-next-session">{t("agent-engine-next-session")}</span>
-  <div class="kinds" role="radiogroup" aria-label={t("agent-engine-title", { name: A.name })}>
-    {#each A.kinds as k (k.kind)}
-      <label><input type="radio" name="{agent}-engine" data-testid="engine-{k.kind}" checked={engine.kind === k.kind} onchange={() => A.choose({ ...engine, kind: k.kind } as Engine)} />{k.label}</label>
-    {/each}
-  </div>
-  {#if engine.kind === "ollama"}
-    <span class="muted" data-testid="{agent}-ollama-note">{t("agent-engine-ollama-note")}</span>
-    {@render text("ollamaUrl", t("agent-engine-ollama-url"))}
-    <div class="field">
-      <span>{t("agent-engine-model")}</span>
-      <OllamaModelPicker url={engine.ollamaUrl} value={engine.ollamaModel} onchange={(name) => change("ollamaModel", name)} />
-      {#if problems.ollamaModel}<span class="alert" role="status">{problems.ollamaModel}</span>{/if}
+<div data-testid="{agent}-engine">
+  <SettingsRow label={t("agent-engine-title", { name: A.name })} labelId="{agent}-engine-label" help={t("agent-engine-next-session")}>
+    <div class="kinds" role="radiogroup" aria-labelledby="{agent}-engine-label">
+      {#each A.kinds as k (k.kind)}
+        <label><input type="radio" name="{agent}-engine" data-testid="engine-{k.kind}" checked={engine.kind === k.kind} onchange={() => A.choose({ ...engine, kind: k.kind } as Engine)} />{k.label}</label>
+      {/each}
     </div>
-  {:else if engine.kind === "api"}
-    {@render text("apiUrl", t("agent-engine-url"), A.apiPlaceholder)}
-    {@render text("apiModel", t("agent-engine-model"))}
-    <div class="field">
-      <label for="{agent}-api-key">{t("agent-engine-key")}</label>
-      <div class="key">
-        {#if keySaved}
-          <span class="pill" data-tone="ok" data-testid="api-key-saved">{t("agent-engine-key-saved")}</span>
-          <button data-testid="api-key-delete" onclick={() => void deleteKey()}>{t("agent-engine-key-delete")}</button>
-        {/if}
-        <input id="{agent}-api-key" data-testid="api-key" type="password" autocomplete="off" spellcheck="false" bind:value={key} />
-        <button data-testid="api-key-save" disabled={!key.trim()} onclick={() => void saveKey()}>{t("agent-engine-key-save")}</button>
-      </div>
-      {#if keyError}<span class="alert" role="status">{keyError}</span>{/if}
-    </div>
-    <span class="muted">{t("agent-engine-api-note", { format: A.apiFormat, agent: A.agentName })}</span>
-  {/if}
-  <span class="muted">{t("agent-engine-next-chat", { name: A.name })}</span>
+    {#snippet below()}
+      {#if engine.kind === "ollama"}
+        <div class="fields appear">
+          <span class="help" data-testid="{agent}-ollama-note">{t("agent-engine-ollama-note")}</span>
+          {@render text("ollamaUrl", t("agent-engine-ollama-url"))}
+          <div class="field">
+            <span>{t("agent-engine-model")}</span>
+            <OllamaModelPicker url={engine.ollamaUrl} value={engine.ollamaModel} onchange={(name) => change("ollamaModel", name)} />
+            {#if problems.ollamaModel}<span class="alert" role="status">{problems.ollamaModel}</span>{/if}
+          </div>
+        </div>
+      {:else if engine.kind === "api"}
+        <div class="fields appear">
+          {@render text("apiUrl", t("agent-engine-url"), A.apiPlaceholder)}
+          {@render text("apiModel", t("agent-engine-model"))}
+          <div class="field">
+            <label for="{agent}-api-key">{t("agent-engine-key")}</label>
+            <div class="key">
+              {#if keySaved}
+                <span class="pill" data-tone="ok" data-testid="api-key-saved">{t("agent-engine-key-saved")}</span>
+                <button data-testid="api-key-delete" onclick={() => void deleteKey()}>{t("agent-engine-key-delete")}</button>
+              {/if}
+              <input id="{agent}-api-key" data-testid="api-key" type="password" autocomplete="off" spellcheck="false" bind:value={key} />
+              <button data-testid="api-key-save" disabled={!key.trim()} onclick={() => void saveKey()}>{t("agent-engine-key-save")}</button>
+            </div>
+            {#if keyError}<span class="alert" role="status">{keyError}</span>{/if}
+          </div>
+          <span class="help">{t("agent-engine-api-note", { format: A.apiFormat, agent: A.agentName })}</span>
+        </div>
+      {/if}
+    {/snippet}
+  </SettingsRow>
 </div>
 
 <style>
-  .engine { display: flex; flex-direction: column; gap: 10px; padding: 11px 14px; }
-  .engine b { font-weight: 600; }
-  .kinds { display: flex; flex-wrap: wrap; gap: 16px; }
-  .kinds label { display: inline-flex; align-items: center; gap: 6px; }
-  .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+  .fields { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+  .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
   .key { display: flex; align-items: center; gap: 8px; }
-  .key input { flex: 1; }
-  .muted { font-size: 12px; }
+  .key input { flex: 1; min-width: 0; }
   .alert { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
-  .engine :global(:is(input:not([type="radio"]), select)) { padding: 5px 9px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 12px var(--font-ui); }
-  .engine :global(:is(input:not([type="radio"]), select):focus) { border-color: var(--accent); outline: none; }
 </style>

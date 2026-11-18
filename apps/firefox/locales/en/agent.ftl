@@ -1,6 +1,6 @@
 # Settings (agents, data, permissions, shortcuts, Mozilla account), agent panel, review, design mode.
 
-## An agent's engine (Settings › Agents)
+## An agent's engine (Settings › Agent)
 
 agent-engine-title = { $name } engine
 agent-engine-next-session = A change applies to the next session; an open agent offers to restart.
@@ -20,7 +20,6 @@ agent-engine-key-saved = key saved
 agent-engine-key-delete = Delete the key
 agent-engine-key-save = Save the key
 agent-engine-api-note = { $format } The key stays in your Mac's Keychain: { $agent } never sees it.
-agent-engine-next-chat = Applies to the next conversation with { $name }.
 agent-engine-url-invalid = Invalid address
 agent-engine-url-invalid-https = Invalid address (https://…)
 agent-engine-model-invalid = Invalid model
@@ -52,14 +51,14 @@ agent-data-none = No backups.
 agent-data-export = Export
 agent-data-exported = Exported to { $path }
 agent-data-reset = Reset
-agent-data-reset-confirm = Reset Ressac? Its data (spaces, tabs, history, settings, widget and action data) is set aside in a backup, then Ressac restarts from scratch. These stay in place: the workspace folder (your projects and what the agent created), the local AI models, the Claude and Codex sign-ins (Sign out buttons, Agents section), Codex's compatible API key (macOS Keychain), the browser's cookies and passwords (the browser's advanced settings).
+agent-data-reset-confirm = Reset Ressac? Its data (spaces, tabs, history, settings, widget and action data) is set aside in a backup, then Ressac restarts from scratch. These stay in place: the workspace folder (your projects and what the agent created), the local AI models, the Claude and Codex sign-ins (Sign out buttons, Agent section), Codex's compatible API key (macOS Keychain), the browser's cookies and passwords (the browser's advanced settings).
 agent-data-reset-go = Reset and restart
 agent-data-reset-cancelled = Restart cancelled: nothing was reset.
 agent-cancel = Cancel
 agent-size-gb = { $n } GB
 agent-size-mb = { $n } MB
 
-## Settings › Permissions
+## Settings › Privacy
 
 agent-grants-revoke = Remove
 agent-grants-confirm = The data read with this account is erased.
@@ -95,7 +94,7 @@ agent-shortcuts-fixed-tab = Tab 1 to 9
 agent-shortcuts-fixed-space = Space 1 to 9
 agent-shortcuts-fixed-recent = Recent tabs
 
-## Settings › Mozilla account
+## Settings › Agent › Mozilla account
 
 agent-mozilla-title = Mozilla account (agent extensions)
 agent-mozilla-help = Firefox only installs extensions signed by Mozilla. Ressac has them signed with your Mozilla developer account (free).

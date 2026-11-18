@@ -25,6 +25,12 @@
   let section: HTMLElement;
   /** The agent's first-time note waits, unseen, while AI is off. */
   const notePending = () => aiOn() && firstTimePending("agent");
+  /** Réglages on its Agent section: the window's UI frame owns the section shown, as for the menu's « Réglages › … ». */
+  const openAgentSettings = () => {
+    const win = window.parent.ressacWindow;
+    if (win) win.shortcut({ type: "shortcut", r: "settings:agent" });
+    else api.dispatch({ type: "openSettings", windowId: api.windowId });
+  };
 
   /** The panel is on the left when the sidebar is on the right: the handle follows the panel's inner edge. */
   const sidebarRight = $derived(browserState.value?.settings.sidebarSide === "right");
@@ -239,7 +245,7 @@
   </header>
   {#if signedOutCodex}
     <p class="message">{t("agent-panel-codex-signed-out")}</p>
-    <button data-testid="agent-login-settings" onclick={() => api.dispatch({ type: "openSettings", windowId: api.windowId })}>{t("agent-panel-login")}</button>
+    <button data-testid="agent-login-settings" onclick={openAgentSettings}>{t("agent-panel-login")}</button>
   {/if}
   {#if appState.state === "active" && appState.engineChanged}
     <!-- A fade never ends in a hidden panel (no frames): off screen, the notice leaves at once. -->

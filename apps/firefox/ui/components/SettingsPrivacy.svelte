@@ -3,30 +3,34 @@
   import { profileLabel } from "../home-profiles";
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
 
   // Styles come from Settings.svelte.
+  const s = api.settings;
   let rows = $state<GrantRow[] | null>(null);
   /** A widget or action grant whose removal awaits confirmation. */
   let asking = $state<GrantRow | null>(null);
-  const load = async () => (rows = await api.settings.grants());
+  const load = async () => (rows = await s.grants());
   $effect(() => void load());
 
   async function revoke(r: GrantRow) {
     asking = null;
-    await api.settings.revoke(r.kind, r.key);
+    await s.revoke(r.kind, r.key);
     await load();
   }
 
   /** null: not asked; then whether macOS forgot its screen recording grant. */
   let repaired = $state<boolean | null>(null);
+  let telemetry = $state<{ available: boolean; enabled: boolean } | null>(null);
+  $effect(() => void s.telemetry().then((t) => (telemetry = t)));
 </script>
 
-<section data-testid="settings-permissions">
-  <h2>{t("settings-section-permissions")}</h2>
+<section data-testid="settings-privacy" aria-label={t("settings-section-privacy")}>
+  <h3 class="group-title">{t("settings-group-permissions")}</h3>
   {#if !rows}
-    <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
+    <p class="status"><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
   {:else}
-    <div class="panel">
+    <div class="group" data-testid="settings-permissions">
       {#each rows as r (`${r.kind}:${r.key}`)}
         <div data-testid="grant-row" data-kind={r.kind}>
           <div class="row">
@@ -52,27 +56,39 @@
       {/each}
     </div>
   {/if}
-  <p class="muted">{t("agent-grants-ephemeral")}</p>
-  <h2>{t("agent-screen-title")}</h2>
-  <div class="panel">
-    <div class="row" data-testid="screen-sharing-repair">
-      <div class="grow">
-        <b>{t("agent-screen-broken")}</b>
-        <span class="muted">
-          {#if repaired}
-            {t("agent-screen-repaired")}
-          {:else if repaired === false}
-            {t("agent-screen-failed")}
-          {:else}
-            {t("agent-screen-help")}
-          {/if}
-        </span>
-      </div>
+  <p class="caption">{t("agent-grants-ephemeral")}</p>
+
+  <div class="group">
+    <SettingsRow label={t("agent-screen-title")} testid="screen-sharing-repair">
       {#if repaired}
         <span class="pill" data-tone="ok">{t("agent-screen-done")}</span>
       {:else}
-        <button data-testid="screen-sharing-repair-button" onclick={async () => (repaired = await api.settings.repairScreenSharing())}>{t("agent-screen-repair")}</button>
+        <button data-testid="screen-sharing-repair-button" onclick={async () => (repaired = await s.repairScreenSharing())}>{t("agent-screen-repair")}</button>
       {/if}
-    </div>
+      {#snippet below()}
+        <span class="help">{t("agent-screen-broken")}. {#if repaired}{t("agent-screen-repaired")}{:else if repaired === false}{t("agent-screen-failed")}{:else}{t("agent-screen-help")}{/if}</span>
+      {/snippet}
+    </SettingsRow>
+    {#if telemetry}
+      <SettingsRow label={t("settings-telemetry-label")} id="telemetry-switch" help={t("agent-telemetry-notice")}>
+        <input
+          id="telemetry-switch"
+          class="switch"
+          type="checkbox"
+          role="switch"
+          data-testid="telemetry-switch"
+          aria-describedby="telemetry-switch-help"
+          disabled={!telemetry.available}
+          checked={telemetry.enabled}
+          onchange={(e) => {
+            telemetry!.enabled = e.currentTarget.checked;
+            s.setTelemetry(telemetry!.enabled);
+          }}
+        />
+        {#snippet below()}
+          {#if !telemetry?.available}<span class="help">{t("settings-telemetry-unavailable")}</span>{/if}
+        {/snippet}
+      </SettingsRow>
+    {/if}
   </div>
 </section>

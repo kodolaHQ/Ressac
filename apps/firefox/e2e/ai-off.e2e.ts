@@ -149,6 +149,7 @@ it("off: AI pages show the asleep card, action suggestions are hidden", async ()
   await dispatch(m, { type: "openReview", windowId, project: "app-tickets", name: "Tickets board" });
   await shown(tid("ai-asleep-review"));
   await click(m, tid("settings-button"));
+  await click(m, tid("settings-nav-agent"));
   await shown(tid("settings-ai-switch"));
   await shown(tid("ai-asleep-settings"));
   expect(await inUi(m, `return !!doc.querySelector('${tid("agent-claude")}')`)).toBe(false);

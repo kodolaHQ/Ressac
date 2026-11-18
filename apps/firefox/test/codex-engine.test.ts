@@ -32,7 +32,7 @@ describe("codexEngineArgs", () => {
     });
   });
   it("api: a bad address names the problem", () => {
-    expect(() => codexEngineArgs(e({ kind: "api", apiUrl: "http://example.com", apiModel: "m" }), { url: "http://h:1", token: "t" })).toThrow("Adresse invalide (https://…) (Réglages › Agents)");
+    expect(() => codexEngineArgs(e({ kind: "api", apiUrl: "http://example.com", apiModel: "m" }), { url: "http://h:1", token: "t" })).toThrow("Adresse invalide (https://…) (Réglages › Agent)");
   });
   it("quotes", () => {
     const v = codexEngineArgs(e({ kind: "ollama", ollamaUrl: "http://h/" }), { url: "http://h/a\"b", token: "t" }).args[3]!;
@@ -42,10 +42,10 @@ describe("codexEngineArgs", () => {
   });
   it("incomplete", () => {
     expect(() => codexEngineArgs(e({ kind: "api", apiUrl: "https://x.test", apiModel: "" }), { url: "http://h:1", token: "t" })).toThrow(
-      "Réglez l'adresse et le modèle de l'API compatible dans Réglages › Agents.",
+      "Réglez l'adresse et le modèle de l'API compatible dans Réglages › Agent.",
     );
-    expect(() => codexEngineArgs(e({ kind: "api", apiUrl: "https://x.test", apiModel: "m" }), null)).toThrow("Aucune clé enregistrée pour l'API compatible (Réglages › Agents).");
-    expect(() => codexEngineArgs(e({ kind: "ollama", ollamaModel: "" }), null)).toThrow("Réglez l'adresse et le modèle d'Ollama dans Réglages › Agents.");
+    expect(() => codexEngineArgs(e({ kind: "api", apiUrl: "https://x.test", apiModel: "m" }), null)).toThrow("Aucune clé enregistrée pour l'API compatible (Réglages › Agent).");
+    expect(() => codexEngineArgs(e({ kind: "ollama", ollamaModel: "" }), null)).toThrow("Réglez l'adresse et le modèle d'Ollama dans Réglages › Agent.");
   });
   it("refuses a model that looks like a flag", () => {
     expect(() => codexEngineArgs(e({ kind: "ollama", ollamaModel: "--foo" }), null)).toThrow("Réglez");

@@ -220,12 +220,12 @@ describe("settings host", () => {
   it("login on a workshop built before Codex", async () => {
     const { h, o } = setup();
     o.deviceCommand.mockReturnValueOnce([process.execPath, "-e", "console.error('exec: \"codex\": executable file not found in $PATH');process.exit(127)"]);
-    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Conteneur)." });
+    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Atelier)." });
   });
 
   it("login needs a running workshop", async () => {
     const { h, o } = setup({ state: "arrete" });
-    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Conteneur." });
+    expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Atelier." });
     expect(o.deviceCommand).not.toHaveBeenCalled();
   });
 
@@ -235,7 +235,7 @@ describe("settings host", () => {
     expect(calls.slice(0, 2)).toEqual(["ensureStarted", "secureNetwork"]);
     h.stopLogins();
     const still = setup({ state: "machine-stopped", started: "machine-stopped" });
-    expect(await still.h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Conteneur." });
+    expect(await still.h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Atelier." });
     expect(still.o.deviceCommand).not.toHaveBeenCalled();
   });
 
@@ -246,7 +246,7 @@ describe("settings host", () => {
     try {
       const answer = h["settings.login"]!({ id: "codex" });
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(await answer).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Conteneur." });
+      expect(await answer).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Atelier." });
       expect(o.deviceCommand).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();

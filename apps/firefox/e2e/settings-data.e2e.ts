@@ -9,7 +9,7 @@ import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, waitUi } from "./ui";
 
-// Plan 44 Task 6: the Settings page's Permissions and Data sections.
+// Plan 44 Task 6: the Settings page's Privacy (permissions) and Data sections.
 
 let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => (server = await startServer()));
@@ -47,7 +47,7 @@ async function launch(o: { env?: Record<string, string>; profile?: string; prefs
   await waitReady(m);
 }
 /** Opens the page on one of its sections. */
-const openPage = async (section: "permissions" | "data" = "data") => {
+const openPage = async (section: "privacy" | "data" = "data") => {
   await click(m, '[data-testid="settings-button"]');
   await click(m, `[data-testid="settings-nav-${section}"]`);
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="settings-${section}"]`]);
@@ -59,7 +59,7 @@ describe("Settings page, permissions and data", () => {
   it("permissions: Réparer le partage d'écran says to relaunch", async () => {
     await prepare();
     await launch();
-    await openPage("permissions");
+    await openPage("privacy");
     await click(m, '[data-testid="screen-sharing-repair-button"]');
     await waitUi(m, `return doc.querySelector('[data-testid="screen-sharing-repair"]')?.textContent.includes("Quittez puis rouvrez Ressac")`);
   });
@@ -70,7 +70,7 @@ describe("Settings page, permissions and data", () => {
     mkdirSync(join(dataDir, "widgets"), { recursive: true });
     writeFileSync(join(dataDir, "widgets", "grants.json"), JSON.stringify({ meteo: { domains: ["a.fr"], public: [], profile: "default" } }));
     await launch();
-    await openPage("permissions");
+    await openPage("privacy");
     await count('[data-testid="grant-row"]', 2);
     expect(await inUi(m, `return [...doc.querySelectorAll('[data-testid="grant-row"]')].map((r) => r.dataset.kind).sort()`)).toEqual(["site", "widget"]);
     await click(m, '[data-testid="grant-row"][data-kind="site"] [data-testid="grant-revoke"]');
@@ -139,7 +139,7 @@ describe("Settings page, permissions and data", () => {
     await openPage();
     await click(m, '[data-testid="data-reset"]');
     await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("données des widgets et des actions) sont mises de côté")`);
-    await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("les connexions de Claude et de Codex (boutons Se déconnecter, section Agents), la clé de l'API compatible de Codex (Trousseau macOS)")`);
+    await waitUi(m, `return doc.querySelector('[data-testid="settings-data"]').textContent.includes("les connexions de Claude et de Codex (boutons Se déconnecter, section Agent), la clé de l'API compatible de Codex (Trousseau macOS)")`);
     await click(m, '[data-testid="confirm-reset"]');
     const alive = () => {
       try {

@@ -4,6 +4,7 @@
   import { bindingFromKey, bindingLabel, bindingProblem, effectiveBindings, sameBinding, SHORTCUT_IDS, SHORTCUTS, type ShortcutId } from "../../shared/shortcuts";
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
 
   const win = window.parent.ressacWindow!;
   const FIXED = [
@@ -58,14 +59,9 @@
   };
 </script>
 
-<section data-testid="settings-shortcuts">
-  <h2>{t("settings-section-shortcuts")}</h2>
-  <div class="panel">
-    <div class="row">
-      <div class="grow">
-        <label for="vim-mode"><b>{t("agent-shortcuts-vim")}</b></label>
-        <span class="muted" id="vim-mode-help">{t("agent-shortcuts-vim-help")}</span>
-      </div>
+<section data-testid="settings-shortcuts" aria-label={t("settings-section-shortcuts")}>
+  <div class="group">
+    <SettingsRow label={t("agent-shortcuts-vim")} id="vim-mode" help={t("agent-shortcuts-vim-help")}>
       <input
         id="vim-mode"
         class="switch"
@@ -76,13 +72,13 @@
         checked={appState.value?.settings.vimMode ?? false}
         onchange={(e) => api.dispatch({ type: "setVimMode", enabled: e.currentTarget.checked })}
       />
-    </div>
+    </SettingsRow>
   </div>
   {#if appState.value?.settings.vimMode}
     <div class="vim-keys" data-testid="vim-keys" out:fade={{ duration: 150 }}>
       {#each VIM_KEYS as group, gi (group.title)}
-        <h3>{t(`agent-vim-${gi}-title`)}</h3>
-        <div class="panel">
+        <h3 class="group-title">{t(`agent-vim-${gi}-title`)}</h3>
+        <div class="group">
           {#each group.rows as row, ri (row.keys.join())}
             <div class="row">
               <span class="keys">{#each row.keys as k (k)}<kbd>{vimKey(k)}</kbd>{/each}</span>
@@ -93,7 +89,11 @@
       {/each}
     </div>
   {/if}
-  <div class="panel list">
+  <div class="group-head">
+    <h3 class="group-title">{t("settings-section-shortcuts")}</h3>
+    <button data-testid="shortcuts-reset-all" disabled={!Object.keys(overrides).length} onclick={() => api.dispatch({ type: "resetShortcuts" })}>{t("agent-shortcuts-reset-all")}</button>
+  </div>
+  <div class="group">
     {#each SHORTCUT_IDS as id (id)}
       <div class="row" data-testid="shortcut-{id}">
         <div class="grow">
@@ -118,17 +118,9 @@
       </div>
     {/each}
   </div>
-  <div class="buttons start"><button data-testid="shortcuts-reset-all" disabled={!Object.keys(overrides).length} onclick={() => api.dispatch({ type: "resetShortcuts" })}>{t("agent-shortcuts-reset-all")}</button></div>
 </section>
 
 <style>
-  .list { margin-top: 14px; }
-  .switch { appearance: none; position: relative; width: 34px; height: 20px; margin: 0; flex: none; border-radius: 10px; background: var(--bg-active); transition: background var(--tap); }
-  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--on-color); box-shadow: var(--float); transition: left var(--spring-d) var(--spring); }
-  .switch:checked { background: var(--accent); }
-  .switch:checked::after { left: 16px; }
-  kbd { font: 12px var(--font-mono); color: var(--text-muted); }
   .vim-keys { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
-  .vim-keys .keys { display: flex; gap: 8px; width: 84px; flex: none; }
-  .vim-keys kbd { color: var(--accent); }
+  .vim-keys .keys { display: flex; gap: 6px; width: 92px; flex: none; }
 </style>

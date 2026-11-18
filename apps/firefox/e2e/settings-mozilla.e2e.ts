@@ -55,6 +55,7 @@ describe("Mozilla account in Settings", () => {
     await waitReady(m);
     await click(m, '[data-testid="settings-button"]');
     await waitUi(m, "return !!doc.querySelector(arguments[0])", [PAGE]);
+    await click(m, '[data-testid="settings-nav-agent"]');
     await shows(CARD, "Compte Mozilla (extensions de l'agent)");
     await shows(CARD, "Non branché");
     await shows(CARD, "Connectez-vous ou créez un compte, acceptez l'accord développeur, puis générez des identifiants.");
@@ -63,6 +64,7 @@ describe("Mozilla account in Settings", () => {
     await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state)();`, (st) => Object.values(st.tabs).some((t) => t.url === "https://addons.mozilla.org/developers/addon/api/key/"));
     await click(m, '[data-testid="settings-button"]');
     await waitUi(m, "return !!doc.querySelector(arguments[0])", [PAGE]);
+    await click(m, '[data-testid="settings-nav-agent"]');
 
     await fill("mozilla-issuer-input", "user:12345:678");
     await fill("mozilla-secret-input", SECRET);

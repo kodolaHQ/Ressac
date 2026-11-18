@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from "../state.svelte";
   import { t } from "../i18n.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
 
   const s = api.settings;
   let saved = $state(false);
@@ -24,35 +25,33 @@
   }
 </script>
 
-<div class="panel" data-testid="mozilla-account">
-  <div class="row">
-    <div class="grow">
-      <b>{t("agent-mozilla-title")}</b>
-      <span class="muted">{t("agent-mozilla-help")}</span>
-      {#if saved}<code class="muted" data-testid="mozilla-issuer">{issuer}</code>{/if}
-    </div>
+<div data-testid="mozilla-account">
+<h3 class="group-title">{t("agent-mozilla-title")}</h3>
+<div class="group">
+  <SettingsRow label={t("settings-agent-account")} help={t("agent-mozilla-help")}>
     <span class="pill" data-tone={saved ? "ok" : "warn"} data-testid="mozilla-state">{saved ? t("agent-mozilla-on") : t("agent-mozilla-off")}</span>
+    {#if saved}<code class="muted" data-testid="mozilla-issuer">{issuer}</code>{/if}
     {#if saved}<button data-testid="mozilla-delete" onclick={() => void remove()}>{t("agent-mozilla-remove")}</button>{/if}
-  </div>
-  {#if !saved}
-    <div class="form">
-      <span class="muted">
-        <a href="https://addons.mozilla.org/developers/addon/api/key/" data-testid="mozilla-link" onclick={(e) => (e.preventDefault(), s.openUrl(e.currentTarget.href))}>{t("agent-mozilla-link")}</a>
-        {t("agent-mozilla-steps")}
-      </span>
-      <label class="field"><span>{t("agent-mozilla-issuer")}</span><input data-testid="mozilla-issuer-input" bind:value={typedIssuer} placeholder="user:12345:678" autocomplete="off" spellcheck="false" /></label>
-      <label class="field"><span>{t("agent-mozilla-secret")}</span><input data-testid="mozilla-secret-input" type="password" bind:value={secret} autocomplete="off" spellcheck="false" /></label>
-      <div><button class="primary" data-testid="mozilla-save" disabled={!typedIssuer.trim() || !secret.trim()} onclick={() => void save()}>{t("agent-mozilla-save")}</button></div>
-    </div>
-  {/if}
-  {#if error}<div class="row"><span class="alert" role="status">{error}</span></div>{/if}
+    {#snippet below()}
+      {#if !saved}
+        <div class="form appear">
+          <span class="help">
+            <a href="https://addons.mozilla.org/developers/addon/api/key/" data-testid="mozilla-link" onclick={(e) => (e.preventDefault(), s.openUrl(e.currentTarget.href))}>{t("agent-mozilla-link")}</a>
+            {t("agent-mozilla-steps")}
+          </span>
+          <label class="field"><span>{t("agent-mozilla-issuer")}</span><input data-testid="mozilla-issuer-input" bind:value={typedIssuer} placeholder="user:12345:678" autocomplete="off" spellcheck="false" /></label>
+          <label class="field"><span>{t("agent-mozilla-secret")}</span><input data-testid="mozilla-secret-input" type="password" bind:value={secret} autocomplete="off" spellcheck="false" /></label>
+          <div><button class="primary" data-testid="mozilla-save" disabled={!typedIssuer.trim() || !secret.trim()} onclick={() => void save()}>{t("agent-mozilla-save")}</button></div>
+        </div>
+      {/if}
+      {#if error}<span class="alert appear" role="status">{error}</span>{/if}
+    {/snippet}
+  </SettingsRow>
+</div>
 </div>
 
 <style>
-  .panel { margin-top: 14px; }
-  .form { display: flex; flex-direction: column; gap: 10px; padding: 11px 14px; }
-  .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; max-width: 360px; }
-  .muted { font-size: 12px; }
-  .field input { padding: 5px 9px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 12px var(--font-ui); }
-  .field input:focus { border-color: var(--accent); outline: none; }
+  .form { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+  .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); max-width: 360px; }
+  a { color: var(--accent); }
 </style>

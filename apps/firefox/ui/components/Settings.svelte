@@ -3,751 +3,109 @@
   import { SETTINGS_SECTIONS, type SettingsSection } from "../../shared/commands";
 
   // The sections' list is shared with ⌘T and the menu's « Réglages › … » (shared/commands.ts): only their icons here.
-  const ICONS: Record<SettingsSection, IconName> = { agents: "agent", ai: "cpu", workshop: "box", permissions: "key", data: "database", privacy: "lock", shortcuts: "keyboard", about: "info" };
+  const ICONS: Record<SettingsSection, IconName> = { general: "settings", agent: "agent", ai: "cpu", workshop: "box", shortcuts: "keyboard", privacy: "lock", data: "database", about: "info" };
   const SECTIONS = SETTINGS_SECTIONS.map((id) => ({ id, icon: ICONS[id] }));
-  type SectionId = SettingsSection;
-  // Module-level: the page is remounted on each tab switch and comes back to the last section seen.
-  let current = $state<SectionId>("agents");
-  /** Called before opening Réglages from elsewhere: the Extensions page lands on Agents, ⌘T's « Réglages › … » on its section. */
-  export const showSection = (id: SectionId) => (current = id);
+  export { showSection } from "./settings-section.svelte";
 </script>
 
 <script lang="ts">
-  import { fade } from "svelte/transition";
-  import type { LocalAiStateShown, SettingsApi } from "../../shared/api";
-  import { DECISION_MODEL, MACHINE_IDLE_MINUTES, SEARCH_MODEL, validAgentDomain, type MachineIdleMinutes, type DockerStatus, type MachineShown, type MachineStatus, type AgentAccount, type LoginResult, type PullProgress, type WorkshopOperation } from "../../shared/settings";
-  import { updateStatusText } from "../../core/update";
-  import { aiOn, api, appState } from "../state.svelte";
-  import AiAsleep from "./AiAsleep.svelte";
   import { t } from "../i18n.svelte";
-  import { LOCALES, languageName } from "../../shared/i18n";
-  import { SEARCH_ENGINES, customEngineError, type SearchEngine } from "../../shared/search";
-  import { APPEARANCES } from "../../shared/model";
   import Icon from "./Icon.svelte";
-  import SettingsMozilla from "./SettingsMozilla.svelte";
-  import SettingsEngine from "./SettingsEngine.svelte";
-  import SettingsData from "./SettingsData.svelte";
-  import SettingsPermissions from "./SettingsPermissions.svelte";
+  import { currentSection, showSection } from "./settings-section.svelte";
+  import SettingsGeneral from "./SettingsGeneral.svelte";
+  import SettingsAgent from "./SettingsAgent.svelte";
+  import SettingsLocalAi from "./SettingsLocalAi.svelte";
+  import SettingsWorkshop from "./SettingsWorkshop.svelte";
   import SettingsShortcuts from "./SettingsShortcuts.svelte";
+  import SettingsPrivacy from "./SettingsPrivacy.svelte";
+  import SettingsData from "./SettingsData.svelte";
+  import SettingsAbout from "./SettingsAbout.svelte";
 
-  let languageChanged = $state(false);
-  // Each section loads on its own: a slow Docker never holds the version or the data folder.
-  const s = api.settings;
-  const update = $derived(appState.value?.update ?? null);
-  type WorkshopState = NonNullable<Awaited<ReturnType<SettingsApi["workshop"]>>>;
-
-  let agents = $state<AgentAccount[] | null>(null);
-  // The textarea's draft (null until typed in); a bad line stays listed under it, never saved.
-  let domainsText = $state<string | null>(null);
-  let domainsTimer: ReturnType<typeof setTimeout> | undefined;
-  /** Saved while typing too: a click straight into the agent's terminal may never blur the field (seen 2026-11-15). */
-  const saveDomains = () => {
-    clearTimeout(domainsTimer);
-    if (domainsText !== null) api.dispatch({ type: "chooseAgentDomains", domains: domainLines(domainsText) });
-  };
-  const rawLines = (text: string) => text.split("\n").map((l) => l.trim()).filter((l) => l !== "");
-  /** A pasted address keeps its name only: `https://example.com/page` → `example.com`. */
-  const asDomain = (line: string) => line.toLowerCase().replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/[/?#:].*$/, "").replace(/\.$/, "");
-  const domainLines = (text: string) => rawLines(text).map(asDomain);
-  const ignoredDomains = $derived(domainsText === null ? [] : [...new Set(rawLines(domainsText).filter((l) => !validAgentDomain(asDomain(l))))]);
-  /** Each account's sign-in in progress: null while the host starts it, then its code or its error. */
-  let logins = $state<Record<string, LoginResult | null>>({});
-  const loadAgents = async () => {
-    agents = await s.agents();
-    // A finished sign-in forgets its code: after a logout, the row offers Se connecter again.
-    for (const a of agents) if (a.state === "logged-in") delete logins[a.id];
-    // A code still shown whose sign-in ended without signing in (expired, or stopped before an agent session): say so, offer it again.
-    else if (logins[a.id]?.kind === "device" && !a.signingIn) logins[a.id] = { kind: "error", error: t("settings-agent-device-interrupted") };
-  };
-  // AI off: Agents, IA locale and Atelier show the asleep card and ask nothing of the host.
-  $effect(() => void (aiOn() && loadAgents()));
-  // Claude signs in in the agent panel (which builds the workshop if needed), Codex by a code on OpenAI's site: re-read only while one is awaited (a Codex code shown, or Claude signed out).
-  // A check that failed during a sign-in by code keeps the code and the polling: the sign-in is still running.
-  const signIn = (a: AgentAccount) => !!a.signingIn || a.state === "logged-out" || a.state === "no-container";
-  $effect(() => {
-    if (!aiOn() || !agents?.some((a) => signIn(a) && (a.login === "panel" || logins[a.id] !== undefined))) return;
-    const t = setInterval(() => void loadAgents(), 5_000);
-    return () => clearInterval(t);
-  });
-  function agentText(a: AgentAccount): string {
-    switch (a.state) {
-      case "logged-in":
-        return a.account ? t("settings-agent-logged-in-account", { account: a.account }) : t("settings-agent-logged-in");
-      case "logged-out":
-        return t("settings-agent-logged-out");
-      case "docker-absent":
-        return t("settings-agent-docker-absent");
-      case "no-container":
-        return t("settings-agent-no-container");
-      case "error":
-        return t("settings-error", { error: a.error ?? "" });
-    }
-  }
-  function agentTone(a: AgentAccount): string {
-    return a.state === "logged-in" ? "ok" : a.state === "logged-out" ? "off" : a.state === "error" ? "error" : "warn";
-  }
-  async function logout(id: string) {
-    delete logins[id];
-    agents = await s.logout(id);
-  }
-  async function login(id: string) {
-    logins[id] = null;
-    logins[id] = await s.login(id);
-  }
-
-  let ai = $state<LocalAiStateShown | null>(null);
-  const v = $derived(ai?.verification);
-  $effect(() => {
-    if (aiOn()) void api.ai.state().then((r) => (ai = r));
-  });
-
-  // Model downloads: the host runs one at a time and reports it; polled like the workshop operation.
-  let pulling = $state<PullProgress | null>(null);
-  let pullError = $state<string | null>(null);
-  const reloadAi = () => void api.ai.state().then((r) => (ai = r));
-  let writer = $state<"claude" | "codex" | "workshop-stopped" | null | undefined>(undefined);
-  // Read when Réglages opens and after each agents refresh (a login or a logout): the host re-checks the accounts then.
-  $effect(() => {
-    if (aiOn()) void agents, void s.writer().then((r) => (writer = r.agent));
-  });
-  async function pullModel(name: string) {
-    pullError = null;
-    pulling = { name, percent: null, status: "" };
-    const timer = setInterval(() => void s.pullProgress().then((p) => p && (pulling = p)), 700);
-    const r = await s.pullModel(name);
-    clearInterval(timer);
-    pulling = null;
-    if (!r.ok) pullError = r.error;
-    reloadAi();
-  }
-  // A pull started elsewhere (the welcome, another window) shows here until it ends.
-  $effect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined;
-    let stopped = false;
-    if (!aiOn()) return;
-    void s.pullProgress().then((p) => {
-      // Cleaned up before the answer came: no poll left behind.
-      if (!p || pulling || stopped) return;
-      pulling = p;
-      timer = setInterval(() => void s.pullProgress().then((q) => {
-        if (q) return void (pulling = q);
-        clearInterval(timer);
-        pulling = null;
-        reloadAi();
-      }), 700);
-    });
-    return () => {
-      stopped = true;
-      clearInterval(timer);
-    };
-  });
-  const pullLabel = (p: PullProgress) => (p.percent === null ? t("settings-pull-progress-unknown") : t("settings-pull-progress", { percent: p.percent }));
-
-  /** undefined: loading; null: the host does not answer. */
-  let workshop = $state<WorkshopState | null | undefined>(undefined);
-  let operation = $state<WorkshopOperation>(null);
-  let asking = $state<"restart" | "rebuild" | null>(null);
-  let workshopError = $state<string | null>(null);
-  // The host runs one operation at a time: a remounted page or another window sees it and waits for its end.
-  /** Set while Docker is missing: tells an installed app that is stopped from none at all. */
-  let docker = $state<DockerStatus | null>(null);
-  let startingDocker = $state(false);
-  /** Ressac's workshop machine; null where it cannot run (the Docker texts then). */
-  let machine = $state<MachineShown | null>(null);
-  let usage = $state<{ memoryMB: number; diskMB: number } | null>(null);
-  let askingMachine = $state<"remove" | "force" | "switch" | null>(null);
-  let loads = 0;
-  const loadWorkshop = async () => {
-    // A load started before an action (a removal) may answer after the one started after it: only the latest one shows.
-    const n = ++loads;
-    const [w, op, m] = await Promise.all([s.workshop(), s.workshopOperation(), s.machine()]);
-    if (n !== loads) return;
-    const shown = m && m.kind !== "unsupported" ? m : null;
-    const u = shown?.kind === "running" || shown?.kind === "stopped" ? await s.machineUsage() : null;
-    if (n !== loads) return;
-    [machine, usage, workshop, operation] = [shown, u, w, op];
-    docker = workshop === "docker-absent" ? await s.docker() : null;
-  };
-  // Polled while its state can change on its own: a download or start, an install AI on may begin, a hand-over waiting.
-  const machineChanging = $derived(machine?.kind === "downloading" || machine?.kind === "starting" || (machine?.kind === "absent" && !machine.removed && aiOn()) || !!machine?.waiting);
-  const gb = (mb: number) => Math.round((mb / 1024) * 10) / 10;
-  const MACHINE_TEXT = { running: "settings-workshop-machine-running", stopped: "settings-workshop-machine-stopped", starting: "settings-workshop-machine-starting", absent: "settings-workshop-machine-absent", error: "settings-workshop-machine-error" };
-  const machineText = (m: MachineStatus) =>
-    m.kind === "downloading"
-      ? m.percent === null ? t("settings-workshop-machine-downloading-unknown") : t("settings-workshop-machine-downloading", { percent: m.percent })
-      : m.kind === "absent" && m.removed ? t("settings-workshop-machine-removed")
-      : t(MACHINE_TEXT[m.kind as keyof typeof MACHINE_TEXT]);
-  /** A retry or removal in flight (minutes: a download, an export): the row's buttons wait, its state is polled. */
-  let machineBusy = $state(false);
-  /** `f` is bound before the call: closing the confirmation changes what it shows. */
-  async function machineAct(f: () => Promise<{ ok: true } | { ok: false; error: string }>) {
-    askingMachine = null;
-    workshopError = null;
-    machineBusy = true;
-    const call = f();
-    void loadWorkshop();
-    const r = await call;
-    machineBusy = false;
-    await loadWorkshop();
-    // A machine in error says it in its row already.
-    if (!r.ok && machine?.kind !== "error") workshopError = r.error;
-  }
-  async function startDocker() {
-    startingDocker = true;
-    const r = await s.startDocker();
-    startingDocker = false;
-    workshopError = r.ok ? null : r.error;
-    await loadWorkshop();
-  }
-  $effect(() => void (aiOn() && loadWorkshop()));
-  $effect(() => {
-    if (!operation && !machineChanging && !machineBusy) return;
-    const t = setInterval(() => void loadWorkshop(), 2_000);
-    return () => clearInterval(t);
-  });
-  const WORKSHOP: Record<WorkshopState, string> = {
-    demarre: "settings-workshop-started",
-    arrete: "settings-workshop-stopped",
-    absent: "settings-workshop-absent",
-    "docker-absent": "settings-workshop-docker-absent",
-    "machine-stopped": "settings-workshop-stopped",
-  };
-  const WORKSHOP_TONE: Record<WorkshopState, string> = { demarre: "ok", arrete: "off", absent: "off", "docker-absent": "warn", "machine-stopped": "off" };
-  const CONFIRM = { restart: "settings-workshop-confirm-restart", rebuild: "settings-workshop-confirm-rebuild" };
-  async function operate(kind: "restart" | "rebuild") {
-    asking = null;
-    workshopError = null;
-    operation = kind;
-    const r = await s.restartWorkshop(kind === "rebuild");
-    operation = null;
-    if (!r.ok) workshopError = r.error;
-    void loadWorkshop();
-    void loadAgents();
-  }
-
-  let telemetry = $state<{ available: boolean; enabled: boolean } | null>(null);
-  $effect(() => void s.telemetry().then((t) => (telemetry = t)));
-  let isDefault = $state<boolean | null>(null);
-  /** Set by « Définir par défaut »: macOS asks in its own dialog, so the answer is awaited. */
-  let askedDefault = $state(false);
-  const loadDefault = () => s.defaultBrowser().then((d) => (isDefault = d));
-  $effect(() => void loadDefault());
-  $effect(() => {
-    if (!askedDefault || isDefault) return;
-    const t = setInterval(() => void loadDefault(), 1_000);
-    return () => clearInterval(t);
-  });
-  let version = $state<string | null>(null);
-  $effect(() => void s.version().then((t) => (version = t)));
-
-  // « Autre… » shows its field before any valid address: the engine only changes once the address is accepted.
-  let customOpen = $state(false);
-  let engineError = $state<string | null>(null);
-  const shownEngine = $derived<SearchEngine>(customOpen ? "custom" : (appState.value?.settings.engine ?? "google"));
-  function pickEngine(engine: SearchEngine) {
-    engineError = null;
-    const kept = appState.value?.settings.customEngine;
-    customOpen = engine === "custom" && (!kept || !!customEngineError(kept));
-    if (!customOpen) api.dispatch({ type: "chooseEngine", engine });
-  }
-  function saveCustomEngine(url: string) {
-    engineError = customEngineError(url);
-    if (engineError) return;
-    customOpen = false;
-    api.dispatch({ type: "chooseEngine", engine: "custom", custom: url.trim() });
-  }
-  const focusField = (node: HTMLInputElement) => {
-    if (customOpen) node.focus();
-  };
+  const PAGES = { general: SettingsGeneral, agent: SettingsAgent, ai: SettingsLocalAi, workshop: SettingsWorkshop, shortcuts: SettingsShortcuts, privacy: SettingsPrivacy, data: SettingsData, about: SettingsAbout };
+  const Page = $derived(PAGES[currentSection()]);
 </script>
-
-<!-- The pill of one of Ressac's models: « installé », or « absent » with a download button. -->
-{#snippet pullPill(name: string, installed: boolean, id: string)}
-  {#if installed}
-    <span class="pill" data-tone="ok">{t("settings-pill-installed")}</span>
-  {:else if pulling?.name === name}
-    <span class="pill" data-tone="warn" data-testid="pull-progress-{id}">{pullLabel(pulling)}</span>
-  {:else}
-    <span class="pill" data-tone="off">{t("settings-pill-absent")}</span>
-    <button data-testid="pull-{id}" disabled={!!pulling} onclick={() => void pullModel(name)}>{t("settings-pull-download")}</button>
-  {/if}
-{/snippet}
 
 <section class="settings" data-testid="settings-page" aria-label={t("settings-title")}>
   <nav aria-label={t("settings-nav-label")}>
     <h1>{t("settings-title")}</h1>
-    {#each SECTIONS as sec (sec.id)}
-      <button data-testid="settings-nav-{sec.id}" aria-current={current === sec.id ? "page" : undefined} onclick={() => (current = sec.id)}>
-        <Icon name={sec.icon} />{t(`settings-section-${sec.id}`)}
-      </button>
-    {/each}
+    <div class="tabs">
+      {#each SECTIONS as sec (sec.id)}
+        <button data-testid="settings-nav-{sec.id}" aria-current={currentSection() === sec.id ? "page" : undefined} onclick={() => showSection(sec.id)}>
+          <Icon name={sec.icon} size={18} /><span>{t(`settings-section-${sec.id}`)}</span>
+        </button>
+      {/each}
+    </div>
   </nav>
 
   <div class="content">
-    {#if current === "agents"}
-      <section data-testid="settings-agents">
-        <h2>{t("settings-section-agents")}</h2>
-        <div class="panel">
-          <div class="row">
-            <div class="grow">
-              <label for="ai-switch"><b>{t("settings-ai-switch")}</b></label>
-              <span class="muted" id="ai-switch-note">{t("settings-ai-switch-note")}</span>
-            </div>
-            <input
-              id="ai-switch"
-              class="switch"
-              type="checkbox"
-              role="switch"
-              data-testid="settings-ai-switch"
-              aria-describedby="ai-switch-note"
-              checked={aiOn()}
-              onchange={(e) => api.dispatch({ type: e.currentTarget.checked ? "enableAi" : "disableAi" })}
-            />
-          </div>
-        </div>
-        {#if !aiOn()}
-          <AiAsleep feature="settings" />
-        {:else if !agents}
-          <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
-        {:else}
-          <div class="panel">
-            {#each agents as a (a.id)}
-              <div class="row" data-testid="agent-{a.id}">
-                <div class="grow">
-                  <b>{a.name}</b>
-                  {#if signIn(a)}
-                    {@const l = logins[a.id]}
-                    {#if l?.kind === "device"}
-                      <span class="muted">{t("settings-agent-device-code")} <code data-testid="device-code">{l.code}</code></span>
-                      <span class="muted">{t("settings-agent-device-waiting")}</span>
-                    {:else if l?.kind === "error"}
-                      <span class="alert">{t("settings-error", { error: l.error })}</span>
-                    {:else if a.login === "panel"}
-                      <!-- Claude on Ollama or an API starts without its subscription: no nudge to sign in. -->
-                      {#if (appState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription"}
-                        <span class="muted">{t("settings-agent-panel-login")}</span>
-                      {/if}
-                    {:else}
-                      <span class="muted">{t("settings-agent-codex-login")}</span>
-                    {/if}
-                  {:else if a.state === "logged-in"}
-                    <span class="muted">{t("settings-agent-open-chats")}</span>
-                  {/if}
-                </div>
-                <span class="pill" data-tone={agentTone(a)}>{agentText(a)}</span>
-                {#if signIn(a)}
-                  {@const l = logins[a.id]}
-                  {#if l?.kind === "device"}
-                    <button class="primary" data-testid="device-open" onclick={() => s.openUrl(l.url)}>{t("settings-agent-device-open")}</button>
-                  {:else}
-                    <button class:primary={a.id !== "claude" || (appState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription"} data-testid="agent-login" disabled={l === null} onclick={() => void login(a.id)}>{t("settings-agent-login")}</button>
-                  {/if}
-                {:else if a.state === "logged-in"}
-                  <button data-testid="agent-logout" onclick={() => void logout(a.id)}>{t("settings-agent-logout")}</button>
-                {/if}
-              </div>
-              {#if a.id === "claude" || a.id === "codex"}<SettingsEngine agent={a.id} />{/if}
-            {:else}
-              <div class="row"><span class="pill" data-tone="error">{t("settings-agent-silent-sentence")}</span></div>
-            {/each}
-          </div>
-        {/if}
-        {#if aiOn()}
-          <div class="panel">
-            <div class="row domains">
-              <div class="grow">
-                <label for="agent-domains"><b>{t("settings-agent-domains")}</b></label>
-                <span class="muted" id="agent-domains-help">{t("settings-agent-domains-help")}</span>
-                <textarea
-                  id="agent-domains"
-                  data-testid="settings-agent-domains"
-                  aria-describedby="agent-domains-help"
-                  rows="4"
-                  spellcheck="false"
-                  value={domainsText ?? appState.value?.settings.agentDomains.join("\n") ?? ""}
-                  oninput={(e) => {
-                    domainsText = e.currentTarget.value;
-                    clearTimeout(domainsTimer);
-                    domainsTimer = setTimeout(saveDomains, 500);
-                  }}
-                  onblur={saveDomains}
-                ></textarea>
-                {#each ignoredDomains as line (line)}
-                  <span class="pill" data-tone="warn" data-testid="settings-agent-domains-ignored" out:fade={{ duration: 150 }}>{t("settings-agent-domains-ignored", { line })}</span>
-                {/each}
-              </div>
-            </div>
-          </div>
-        {/if}
-        {#if aiOn()}<SettingsMozilla />{/if}
-      </section>
-    {:else if current === "ai"}
-      <section data-testid="settings-ai">
-        <h2>{t("settings-section-ai")}</h2>
-        <p class="muted">{t("settings-ai-intro")}</p>
-        {#if !aiOn()}
-          <AiAsleep feature="settings" />
-        {:else if !ai}
-          <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
-        {:else if !v}
-          <!-- Only the silent host gives no verification. -->
-          <p><span class="pill" data-tone="error" data-testid="ai-error">{ai.error ?? t("settings-agent-silent")}</span></p>
-        {:else}
-          <div class="panel">
-            <div class="row" data-testid="ai-decision">
-              <div class="grow"><b>{t("settings-ai-decision-model")}</b><span class="muted">{t("settings-ai-decision-detail")}</span></div>
-              {@render pullPill(DECISION_MODEL, !!v?.decision, "decision")}
-            </div>
-            <div class="row" data-testid="ai-search">
-              <div class="grow"><b>{t("settings-ai-search-model")}</b><span class="muted">{t("settings-ai-search-detail")}</span></div>
-              {@render pullPill(SEARCH_MODEL, !!v?.embed, "search")}
-            </div>
-            <div class="row" data-testid="ai-writer">
-              <div class="grow"><b>{t("settings-ai-writer")}</b><span class="muted">{writer === undefined ? "" : t(`settings-ai-writer-${writer ?? "none"}`)}</span></div>
-              {#if writer === null}<button data-testid="ai-writer-connect" onclick={() => (current = "agents")}>{t("settings-ai-writer-connect")}</button>{/if}
-            </div>
-            {#if ai.state === "error" && ai.error}
-              <div class="row"><span class="pill" data-tone="error" data-testid="ai-decision-server-error">{ai.error}</span></div>
-            {/if}
-            {#if ai.searchServerError}
-              <div class="row"><span class="pill" data-tone="error" data-testid="ai-search-server-error">{ai.searchServerError}</span></div>
-            {/if}
-            {#if ai.decisionError && !v?.decision && pulling?.name !== DECISION_MODEL}
-              <div class="row"><span class="pill" data-tone="error" data-testid="ai-decision-error">{t("settings-ai-model-failed", { reason: ai.decisionError })}</span></div>
-            {/if}
-            {#if ai.searchError && !v?.embed && pulling?.name !== SEARCH_MODEL}
-              <div class="row"><span class="pill" data-tone="error" data-testid="ai-search-error">{t("settings-ai-model-failed", { reason: ai.searchError })}</span></div>
-            {/if}
-            {#if pullError}<div class="row"><span class="pill" data-tone="error" data-testid="pull-error">{pullError}</span></div>{/if}
-          </div>
-        {/if}
-      </section>
-    {:else if current === "workshop"}
-      <section data-testid="settings-workshop">
-        <h2>{t("settings-section-workshop")}</h2>
-        {#if !aiOn()}
-          <AiAsleep feature="settings" />
-        {:else if workshop === undefined}
-          <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
-        {:else}
-          <div class="panel">
-            <div class="row">
-              <div class="grow"><b>{t("settings-workshop-name")}</b></div>
-              <span class="pill" data-tone={operation ? "warn" : workshop ? WORKSHOP_TONE[workshop] : "error"} data-testid="workshop-state">
-                {operation === "restart" ? t("settings-workshop-restarting") : operation === "rebuild" ? t("settings-workshop-rebuilding") : workshop ? t(WORKSHOP[workshop]) : t("settings-agent-silent")}
-              </span>
-              {#if workshop === "docker-absent" && docker?.kind === "stopped"}
-                <button class="primary" data-testid="docker-start" disabled={startingDocker} onclick={() => void startDocker()}>{startingDocker ? t("settings-starting") : t("settings-docker-start", { app: docker.app })}</button>
-              {:else if workshop === "docker-absent"}
-                <button class="primary" onclick={() => s.openUrl("https://orbstack.dev/download")}>{t("settings-docker-install")}</button>
-              {/if}
-              <button data-testid="workshop-restart" disabled={!!operation} onclick={() => (asking = "restart")}>{t("settings-restart")}</button>
-              <button data-testid="workshop-rebuild" disabled={!!operation} onclick={() => (asking = "rebuild")}>{t("settings-rebuild")}</button>
-            </div>
-            {#if machine}
-              <div class="row appear" data-testid="machine" out:fade={{ duration: 150 }}>
-                <div class="grow">
-                  <b data-testid="machine-state">{machineText(machine)}</b>
-                  {#if machine.kind === "error"}<span class="muted alert appear" out:fade={{ duration: 150 }}>{machine.message}</span>{/if}
-                  {#if machine.waiting}<span class="muted appear" data-testid="machine-waiting" out:fade={{ duration: 150 }}>{t("settings-workshop-machine-waiting")}</span>{/if}
-                  {#if usage}<span class="muted appear" data-testid="machine-usage" out:fade={{ duration: 150 }}>{machine.kind === "running" ? t("settings-workshop-machine-usage", { memory: gb(usage.memoryMB), disk: gb(usage.diskMB) }) : t("settings-workshop-machine-usage-disk", { disk: gb(usage.diskMB) })}</span>{/if}
-                </div>
-                {#if machine.kind === "error"}
-                  <button data-testid="machine-retry" disabled={machineBusy} onclick={() => void machineAct(s.machineInstall)}>{t("settings-workshop-machine-retry")}</button>
-                  {#if machine.forceRemovable}<button data-testid="machine-force-remove" disabled={machineBusy} onclick={() => (askingMachine = "force")}>{t("settings-workshop-machine-force-remove")}</button>{/if}
-                {:else if machine.kind === "absent" && machine.removed}
-                  <button class="appear" data-testid="machine-install" disabled={machineBusy} onclick={() => void machineAct(s.machineInstall)} out:fade={{ duration: 150 }}>{t("settings-workshop-machine-install")}</button>
-                {:else if machine.kind === "running" || machine.kind === "stopped"}
-                  {#if machine.waiting}<button class="appear" data-testid="machine-switch" disabled={!!operation || machineBusy} onclick={() => (askingMachine = "switch")} out:fade={{ duration: 150 }}>{t("settings-workshop-machine-switch")}</button>{/if}
-                  <button data-testid="machine-remove" disabled={!!operation || machineBusy} onclick={() => (askingMachine = "remove")}>{t("settings-workshop-machine-remove")}</button>
-                {/if}
-              </div>
-              <div class="row appear" out:fade={{ duration: 150 }}>
-                <div class="grow">
-                  <label for="settings-machine-idle"><b>{t("settings-workshop-machine-idle-label")}</b></label>
-                  <span class="muted" id="machine-idle-help">{t("settings-workshop-machine-idle-help")}</span>
-                </div>
-                <select id="settings-machine-idle" data-testid="machine-idle" aria-describedby="machine-idle-help" value={appState.value?.settings.machineIdleMinutes ?? 5} onchange={(e) => api.dispatch({ type: "chooseMachineIdle", minutes: Number(e.currentTarget.value) as MachineIdleMinutes })}>
-                  {#each MACHINE_IDLE_MINUTES as minutes (minutes)}<option value={minutes}>{t("settings-workshop-machine-idle-option", { minutes })}</option>{/each}
-                </select>
-              </div>
-            {/if}
-          </div>
-          {#if askingMachine === "switch" && !machineBusy}
-            <div class="confirmation" role="alertdialog" aria-label={t("settings-workshop-machine-switch")} out:fade={{ duration: 150 }}>
-              <p>{t("settings-workshop-machine-confirm-switch")}</p>
-              <div class="buttons">
-                <button onclick={() => (askingMachine = null)}>{t("settings-cancel")}</button>
-                <button class="primary" data-testid="confirm-machine-switch" onclick={() => void machineAct(s.machineSwitchNow)}>{t("settings-workshop-machine-switch")}</button>
-              </div>
-            </div>
-          {:else if askingMachine && !machineBusy}
-            {@const force = askingMachine === "force"}
-            <div class="confirmation" role="alertdialog" aria-label={t(force ? "settings-workshop-machine-force-remove" : "settings-workshop-machine-remove")} out:fade={{ duration: 150 }}>
-              <p>{t(force ? "settings-workshop-machine-confirm-force-remove" : "settings-workshop-machine-confirm-remove")}</p>
-              <div class="buttons">
-                <button onclick={() => (askingMachine = null)}>{t("settings-cancel")}</button>
-                <button class="primary" data-testid="confirm-machine" onclick={() => void machineAct(s.machineRemove.bind(null, force))}>{t(force ? "settings-workshop-machine-force-remove" : "settings-workshop-machine-remove")}</button>
-              </div>
-            </div>
-          {/if}
-          {#if workshopError}<p class="alert" role="status">{workshopError}</p>{/if}
-          {#if asking && !operation}
-            {@const kind = asking}
-            <div class="confirmation" role="alertdialog" aria-label={kind === "restart" ? t("settings-restart") : t("settings-rebuild")}>
-              <p>{t(CONFIRM[kind])}</p>
-              <div class="buttons">
-                <button onclick={() => (asking = null)}>{t("settings-cancel")}</button>
-                <button class="primary" data-testid="confirm-workshop" onclick={() => void operate(kind)}>{kind === "restart" ? t("settings-restart") : t("settings-rebuild")}</button>
-              </div>
-            </div>
-          {/if}
-        {/if}
-      </section>
-    {:else if current === "permissions"}
-      <SettingsPermissions />
-    {:else if current === "data"}
-      <SettingsData />
-    {:else if current === "shortcuts"}
-      <SettingsShortcuts />
-    {:else if current === "privacy"}
-      <section data-testid="settings-privacy">
-        <h2>{t("settings-section-privacy")}</h2>
-        {#if !telemetry}
-          <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
-        {:else}
-          <div class="panel">
-            <div class="row">
-              <div class="grow">
-                <label for="telemetry-switch"><b>{t("settings-telemetry-label")}</b></label>
-                <span class="muted" id="telemetry-notice">{t("agent-telemetry-notice")}</span>
-              </div>
-              <input
-                id="telemetry-switch"
-                class="switch"
-                type="checkbox"
-                role="switch"
-                data-testid="telemetry-switch"
-                aria-describedby="telemetry-notice"
-                disabled={!telemetry.available}
-                checked={telemetry.enabled}
-                onchange={(e) => {
-                  telemetry!.enabled = e.currentTarget.checked;
-                  s.setTelemetry(telemetry!.enabled);
-                }}
-              />
-            </div>
-          </div>
-          {#if !telemetry.available}<p class="muted">{t("settings-telemetry-unavailable")}</p>{/if}
-        {/if}
-        <h2>{t("settings-interface")}</h2>
-        <div class="panel">
-          <div class="row">
-            <label class="grow" for="settings-language"><b>{t("settings-language-label")}</b></label>
-            <select id="settings-language" data-testid="settings-language" value={appState.value?.settings.language ?? "system"} onchange={(e) => { languageChanged = true; api.dispatch({ type: "chooseLanguage", language: e.currentTarget.value }); }}>
-              <option value="system">{appState.value?.settings.language === "system" ? t("settings-language-system-named", { name: languageName(appState.value.locale) }) : t("settings-language-system")}</option>
-              {#each LOCALES as code (code)}<option value={code}>{languageName(code)}</option>{/each}
-            </select>
-          </div>
-          {#if languageChanged && appState.value}
-            <p class="muted language-note" data-testid="settings-language-note">{t("settings-language-agent-note", { language: new Intl.DisplayNames([appState.value.locale], { type: "language" }).of(appState.value.locale) ?? appState.value.locale })}</p>
-          {/if}
-          <div class="row" data-testid="settings-search">
-            <div class="grow">
-              <label for="settings-engine"><b>{t("settings-engine-label")}</b></label>
-              <span class="muted" id="engine-help">{t("settings-engine-help")}</span>
-            </div>
-            <select id="settings-engine" data-testid="settings-engine" aria-describedby="engine-help" value={shownEngine} onchange={(e) => pickEngine(e.currentTarget.value as SearchEngine)}>
-              {#each Object.entries(SEARCH_ENGINES) as [id, e] (id)}<option value={id}>{e.label}</option>{/each}
-              <option value="custom">{t("settings-engine-other")}</option>
-            </select>
-          </div>
-          {#if shownEngine === "custom"}
-            <div class="row custom-engine">
-              <div class="grow">
-                <label for="settings-engine-custom"><b>{t("settings-engine-custom-label")}</b></label>
-                <input
-                  id="settings-engine-custom"
-                  data-testid="settings-engine-custom"
-                  placeholder="https://kagi.com/search?q=%s"
-                  spellcheck="false"
-                  value={appState.value?.settings.customEngine ?? ""}
-                  use:focusField
-                  onchange={(e) => saveCustomEngine(e.currentTarget.value)}
-                  onkeydown={(e) => e.key === "Enter" && saveCustomEngine(e.currentTarget.value)}
-                />
-                {#if engineError}<span class="pill" data-tone="error" data-testid="settings-engine-error">{t(engineError)}</span>{/if}
-              </div>
-            </div>
-          {/if}
-          <div class="row">
-            <div class="grow">
-              <label for="hints-switch"><b>{t("settings-hints-label")}</b></label>
-              <span class="muted" id="hints-help">{t("settings-hints-help")}</span>
-            </div>
-            <input
-              id="hints-switch"
-              class="switch"
-              type="checkbox"
-              role="switch"
-              data-testid="settings-hints"
-              aria-describedby="hints-help"
-              checked={appState.value?.settings.hints.enabled ?? true}
-              onchange={(e) => api.dispatch({ type: "setHintsEnabled", enabled: e.currentTarget.checked })}
-            />
-          </div>
-          <div class="row">
-            <div class="grow">
-              <label for="start-home-switch"><b>{t("settings-start-home-label")}</b></label>
-              <span class="muted" id="start-home-help">{t("settings-start-home-help")}</span>
-            </div>
-            <input
-              id="start-home-switch"
-              class="switch"
-              type="checkbox"
-              role="switch"
-              data-testid="settings-start-home"
-              aria-describedby="start-home-help"
-              checked={appState.value?.settings.startOnHome ?? true}
-              onchange={(e) => api.dispatch({ type: "setStartOnHome", enabled: e.currentTarget.checked })}
-            />
-          </div>
-          <div class="row" data-testid="settings-default-browser">
-            <div class="grow">
-              <b>{t("settings-default-browser-label")}</b>
-              <span class="muted">{t("settings-default-browser-help")}</span>
-            </div>
-            {#if isDefault}
-              <span class="pill" data-tone="ok" data-testid="default-browser-state">{t("settings-default-browser-is")}</span>
-            {:else if isDefault === false}
-              <button data-testid="default-browser-set" onclick={() => (s.setDefaultBrowser(), (askedDefault = true))}>{t("settings-default-browser-set")}</button>
-            {/if}
-          </div>
-          <div class="row">
-            <b class="grow" id="sidebar-side-label">{t("settings-sidebar-label")}</b>
-            <div role="radiogroup" aria-labelledby="sidebar-side-label" class="kinds">
-              {#each [["left", "settings-sidebar-left"], ["right", "settings-sidebar-right"]] as const as [side, name]}
-                <label>
-                  <input
-                    type="radio"
-                    name="sidebar-side"
-                    data-testid="settings-sidebar-{side}"
-                    checked={(appState.value?.settings.sidebarSide ?? "left") === side}
-                    onchange={() => api.dispatch({ type: "setSidebarSide", side })}
-                  />{t(name)}
-                </label>
-              {/each}
-            </div>
-          </div>
-          <div class="row">
-            <b class="grow" id="appearance-label">{t("settings-appearance-label")}</b>
-            <div role="radiogroup" aria-labelledby="appearance-label" class="kinds">
-              {#each APPEARANCES as appearance (appearance)}
-                <label>
-                  <input
-                    type="radio"
-                    name="appearance"
-                    data-testid="settings-appearance-{appearance}"
-                    checked={(appState.value?.settings.appearance ?? "system") === appearance}
-                    onchange={() => api.dispatch({ type: "chooseAppearance", appearance })}
-                  />{t(`settings-appearance-${appearance}`)}
-                </label>
-              {/each}
-            </div>
-          </div>
-          <div class="row">
-            <div class="grow">
-              <label for="aura-motion-switch"><b>{t("settings-aura-motion-label")}</b></label>
-              <span class="muted" id="aura-motion-help">{t("settings-aura-motion-help")}</span>
-            </div>
-            <input
-              id="aura-motion-switch"
-              class="switch"
-              type="checkbox"
-              role="switch"
-              data-testid="settings-aura-motion"
-              aria-describedby="aura-motion-help"
-              checked={appState.value?.settings.auraMotion ?? true}
-              onchange={(e) => api.dispatch({ type: "setAuraMotion", enabled: e.currentTarget.checked })}
-            />
-          </div>
-        </div>
-      </section>
-    {:else}
-      <section data-testid="settings-about">
-        <h2>{t("settings-section-about")}</h2>
-        <div class="panel">
-          <div class="row about-head">
-            <b class="grow version" data-testid="app-version">{version === null ? "" : `Ressac ${version}`}</b>
-            <button data-testid="settings-release-notes" onclick={() => api.dispatch({ type: "openReleaseNotes", windowId: api.windowId })}>{t("settings-about-release-notes")}</button>
-            <button data-testid="settings-replay-welcome" onclick={() => api.dispatch({ type: "replayOnboarding" })}>{t("settings-about-replay-welcome")}</button>
-            <button data-testid="open-advanced" onclick={() => s.openAdvanced()}>{t("settings-about-advanced")}</button>
-          </div>
-          {#if update && update.phase !== "disabled"}
-            <div class="row">
-              <span class="grow" data-testid="update-status" aria-live="polite">{updateStatusText(update, appState.value?.locale ?? "fr")}</span>
-              {#if update.phase === "idle" || update.phase === "unreachable"}
-                <button data-testid="update-check" onclick={() => s.checkForUpdate()}>{t("settings-about-update-check")}</button>
-              {:else if update.phase === "ready"}
-                <button class="primary" data-testid="update-restart" onclick={() => s.restartToUpdate()}>{t("settings-about-update-restart")}</button>
-              {:else if update.phase === "failed" || update.phase === "unwritable"}
-                <button data-testid="update-download" onclick={() => s.downloadUpdate()}>{t("settings-about-update-download")}</button>
-              {/if}
-            </div>
-          {/if}
-        </div>
-        <h3>{t("settings-credits")}</h3>
-        <div class="panel" data-testid="settings-credits">
-          <p>{t("settings-credits-built-on-before")} <b>Firefox</b> {t("settings-credits-built-on-after")}</p>
-          <p class="muted">{t("settings-credits-licenses-before")} <code>Contents/Resources/ressac-host/LICENSES</code>.</p>
-        </div>
-      </section>
-    {/if}
+    <Page />
   </div>
 </section>
 
 <style>
-  .settings { display: grid; grid-template-columns: 200px 1fr; height: 100%; color: var(--text); font-size: 13px; }
-  nav { display: flex; flex-direction: column; gap: 2px; padding: 22px 10px; border-right: 1px solid var(--border); overflow-y: auto; }
-  nav h1 { margin: 0 10px 14px; font: 650 22px/1.1 var(--font-display); letter-spacing: -0.02em; color: var(--text); }
-  nav button { all: unset; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 10px; color: var(--text-muted); cursor: default; transition: transform var(--tap), background var(--tap); }
-  nav button :global(svg) { color: var(--text-muted); }
-  nav button:hover { background: var(--bg-hover); color: var(--text); }
-  nav button:active { transform: scale(0.97); }
-  nav button[aria-current="page"] { background: var(--glass-hi); box-shadow: var(--lift), inset 0 0 0 1px var(--glass-edge); color: var(--text); }
-  nav button[aria-current="page"] :global(svg) { color: var(--accent); }
-  .settings :global(:is(button, input, select):focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .content { min-width: 0; overflow-y: auto; padding: 26px 32px; }
-  .content > :global(section) { max-width: 720px; }
-  .settings :global(h2) { margin: 0 0 18px; font: 650 26px/1.1 var(--font-display); letter-spacing: -0.02em; }
-  .settings :global(h3) { margin: 22px 4px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-  .settings :global(p) { margin: 10px 4px; overflow-wrap: anywhere; }
-  .settings :global(code) { font: 12px var(--font-mono); overflow-wrap: anywhere; }
-  /* macOS draws native radios in the system blue: ours, in the accent. */
-  .settings :global(input[type="radio"]) { appearance: none; width: 15px; height: 15px; margin: 0; flex: none; border-radius: 50%; border: 1px solid var(--border); background: var(--glass-hi); transition: border-width var(--tap); }
-  .settings :global(input[type="radio"]:checked) { border: 4.5px solid var(--accent); background: var(--accent-ink); }
-  .settings :global(.muted) { color: var(--text-muted); }
-  .settings :global(.alert) { color: var(--in-error); }
-  .settings :global(.panel) { border: 1px solid var(--border); border-radius: 16px; background: var(--sheet); box-shadow: var(--lift); overflow: hidden; }
-  .settings :global(.panel > * + *) { border-top: 1px solid var(--border); }
-  .settings :global(.row) { display: flex; align-items: center; gap: 10px; padding: 11px 14px; }
-  .kinds { display: flex; gap: 16px; }
-  .kinds label { display: inline-flex; align-items: center; gap: 6px; }
+  /* The page: icon tabs on top, then one centred column of groups. Each setting is a two-column row (SettingsRow). */
+  .settings { display: flex; flex-direction: column; height: 100%; color: var(--text); font-size: 13px; }
+  nav { flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 16px 12px; border-bottom: 1px solid var(--border); }
+  h1 { margin: 0; font: 600 13px/1.2 var(--font-ui); color: var(--text-muted); }
+  .tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; }
+  .tabs button { all: unset; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 56px; padding: 8px 6px 7px; border-radius: 10px; color: var(--text-muted); font-size: 11.5px; font-weight: 500; cursor: default; transition: transform var(--tap), background var(--tap), color var(--tap); }
+  .tabs button :global(svg) { color: var(--text-muted); transition: color var(--tap); }
+  .tabs button:hover { background: var(--bg-hover); color: var(--text); }
+  .tabs button:active { transform: scale(0.97); }
+  .tabs button[aria-current="page"] { background: var(--glass-hi); box-shadow: var(--lift), inset 0 0 0 1px var(--glass-edge); color: var(--text); }
+  .tabs button[aria-current="page"] :global(svg) { color: var(--accent); }
+  .settings :global(:is(button, input, select, textarea):focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .content { flex: 1; min-height: 0; overflow-y: auto; padding: 28px 16px 48px; container-type: inline-size; }
+  .content > :global(section) { max-width: 720px; margin: 0 auto; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+
+  /* Groups: soft, lightly filled, no heavy border; rows inside split by a hairline. */
+  .settings :global(.group) { margin: 0 0 22px; border-radius: 16px; background: color-mix(in srgb, var(--sheet) 58%, transparent); box-shadow: inset 0 0 0 1px var(--glass-edge), var(--lift); overflow: hidden; }
+  .settings :global(.group.credits > * + *) { border-top: 0; }
+  .settings :global(.group > * + *) { border-top: 1px solid var(--border); }
+  .settings :global(.group-title) { margin: 0 0 8px; padding: 0 4px; font: 600 12px/1.3 var(--font-ui); color: var(--text-muted); }
+  .settings :global(.group-head) { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 0 0 8px; padding: 0 0 0 4px; }
+  .settings :global(.group-head .group-title) { margin: 0; padding: 0 0 4px; }
+  .settings :global(.danger-zone) { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--in-error) 28%, transparent); }
+  .settings :global(.intro), .settings :global(.caption) { margin: -6px 4px 22px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+  .settings :global(.intro) { margin: 0 4px 18px; }
+  .settings :global(.status) { margin: 0 4px 22px; }
+
+  /* A setting: its name right-aligned on the left, the control and its help on the right. */
+  .settings :global(.setting) { display: grid; grid-template-columns: minmax(120px, 32%) 1fr; column-gap: 24px; align-items: start; padding: 16px 20px; }
+  .settings :global(.setting .name) { padding-top: 6px; text-align: right; color: var(--text-muted); font-weight: 500; overflow-wrap: anywhere; }
+  .settings :global(.setting .control) { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+  .settings :global(.setting .line) { align-self: stretch; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 28px; max-width: 100%; }
+  .settings :global(.setting .control > .confirmation) { align-self: stretch; }
+  @container (max-width: 520px) {
+    .settings :global(.setting) { grid-template-columns: 1fr; row-gap: 8px; }
+    .settings :global(.setting .name) { padding-top: 0; text-align: left; color: var(--text); }
+  }
+  .settings :global(.help) { color: var(--text-muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+  .settings :global(.state) { line-height: 1.4; }
+
+  /* A list row (models, permissions, backups, shortcuts): name and detail on the left, its state and buttons on the right. */
+  .settings :global(.row) { display: flex; align-items: center; gap: 10px; padding: 12px 20px; min-height: 28px; }
   .settings :global(.grow) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-  .settings :global(.about-head) { flex-wrap: wrap; }
-  .settings :global(b.version) { flex: 1 0 auto; white-space: nowrap; }
   .settings :global(.grow b), .settings :global(b.grow) { font-weight: 600; }
   .settings :global(.grow .muted) { font-size: 12px; }
-  .settings :global(.grow .muted.alert) { color: var(--in-error); }
+
+  .settings :global(p) { margin: 0; overflow-wrap: anywhere; }
+  .settings :global(.credits) { display: flex; flex-direction: column; gap: 8px; padding: 16px 20px; line-height: 1.5; }
+  .settings :global(code) { font: 12px var(--font-mono); overflow-wrap: anywhere; }
+  .settings :global(kbd) { display: inline-block; min-width: 14px; padding: 2px 6px; border-radius: 6px; background: var(--bg-hover); box-shadow: inset 0 0 0 1px var(--border); font: 12px var(--font-mono); text-align: center; color: var(--text-muted); }
+  .settings :global(.muted) { color: var(--text-muted); }
+  .settings :global(.alert) { color: var(--in-error); font-size: 12px; overflow-wrap: anywhere; }
+  .settings :global(.appear) { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+
   /* A state: a dot of its tone and the text. */
-  .settings :global(.pill) { --tone: var(--stopped); display: inline-flex; align-items: center; gap: 6px; max-width: 300px; padding: 3px 9px; border-radius: 10px; background: color-mix(in srgb, var(--tone) 16%, transparent); font-size: 12px; line-height: 1.35; flex: none; }
+  .settings :global(.pill) { --tone: var(--stopped); display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 9px; border-radius: 10px; background: color-mix(in srgb, var(--tone) 14%, transparent); font-size: 12px; line-height: 1.35; flex: none; }
   .settings :global(.pill::before) { content: ""; width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--tone); }
   .settings :global(.pill[data-tone="ok"]) { --tone: var(--running); }
   .settings :global(.pill[data-tone="warn"]) { --tone: var(--in-progress); }
   .settings :global(.pill[data-tone="error"]) { --tone: var(--in-error); }
-  .domains textarea { display: block; width: 100%; margin-top: 8px; box-sizing: border-box; font: 12px var(--font-mono, monospace); resize: vertical; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--sheet); color: var(--text); }
-  .domains textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .domains .pill { margin-top: 6px; margin-right: 6px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+
+  /* Controls. */
   .content :global(button) { flex: none; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12px var(--font-ui); transition: transform var(--tap), background var(--tap); }
   .content :global(button:hover:not(:disabled)) { background: var(--bg-active); }
   .content :global(button:active:not(:disabled)) { transform: scale(0.97); }
@@ -755,19 +113,23 @@
   .content :global(button.primary) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .content :global(button.primary:hover:not(:disabled)) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
   .content :global(button.danger) { color: var(--in-error); }
+  .content :global(:is(select, input:not([type="radio"], [type="checkbox"]), textarea)) { box-sizing: border-box; max-width: 100%; padding: 5px 9px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-hover); color: var(--text); font: 12px var(--font-ui); }
+  .content :global(textarea) { display: block; width: 100%; font-family: var(--font-mono); resize: vertical; }
+  .content :global(.wide) { width: 100%; }
+  .settings :global(.kinds) { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .settings :global(.kinds label) { display: inline-flex; align-items: center; gap: 6px; }
+  /* macOS draws native radios in the system blue: ours, in the accent. */
+  .settings :global(input[type="radio"]) { appearance: none; width: 15px; height: 15px; margin: 0; flex: none; border-radius: 50%; border: 1px solid var(--border); background: var(--glass-hi); transition: border-width var(--tap); }
+  .settings :global(input[type="radio"]:checked) { border: 4.5px solid var(--accent); background: var(--accent-ink); }
+  .settings :global(.switch) { appearance: none; position: relative; width: 34px; height: 20px; margin: 4px 0; flex: none; border-radius: 10px; background: var(--bg-active); transition: background var(--tap); }
+  .settings :global(.switch::after) { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--on-color); box-shadow: var(--float); transition: left var(--spring-d) var(--spring); }
+  .settings :global(.switch:checked) { background: var(--accent); }
+  .settings :global(.switch:checked::after) { left: 16px; }
+  .settings :global(.switch:disabled) { opacity: 0.5; }
+
+  /* A confirmation, under the row that asked. */
   .settings :global(.buttons) { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-  .settings :global(.buttons.start) { justify-content: flex-start; margin-top: 14px; }
-  .settings :global(.confirmation) { margin: 12px 0; padding: 14px 16px; border-radius: 16px; background: var(--sheet); border: 1px solid var(--border); box-shadow: var(--lift); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
-  .settings :global(.confirmation p) { margin: 0 0 12px; }
-  .settings :global(.panel .confirmation) { margin: 0 14px 12px; background: var(--glass-hi); box-shadow: none; }
-  select { padding: 5px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 12px var(--font-ui); }
-  .switch { appearance: none; position: relative; width: 34px; height: 20px; margin: 0; flex: none; border-radius: 10px; background: var(--bg-active); transition: background var(--tap); }
-  .language-note { margin: 0; padding: 0 16px 12px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
-  .appear { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
-  .custom-engine { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
-  .custom-engine input { display: block; box-sizing: border-box; width: 100%; margin: 6px 0; }
-  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--on-color); box-shadow: var(--float); transition: left var(--spring-d) var(--spring); }
-  .switch:checked { background: var(--accent); }
-  .switch:checked::after { left: 16px; }
-  .switch:disabled { opacity: 0.5; }
+  .settings :global(.confirmation) { margin: 4px 0 0; padding: 14px 16px; border-radius: 12px; background: var(--bg-hover); box-shadow: inset 0 0 0 1px var(--border); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .settings :global(.confirmation p) { margin: 0 0 12px; line-height: 1.45; }
+  .settings :global(.group > * > .confirmation), .settings :global(.group > .confirmation) { margin: 0 20px 14px; }
 </style>

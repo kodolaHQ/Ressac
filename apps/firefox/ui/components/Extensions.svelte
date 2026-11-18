@@ -18,7 +18,7 @@
   const helpShown = $derived(reopened || !appState.value?.settings.hints.seen.includes("extensions"));
   $effect(() => void api.settings.amoAccount().then((a) => (accountSaved = a.saved)));
   function connect() {
-    showSection("agents");
+    showSection("agent");
     api.dispatch({ type: "openSettings", windowId: api.windowId });
   }
   function closeHelp() {

@@ -86,7 +86,7 @@ kernel-replay-too-big = Replay impossible: the outputs to resume exceed 4 MB
 kernel-network-failed = The agent's network could not be secured: { $error }
 kernel-network-open = direct access is not closed (probe code { $code })
 
-kernel-writer-none = Connect Claude Code or Codex in Settings › Agents for summaries
+kernel-writer-none = Connect Claude Code or Codex in Settings › Agent for summaries
 kernel-writer-workshop-stopped = The agent's workshop is not started: summaries will resume once it starts
 kernel-writer-limit = Your subscription limit is reached: summaries will resume later
 kernel-writer-images = Images are not supported by writing

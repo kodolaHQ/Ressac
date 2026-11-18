@@ -16,4 +16,4 @@ ai-asleep-actions = Des tâches que l'agent lance d'un mot, depuis ⌘T ou l'acc
 ai-asleep-widgets = Des widgets sur l'accueil, que l'IA tient à jour pour vous.
 ai-asleep-workflows = Les étapes d'un widget ou d'une action, écrites avec l'agent.
 ai-asleep-review = Ce que l'agent a changé dans un projet, à relire et commenter.
-ai-asleep-settings = L'agent, l'IA locale et le conteneur se règlent ici une fois l'IA activée.
+ai-asleep-settings = L'agent, l'IA locale et l'atelier se règlent ici une fois l'IA activée.

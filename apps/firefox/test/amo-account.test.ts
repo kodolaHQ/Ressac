@@ -85,6 +85,6 @@ describe("Mozilla account keychain", () => {
   });
 
   it("no key: the sign path's message", () => {
-    expect(KEYS_ABSENT()).toBe("Compte Mozilla non branché : Réglages › Agents › Compte Mozilla. Rien n'est parti chez Mozilla.");
+    expect(KEYS_ABSENT()).toBe("Compte Mozilla non branché : Réglages › Agent › Compte Mozilla. Rien n'est parti chez Mozilla.");
   });
 });

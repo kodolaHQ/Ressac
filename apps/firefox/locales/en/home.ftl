@@ -26,7 +26,7 @@ home-welcome-ai-ask-title = Turn on AI?
 home-welcome-ai-ask-intro = An agent can work for you: it browses, searches, compares, builds apps and keeps your widgets up to date.
 home-welcome-ai-ask-needs = It needs OrbStack (or Docker Desktop) and a Claude or ChatGPT account. Ressac also downloads two small local AI models (1.4 GB).
 home-welcome-ai-ask-needs-machine = It needs a Claude or ChatGPT account. Ressac also downloads its workshop (about 500 MB) and two small local AI models (1.4 GB).
-home-welcome-ai-ask-later = Without AI, Ressac stays a browser, and nothing runs in the background. You can turn it on later in Settings › Agents.
+home-welcome-ai-ask-later = Without AI, Ressac stays a browser, and nothing runs in the background. You can turn it on later in Settings › Agent.
 home-welcome-checking = Checking…
 home-welcome-recheck = Check again
 home-welcome-import-title = Coming from another browser?
@@ -37,9 +37,9 @@ home-welcome-sidebar-command = opens a tab or searches everywhere.
 home-welcome-engine-title = Which search engine?
 home-welcome-engine-intro = What you type in the bar, when it is not an address, goes to this engine.
 home-welcome-engine-group = Search engine
-home-welcome-engine-later = You can change it in Settings › Privacy.
+home-welcome-engine-later = You can change it in Settings › General.
 home-welcome-appearance-title = Light or dark?
-home-welcome-appearance-later = You can change it in Settings › Privacy.
+home-welcome-appearance-later = You can change it in Settings › General.
 home-welcome-agent-title = Connect an agent
 home-welcome-agent-intro = Claude Code and Codex work in a separate container on your Mac. They need OrbStack (or Docker Desktop).
 home-welcome-docker-stopped = { $app } is installed but not running.
@@ -323,7 +323,7 @@ home-widget-reads-allow = Allow
 home-widget-resize = Resize
 home-widget-no-display = The agent has not written this widget's display yet.
 
-## Profile labels (grant cards, Settings › Permissions)
+## Profile labels (grant cards, Settings › Privacy)
 
 home-profile-of = Profile of “{ $spaces }”
 home-profile = Profile “{ $id }”

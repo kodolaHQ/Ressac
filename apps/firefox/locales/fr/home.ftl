@@ -26,7 +26,7 @@ home-welcome-ai-ask-title = Activer l'IA ?
 home-welcome-ai-ask-intro = Un agent peut travailler pour vous : il navigue, cherche, compare, construit des applis et tient vos widgets à jour.
 home-welcome-ai-ask-needs = Il lui faut OrbStack (ou Docker Desktop) et un compte Claude ou ChatGPT. Ressac télécharge aussi deux petits modèles d'IA locale (1,4 Go).
 home-welcome-ai-ask-needs-machine = Il lui faut un compte Claude ou ChatGPT. Ressac télécharge aussi son atelier (environ 500 Mo) et deux petits modèles d'IA locale (1,4 Go).
-home-welcome-ai-ask-later = Sans l'IA, Ressac reste un navigateur, et rien ne tourne en arrière-plan. Vous pourrez l'activer plus tard dans Réglages › Agents.
+home-welcome-ai-ask-later = Sans l'IA, Ressac reste un navigateur, et rien ne tourne en arrière-plan. Vous pourrez l'activer plus tard dans Réglages › Agent.
 home-welcome-checking = Vérification…
 home-welcome-recheck = Vérifier à nouveau
 home-welcome-import-title = Vous venez d'un autre navigateur ?
@@ -37,9 +37,9 @@ home-welcome-sidebar-command = ouvre un onglet ou cherche partout.
 home-welcome-engine-title = Quel moteur de recherche ?
 home-welcome-engine-intro = Ce que vous tapez dans la barre, quand ce n'est pas une adresse, part vers ce moteur.
 home-welcome-engine-group = Moteur de recherche
-home-welcome-engine-later = Vous pourrez le changer dans Réglages › Vie privée.
+home-welcome-engine-later = Vous pourrez le changer dans Réglages › Général.
 home-welcome-appearance-title = Claire ou sombre ?
-home-welcome-appearance-later = Vous pourrez la changer dans Réglages › Vie privée.
+home-welcome-appearance-later = Vous pourrez la changer dans Réglages › Général.
 home-welcome-agent-title = Brancher un agent
 home-welcome-agent-intro = Claude Code et Codex travaillent dans un conteneur à part, sur votre Mac. Il leur faut OrbStack (ou Docker Desktop).
 home-welcome-docker-stopped = { $app } est installé mais arrêté.
@@ -323,7 +323,7 @@ home-widget-reads-allow = Autoriser
 home-widget-resize = Redimensionner
 home-widget-no-display = L'agent n'a pas encore écrit l'affichage de ce widget.
 
-## Profile labels (grant cards, Réglages › Permissions)
+## Profile labels (grant cards, Réglages › Confidentialité)
 
 home-profile-of = Profil de « { $spaces } »
 home-profile = Profil « { $id } »

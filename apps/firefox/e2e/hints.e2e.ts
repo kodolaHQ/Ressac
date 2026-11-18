@@ -82,7 +82,7 @@ describe("hints", () => {
     // Flips the Settings switch, then closes the Settings tab to come back to the empty page.
     const flip = async () => {
       await click(m, '[data-testid="settings-button"]');
-      await click(m, '[data-testid="settings-nav-privacy"]');
+      await click(m, '[data-testid="settings-nav-general"]');
       await click(m, '[data-testid="settings-hints"]');
       const tab = Object.values((await state(m)).tabs).find((t) => t.url === "ressac://settings")!;
       await dispatch(m, { type: "closeTab", id: tab.id });

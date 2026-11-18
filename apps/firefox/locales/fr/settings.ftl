@@ -2,16 +2,18 @@
 
 settings-title = Réglages
 settings-nav-label = Sections des réglages
-settings-section-agents = Agents
+settings-section-general = Général
+settings-section-agent = Agent
 settings-ai-switch = Fonctions IA
 settings-ai-switch-note = L'agent, l'IA locale et les widgets. Éteintes, Ressac ne lance ni Docker ni les modèles locaux.
 settings-section-ai = IA locale
-settings-section-workshop = Conteneur
-settings-section-permissions = Permissions
+settings-section-workshop = Atelier
 settings-section-data = Données
-settings-section-privacy = Vie privée
+settings-section-privacy = Confidentialité
 settings-section-shortcuts = Raccourcis
 settings-section-about = À propos
+settings-group-permissions = Permissions
+settings-danger = Zone sensible
 
 settings-checking = Vérification…
 settings-error = Erreur : { $error }
@@ -21,8 +23,8 @@ settings-agent-silent-sentence = L'agent ne répond pas.
 settings-agent-logged-in-account = Connecté ({ $account })
 settings-agent-logged-in = Connecté
 settings-agent-logged-out = Non connecté
-settings-agent-docker-absent = Docker n'est pas lancé : voir Conteneur.
-settings-agent-no-container = L'atelier de l'agent n'est pas démarré : voir Conteneur.
+settings-agent-docker-absent = Docker n'est pas lancé : voir Atelier.
+settings-agent-no-container = L'atelier de l'agent n'est pas démarré : voir Atelier.
 settings-agent-device-code = Ouvrez la page de connexion et saisissez le code
 settings-agent-device-waiting = En attente de la connexion…
 settings-agent-device-interrupted = la connexion par code s'est interrompue, recommencez
@@ -32,6 +34,7 @@ settings-agent-open-chats = Les conversations déjà ouvertes continuent jusqu'�
 settings-agent-device-open = Ouvrir la page de connexion
 settings-agent-login = Se connecter
 settings-agent-logout = Se déconnecter
+settings-agent-account = Compte
 
 settings-ai-intro = Une petite IA tourne sur votre Mac, en plus de l'agent : elle le met en pause quand une de ses actions paraît étrange, trie ce que Ressac suit pour vous et retrouve vos pages pour ⌘T Demander. Elle est gratuite et rien de ce qu'elle lit ne quitte votre machine. Elle utilise deux modèles, que Ressac télécharge et fait tourner lui-même.
 settings-starting = Démarrage…
@@ -85,6 +88,8 @@ settings-workshop-machine-idle-option = { $minutes ->
 }
 settings-workshop-machine-idle-help = Plus la machine reste allumée, plus l'agent répond vite, mais elle garde la mémoire qu'elle a prise jusqu'à son arrêt.
 settings-workshop-machine-remove = Supprimer la machine
+settings-workshop-machine-label = Machine
+settings-workshop-machine-remove-help = Libère sa place sur le disque. Vos connexions Claude et Codex sont gardées.
 settings-workshop-machine-confirm-remove = Les agents et les applis en cours s'arrêtent. Vos connexions Claude et Codex sont gardées. Elle ne sera téléchargée de nouveau (environ 500 Mo) que si vous cliquez sur « Installer la machine ».
 settings-workshop-machine-force-remove = Supprimer quand même
 settings-workshop-machine-confirm-force-remove = La machine ne démarre plus, ses connexions Claude et Codex ne peuvent pas être sauvées. La supprimer quand même ? Il faudra vous reconnecter.
@@ -97,7 +102,6 @@ settings-cancel = Annuler
 settings-telemetry-label = Envoyer les plantages et les erreurs
 settings-telemetry-unavailable = Cette version n'envoie rien.
 
-settings-interface = Interface
 settings-language-label = Langue
 settings-language-system-named = Langue du Mac ({ $name })
 settings-language-system = Langue du Mac
@@ -124,6 +128,8 @@ settings-sidebar-label = Barre de navigation
 settings-sidebar-left = À gauche
 settings-sidebar-right = À droite
 
+settings-about-version = Version
+settings-about-update = Mise à jour
 settings-about-release-notes = Nouveautés
 settings-about-replay-welcome = Revoir l'accueil
 settings-about-advanced = Réglages avancés du navigateur
@@ -137,3 +143,5 @@ settings-credits-licenses-before = Il embarque Node.js, node-pty et llama.cpp (l
 settings-agent-domains = Domaines autorisés pour l'agent
 settings-agent-domains-help = Un domaine par ligne (`*.exemple.com` pour ses sous-domaines). L'agent joint aussi Claude, OpenAI, npm, PyPI et GitHub.
 settings-agent-domains-ignored = Ignoré : { $line }
+settings-data-reset-label = Réinitialiser Ressac
+settings-data-reset-help = Met vos données de côté dans une sauvegarde, puis redémarre à neuf.

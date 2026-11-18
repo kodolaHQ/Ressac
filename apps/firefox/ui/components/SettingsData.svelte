@@ -4,6 +4,7 @@
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import BrowserImport from "./BrowserImport.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
 
   // Styles come from Settings.svelte.
   const s = api.settings;
@@ -45,29 +46,35 @@
   }
 </script>
 
-<section data-testid="settings-data">
-  <h2>{t("settings-section-data")}</h2>
-  <div class="panel">
-    <div class="row">
-      <div class="grow"><b>{t("agent-data-folder")}</b><code class="muted" data-testid="data-dir" title={dir}>{shownDir}</code></div>
+<section data-testid="settings-data" aria-label={t("settings-section-data")}>
+  <div class="group">
+    <SettingsRow label={t("agent-data-folder")}>
+      <code class="path" data-testid="data-dir" title={dir}>{shownDir}</code>
       <button data-testid="data-reveal" onclick={() => s.reveal(dir)}>{t("agent-data-reveal")}</button>
-    </div>
-    <div class="row">
-      <div class="grow"><b>{t("agent-data-notes")}</b><span class="muted">{t("agent-data-notes-help")}</span></div>
+    </SettingsRow>
+    <SettingsRow label={t("agent-data-notes")} help={t("agent-data-notes-help")}>
       <button data-testid="settings-browsing-notes" onclick={() => s.reveal(notes)}>{t("agent-data-reveal")}</button>
-    </div>
+    </SettingsRow>
+    {#if importing}
+      <div class="import"><BrowserImport /></div>
+    {:else}
+      <div out:fade={{ duration: 150 }}>
+        <SettingsRow label={t("agent-data-import-title")}>
+          <button data-testid="data-import" onclick={() => (importing = true)}>{t("agent-data-import")}</button>
+        </SettingsRow>
+      </div>
+    {/if}
   </div>
-  <h3>{t("agent-data-import-title")}</h3>
-  {#if importing}
-    <div class="panel import"><BrowserImport /></div>
-  {:else}
-    <div class="buttons start" out:fade={{ duration: 150 }}><button data-testid="data-import" onclick={() => (importing = true)}>{t("agent-data-import")}</button></div>
-  {/if}
-  <h3>{t("agent-data-backups")}</h3>
+
+  <div class="group-head">
+    <h3 class="group-title">{t("agent-data-backups")}</h3>
+    <button data-testid="data-export" disabled={exporting} onclick={() => void exportData()}>{t("agent-data-export")}</button>
+  </div>
+  {#if message}<p class="caption appear" role="status">{message}</p>{/if}
   {#if !backups}
-    <p><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
+    <p class="status"><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
   {:else}
-    <div class="panel">
+    <div class="group">
       {#each backups as b (b.path)}
         <div data-testid="backup-row">
           <div class="row">
@@ -94,22 +101,27 @@
       {/each}
     </div>
   {/if}
-  {#if message}<p role="status">{message}</p>{/if}
-  <div class="buttons start">
-    <button class="primary" data-testid="data-export" disabled={exporting} onclick={() => void exportData()}>{t("agent-data-export")}</button>
-    <button class="danger" data-testid="data-reset" onclick={() => (asking = "reset")}>{t("agent-data-reset")}</button>
+
+  <h3 class="group-title">{t("settings-danger")}</h3>
+  <div class="group danger-zone">
+    <SettingsRow label={t("settings-data-reset-label")} help={t("settings-data-reset-help")}>
+      <button class="danger" data-testid="data-reset" onclick={() => (asking = "reset")}>{t("agent-data-reset")}</button>
+      {#snippet below()}
+        {#if asking === "reset"}
+          <div class="confirmation" role="alertdialog" aria-label={t("agent-data-reset")} out:fade={{ duration: 150 }}>
+            <p>{t("agent-data-reset-confirm")}</p>
+            <div class="buttons">
+              <button onclick={() => (asking = null)}>{t("agent-cancel")}</button>
+              <button class="primary" data-testid="confirm-reset" onclick={() => void reset()}>{t("agent-data-reset-go")}</button>
+            </div>
+          </div>
+        {/if}
+      {/snippet}
+    </SettingsRow>
   </div>
-  {#if asking === "reset"}
-    <div class="confirmation" role="alertdialog" aria-label={t("agent-data-reset")}>
-      <p>{t("agent-data-reset-confirm")}</p>
-      <div class="buttons">
-        <button onclick={() => (asking = null)}>{t("agent-cancel")}</button>
-        <button class="primary" data-testid="confirm-reset" onclick={() => void reset()}>{t("agent-data-reset-go")}</button>
-      </div>
-    </div>
-  {/if}
 </section>
 
 <style>
-  .import { padding: 14px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .import { padding: 16px 18px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .path { color: var(--text-muted); }
 </style>

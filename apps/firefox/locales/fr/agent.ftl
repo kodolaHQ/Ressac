@@ -1,6 +1,6 @@
 # Réglages (agents, données, permissions, raccourcis, compte Mozilla), panneau de l'agent, relecture, mode design.
 
-## Moteur d'un agent (Réglages › Agents)
+## Moteur d'un agent (Réglages › Agent)
 
 agent-engine-title = Moteur de { $name }
 agent-engine-next-session = Un changement s'applique à la prochaine session ; l'agent ouvert propose de se relancer.
@@ -20,7 +20,6 @@ agent-engine-key-saved = clé enregistrée
 agent-engine-key-delete = Effacer la clé
 agent-engine-key-save = Enregistrer la clé
 agent-engine-api-note = { $format } La clé reste dans le Trousseau de votre Mac : { $agent } ne la voit jamais.
-agent-engine-next-chat = S'applique à la prochaine conversation avec { $name }.
 agent-engine-url-invalid = Adresse invalide
 agent-engine-url-invalid-https = Adresse invalide (https://…)
 agent-engine-model-invalid = Modèle invalide
@@ -52,14 +51,14 @@ agent-data-none = Aucune sauvegarde.
 agent-data-export = Exporter
 agent-data-exported = Exporté dans { $path }
 agent-data-reset = Réinitialiser
-agent-data-reset-confirm = Réinitialiser Ressac ? Ses données (espaces, onglets, historique, réglages, données des widgets et des actions) sont mises de côté dans une sauvegarde, puis Ressac redémarre à neuf. Restent en place : le dossier workspace (vos projets et ce que l'agent a créé), les modèles de l'IA locale, les connexions de Claude et de Codex (boutons Se déconnecter, section Agents), la clé de l'API compatible de Codex (Trousseau macOS), les cookies et mots de passe du navigateur (Réglages avancés du navigateur).
+agent-data-reset-confirm = Réinitialiser Ressac ? Ses données (espaces, onglets, historique, réglages, données des widgets et des actions) sont mises de côté dans une sauvegarde, puis Ressac redémarre à neuf. Restent en place : le dossier workspace (vos projets et ce que l'agent a créé), les modèles de l'IA locale, les connexions de Claude et de Codex (boutons Se déconnecter, section Agent), la clé de l'API compatible de Codex (Trousseau macOS), les cookies et mots de passe du navigateur (Réglages avancés du navigateur).
 agent-data-reset-go = Réinitialiser et redémarrer
 agent-data-reset-cancelled = Redémarrage annulé : rien n'a été réinitialisé.
 agent-cancel = Annuler
 agent-size-gb = { $n } Go
 agent-size-mb = { $n } Mo
 
-## Réglages › Permissions
+## Réglages › Confidentialité
 
 agent-grants-revoke = Retirer
 agent-grants-confirm = Les données lues avec ce compte sont effacées.
@@ -95,7 +94,7 @@ agent-shortcuts-fixed-tab = Onglet 1 à 9
 agent-shortcuts-fixed-space = Espace 1 à 9
 agent-shortcuts-fixed-recent = Onglets récents
 
-## Réglages › Compte Mozilla
+## Réglages › Agent › Compte Mozilla
 
 agent-mozilla-title = Compte Mozilla (extensions de l'agent)
 agent-mozilla-help = Firefox n'installe que des extensions signées par Mozilla. Ressac les fait signer avec votre compte développeur Mozilla (gratuit).
@@ -108,7 +107,7 @@ agent-mozilla-issuer = Émetteur JWT
 agent-mozilla-secret = Secret JWT
 agent-mozilla-save = Enregistrer
 
-## Réglages › Vie privée
+## Réglages › Confidentialité
 
 agent-telemetry-notice = Ressac envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta, et à chaque lancement un identifiant d'installation anonyme pour compter les utilisateurs. Un plantage peut contenir des fragments de mémoire.
 
