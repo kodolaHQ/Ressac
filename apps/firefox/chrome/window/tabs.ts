@@ -1,5 +1,5 @@
 import type { Action } from "../../shared/api";
-import { FAVICON_MAX, KEEP_LOADED_HOSTS, hasView, keepsLoaded, tabProfile, type BrowserState, type WindowId, type TabId, type Tab } from "../../shared/model";
+import { FAVICON_MAX, KEEP_LOADED_HOSTS, hasView, keptLoaded, tabProfile, type BrowserState, type WindowId, type TabId, type Tab } from "../../shared/model";
 import type { RessacStore } from "../store";
 
 export const TAB_ID = "ressac-tab-id";
@@ -22,10 +22,7 @@ type TabFields = Extract<Action, { type: "updateTab" }>["fields"];
  */
 export const keepLoadedHosts: readonly string[] = Services.env.get("RESSAC_TEST_KEEP_LOADED_HOSTS")?.split(",").filter(Boolean) || KEEP_LOADED_HOSTS;
 /** An essential's tab that stays loaded and that Firefox never unloads: always, unless saving memory and not kept loaded. */
-const stays = (state: BrowserState, o: Tab) => {
-  const f = o.link?.type === "essential" ? state.essentials.find((x) => x.id === o.link!.id) : undefined;
-  return !!f && (!state.settings.saveMemory || keepsLoaded(f, o.notifies, keepLoadedHosts));
-};
+const stays = (state: BrowserState, o: Tab) => o.link?.type === "essential" && (!state.settings.saveMemory || keptLoaded(state, o, keepLoadedHosts));
 /** When a tab unload last asked the host to relieve memory: under pressure Firefox unloads one tab every few seconds. */
 let relievedAt = -Infinity;
 
@@ -39,6 +36,8 @@ export class TabSync {
   /** XUL tabs whose Ressac tab moved to another window: kept, page running, until that window adopts them. */
   private readonly leaving = new Map<TabId, any>();
   private parking: any;
+  /** This window was the first main one at the last sync: it holds the essentials kept loaded (keptLoaded). */
+  private first = false;
   private creating = false;
   /** While create() makes an app essential's XUL tab: its app, registered with the site store before the first load. */
   private siteApp: string | undefined;
@@ -264,6 +263,12 @@ export class TabSync {
     // except those kept loaded (notifications): the others load on first display, like the other tabs, and Firefox may
     // unload them (live, both ways).
     for (const [id, tab] of this.tabs) if (state.tabs[id]?.link?.type === "essential") tab.undiscardable = stays(state, state.tabs[id]!);
+    // Now the first window (the former one closed): its copies of the kept essentials, lazy until now, take over.
+    const first = state.windows[0]?.id === this.windowId;
+    if (first && !this.first)
+      for (const o of Object.values(state.tabs))
+        if (o.windowId === this.windowId && o.unloaded && state.settings.saveMemory && stays(state, o)) queueMicrotask(() => this.store.dispatch({ type: "updateTab", id: o.id, fields: { unloaded: false } }));
+    this.first = first;
     for (const o of Object.values(state.tabs))
       if (o.windowId === this.windowId && stays(state, o) && hasView(o.url) && !o.crashed && !o.error && !o.unloaded && !this.tabs.has(o.id)) this.create(state, o);
     // A crashed or failed page is replaced by the UI's message.

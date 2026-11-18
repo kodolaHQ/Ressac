@@ -1,7 +1,7 @@
 import { MachineIdleSchema, validAgentDomain } from "../../shared/settings";
 import { beforeEach, expect, test, vi } from "vitest";
 import { apply, memorySession, withEssentials } from "../../core/state/actions";
-import { keepsLoaded } from "../../shared/model";
+import { keepsLoaded, keptLoaded } from "../../shared/model";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
 import { AGENT_PROFILE, FAVICON_MAX, permissionProfiles, siteProfile, sitePlacement, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, urlRecap, recapOfUrl, type BrowserState, type Tab } from "../../shared/model";
@@ -1125,6 +1125,22 @@ test("keep loaded: a messaging or calendar host allowed to notify by default, th
   expect(e).toBe(before);
   ag({ type: "setKeepLoaded", favoriteId: e.tabs[chat]!.link!.id, keep: false });
   expect(memorySession(e, true).tabs[chat]!.unloaded).toBe(true);
+});
+
+test("a kept essential stays loaded in the first window only; the others' copies wait", () => {
+  const chat = open("https://web.whatsapp.com/");
+  ag({ type: "addEssential", id: chat });
+  ag({ type: "openWindow", id: "F2" });
+  const fav = e.tabs[chat]!.link!.id;
+  const copy = Object.values(e.tabs).find((o) => o.link?.id === fav && o.windowId === "F2")!;
+  ag({ type: "openTab", windowId: F, url: "https://other.test/", activate: true });
+  e = { ...e, tabs: Object.fromEntries(Object.entries(e.tabs).map(([id, o]) => [id, o.link ? { ...o, notifies: true } : o])) };
+  expect([keptLoaded(e, e.tabs[chat]!), keptLoaded(e, e.tabs[copy.id]!)]).toEqual([true, false]);
+  const lazy = memorySession(e, true);
+  expect([lazy.tabs[chat]!.unloaded, lazy.tabs[copy.id]!.unloaded]).toEqual([undefined, true]);
+  // The first window closed: the next one holds it.
+  ag({ type: "closeWindow", id: F } as Action);
+  expect(keptLoaded(e, e.tabs[copy.id]!)).toBe(true);
 });
 
 test("setSaveMemory notes the choice; an aura the user never set follows it", () => {

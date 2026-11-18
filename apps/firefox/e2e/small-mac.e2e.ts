@@ -3,7 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { dispatch, state, waitFor, waitReady } from "./firefox";
+import { dispatch, inWindow, newWindow, state, waitFor, waitReady } from "./firefox";
+import { grantSite, writeSite } from "./sites";
+import { testActor } from "./agent-extensions";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
@@ -184,11 +186,12 @@ describe("small Mac, essentials kept loaded for notifications", () => {
   let x: LaunchedRessac | undefined;
   let n: Marionette;
   const launch = async () => {
+    const actor = testActor(prof);
     x = await launchRessac({
       dataDir: dir,
       profile: prof,
-      prefs: { "network.dns.localDomains": "chat.test" },
-      env: { RESSAC_TEST_SMALL_MAC: "1", RESSAC_TEST_KEEP_LOADED_HOSTS: "chat.test", RESSAC_TEST_MACHINE: "running", RESSAC_D1_URL: "http://127.0.0.1:9", RESSAC_EMBED_URL: "http://127.0.0.1:9" },
+      prefs: { "network.dns.localDomains": "chat.test", ...actor.prefs },
+      env: { ...actor.env, RESSAC_TEST_LOCAL_ADDRESSES: "1", RESSAC_TEST_SMALL_MAC: "1", RESSAC_TEST_KEEP_LOADED_HOSTS: "chat.test", RESSAC_TEST_MACHINE: "running", RESSAC_D1_URL: "http://127.0.0.1:9", RESSAC_EMBED_URL: "http://127.0.0.1:9" },
     });
     n = x.marionette;
     await n.setContext("chrome");
@@ -266,5 +269,39 @@ describe("small Mac, essentials kept loaded for notifications", () => {
     await click(n, '[role="menuitemcheckbox"]', { text: "Garder chargé (notifications)" });
     expect(await until(() => tabOf(other), (v) => v?.undiscardable === false)).toMatchObject({ undiscardable: false });
     expect((await state(n)).essentials.find((f) => f.id === otherFav)!.keepLoaded).toBe(false);
+  });
+
+  it("allowed before launch, a messaging essential loads from the start, a site app's too (its own container); in one window only", async () => {
+    const origin = `http://chat.test:${server.port}`;
+    // « Autoriser » given earlier, as Ressac keeps it: its files, mirrored into Firefox at each launch (the default
+    // container's, and a site app's on the same host in its own container).
+    await x!.close();
+    const decision = JSON.stringify({ [`${origin} notifications`]: "allow" });
+    await writeFile(path.join(dir, "permissions.json"), decision);
+    await writeFile(path.join(dir, "permissions-site-chatapp.json"), decision);
+    const chatApp = { name: "Chat", url: `${origin}/texte.html`, domains: ["chat.test"], login: [] };
+    writeSite(dir, "chatapp", { declaration: chatApp });
+    await grantSite(dir, "chatapp", chatApp);
+    await launch();
+    await dispatch(n, { type: "placeSite", id: "chatapp", placement: "essentials", url: chatApp.url, title: "Chat", favicon: null });
+    await x!.close();
+
+    // The launch after: kept loaded from its first state, before any permission event.
+    await launch();
+    const s = await state(n);
+    const first = s.windows[0]!.id;
+    const tabFor = (pred: (f: (typeof s.essentials)[number]) => boolean) => Object.values(s.tabs).find((o) => o.windowId === first && o.link?.id === s.essentials.find(pred)!.id)!;
+    const chat = tabFor((f) => !f.site && f.url.startsWith(origin));
+    const site = tabFor((f) => f.site === "chatapp");
+    // Not lazy in the launch's first state (read from Ressac's decisions); Firefox's rebuild of its copy leaves them kept.
+    expect([chat.unloaded, site.unloaded]).toEqual([undefined, undefined]);
+    expect(await until(() => tabOf(chat.id), (v) => v?.url.endsWith("/a.html") && v.undiscardable)).toEqual({ url: expect.stringMatching(/\/a\.html$/), undiscardable: true });
+    expect(await until(() => tabOf(site.id), (v) => v?.url.endsWith("/texte.html") && v.undiscardable)).toEqual({ url: expect.stringMatching(/\/texte\.html$/), undiscardable: true });
+    // A second window: its copy waits for a click (one copy is enough to notify).
+    const second = await newWindow(n);
+    const s2 = await state(n);
+    const copy = Object.values(s2.tabs).find((o) => o.windowId !== first && o.link?.id === chat.link!.id)!;
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(await inWindow(n, second, () => tabOf(copy.id))).toBeNull();
   });
 });

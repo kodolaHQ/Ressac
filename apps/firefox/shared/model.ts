@@ -150,7 +150,7 @@ export interface Favorite {
  * Gmail weighs ~730 MB, WhatsApp ~580 MB: not kept for nothing). `*.` covers every subdomain.
  */
 export const KEEP_LOADED_HOSTS = [
-  "web.whatsapp.com", "mail.google.com", "chat.google.com", "calendar.google.com", "app.slack.com", "*.slack.com",
+  "web.whatsapp.com", "mail.google.com", "chat.google.com", "calendar.google.com", "*.slack.com",
   "www.messenger.com", "messenger.com", "teams.microsoft.com", "teams.live.com", "discord.com", "web.telegram.org",
   "outlook.live.com", "outlook.office.com", "outlook.office365.com",
 ];
@@ -159,6 +159,15 @@ export const KEEP_LOADED_HOSTS = [
  * The essential stays loaded while saving memory: the user's choice, else whether its host is in `hosts` and its site
  * may notify (`notifies`, its tab's).
  */
+/**
+ * While saving memory, this essential tab stays loaded: its essential is kept (keepsLoaded) and the tab is in the first
+ * main window. One copy is enough to notify (WhatsApp Web runs in one tab only): other windows' copies load on use.
+ */
+export function keptLoaded(state: Pick<BrowserState, "essentials" | "windows">, o: Tab, hosts?: readonly string[]): boolean {
+  const f = o.link?.type === "essential" ? state.essentials.find((x) => x.id === o.link!.id) : undefined;
+  return !!f && o.windowId === state.windows[0]?.id && keepsLoaded(f, o.notifies, hosts);
+}
+
 export function keepsLoaded(f: Pick<Favorite, "url" | "keepLoaded">, notifies: boolean | undefined, hosts: readonly string[] = KEEP_LOADED_HOSTS): boolean {
   if (f.keepLoaded !== undefined) return f.keepLoaded;
   if (!notifies) return false;

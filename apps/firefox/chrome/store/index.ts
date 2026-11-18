@@ -1,6 +1,6 @@
 import { shortcutLabel } from "../../shared/shortcuts";
 import { DEFAULT_AURA } from "../../shared/aura";
-import { privateTab, tabProfile, profilesInUse, permissionProfiles, siteProfile, type BrowserState, type Tab, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance } from "../../shared/model";
+import { keptLoaded, privateTab, tabProfile, profilesInUse, permissionProfiles, siteProfile, type BrowserState, type Tab, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
 import type { Action } from "../../shared/api";
 import { checkDataFormat } from "../../core/state/format";
@@ -29,7 +29,7 @@ import { registerHomeNotifications } from "./notifications";
 import { containerFor, existingContainer, isAppContainer, isSiteContainer, removeContainer } from "./containers";
 import { installCallPlayer } from "./call-player";
 import { registerPermissionHooks } from "./permission-hooks";
-import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
+import { createSitePermissions, fileOf, parse as parseDecisions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { bindSites, relabelSiteWindows, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
 import { installUpdates } from "./updates";
@@ -147,7 +147,8 @@ function notifyChanges(state: BrowserState): Action[] {
     if (o.link?.type !== "essential") return [];
     const now = notifies(state, o);
     if (now === o.notifies) return [];
-    const load = now && o.unloaded && state.essentials.find((f) => f.id === o.link!.id)?.keepLoaded !== false;
+    // Only what now stays loaded: never one nothing keeps, nor one the user unloaded with the setting off.
+    const load = now && o.unloaded && state.settings.saveMemory && keptLoaded(state, { ...o, notifies: true }, keepLoadedHosts);
     return [{ type: "updateTab", id: o.id, fields: { notifies: now, ...(load ? { unloaded: false } : {}) } }];
   });
 }
@@ -222,10 +223,18 @@ async function start(): Promise<RessacStore> {
     // A test launch skips the welcome: AI on for a fresh profile unless the test asks for it off.
     const aiEnabled = aiOff ? false : skip && !s.settings.onboarded ? true : s.settings.aiEnabled;
     return skip ? { ...s, settings: { ...s.settings, onboarded: true, aiEnabled, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s;
-  }).then((s) => withEssentials(s)).then((s) => {
-    // Before the launch's lazy essentials: one allowed to notify (a messaging site) stays loaded.
+  }).then((s) => withEssentials(s)).then(async (s) => {
+    // Before the launch's lazy essentials: one allowed to notify (a messaging site) stays loaded. Read from Ressac's own
+    // decisions: Firefox's copy is emptied and rebuilt from them just after, and a site app's container may be new.
     const draft = structuredClone(s);
-    for (const o of Object.values(draft.tabs)) if (o.link?.type === "essential") o.notifies = notifies(draft, o);
+    const decisions = new Map<string, Record<string, string> | null>();
+    for (const o of Object.values(draft.tabs)) {
+      if (o.link?.type !== "essential") continue;
+      const profile = tabProfile(draft, o);
+      if (!decisions.has(profile)) decisions.set(profile, await IOUtils.readUTF8(fileOf(dataDir, profile)).then(parseDecisions, () => null));
+      const origin = URL.parse(draft.essentials.find((f) => f.id === o.link!.id)?.url ?? o.url)?.origin;
+      o.notifies = decisions.get(profile)?.[`${origin} notifications`] === "allow";
+    }
     return memorySession(draft, smallMac, keepLoadedHosts);
   }));
   // Later essentials' tabs, and the notification permission given or taken back: kept loaded or not, live.

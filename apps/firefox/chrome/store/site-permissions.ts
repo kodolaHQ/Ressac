@@ -51,10 +51,10 @@ function translate(kind: string, mediaTypes: readonly string[] = []): SitePermis
 const key = (origin: string, p: SitePermission) => `${origin} ${p}`;
 
 /** `permissions.json` for the default profile. */
-const fileOf = (dir: string, id: ProfileId) => `${dir}/${id === DEFAULT_PROFILE ? "permissions.json" : `permissions-${id}.json`}`;
+export const fileOf = (dir: string, id: ProfileId) => `${dir}/${id === DEFAULT_PROFILE ? "permissions.json" : `permissions-${id}.json`}`;
 
 /** A flat record of "allow" | "deny". */
-function parse(text: string): Record<string, Decision> | null {
+export function parse(text: string): Record<string, Decision> | null {
   try {
     const v: unknown = JSON.parse(text);
     if (v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((d) => d === "allow" || d === "deny")) return v as Record<string, Decision>;

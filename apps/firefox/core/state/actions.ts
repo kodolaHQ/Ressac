@@ -9,6 +9,7 @@ import { bindingProblem, effectiveBindings, sameBinding } from "../../shared/sho
 import {
   KEEP_LOADED_HOSTS,
   keepsLoaded,
+  keptLoaded,
   AGENT_PROFILE,
   spaceKey,
   siteProfile,
@@ -881,11 +882,7 @@ export function memorySession(state: BrowserState, smallMac: boolean, hosts: rea
   const { settings } = state;
   const save = settings.saveMemoryChosen ? settings.saveMemory : smallMac;
   const shown = new Set(state.windows.map((f) => f.active[f.activeSpace]));
-  const kept = (o: Tab) => {
-    const f = state.essentials.find((x) => x.id === o.link!.id);
-    return !!f && keepsLoaded(f, o.notifies, hosts);
-  };
-  const lazy = save ? Object.values(state.tabs).filter((o) => o.link?.type === "essential" && !kept(o) && !o.unloaded && !shown.has(o.id)) : [];
+  const lazy = save ? Object.values(state.tabs).filter((o) => o.link?.type === "essential" && !keptLoaded(state, o, hosts) && !o.unloaded && !shown.has(o.id)) : [];
   const aura = settings.auraMotionChosen ? settings.auraMotion : !save;
   if (!lazy.length && save === settings.saveMemory && aura === settings.auraMotion) return state;
   const draft = structuredClone(state);
