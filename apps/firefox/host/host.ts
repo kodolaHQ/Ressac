@@ -490,7 +490,7 @@ const sessions = new SessionsAgent({
   defaultProfile: () => defaultProfile,
   // The mode counts as part of the engine: a change offers « Relancer » in the other windows' panels.
   engineOf: (p) => (p === "claude" ? JSON.stringify([claudeEngine, agentMode]) : p === "codex" ? JSON.stringify([engine, agentMode]) : ""),
-  async open(f, t, { profile, resume, onBuildProgress }) {
+  async open(f, t, { profile, resume, onBuildProgress, review }) {
     if (!aiOn) throw new Error("ai-off");
     await aiSwitch;
     const n = await ready;
@@ -500,7 +500,7 @@ const sessions = new SessionsAgent({
     // The machine or a container app Ressac is starting (or can start): the panel stays on « Préparation » until it answers.
     await engines.current().wake("user").catch(() => {});
     if (!aiOn) throw new Error("ai-off");
-    if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, mode: agentMode, onBuildProgress });
+    if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, mode: agentMode, onBuildProgress, review });
     const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
     const claude = profile === "claude";
     // Ollama is relayed without a key: the agent reaches inference paths only, never /api/pull. Codex's target ends in /v1.
@@ -513,7 +513,7 @@ const sessions = new SessionsAgent({
     try {
       const relayed = token ? { url: relay.containerUrl, token } : null;
       const extra = profile === "claude" ? claudeEngineEnv(e as ClaudeEngine, relayed) : codexEngineArgs(e as CodexEngine, relayed);
-      const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra, mode: agentMode, onBuildProgress });
+      const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra, mode: agentMode, onBuildProgress, review });
       if (token) session.onEnd(() => relay.closeSession(token));
       return session;
     } catch (err) {
@@ -561,6 +561,9 @@ const rpc = createRpc({
       return sessions.start(p.window, p.size);
     },
     "agent.relaunch": (p: { window: string }) => sessions.relaunch(p.window),
+    "agent.review": (p: { window: string; choice: unknown }) => {
+      if (p.choice === "keep" || p.choice === "revert") sessions.answerReview(p.window, p.choice);
+    },
     "agent.switch": async (p: { window: string; profile: unknown }) => {
       if (typeof p.profile === "string" && /^[\w-]{1,64}$/.test(p.profile)) await sessions.switchProfile(p.window, p.profile);
     },

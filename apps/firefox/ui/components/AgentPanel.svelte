@@ -8,6 +8,7 @@
   import { focusAgent } from "./agent.svelte";
   import * as terminalAgent from "./terminalAgent.svelte";
   import FirstTimeNote from "./FirstTimeNote.svelte";
+  import InstructionReview from "./InstructionReview.svelte";
   import { firstTimePending } from "./hints";
 
   let {
@@ -239,6 +240,8 @@
     {:else}
       <p class="message">{t(machineStarting ? "agent-panel-machine-starting" : "agent-panel-preparing")}</p>
     {/if}
+  {:else if appState.state === "review"}
+    <InstructionReview files={appState.files} {visible} />
   {:else if appState.state === "docker-absent"}
     <p class="message">{t("agent-panel-docker-absent")}</p>
     <button onclick={terminalAgent.reset}>{t("agent-panel-retry")}</button>

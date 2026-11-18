@@ -4,7 +4,7 @@ import { HINT_IDS } from "./hints";
 import { SHORTCUT_IDS, type ShortcutId } from "./shortcuts";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "./search";
 import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type AccessState, type BrowserState, type SpaceId, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
-import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile } from "@ressac/kernel";
+import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile, type InstructionChange } from "@ressac/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, MachineIdleSchema, type DockerStatus, type MachineShown, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { ActionShown } from "./actions";
@@ -297,6 +297,8 @@ export interface ApiRessac {
     switch(profile: string): Promise<void>;
     /** After an engine change (Réglages › Agents): restarts this window's agent on the new engine, resuming its conversation. */
     relaunch(): Promise<void>;
+    /** The answer on the changed-instructions card; settles once the host has answered (a failure is logged, never thrown). */
+    review(choice: "keep" | "revert"): Promise<void>;
   };
   /** The agent's access to tabs (badges and bubble to cut it). */
   access: {
@@ -641,7 +643,9 @@ export type AgentPanelState =
   | { state: "docker-absent" }
   | { state: "error"; message: string }
   | { state: "active"; engineChanged?: true }
-  | { state: "done"; code: number };
+  | { state: "done"; code: number }
+  /** Instruction files changed since the last session: the session waits on the user's answer (agent.review). */
+  | { state: "review"; files: InstructionChange[] };
 
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
 /** Id of an action (name of its folder under `~/Ressac/actions`). */

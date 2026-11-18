@@ -1,4 +1,4 @@
-import { WorkshopError, type BuildProgress } from "@ressac/kernel";
+import { WorkshopError, type BuildProgress, type InstructionChange } from "@ressac/kernel";
 import type { AgentPanelState, TerminalSize } from "../../shared/api";
 import type { WindowId } from "../../shared/model";
 
@@ -79,6 +79,8 @@ interface Entry {
   engineChanged?: boolean;
   /** The user typed or pasted, or a text was submitted for them: the conversation (or draft) is someone's, never cut on its own. Ressac's own pre-fill is not. */
   touched?: boolean;
+  /** The kernel waits on the user's answer about changed instruction files before this session starts. */
+  review?: { files: InstructionChange[]; resolve: (c: "keep" | "revert") => void; reject: (e: Error) => void };
 }
 
 /** One agent session per window (spec §8): it survives tab changes and the panel closing. */
@@ -87,7 +89,17 @@ export class SessionsAgent {
 
   constructor(
     private readonly o: {
-      open: (f: WindowId, t: TerminalSize, s: { profile: string; resume: boolean; onBuildProgress: (p: BuildProgress) => void }) => Promise<SessionLike>;
+      open: (
+        f: WindowId,
+        t: TerminalSize,
+        s: {
+          profile: string;
+          resume: boolean;
+          onBuildProgress: (p: BuildProgress) => void;
+          /** Settles on answerReview, or rejects when the entry is dropped: the kernel never waits forever. */
+          review: (changes: InstructionChange[]) => Promise<"keep" | "revert">;
+        },
+      ) => Promise<SessionLike>;
       /** The profile of a window that has not chosen one. */
       defaultProfile?: () => string;
       send: (f: WindowId, channel: "data" | "state", v: string | AgentPanelState) => void;
@@ -124,7 +136,11 @@ export class SessionsAgent {
       if (buffer) this.o.send(f, "data", buffer);
       return Promise.resolve();
     }
-    if (entry.startup) return entry.startup;
+    if (entry.startup) {
+      // The panel reloaded while the review card was up: it shows it again.
+      if (entry.review) this.o.send(f, "state", { state: "review", files: entry.review.files });
+      return entry.startup;
+    }
     entry.buffer.clear();
     this.cancelSend(entry);
     this.o.send(f, "state", { state: "preparing" });
@@ -133,8 +149,15 @@ export class SessionsAgent {
         profile: entry.profile,
         resume,
         onBuildProgress: (p) => {
-          if (this.inputs.get(f) === entry && !entry.session) this.o.send(f, "state", { state: "preparing", ...p });
+          if (this.inputs.get(f) === entry && !entry.session && !entry.review) this.o.send(f, "state", { state: "preparing", ...p });
         },
+        review: (files) =>
+          new Promise((resolve, reject) => {
+            if (this.inputs.get(f) !== entry) return reject(new Error("closed"));
+            entry.review?.reject(new Error("closed"));
+            entry.review = { files, resolve, reject };
+            this.o.send(f, "state", { state: "review", files });
+          }),
       })
       .then(
         (s) => {
@@ -177,6 +200,16 @@ export class SessionsAgent {
 
   private activeState(e: Entry): AgentPanelState {
     return e.engineChanged ? { state: "active", engineChanged: true } : { state: "active" };
+  }
+
+  /** The user's answer on the review card; nothing when this window has no review pending. */
+  answerReview(f: WindowId, choice: "keep" | "revert"): void {
+    const e = this.inputs.get(f);
+    const r = e?.review;
+    if (!r) return;
+    e.review = undefined;
+    this.o.send(f, "state", { state: "preparing" });
+    r.resolve(choice);
   }
 
   /** The engine of `profile` changed: its running sessions keep the old one until relaunched, the panel says so. */
@@ -272,9 +305,15 @@ export class SessionsAgent {
   /** Stops an entry already taken out of the map: a startup still in flight is abandoned when it arrives. */
   private drop(e: Entry): void {
     this.cancelSend(e);
+    this.rejectReview(e);
     const s = e.session;
     e.session = undefined;
     void s?.stop();
+  }
+
+  private rejectReview(e: Entry): void {
+    e.review?.reject(new Error("closed"));
+    e.review = undefined;
   }
 
   /**
@@ -308,7 +347,10 @@ export class SessionsAgent {
   /** Hands control back once the agent is stopped in the container. */
   async closeWindow(f: WindowId): Promise<void> {
     const e = this.inputs.get(f);
-    if (e) this.cancelSend(e);
+    if (e) {
+      this.cancelSend(e);
+      this.rejectReview(e);
+    }
     this.inputs.delete(f);
     await e?.session?.stop();
   }

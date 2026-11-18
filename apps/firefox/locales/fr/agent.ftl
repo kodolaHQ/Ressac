@@ -137,6 +137,17 @@ agent-panel-mode-browser = Navigateur
 agent-panel-mode-browser-title = Recherche et récaps, sans terminal
 agent-panel-mode-workshop = Atelier
 agent-panel-mode-workshop-title = Peut lancer des commandes : installer et lancer les applis de projet
+agent-review-title = Les consignes de l'agent ont changé
+agent-review-intro = Depuis la dernière session, ces fichiers ont été modifiés, peut-être par une page que l'agent a lue.
+agent-review-created = nouveau
+agent-review-deleted = supprimé
+agent-review-too-long = Fichier trop long pour être affiché
+agent-review-folded = ⋯ { $count ->
+        [one] { $count } ligne
+       *[other] { $count } lignes
+    }
+agent-review-keep = Garder les changements
+agent-review-revert = Revenir à la version d'avant
 
 ## Relecture
 
