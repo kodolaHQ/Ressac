@@ -561,8 +561,8 @@ const rpc = createRpc({
       return sessions.start(p.window, p.size);
     },
     "agent.relaunch": (p: { window: string }) => sessions.relaunch(p.window),
-    "agent.review": (p: { window: string; choice: unknown }) => {
-      if (p.choice === "keep" || p.choice === "revert") sessions.answerReview(p.window, p.choice);
+    "agent.review": (p: { window: string; id: unknown; choice: unknown }) => {
+      if (typeof p.id === "number" && (p.choice === "keep" || p.choice === "revert")) sessions.answerReview(p.window, p.id, p.choice);
     },
     "agent.switch": async (p: { window: string; profile: unknown }) => {
       if (typeof p.profile === "string" && /^[\w-]{1,64}$/.test(p.profile)) await sessions.switchProfile(p.window, p.profile);

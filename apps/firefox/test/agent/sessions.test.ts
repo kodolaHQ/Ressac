@@ -529,13 +529,15 @@ describe("instruction review before a session", () => {
     return { manager, answers, sessions, states };
   }
   const tick = () => new Promise((r) => setTimeout(r, 0));
+  /** The id of the last review shown. */
+  const lastId = (w: ReturnType<typeof reviewing>) => (w.states().findLast((s) => (s as { state: string }).state === "review") as { id: number }).id;
 
   test("a review sends the review state and resolves on answerReview, then preparing", async () => {
     const w = reviewing();
     const started = w.manager.start("F", size);
     await tick();
-    expect(w.states()).toEqual([{ state: "preparing" }, { state: "review", files }]);
-    w.manager.answerReview("F", "revert");
+    expect(w.states()).toEqual([{ state: "preparing" }, { state: "review", id: expect.any(Number), files }]);
+    w.manager.answerReview("F", lastId(w), "revert");
     await started;
     expect(w.answers).toEqual(["revert"]);
     expect(w.states().slice(2)).toEqual([{ state: "preparing" }, { state: "active" }]);
@@ -553,7 +555,7 @@ describe("instruction review before a session", () => {
       const w = reviewing();
       const started = w.manager.start("F", size);
       await tick();
-      expect(w.states().at(-1)).toEqual({ state: "review", files });
+      expect(w.states().at(-1)).toEqual({ state: "review", id: expect.any(Number), files });
       void leave(w.manager);
       await started;
       expect(w.answers[0]).toEqual(new Error("closed"));
@@ -563,13 +565,13 @@ describe("instruction review before a session", () => {
 
   test("answerReview for a window without a pending review does nothing", async () => {
     const w = reviewing();
-    w.manager.answerReview("F", "keep");
+    w.manager.answerReview("F", 1, "keep");
     const started = w.manager.start("F", size);
     await tick();
-    w.manager.answerReview("G", "keep");
+    w.manager.answerReview("G", lastId(w), "keep");
     expect(w.answers).toEqual([]);
-    w.manager.answerReview("F", "keep");
-    w.manager.answerReview("F", "revert");
+    w.manager.answerReview("F", lastId(w), "keep");
+    w.manager.answerReview("F", lastId(w), "revert");
     await started;
     expect(w.answers).toEqual(["keep"]);
   });
@@ -579,8 +581,25 @@ describe("instruction review before a session", () => {
     const started = w.manager.start("F", size);
     await tick();
     void w.manager.start("F", size);
-    expect(w.states().at(-1)).toEqual({ state: "review", files });
-    w.manager.answerReview("F", "keep");
+    expect(w.states().at(-1)).toEqual({ state: "review", id: expect.any(Number), files });
+    w.manager.answerReview("F", lastId(w), "keep");
     await started;
+  });
+
+  test("an answer with the previous review's id leaves the new review pending", async () => {
+    const w = reviewing();
+    const first = w.manager.start("F", size);
+    await tick();
+    const old = lastId(w);
+    void w.manager.relaunch("F"); // the old card is rejected, a new review shows
+    await first;
+    await tick();
+    expect(lastId(w)).not.toBe(old);
+    w.manager.answerReview("F", old, "keep");
+    expect(w.answers).toEqual([new Error("closed")]);
+    expect(w.states().at(-1)).toEqual({ state: "review", id: lastId(w), files });
+    w.manager.answerReview("F", lastId(w), "revert");
+    await tick();
+    expect(w.answers).toEqual([new Error("closed"), "revert"]);
   });
 });

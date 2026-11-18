@@ -6,13 +6,18 @@
   import { t } from "../i18n.svelte";
   import { foldLines, shownPath } from "./instructionReview";
 
-  let { files, visible }: { files: InstructionChange[]; visible: boolean } = $props();
+  let { id, files, visible }: { id: number; files: InstructionChange[]; visible: boolean } = $props();
   let card = $state<HTMLElement>();
   let revert = $state<HTMLButtonElement>();
-  // A second click is harmless: the host answers only a pending review.
-  const answer = (choice: "keep" | "revert") => void api.agent.review(choice);
-  // The safe choice takes the keyboard when the card shows in a visible panel.
+  /** The review already answered: its buttons wait for the next review's id. */
+  let answered = $state<number>();
+  const answer = (choice: "keep" | "revert") => {
+    answered = id;
+    void api.agent.review(id, choice);
+  };
+  // The safe choice takes the keyboard when a review shows in a visible panel.
   $effect(() => {
+    void id;
     if (visible) void tick().then(() => revert?.focus());
   });
 </script>
@@ -43,8 +48,8 @@
     </div>
   {/each}
   <div class="actions">
-    <button class="secondary" data-testid="agent-review-keep" onclick={() => answer("keep")}>{t("agent-review-keep")}</button>
-    <button data-testid="agent-review-revert" bind:this={revert} onclick={() => answer("revert")}>{t("agent-review-revert")}</button>
+    <button class="secondary" data-testid="agent-review-keep" disabled={answered === id} onclick={() => answer("keep")}>{t("agent-review-keep")}</button>
+    <button data-testid="agent-review-revert" disabled={answered === id} bind:this={revert} onclick={() => answer("revert")}>{t("agent-review-revert")}</button>
   </div>
 </div>
 
@@ -68,6 +73,7 @@
   .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
   button { padding: 6px 14px; border-radius: 10px; border: 0; background: var(--accent); color: var(--accent-ink); font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap); }
   button.secondary { background: var(--sheet); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
-  button:active { transform: scale(0.97); }
+  button:active:not(:disabled) { transform: scale(0.97); }
+  button:disabled { opacity: 0.6; cursor: default; }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

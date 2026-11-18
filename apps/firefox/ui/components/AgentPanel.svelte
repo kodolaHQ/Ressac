@@ -241,7 +241,7 @@
       <p class="message">{t(machineStarting ? "agent-panel-machine-starting" : "agent-panel-preparing")}</p>
     {/if}
   {:else if appState.state === "review"}
-    <InstructionReview files={appState.files} {visible} />
+    <InstructionReview id={appState.id} files={appState.files} {visible} />
   {:else if appState.state === "docker-absent"}
     <p class="message">{t("agent-panel-docker-absent")}</p>
     <button onclick={terminalAgent.reset}>{t("agent-panel-retry")}</button>

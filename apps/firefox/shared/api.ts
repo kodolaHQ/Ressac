@@ -298,7 +298,7 @@ export interface ApiRessac {
     /** After an engine change (Réglages › Agents): restarts this window's agent on the new engine, resuming its conversation. */
     relaunch(): Promise<void>;
     /** The answer on the changed-instructions card; settles once the host has answered (a failure is logged, never thrown). */
-    review(choice: "keep" | "revert"): Promise<void>;
+    review(id: number, choice: "keep" | "revert"): Promise<void>;
   };
   /** The agent's access to tabs (badges and bubble to cut it). */
   access: {
@@ -645,7 +645,7 @@ export type AgentPanelState =
   | { state: "active"; engineChanged?: true }
   | { state: "done"; code: number }
   /** Instruction files changed since the last session: the session waits on the user's answer (agent.review). */
-  | { state: "review"; files: InstructionChange[] };
+  | { state: "review"; id: number; files: InstructionChange[] };
 
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
 /** Id of an action (name of its folder under `~/Ressac/actions`). */

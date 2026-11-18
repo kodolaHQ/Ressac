@@ -80,12 +80,14 @@ interface Entry {
   /** The user typed or pasted, or a text was submitted for them: the conversation (or draft) is someone's, never cut on its own. Ressac's own pre-fill is not. */
   touched?: boolean;
   /** The kernel waits on the user's answer about changed instruction files before this session starts. */
-  review?: { files: InstructionChange[]; resolve: (c: "keep" | "revert") => void; reject: (e: Error) => void };
+  review?: { id: number; files: InstructionChange[]; resolve: (c: "keep" | "revert") => void; reject: (e: Error) => void };
 }
 
 /** One agent session per window (spec §8): it survives tab changes and the panel closing. */
 export class SessionsAgent {
   private inputs = new Map<WindowId, Entry>();
+  /** Each review gets its own id: a late answer from an older card never settles a newer one. */
+  private reviews = 0;
 
   constructor(
     private readonly o: {
@@ -138,7 +140,7 @@ export class SessionsAgent {
     }
     if (entry.startup) {
       // The panel reloaded while the review card was up: it shows it again.
-      if (entry.review) this.o.send(f, "state", { state: "review", files: entry.review.files });
+      if (entry.review) this.o.send(f, "state", { state: "review", id: entry.review.id, files: entry.review.files });
       return entry.startup;
     }
     entry.buffer.clear();
@@ -155,8 +157,9 @@ export class SessionsAgent {
           new Promise((resolve, reject) => {
             if (this.inputs.get(f) !== entry) return reject(new Error("closed"));
             entry.review?.reject(new Error("closed"));
-            entry.review = { files, resolve, reject };
-            this.o.send(f, "state", { state: "review", files });
+            const id = ++this.reviews;
+            entry.review = { id, files, resolve, reject };
+            this.o.send(f, "state", { state: "review", id, files });
           }),
       })
       .then(
@@ -202,11 +205,11 @@ export class SessionsAgent {
     return e.engineChanged ? { state: "active", engineChanged: true } : { state: "active" };
   }
 
-  /** The user's answer on the review card; nothing when this window has no review pending. */
-  answerReview(f: WindowId, choice: "keep" | "revert"): void {
+  /** The user's answer on review `id`'s card; nothing unless that review is the one pending in this window. */
+  answerReview(f: WindowId, id: number, choice: "keep" | "revert"): void {
     const e = this.inputs.get(f);
     const r = e?.review;
-    if (!r) return;
+    if (!r || r.id !== id) return;
     e.review = undefined;
     this.o.send(f, "state", { state: "preparing" });
     r.resolve(choice);
