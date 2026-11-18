@@ -5,6 +5,7 @@ export const RELEASE_NOTES: { version: string; date: string; items: string[] }[]
     date: "novembre 2026",
     items: [
       "Ressac prend moins de mémoire, surtout sur un Mac de 8 Go : la machine de l'agent ne démarre plus au lancement mais quand l'agent, une appli ou un widget en a besoin, et elle est deux fois plus petite sur ces Mac. Quand macOS manque de mémoire, Ressac décharge ses modèles locaux et éteint la machine si rien ne s'en sert.",
+      "Sous la même alerte, une conversation avec l'agent restée silencieuse depuis 2 minutes se met en veille ; tapez votre prochain message, elle reprend là où elle en était.",
     ],
   },
   {
