@@ -187,7 +187,7 @@ test("revert of a too-many tree removes the tree, then writes the reference file
   const { review, disk, writes } = await setup({ [`${tree}/x/SKILL.md`]: "s" });
   await review.keep("codex", (await review.pending("codex")).snapshot);
   disk.delete(`${tree}/x/SKILL.md`);
-  disk.set(tree, "\u0000too-many");
+  disk.set(tree, "\u0000too-many:abc");
   const p = await review.pending("codex");
   expect(p.changes).toMatchObject([{ path: tree, status: "created", lines: null, marker: "too-many" }, { path: `${tree}/x/SKILL.md`, status: "deleted" }]);
   await review.revert("codex", p.snapshot);
@@ -195,7 +195,7 @@ test("revert of a too-many tree removes the tree, then writes the reference file
 });
 
 test("a change names its marker kind: link target, binary, unreadable", async () => {
-  const { review } = await setup({ [CODEX_HOME]: "\u0000link:/etc", [SKILL]: "\u0000binary:abc", "/workspace/AGENTS.override.md": "\u0000unreadable" });
+  const { review } = await setup({ [CODEX_HOME]: "\u0000link:/etc", [SKILL]: "\u0000binary:abc", "/workspace/AGENTS.override.md": "\u0000unreadable:3:1" });
   const markers = Object.fromEntries((await review.pending("codex")).changes.map((c) => [c.path, c.marker]));
   expect(markers).toEqual({ [CODEX_HOME]: "link:/etc", [SKILL]: "binary", "/workspace/AGENTS.override.md": "unreadable" });
 });

@@ -12,8 +12,9 @@ export const LIMITS: InstructionLimits = { file: FILE_MAX, total: TOTAL_MAX, tre
  * Child side: the `files` and every file under the `trees` (absolute paths), each path walked from `/` with lstat. A link
  * anywhere is recorded as `"\u0000link:" + target` at its own path and nothing under it is read; an absent file has no
  * key; a file over `limits.file` is `"\u0000too-long:" + sha256(first MiB + size)`, one not UTF-8 text (or with a NUL) `"\u0000binary:" + sha256`; a fifo, socket… is `"\u0000other"`;
- * an entry fs refuses (EACCES…) is `"\u0000unreadable"`. A tree past `limits.tree` entries (folders count) or reads past
- * `limits.total` bytes is `"\u0000too-many"` at its root: agent-shaped content never makes the read fail.
+ * an entry fs refuses (EACCES…) is `"\u0000unreadable:" + size:mtimeMs` (bare when even lstat fails). A tree past
+ * `limits.tree` entries (folders count) or reads past `limits.total` bytes is `"\u0000too-many:" + sha256` of its
+ * listing at its root: agent-shaped content never makes the read fail, and any change in the tree changes the marker.
  */
 export function readInstructionFiles(input: { files: string[]; trees: string[] }, limits: InstructionLimits = LIMITS): Snapshot {
   const fs = process.getBuiltinModule("node:fs");
@@ -27,6 +28,33 @@ export function readInstructionFiles(input: { files: string[]; trees: string[] }
   const mark = (path: string, marker: string) => {
     for (const k of Object.keys(out)) if (k.startsWith(`${path}/`)) delete out[k];
     out[path] = marker;
+  };
+  // Metadata of every entry under `root` (relative path, type, size, mtime), no content read, links never followed; bounded.
+  const listing = (root: string): string => {
+    const seen: string[] = [];
+    const dirs = [root];
+    let more = false;
+    for (let dir; (dir = dirs.pop()) !== undefined && !more; ) {
+      let names: string[];
+      try {
+        names = fs.readdirSync(dir);
+      } catch {
+        seen.push(`${dir.slice(root.length)}\u0000unreadable`);
+        continue;
+      }
+      for (const name of names) {
+        if (seen.length >= 100_000) {
+          more = true;
+          break;
+        }
+        const p = `${dir}/${name}`;
+        const l = fs.lstatSync(p, { throwIfNoEntry: false });
+        const type = !l ? "?" : l.isSymbolicLink() ? "l" : l.isDirectory() ? "d" : l.isFile() ? "f" : "o";
+        seen.push(`${p.slice(root.length)}\u0000${type}\u0000${l?.size ?? ""}\u0000${l?.mtimeMs ?? ""}`);
+        if (type === "d") dirs.push(p);
+      }
+    }
+    return createHash("sha256").update(seen.sort().join("\n") + (more ? "\nmore" : "")).digest("hex");
   };
   const refused = (e: unknown) => typeof (e as NodeJS.ErrnoException | undefined)?.code === "string";
   const readFile = (path: string): string => {
@@ -68,7 +96,7 @@ export function readInstructionFiles(input: { files: string[]; trees: string[] }
       } else out[path] = l.isFile() ? readFile(path) : "\u0000other";
     } catch (e) {
       if (!refused(e)) throw e;
-      mark(path, "\u0000unreadable");
+      mark(path, `\u0000unreadable:${l.size}:${l.mtimeMs}`);
     }
   };
   const walk = (path: string, tree: boolean) => {
@@ -97,7 +125,7 @@ export function readInstructionFiles(input: { files: string[]; trees: string[] }
     } catch (e) {
       if (e !== tooMany) throw e;
       total = before;
-      mark(path, "\u0000too-many");
+      mark(path, `\u0000too-many:${listing(path)}`);
     }
   }
   return out;

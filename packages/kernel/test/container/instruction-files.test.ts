@@ -77,7 +77,20 @@ test("a huge sparse file is hashed over its first MiB and its size, never read w
 test("folders count toward the tree limit", () => {
   const r = root();
   for (let i = 0; i < 3; i++) mkdirSync(join(r, `d${i}`));
-  expect(readInstructionFiles({ files: [], trees: [r] }, { file: FILE_MAX, total: TOTAL_MAX, tree: 2 })).toEqual({ [r]: "\u0000too-many" });
+  expect(readInstructionFiles({ files: [], trees: [r] }, { file: FILE_MAX, total: TOTAL_MAX, tree: 2 })).toEqual({ [r]: expect.stringMatching(/^\u0000too-many:[0-9a-f]{64}$/) });
+});
+
+test("a too-many marker changes whenever the tree changes, so a kept one is still watched", () => {
+  const r = root();
+  for (let i = 0; i < 3; i++) writeFileSync(join(r, `f${i}`), "x");
+  const read = () => readInstructionFiles({ files: [], trees: [r] }, { file: FILE_MAX, total: TOTAL_MAX, tree: 2 })[r];
+  const kept = read();
+  expect(read()).toBe(kept);
+  mkdirSync(join(r, "deep/er"), { recursive: true });
+  const added = read();
+  expect(added).not.toBe(kept);
+  writeFileSync(join(r, "deep/er/SKILL.md"), "new");
+  expect(read()).not.toBe(added);
 });
 
 test("more than TREE_FILES_MAX files or TOTAL_MAX bytes is a too-many marker at the tree root, other trees still read", () => {
@@ -88,7 +101,8 @@ test("more than TREE_FILES_MAX files or TOTAL_MAX bytes is a too-many marker at 
   for (let i = 0; i <= TOTAL_MAX / FILE_MAX; i++) writeFileSync(join(heavy, `f${i}`), chunk);
   const light = root();
   writeFileSync(join(light, "a.md"), "a");
-  expect(readInstructionFiles({ files: [], trees: [many, heavy, light] })).toEqual({ [many]: "\u0000too-many", [heavy]: "\u0000too-many", [join(light, "a.md")]: "a" });
+  const tooMany = expect.stringMatching(/^\u0000too-many:/);
+  expect(readInstructionFiles({ files: [], trees: [many, heavy, light] })).toEqual({ [many]: tooMany, [heavy]: tooMany, [join(light, "a.md")]: "a" });
 });
 
 test.skipIf(process.getuid?.() === 0)("an unreadable file or folder is an unreadable marker at its path", () => {
@@ -101,8 +115,8 @@ test.skipIf(process.getuid?.() === 0)("an unreadable file or folder is an unread
   chmodSync(join(r, "skills/locked"), 0);
   try {
     expect(readInstructionFiles({ files: [join(r, "AGENTS.md")], trees: [join(r, "skills")] })).toEqual({
-      [join(r, "AGENTS.md")]: "\u0000unreadable",
-      [join(r, "skills/locked")]: "\u0000unreadable",
+      [join(r, "AGENTS.md")]: expect.stringMatching(/^\u0000unreadable:1:[0-9.]+$/),
+      [join(r, "skills/locked")]: expect.stringMatching(/^\u0000unreadable:\d+:[0-9.]+$/),
       [join(r, "skills/ok.md")]: "ok",
     });
   } finally {

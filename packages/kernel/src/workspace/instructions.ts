@@ -126,7 +126,7 @@ export class InstructionReview {
         moved = true;
         continue;
       }
-      const marker = [now, before].find(isMarker)?.slice(1).replace(/^(too-long|binary):.*$/s, "$1");
+      const marker = [now, before].find(isMarker)?.slice(1).replace(/^(too-long|binary|too-many|unreadable):.*$/s, "$1");
       const status = before === undefined ? "created" : now === undefined ? "deleted" : "changed";
       changes.push(marker === undefined ? { path, status, lines: lineDiff(before ?? "", now ?? "") } : { path, status, lines: null, marker });
     }
