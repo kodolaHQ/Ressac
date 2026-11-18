@@ -42,16 +42,17 @@ export const MACHINE_HOME = join(homedir(), ".ressac-vm");
 /** A Mac of 8 GiB or less (shared/settings.ts isSmallMac): the VM boots smaller and the local models unload sooner. */
 export const smallMac = (total = totalmem()) => isSmallMac(total, process.env.RESSAC_TEST_SMALL_MAC);
 /**
- * macOS memory pressure is normal: kern.memorystatus_vm_pressure_level 1 (2 warn, 4 critical). RESSAC_TEST_PRESSURE_FILE
+ * macOS memory pressure level: kern.memorystatus_vm_pressure_level, 1 normal, 2 warn, 4 critical. RESSAC_TEST_PRESSURE_FILE
  * (tests): a file holding the level instead. Unreadable: calm.
  */
-export async function memoryCalm(env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+export async function memoryLevel(env: NodeJS.ProcessEnv = process.env): Promise<number> {
   const file = env.RESSAC_TEST_PRESSURE_FILE;
   const level = file
     ? await readFile(file, "utf8").catch(() => "1")
     : await promisify(execFile)("/usr/sbin/sysctl", ["-n", "kern.memorystatus_vm_pressure_level"]).then((r) => r.stdout, () => "1");
-  return Number(level.trim()) <= 1;
+  return Number(level.trim()) || 1;
 }
+export const memoryCalm = async (env: NodeJS.ProcessEnv = process.env) => (await memoryLevel(env)) <= 1;
 /** Scheduled harvests and page indexing may start: always, unless saving memory under macOS pressure. */
 export const memoryAllows = (saving: boolean, env: NodeJS.ProcessEnv = process.env) => (saving ? memoryCalm(env) : Promise.resolve(true));
 /** macOS's sun_path is 104 bytes with its final NUL. */

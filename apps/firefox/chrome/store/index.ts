@@ -40,11 +40,12 @@ import { createWindowRegistry, type WindowRegistry } from "./windows";
 import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-network";
 import { gestureGuard } from "../../shared/widget-gesture";
 import { resolveLocale } from "../../shared/i18n";
-import { isSmallMac } from "../../shared/settings";
+import { isSmallMac, memoryPrefs } from "../../shared/settings";
 import { keepLoadedHosts } from "../window/tabs";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
+const { TabUnloader } = ChromeUtils.importESModule("moz-src:///browser/components/tabbrowser/TabUnloader.sys.mjs");
 
 export interface RessacStore extends Store {
   readonly dataDir: string;
@@ -242,10 +243,12 @@ async function start(): Promise<RessacStore> {
   store.subscribe((s) => Object.values(s.tabs).some((o) => o.link?.type === "essential" && o.notifies === undefined) && queueMicrotask(refreshNotifies));
   // Any permission change (a few essentials, each read in a lookup): only real changes dispatch.
   Services.obs.addObserver(refreshNotifies, "perm-changed");
-  // « Économiser la mémoire »: one preallocated page process instead of 3, applied live (Firefox rereads it).
-  const prelaunch = () => Services.prefs.getDefaultBranch("").setIntPref("dom.ipc.processPrelaunch.fission.number", store.state.settings.saveMemory ? 1 : 3);
-  prelaunch();
-  store.subscribe((s, p) => s.settings.saveMemory !== p.settings.saveMemory && prelaunch());
+  // « Économiser la mémoire »: its Firefox prefs (memoryPrefs), applied live (Firefox rereads them).
+  const applyMemoryPrefs = () => {
+    for (const [name, value] of Object.entries(memoryPrefs(store.state.settings.saveMemory))) Services.prefs.getDefaultBranch("").setIntPref(name, value);
+  };
+  applyMemoryPrefs();
+  store.subscribe((s, p) => s.settings.saveMemory !== p.settings.saveMemory && applyMemoryPrefs());
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());
@@ -558,6 +561,9 @@ async function start(): Promise<RessacStore> {
   // macOS runs short of memory (browser.lowMemoryResponseMask, ressac.js): the host unloads the models and stops an unused machine.
   // Once as it starts: « low-memory-ongoing » repeats every 10 s while it lasts, and would kill a model the user just reloaded.
   Services.obs.addObserver((_s: unknown, _t: string, data: string) => data !== "low-memory-ongoing" && agent.notify("memory.pressure"), "memory-pressure");
+  // Critical macOS pressure while saving memory (the host checks every 10 s): the least recently used eligible tab
+  // unloads now, without the inactivity floor; Firefox's rules and our undiscardable flag still spare the rest.
+  agent.on("memory.critical", () => void TabUnloader.unloadTabAsync(0));
   // Registered before any UI listener: the UI reads `access` once it is updated.
   agent.on("access", (e: AccessState) => (access = e));
   agent.on("telemetryError", (e: ReportedError) => telemetry.report({ ...e, source: "host" }));

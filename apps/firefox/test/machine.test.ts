@@ -397,7 +397,14 @@ describe("the workshop machine", () => {
     }
     expect(await memoryCalm({ RESSAC_TEST_PRESSURE_FILE: file + ".missing" })).toBe(true);
     // Under pressure, only « Économiser la mémoire » holds the harvests back.
-    const { memoryAllows } = await import("../host/machine");
+    const { memoryAllows, memoryLevel } = await import("../host/machine");
+    expect(await memoryLevel({ RESSAC_TEST_PRESSURE_FILE: file })).toBe(4);
+    // « Économiser la mémoire »'s Firefox prefs, and Firefox's defaults when off.
+    const { memoryPrefs } = await import("../shared/settings");
+    expect([memoryPrefs(true), memoryPrefs(false)]).toEqual([
+      { "dom.ipc.processPrelaunch.fission.number": 1, "browser.tabs.min_inactive_duration_before_unload": 180_000 },
+      { "dom.ipc.processPrelaunch.fission.number": 3, "browser.tabs.min_inactive_duration_before_unload": 600_000 },
+    ]);
     expect([await memoryAllows(true, { RESSAC_TEST_PRESSURE_FILE: file }), await memoryAllows(false, { RESSAC_TEST_PRESSURE_FILE: file })]).toEqual([false, true]);
   });
 

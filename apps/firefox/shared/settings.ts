@@ -12,6 +12,12 @@ export function validAgentDomain(d: unknown): d is string {
  * A Mac of 8 GiB or less: a smaller machine, models unloaded sooner, and « Économiser la mémoire » on until the user
  * chooses. `force` (RESSAC_TEST_SMALL_MAC, tests): "1" or "0" overrides the memory.
  */
+/**
+ * Firefox's default-branch prefs « Économiser la mémoire » sets (live): one preallocated page process instead of 3, and
+ * background tabs unloadable under pressure after 3 min inactive instead of 10 (Firefox's defaults when off).
+ */
+export const memoryPrefs = (save: boolean) => ({ "dom.ipc.processPrelaunch.fission.number": save ? 1 : 3, "browser.tabs.min_inactive_duration_before_unload": save ? 180_000 : 600_000 });
+
 export const isSmallMac = (totalBytes: number, force?: string | null) => (force === "1" || force === "0" ? force === "1" : totalBytes <= 8 * 2 ** 30);
 
 /** Minutes an idle workshop machine keeps running before it stops (Réglages); the first is the default. */

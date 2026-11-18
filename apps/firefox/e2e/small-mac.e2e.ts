@@ -305,3 +305,56 @@ describe("small Mac, essentials kept loaded for notifications", () => {
     expect(await inWindow(n, second, () => tabOf(copy.id))).toBeNull();
   });
 });
+
+describe("small Mac, critical memory pressure", () => {
+  let dir: string;
+  let x: LaunchedRessac | undefined;
+  let n: Marionette;
+  const level = () => path.join(dir, "pressure-level");
+  const xulOf = (id: string) =>
+    n.execute<{ discarded: boolean; selected: boolean } | null>(
+      `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]); return t ? { discarded: !t.linkedBrowser.isConnected, selected: t.selected } : null;`,
+      [id],
+    );
+  beforeAll(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
+    await writeFile(level(), "1");
+    x = await launchRessac({ dataDir: dir, env: { RESSAC_TEST_SMALL_MAC: "1", RESSAC_TEST_PRESSURE_FILE: level(), RESSAC_TEST_MACHINE: "running", RESSAC_D1_URL: "http://127.0.0.1:9", RESSAC_EMBED_URL: "http://127.0.0.1:9" } });
+    n = x.marionette;
+    await n.setContext("chrome");
+    await waitReady(n);
+  });
+  afterAll(async () => {
+    await x?.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("unloads a background tab inactive under 3 min right away, never the shown tab nor a kept essential", { timeout: 90_000 }, async () => {
+    expect(await n.execute(`return Services.prefs.getIntPref("browser.tabs.min_inactive_duration_before_unload")`)).toBe(180_000);
+    // Marionette turns tab unloading off for its sessions: back on, as in use.
+    await n.execute(`Services.prefs.setBoolPref("browser.tabs.unloadOnLowMemory", true);`);
+    const windowId = (await state(n)).windows[0]!.id;
+    const open = async (p: string) => {
+      const before = new Set(Object.keys((await state(n)).tabs));
+      const after = await dispatch(n, { type: "openTab", windowId, url: server.url + p, activate: true });
+      const id = Object.keys(after.tabs).find((t) => !before.has(t))!;
+      await waitFor(n, "return gBrowser.selectedBrowser.currentURI.spec", (v: string) => v.endsWith(p));
+      return id;
+    };
+    await dispatch(n, { type: "addEssential", id: await open("/a.html") });
+    await dispatch(n, { type: "setKeepLoaded", favoriteId: (await state(n)).essentials[0]!.id, keep: true });
+    const kept = Object.values((await state(n)).tabs).find((o) => o.link?.type === "essential")!.id;
+    const background = await open("/texte.html");
+    const shown = await open("/b.html");
+    expect(await xulOf(kept)).toEqual({ discarded: false, selected: false });
+    await writeFile(level(), "4");
+    const end = Date.now() + 30_000;
+    while (!(await xulOf(background))?.discarded && Date.now() < end) await new Promise((r) => setTimeout(r, 250));
+    expect(await xulOf(background)).toEqual({ discarded: true, selected: false });
+    // Still critical: further checks find nothing else to unload.
+    await new Promise((r) => setTimeout(r, 11_000));
+    expect(await xulOf(shown)).toEqual({ discarded: false, selected: true });
+    expect(await xulOf(kept)).toEqual({ discarded: false, selected: false });
+    await writeFile(level(), "1");
+  });
+});

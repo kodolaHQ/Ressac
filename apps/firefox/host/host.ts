@@ -37,7 +37,7 @@ const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./de
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createWriterChoice } = await import("./writer.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
-const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, memoryAllows, smallMac, vmImage } = await import("./machine.ts");
+const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, memoryAllows, memoryLevel, smallMac, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
@@ -139,6 +139,11 @@ let machineIdleMinutes = 5;
 // « Économiser la mémoire » (told by the chrome): scheduled harvests and page indexing wait for calm memory.
 let saveMemory = false;
 const calm = () => memoryAllows(saveMemory);
+// Critical pressure while saving memory: the chrome unloads a tab now, and again every 10 s while it lasts (warn is
+// left to Firefox's own unloading). The sysctl, not Firefox's topic: Firefox does not tell warn from critical.
+setInterval(() => {
+  if (saveMemory) void memoryLevel().then((l) => l >= 4 && rpc.notify("memory.critical"));
+}, 10_000).unref();
 // An apply while the kernel is down leaves the MCP port closed on purpose: openAgentSession applies again before any session.
 // Without `network` the kernel applies no firewall: it must stay passed. The MCP port is known once the kernel is up, read at each apply.
 // The workshop's engines: Ressac's machine, Docker while the machine is not ready (or for good where it cannot run).
