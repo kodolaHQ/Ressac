@@ -413,8 +413,9 @@ export class Workshop {
     if (!this.docker) throw new Error(say(this.locale(), "kernel-workshop-no-engine"));
     if (!this.secured) await this.secureNetwork();
     // tsx (esbuild keepNames) wraps inner functions in __name(), absent in the child.
-    const script = `var __name = (f) => f; const input = JSON.parse(process.getBuiltinModule("node:fs").readFileSync(0, "utf8")); process.stdout.write(JSON.stringify((${fn.toString()})(input, ${JSON.stringify(extra) ?? "undefined"})))`;
-    const r = await this.launch(["exec", "-i", "-u", "node", "-w", "/", containerName(), "node", "-e", script, "ressac-instructions"], PROBE_DELAY_MS, JSON.stringify(input));
+    // Data only on stdin, never spliced into the code.
+    const script = `var __name = (f) => f; const d = JSON.parse(process.getBuiltinModule("node:fs").readFileSync(0, "utf8")); process.stdout.write(JSON.stringify((${fn.toString()})(d.input, d.extra)))`;
+    const r = await this.launch(["exec", "-i", "-u", "node", "-w", "/", containerName(), "node", "-e", script, "ressac-instructions"], PROBE_DELAY_MS, JSON.stringify({ input, extra }));
     if (r.code !== 0) throw new Error(`${what} the instruction files failed: ${tail(r.stderr) || `code ${r.code}`}`);
     return JSON.parse(r.stdout) as T;
   }

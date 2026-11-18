@@ -366,12 +366,12 @@ test("kernel: rejouer goes through the scheduler queue; surDirect follows the qu
 async function instructionScript(root: string, args: string[], input: string) {
   const host = (p: string) => (p.startsWith("/workspace/") ? join(root, p.slice("/workspace/".length)) : join(`${root}-home`, p.slice("/home/node/".length)));
   if (args.some((a) => a.includes("readInstructionFiles"))) {
-    const { files } = JSON.parse(input) as { files: string[] };
+    const { files } = (JSON.parse(input) as { input: { files: string[] } }).input;
     const out: Record<string, string> = {};
     for (const f of files) if (existsSync(host(f))) out[f] = await readFile(host(f), "utf8");
     return JSON.stringify(out);
   }
-  for (const [p, c] of Object.entries(JSON.parse(input) as Record<string, string | null>)) c === null ? await rm(host(p), { force: true }) : await writeFile(host(p), c);
+  for (const [p, c] of Object.entries((JSON.parse(input) as { input: Record<string, string | null> }).input)) c === null ? await rm(host(p), { force: true }) : await writeFile(host(p), c);
   return '"done"';
 }
 

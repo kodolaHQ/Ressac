@@ -199,7 +199,8 @@ if (args[0] === "exec") {
     let input = "";
     process.stdin.on("data", (c) => (input += c));
     process.stdin.on("end", () => {
-      const r = spawnSync(process.execPath, command.slice(1), { input: JSON.stringify(paths(JSON.parse(input), false)), encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      const d = JSON.parse(input); // { input, extra }: only the input carries paths
+      const r = spawnSync(process.execPath, command.slice(1), { input: JSON.stringify({ ...d, input: paths(d.input, false) }), encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
       if (r.status !== 0) quit(r.status ?? 1, "", r.stderr);
       const out = JSON.parse(r.stdout);
       // Not quit(): process.exit() would cut an output larger than the pipe's 64 KB.
