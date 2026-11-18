@@ -80,3 +80,15 @@ test("write creates missing parent folders and deletes null entries", () => {
   // A file standing where a folder is needed is refused.
   expect(writeInstructionFiles({ [join(r, "a/b/new.md/x")]: "x" })).toBe("failed");
 });
+
+test("a file that is not UTF-8 text is read as a binary marker", () => {
+  const r = root();
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe]);
+  writeFileSync(join(r, "a.png"), png);
+  writeFileSync(join(r, "nul.md"), "a\u0000b");
+  const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
+  expect(readInstructionFiles({ files: [join(r, "a.png"), join(r, "nul.md")], trees: [] })).toEqual({
+    [join(r, "a.png")]: `\u0000binary:${sha(png)}`,
+    [join(r, "nul.md")]: `\u0000binary:${sha("a\u0000b")}`,
+  });
+});

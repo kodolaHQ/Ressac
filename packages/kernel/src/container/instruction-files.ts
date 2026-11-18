@@ -11,7 +11,7 @@ export const LIMITS: InstructionLimits = { file: FILE_MAX, total: TOTAL_MAX, tre
 /**
  * Child side: the `files` and every file under the `trees` (absolute paths), each path walked from `/` with lstat. A link
  * anywhere is recorded as `"\u0000link:" + target` at its own path and nothing under it is read; an absent file has no
- * key; a file over `limits.file` is `"\u0000too-long:" + sha256`; a fifo, socket… is `"\u0000other"`. Throws past
+ * key; a file over `limits.file` is `"\u0000too-long:" + sha256`, one not UTF-8 text (or with a NUL) `"\u0000binary:" + sha256`; a fifo, socket… is `"\u0000other"`. Throws past
  * `limits.tree` tree files or `limits.total` bytes.
  */
 export function readInstructionFiles(input: { files: string[]; trees: string[] }, limits: InstructionLimits = LIMITS): Snapshot {
@@ -35,7 +35,11 @@ export function readInstructionFiles(input: { files: string[]; trees: string[] }
       }
       if (size > limits.file) return `\u0000too-long:${hash.digest("hex")}`;
       if ((total += size) > limits.total) throw new Error("instruction files too large");
-      return Buffer.concat(chunks).toString("utf8");
+      const bytes = Buffer.concat(chunks);
+      const text = bytes.toString("utf8");
+      // Not text: never restored, so a revert cannot write a lossy decoding back.
+      if (bytes.includes(0) || !Buffer.from(text, "utf8").equals(bytes)) return `\u0000binary:${hash.digest("hex")}`;
+      return text;
     } finally {
       fs.closeSync(fd);
     }
@@ -90,6 +94,7 @@ export function writeInstructionFiles(entries: Record<string, string | null>): "
       let missing = false;
       for (const part of parts) {
         parent += `/${part}`;
+        // shortcut: checked then used by path (Node has no openat); a swap in between only reaches what `node`, the agent's own user, can already touch.
         let l = fs.lstatSync(parent, { throwIfNoEntry: false });
         if (!l && content === null) {
           missing = true;
