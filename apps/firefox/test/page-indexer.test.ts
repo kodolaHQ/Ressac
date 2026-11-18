@@ -56,6 +56,18 @@ test("a page the model refuses is marked and skipped: the 39 others get vectors 
   await vi.waitFor(() => expect(h.findSimilar(Float32Array.from([1, 0]), { limit: 100, sites: ["p7.fr"] })).toHaveLength(1));
 });
 
+test("under memory pressure no pass starts (the launch one included): it starts at the first calm look", async () => {
+  fill(5);
+  let calm = false;
+  const { embed } = fake();
+  indexer = createPageIndexer({ history: h, embed, calm: async () => calm, pauseMs: 0, idleMs: 20 });
+  indexer.start();
+  await new Promise((r) => setTimeout(r, 100));
+  expect(embed).not.toHaveBeenCalled();
+  calm = true;
+  await done();
+});
+
 test("10 000 pages are indexed in batches of 32, most recent first, and a timer fires between batches", async () => {
   fill(10_000);
   let fired = 0;

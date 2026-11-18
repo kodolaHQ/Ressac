@@ -16,6 +16,8 @@ const REFUSED: Record<string, string> = {
 const errorName = (code: string | null) => (code ? (REFUSED[code] ?? code) : "Erreur");
 
 type TabFields = Extract<Action, { type: "updateTab" }>["fields"];
+/** When a tab unload last asked the host to relieve memory: under pressure Firefox unloads one tab every few seconds. */
+let relievedAt = -Infinity;
 
 /**
  * Keeps the XUL tabs of one window in line with its Ressac tabs: a XUL tab is created when its
@@ -27,6 +29,8 @@ export class TabSync {
   /** XUL tabs whose Ressac tab moved to another window: kept, page running, until that window adopts them. */
   private readonly leaving = new Map<TabId, any>();
   private parking: any;
+  /** The saveMemory setting the essentials' XUL tabs were last set for. */
+  private saving: boolean | undefined;
   private creating = false;
   /** While create() makes an app essential's XUL tab: its app, registered with the site store before the first load. */
   private siteApp: string | undefined;
@@ -79,6 +83,7 @@ export class TabSync {
     const strip = gBrowser.tabContainer;
     strip.addEventListener("TabOpen", (e: Event) => this.onOpen(e.target));
     strip.addEventListener("TabClose", (e: Event) => this.onClose(e.target));
+    strip.addEventListener("TabBrowserDiscarded", (e: Event) => this.onDiscard(e.target));
     strip.addEventListener("TabSelect", (e: any) => {
       this.onSelect(e.target);
       // A tab left while it plays without sound (a muted video) has a media session too.
@@ -149,6 +154,8 @@ export class TabSync {
   private park(tab: any): void {
     this.parking = tab;
     tab.setAttribute(PARKING, "");
+    // Under memory pressure Firefox unloads background tabs: never the window's blank page.
+    tab.undiscardable = true;
     Object.defineProperties(tab, { isEmpty: { get: () => false }, isEmptyIgnoringLoad: { get: () => false } });
   }
 
@@ -166,6 +173,8 @@ export class TabSync {
     const o = state.tabs[id];
     if (!o) throw new Error(`Onglet introuvable : ${id}`);
     // shortcut: a XUL tab created for reading lives until its tab leaves the state, upgrade when memory matters.
+    // One Firefox unloaded under memory pressure has no page to read: it is made again.
+    if (this.tabs.get(id)?.linkedBrowser?.isConnected === false) this.recreate(id);
     if (!this.tabs.has(id)) this.create(state, o);
     const browser = this.tabs.get(id).linkedBrowser;
     // A tab just created is still on its initial about:blank, its load not started yet.
@@ -239,9 +248,16 @@ export class TabSync {
       if (!o || o.unloaded || this.containerOf(state, o) !== tab.userContextId) this.remove(id, tab);
     }
     if (web && !this.tabs.has(web.id)) this.create(state, web);
-    // Essentials stay loaded: their pages load in the background, without waiting to be shown.
-    for (const o of Object.values(state.tabs))
-      if (o.windowId === this.windowId && o.link?.type === "essential" && hasView(o.url) && !o.crashed && !o.error && !o.unloaded && !this.tabs.has(o.id)) this.create(state, o);
+    // Essentials stay loaded: their pages load in the background, without waiting to be shown. Not while saving memory:
+    // then they load on first display, like the other tabs, and Firefox may unload them (live, both ways).
+    const save = state.settings.saveMemory;
+    if (save !== this.saving) {
+      this.saving = save;
+      for (const [id, tab] of this.tabs) if (state.tabs[id]?.link?.type === "essential") tab.undiscardable = !save;
+    }
+    if (!save)
+      for (const o of Object.values(state.tabs))
+        if (o.windowId === this.windowId && o.link?.type === "essential" && hasView(o.url) && !o.crashed && !o.error && !o.unloaded && !this.tabs.has(o.id)) this.create(state, o);
     // A crashed or failed page is replaced by the UI's message.
     const target = web && !web.crashed && !web.error ? this.tabs.get(web.id) : this.parking;
     if (this.gBrowser.selectedTab !== target) this.select(() => (this.gBrowser.selectedTab = target));
@@ -273,8 +289,8 @@ export class TabSync {
       tab.setAttribute(TAB_ID, o.id);
       // Again once made: an adopted page may live in another <browser> than the one TabOpen saw (a no-op otherwise).
       if (this.siteApp) void this.store.sites.attachTab(this.siteApp, tab.linkedBrowser);
-      // Firefox never unloads an essential to free memory.
-      if (o.link?.type === "essential") tab.undiscardable = true;
+      // Firefox never unloads an essential to free memory, unless saving memory.
+      if (o.link?.type === "essential" && !state.settings.saveMemory) tab.undiscardable = true;
       this.tabs.set(o.id, tab);
     } finally {
       this.creating = false;
@@ -299,6 +315,22 @@ export class TabSync {
       return tab ?? undefined;
     }
     return undefined;
+  }
+
+  /**
+   * Firefox unloaded a background tab under memory pressure (browser.lowMemoryResponseMask, ressac.js): the host is asked
+   * to relieve memory too (models, idle machine) rather than wait for « memory-pressure », sent once no tab is left to
+   * unload. An unloaded essential shows so; its page comes back on its next display (keepEssentials). A regular tab keeps
+   * its XUL tab, which reloads when selected.
+   */
+  private onDiscard(tab: any): void {
+    if (Date.now() - relievedAt > 60_000) {
+      relievedAt = Date.now();
+      this.store.agent.notify("memory.pressure");
+    }
+    const id = tab.getAttribute(TAB_ID);
+    if (id && this.tabs.get(id) === tab && this.store.state.tabs[id]?.link?.type === "essential")
+      queueMicrotask(() => this.store.dispatch({ type: "updateTab", id, fields: { unloaded: true } }));
   }
 
   private remove(id: TabId, tab: any): void {

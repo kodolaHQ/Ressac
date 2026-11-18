@@ -1,6 +1,6 @@
 import { MachineIdleSchema, validAgentDomain } from "../../shared/settings";
 import { beforeEach, expect, test, vi } from "vitest";
-import { apply, withEssentials } from "../../core/state/actions";
+import { apply, memorySession, withEssentials } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
 import { AGENT_PROFILE, FAVICON_MAX, permissionProfiles, siteProfile, sitePlacement, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, urlRecap, recapOfUrl, type BrowserState, type Tab } from "../../shared/model";
@@ -1051,13 +1051,59 @@ test("setVimMode toggles the vim keys", () => {
   expect(e).toBe(before);
 });
 
-test("setAuraMotion turns the aura's drift off and on", () => {
+test("setAuraMotion turns the aura's drift off and on, and notes the user's choice", () => {
   e = initialState(genId);
-  expect(e.settings.auraMotion).toBe(true);
+  expect(e.settings).toMatchObject({ auraMotion: true, auraMotionChosen: false });
   ag({ type: "setAuraMotion", enabled: false });
-  expect(e.settings.auraMotion).toBe(false);
+  expect(e.settings).toMatchObject({ auraMotion: false, auraMotionChosen: true });
   const before = e;
   ag({ type: "setAuraMotion", enabled: false });
+  expect(e).toBe(before);
+  // Turning on an aura a small Mac stilled by default is a choice too.
+  e = { ...e, settings: { ...e.settings, auraMotion: true, auraMotionChosen: false } };
+  ag({ type: "setAuraMotion", enabled: true });
+  expect(e.settings.auraMotionChosen).toBe(true);
+});
+
+test("save memory at launch: on by default on a small Mac only; essentials not shown wait unloaded; an unchosen aura follows", () => {
+  const id = open("https://mail.test/");
+  ag({ type: "addEssential", id });
+  const other = open("https://other.test/");
+  const fav = e.essentials[0]!.id;
+  ag({ type: "openWindow", id: "F2" });
+  // A big Mac: nothing changes.
+  expect(memorySession(e, false)).toBe(e);
+  const lazy = memorySession(e, true);
+  expect(lazy.settings).toMatchObject({ saveMemory: true, saveMemoryChosen: false, auraMotion: false });
+  const essentials = Object.values(lazy.tabs).filter((o) => o.link?.id === fav);
+  expect(essentials).toHaveLength(2);
+  expect(essentials.every((o) => o.unloaded)).toBe(true);
+  expect(lazy.tabs[other]!.unloaded).toBeUndefined();
+  // Shown, an essential loads; unloaded, it loads again when displayed.
+  ag({ type: "activateTab", id });
+  expect(memorySession(e, true).tabs[id]!.unloaded).toBeUndefined();
+  e = lazy;
+  ag({ type: "activateTab", id });
+  expect(e.tabs[id]!.unloaded).toBeUndefined();
+  // The user's choice wins over the Mac, both ways; a chosen aura too.
+  const off = { ...e, settings: { ...e.settings, saveMemory: false, saveMemoryChosen: true, auraMotion: true, auraMotionChosen: true } };
+  expect(memorySession(off, true)).toBe(off);
+  const on = { ...e, tabs: Object.fromEntries(Object.entries(e.tabs).filter(([, o]) => !o.link || o.id === id)), settings: { ...e.settings, saveMemory: true, saveMemoryChosen: true, auraMotion: true, auraMotionChosen: true } };
+  expect(memorySession(on, false)).toBe(on);
+});
+
+test("setSaveMemory notes the choice; an aura the user never set follows it", () => {
+  e = initialState(genId);
+  ag({ type: "setSaveMemory", enabled: true });
+  expect(e.settings).toMatchObject({ saveMemory: true, saveMemoryChosen: true, auraMotion: false, auraMotionChosen: false });
+  ag({ type: "setSaveMemory", enabled: false });
+  expect(e.settings).toMatchObject({ saveMemory: false, auraMotion: true });
+  ag({ type: "setAuraMotion", enabled: false });
+  ag({ type: "setSaveMemory", enabled: true });
+  ag({ type: "setSaveMemory", enabled: false });
+  expect(e.settings.auraMotion).toBe(false);
+  const before = e;
+  ag({ type: "setSaveMemory", enabled: false });
   expect(e).toBe(before);
 });
 

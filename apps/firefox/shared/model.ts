@@ -246,6 +246,15 @@ export interface BrowserState {
     startOnHome: boolean;
     /** The aura drifts behind Ressac's own pages (on by default); off, it stays still everywhere. */
     auraMotion: boolean;
+    /** The user set auraMotion: saveMemory's default (still) no longer applies. */
+    auraMotionChosen: boolean;
+    /**
+     * « Économiser la mémoire »: essentials load on first display and Firefox may unload them, one preallocated page
+     * process, scheduled harvests and page indexing wait for calm memory, the aura still unless chosen. Until the user
+     * chooses (saveMemoryChosen), on for a Mac of 8 GiB or less (shared/settings.ts isSmallMac), set at each launch.
+     */
+    saveMemory: boolean;
+    saveMemoryChosen: boolean;
     /** « system » (the Mac's language when Ressac has it) or a shipped language code (shared/i18n.ts). */
     language: string;
     /** The user's own bindings; an action absent here keeps its default (shared/shortcuts.ts). */

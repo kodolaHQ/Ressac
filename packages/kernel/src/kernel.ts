@@ -351,6 +351,8 @@ export async function createKernel(o: {
   searchUrl?: string;
   /** End notification of a watch that has new items (the browser shows it, see SchedulerOptions). */
   notify?: (n: NotificationWidget) => void;
+  /** Memory is calm: scheduled harvests wait for it (see SchedulerOptions). */
+  calm?: () => Promise<boolean>;
   /** MCP tools of the extensions (provided by the browser). */
   extensions?: ExtensionsTools;
   /** MCP tools of the site apps (provided by the browser). */
@@ -561,6 +563,7 @@ export async function createKernel(o: {
     pacing: DEFAULT_PACING,
     ...(o.searchUrl !== undefined ? { searchUrl: o.searchUrl } : {}),
     ...(o.notify ? { notify: o.notify } : {}),
+    ...(o.calm ? { calm: o.calm } : {}),
   });
   await scheduler.start();
   const actionSubscribers = new Set<(e: ActionsState) => void>();

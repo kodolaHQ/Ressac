@@ -130,6 +130,11 @@ export interface SchedulerOptions {
    * number: nothing of the data. An error from the callback is logged, never propagated.
    */
   notify?: (n: NotificationWidget) => void;
+  /**
+   * Memory is calm (macOS pressure normal): the scheduled harvests, which may boot the workshop machine, wait for it and
+   * run at a later check; manual and agent ones never wait. Absent: always calm.
+   */
+  calm?: () => Promise<boolean>;
 }
 
 /**
@@ -368,6 +373,8 @@ export class WidgetsScheduler {
         if (!w || !this.isDue(w, o) || this.stopped) return false;
         // Moved to the other lane since the read: the next check will launch it there.
         if (routeOf(w) !== route) return false;
+        // Postponed, not failed: still due, it runs at the first check once memory is calm.
+        if (this.o.calm && !(await this.o.calm().catch(() => true))) return false;
         if (!(await this.workshopStarted())) {
           await this.markWorkshopStopped(w);
           return false;

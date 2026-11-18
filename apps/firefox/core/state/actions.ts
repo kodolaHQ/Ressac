@@ -779,8 +779,17 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       return true;
     }
     case "setAuraMotion": {
-      if (d.settings.auraMotion === a.enabled) return false;
+      if (d.settings.auraMotion === a.enabled && d.settings.auraMotionChosen) return false;
       d.settings.auraMotion = a.enabled;
+      d.settings.auraMotionChosen = true;
+      return true;
+    }
+    case "setSaveMemory": {
+      if (d.settings.saveMemory === a.enabled && d.settings.saveMemoryChosen) return false;
+      d.settings.saveMemory = a.enabled;
+      d.settings.saveMemoryChosen = true;
+      // An aura the user never set follows: still while saving memory.
+      if (!d.settings.auraMotionChosen) d.settings.auraMotion = !a.enabled;
       return true;
     }
     case "chooseAppearance": {
@@ -850,6 +859,25 @@ function keepEssentials(d: Draft, genId: () => string): boolean {
     }
   }
   return created;
+}
+
+/**
+ * The session at launch: saveMemory takes the Mac's default unless the user chose (on at 8 GiB or less), an aura the user
+ * never set follows it (still while saving memory), and while saving memory the essentials not shown wait unloaded,
+ * loaded on first display like the other tabs.
+ */
+export function memorySession(state: BrowserState, smallMac: boolean): BrowserState {
+  const { settings } = state;
+  const save = settings.saveMemoryChosen ? settings.saveMemory : smallMac;
+  const shown = new Set(state.windows.map((f) => f.active[f.activeSpace]));
+  const lazy = save ? Object.values(state.tabs).filter((o) => o.link?.type === "essential" && !o.unloaded && !shown.has(o.id)) : [];
+  const aura = settings.auraMotionChosen ? settings.auraMotion : !save;
+  if (!lazy.length && save === settings.saveMemory && aura === settings.auraMotion) return state;
+  const draft = structuredClone(state);
+  for (const o of lazy) draft.tabs[o.id]!.unloaded = true;
+  draft.settings.saveMemory = save;
+  draft.settings.auraMotion = aura;
+  return draft;
 }
 
 /** The loaded session with its essentials' tabs (see keepEssentials). */

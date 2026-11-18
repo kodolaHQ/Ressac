@@ -79,6 +79,10 @@ const SchemaSession = z.object({
     // A session saved before the setting existed gets the default.
     startOnHome: z.boolean().catch(true),
     auraMotion: z.boolean().catch(true),
+    // Before it existed, only an explicit choice could turn the aura off: kept so (smallMacSession).
+    auraMotionChosen: z.boolean().catch(false),
+    saveMemory: z.boolean().catch(false),
+    saveMemoryChosen: z.boolean().catch(false),
     appearance: z.enum(APPEARANCES).catch("system"),
     // A session saved before languages existed was in French: it stays so. A language no longer shipped → the Mac's.
     language: z

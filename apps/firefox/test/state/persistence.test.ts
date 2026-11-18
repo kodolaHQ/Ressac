@@ -510,6 +510,20 @@ test("auraMotion: off kept; missing, on", async () => {
   const { auraMotion: _, ...old } = saved.settings;
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: old }));
   expect((await loadSession(d)).settings.auraMotion).toBe(true);
+  // Before the choice was noted: not chosen.
+  expect((await loadSession(d)).settings.auraMotionChosen).toBe(false);
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: { ...saved.settings, auraMotionChosen: true } }));
+  expect((await loadSession(d)).settings.auraMotionChosen).toBe(true);
+});
+
+test("saveMemory: kept with its choice; missing, off and not chosen (the launch sets the Mac's default)", async () => {
+  const d = folder();
+  const saved = initialState();
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: { ...saved.settings, saveMemory: true, saveMemoryChosen: true } }));
+  expect((await loadSession(d)).settings).toMatchObject({ saveMemory: true, saveMemoryChosen: true });
+  const { saveMemory: _, saveMemoryChosen: __, ...old } = saved.settings;
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: old }));
+  expect((await loadSession(d)).settings).toMatchObject({ saveMemory: false, saveMemoryChosen: false });
 });
 
 test("appearance: kept; missing or unknown, like the Mac", async () => {

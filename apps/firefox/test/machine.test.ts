@@ -386,6 +386,20 @@ describe("the workshop machine", () => {
     await vi.waitFor(() => expect(stops(w)).toBe(1));
   });
 
+  it("a small Mac is 8 GiB or less, unless a test forces it; memory is calm at pressure level 1 only", async () => {
+    const { isSmallMac } = await import("../shared/settings");
+    expect([isSmallMac(8 * 2 ** 30), isSmallMac(8 * 2 ** 30 + 1), isSmallMac(16 * 2 ** 30, "1"), isSmallMac(4 * 2 ** 30, "0"), isSmallMac(4 * 2 ** 30, "")]).toEqual([true, false, true, false, true]);
+    const { memoryCalm } = await import("../host/machine");
+    const file = join(mkdtempSync(join(tmpdir(), "ressac-pressure-")), "level");
+    for (const [level, calm] of [["1", true], ["2\n", false], ["4", false]] as const) {
+      writeFileSync(file, level);
+      expect(await memoryCalm({ RESSAC_TEST_PRESSURE_FILE: file })).toBe(calm);
+    }
+    expect(await memoryCalm({ RESSAC_TEST_PRESSURE_FILE: file + ".missing" })).toBe(true);
+    // The real sysctl answers on this Mac.
+    expect(typeof (await memoryCalm({}))).toBe("boolean");
+  });
+
   it("the VM's memory follows the Mac: 1.5 GiB at 8 GiB or less, 3 GiB above; the workshop container keeps 0.5 GiB for the guest", async () => {
     const { smallMac } = await import("../host/machine");
     expect(smallMac(8 * 2 ** 30)).toBe(true);

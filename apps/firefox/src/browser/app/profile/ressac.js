@@ -67,8 +67,9 @@ pref("network.dns.disablePrefetch", true);
 pref("network.preconnect", false);
 pref("network.http.speculative-parallel-limit", 0);
 
-// macOS memory pressure (from « warn », which also gates the topic): Firefox sends « memory-pressure », on which Ressac
-// unloads its local models and stops the agent's machine when unused. 2: the topic only, Firefox's tab unloading stays off
-// (essentials stay loaded). Release builds respond to nothing by default.
-pref("browser.lowMemoryResponseMask", 2);
+// macOS memory pressure (from « warn », which also gates the topic). 3: Firefox unloads its least recently used background
+// tab (never the shown one, a call, a tab playing sound or in picture-in-picture, nor an essential unless « Économiser la mémoire »),
+// one at a time while it lasts, then sends « memory-pressure » once none is left. Ressac unloads its local models and stops
+// the agent's machine when unused at the first of either (chrome/window/tabs.ts). Release builds respond to nothing by default.
+pref("browser.lowMemoryResponseMask", 3);
 pref("browser.lowMemoryResponseOnWarn", true);

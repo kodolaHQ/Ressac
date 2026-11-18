@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { cpSync, createReadStream, existsSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { appendFile, chmod, mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -6,10 +6,11 @@ import { cpus, homedir, totalmem } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { createZstdDecompress } from "node:zlib";
 import { HashMismatchError, VOLUME_HOME, createRunner, downloadVerified, sha256File, type ContainerEngine, type RunResult, type Runner, type WakeReason } from "../../../packages/kernel/src/index.ts";
 import { hostLocale, hostSay } from "./locale.ts";
-import type { MachineStatus } from "../shared/settings.ts";
+import { isSmallMac, type MachineStatus } from "../shared/settings.ts";
 
 /** The machine image, built by scripts/vm/build-image.sh and published by scripts/vm/publish-image.sh. */
 export const VM_IMAGE = {
@@ -38,8 +39,19 @@ export type { MachineStatus };
 const NAME = "ressac";
 export const MACHINE_HOME = join(homedir(), ".ressac-vm");
 
-/** A Mac of 8 GiB or less: the VM boots smaller and the local models unload sooner. */
-export const smallMac = (total = totalmem()) => total <= 8 * 2 ** 30;
+/** A Mac of 8 GiB or less (shared/settings.ts isSmallMac): the VM boots smaller and the local models unload sooner. */
+export const smallMac = (total = totalmem()) => isSmallMac(total, process.env.RESSAC_TEST_SMALL_MAC);
+/**
+ * macOS memory pressure is normal: kern.memorystatus_vm_pressure_level 1 (2 warn, 4 critical). RESSAC_TEST_PRESSURE_FILE
+ * (tests): a file holding the level instead. Unreadable: calm.
+ */
+export async function memoryCalm(env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  const file = env.RESSAC_TEST_PRESSURE_FILE;
+  const level = file
+    ? await readFile(file, "utf8").catch(() => "1")
+    : await promisify(execFile)("/usr/sbin/sysctl", ["-n", "kern.memorystatus_vm_pressure_level"]).then((r) => r.stdout, () => "1");
+  return Number(level.trim()) <= 1;
+}
 /** macOS's sun_path is 104 bytes with its final NUL. */
 const SOCKET_MAX = 103;
 /** Lima's vz network: the Mac seen from the guest. */

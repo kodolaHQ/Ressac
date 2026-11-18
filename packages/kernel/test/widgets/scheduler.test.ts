@@ -217,6 +217,24 @@ test("workshop stopped: status atelier-arrete, data kept", async () => {
   expect(await p.check({ onLaunch: false })).toEqual(["actus"]);
 });
 
+test("memory pressure: a scheduled harvest waits, unmarked, for the first calm check; a manual one runs at once", async () => {
+  let calm = false;
+  const { p, harvests, widgetsFolder, changes } = await prepare({ options: { calm: async () => calm } });
+  const before = { status: "ok", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: "2026-10-27T08:00:00.000Z" } as const;
+  await writeWidgetState(widgetsFolder, "actus", before);
+  expect(await p.check({ onLaunch: true })).toEqual([]);
+  expect(await p.check({ onLaunch: false })).toEqual([]);
+  expect(harvests).toEqual([]);
+  expect(await readWidgetState(widgetsFolder, "actus")).toMatchObject(before);
+  expect(changes).not.toHaveBeenCalled();
+  await p.harvestNow("actus");
+  expect(harvests).toEqual(["actus"]);
+  // Still due by its frequency (an hour later): it runs once memory is calm.
+  await writeWidgetState(widgetsFolder, "actus", before);
+  calm = true;
+  expect(await p.check({ onLaunch: false })).toEqual(["actus"]);
+});
+
 test("an error is retried after 15 min, not before", async () => {
   const { p, harvests, forward: advance } = await prepare({ status: "error" });
   expect(await p.check({ onLaunch: true })).toEqual(["actus"]);

@@ -4,7 +4,7 @@ import { privateTab, tabProfile, profilesInUse, permissionProfiles, siteProfile,
 import type { ReportedError } from "../../shared/telemetry";
 import { checkDataFormat } from "../../core/state/format";
 import { lazySave, loadSession, SessionRecorder } from "../../core/state/persistence";
-import { withEssentials } from "../../core/state/actions";
+import { memorySession, withEssentials } from "../../core/state/actions";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { createAgentView, type AgentView } from "../agent/agent-view";
@@ -39,6 +39,7 @@ import { createWindowRegistry, type WindowRegistry } from "./windows";
 import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-network";
 import { gestureGuard } from "../../shared/widget-gesture";
 import { resolveLocale } from "../../shared/i18n";
+import { isSmallMac } from "../../shared/settings";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
@@ -190,13 +191,18 @@ async function start(): Promise<RessacStore> {
   // The agent components' copies too.
   await IOUtils.remove(PathUtils.join(dataDir, "ressac-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies not erfacées :", e));
   let setAside: string | null = null;
+  const smallMac = isSmallMac(Services.sysinfo.getProperty("memsize"), Services.env.get("RESSAC_TEST_SMALL_MAC"));
   const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => {
     const skip = Services.env.get("RESSAC_SKIP_WELCOME") === "1";
     const aiOff = Services.env.get("RESSAC_TEST_AI") === "0";
     // A test launch skips the welcome: AI on for a fresh profile unless the test asks for it off.
     const aiEnabled = aiOff ? false : skip && !s.settings.onboarded ? true : s.settings.aiEnabled;
     return skip ? { ...s, settings: { ...s.settings, onboarded: true, aiEnabled, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s;
-  }).then((s) => withEssentials(s)));
+  }).then((s) => withEssentials(s)).then((s) => memorySession(s, smallMac)));
+  // « Économiser la mémoire »: one preallocated page process instead of 3, applied live (Firefox rereads it).
+  const prelaunch = () => Services.prefs.getDefaultBranch("").setIntPref("dom.ipc.processPrelaunch.fission.number", store.state.settings.saveMemory ? 1 : 3);
+  prelaunch();
+  store.subscribe((s, p) => s.settings.saveMemory !== p.settings.saveMemory && prelaunch());
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());
@@ -466,6 +472,7 @@ async function start(): Promise<RessacStore> {
       notify("settings.locale", { locale: store.state.locale });
       notify("settings.agentDomains", { domains: store.state.settings.agentDomains });
       notify("settings.machineIdle", { minutes: store.state.settings.machineIdleMinutes });
+      notify("settings.saveMemory", { on: store.state.settings.saveMemory });
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
       for (const e of store.state.spaces) if (e.private) notify("history.makePrivate", { spaceId: e.id });
       agentExtensions.hostStarted();

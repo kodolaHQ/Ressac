@@ -84,6 +84,12 @@
   </div>
 
   <div class="group">
+    <SettingsRow label={t("settings-save-memory-label")} id="save-memory-switch" help={t("settings-save-memory-help")}>
+      {@render toggle("save-memory-switch", "settings-save-memory", settings?.saveMemory ?? false, (enabled) => api.dispatch({ type: "setSaveMemory", enabled }))}
+    </SettingsRow>
+  </div>
+
+  <div class="group">
     <SettingsRow label={t("settings-start-home-label")} id="start-home-switch" help={t("settings-start-home-help")}>
       {@render toggle("start-home-switch", "settings-start-home", settings?.startOnHome ?? true, (enabled) => api.dispatch({ type: "setStartOnHome", enabled }))}
     </SettingsRow>

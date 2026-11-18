@@ -389,6 +389,45 @@ describe("Settings page", () => {
     await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state.settings.startOnHome)();`, (v) => v === true);
   });
 
+  it("save memory: off on a big Mac by default; on, essentials become unloadable at once and lazy from the next launch, kept over the Mac's default", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "ressac-memory-"));
+    onTestFinished(() => rmSync(dataDir, { recursive: true, force: true }));
+    const server = await startServer();
+    onTestFinished(() => server.close());
+    const big = { RESSAC_TEST_SMALL_MAC: "0" };
+    const store = `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state)();`;
+    const essentialXul = (id: string) => m.execute<{ url: string; undiscardable: boolean } | null>(
+      `const t = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]); return t ? { url: t.linkedBrowser.currentURI.spec, undiscardable: !!t.undiscardable } : null;`,
+      [id],
+    );
+    await launch(big, {}, dataDir);
+    const s0 = await state(m);
+    const opened = await dispatch(m, { type: "openTab", windowId: s0.windows[0]!.id, url: server.url + "/a.html", activate: false });
+    const a = Object.keys(opened.tabs).find((id) => !s0.tabs[id])!;
+    await dispatch(m, { type: "addEssential", id: a });
+    // Loaded in the background, and never unloaded by Firefox.
+    await waitFor(m, `return !!gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === ${JSON.stringify(a)})?.undiscardable`, (v) => v === true);
+    await openPage();
+    await go("general");
+    expect(await inUi(m, `return doc.querySelector('[data-testid="settings-save-memory"]').checked`)).toBe(false);
+    await click(m, '[data-testid="settings-save-memory"]');
+    await waitFor(m, store, (v: BrowserState) => v.settings.saveMemory && v.settings.saveMemoryChosen);
+    // Live: Firefox may now unload the essential, and keeps one page process ready instead of 3.
+    expect(await essentialXul(a)).toMatchObject({ undiscardable: false });
+    expect(await m.execute(`return Services.prefs.getIntPref("dom.ipc.processPrelaunch.fission.number")`)).toBe(1);
+    await w!.close();
+    w = undefined;
+    expect(JSON.parse(readFileSync(join(dataDir, "session.json"), "utf8")).settings).toMatchObject({ saveMemory: true, saveMemoryChosen: true });
+    // Next launch on the same big Mac: the choice stays, and the essential waits for its first display.
+    await launch(big, {}, dataDir);
+    const s1 = await state(m);
+    expect(s1.settings.saveMemory).toBe(true);
+    const essential = Object.values(s1.tabs).find((o) => o.link?.type === "essential")!;
+    expect(essential.unloaded).toBe(true);
+    await sleep(1500);
+    expect(await essentialXul(essential.id)).toBeNull();
+  });
+
   it("search engine: a known one at once; « Autre… » takes an https address with %s, refused otherwise", async () => {
     await launch();
     await openPage();

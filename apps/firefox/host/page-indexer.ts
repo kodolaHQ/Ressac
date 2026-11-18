@@ -42,7 +42,8 @@ export const llamaEmbed =
  * answering). Idle, it looks for new pages every `idleMs`, and starts a pass only at start, when a full batch waits or
  * `passEveryMs` after the last pass: ordinary browsing does not keep the search server up. A refused batch is retried page
  * by page and a page still refused gets REFUSED_VECTOR, so the queue moves on; any other error (server down, history
- * busy) stops the round, retried after `retryMs`.
+ * busy) stops the round, retried after `retryMs`. A pass starts only while `calm` (memory pressure normal): otherwise it
+ * waits for a later look.
  */
 export function createPageIndexer(o: {
   history: Pick<History, "pendingVectors" | "saveVectors">;
@@ -53,6 +54,7 @@ export function createPageIndexer(o: {
   idleMs?: number;
   passEveryMs?: number;
   clock?: () => number;
+  calm?: () => Promise<boolean>;
 }) {
   const { batch = 32, pauseMs = 100, retryMs = 60_000, idleMs = 60_000, passEveryMs = 600_000, clock = Date.now } = o;
   let round = 0;
@@ -87,6 +89,9 @@ export function createPageIndexer(o: {
         };
         if (!pages.length) return endPass();
         if (!full && pages.length < batch) return later(idleMs, r);
+        // The search server takes ~400 MB while it embeds: no new pass under memory pressure.
+        if (!inPass && o.calm && !(await o.calm().catch(() => true))) return later(idleMs, r);
+        if (r !== round) return;
         if (!inPass) since = start;
         inPass = true;
         const docs = pages.map(pageDocument);

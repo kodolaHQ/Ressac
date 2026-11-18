@@ -9,6 +9,12 @@ export function validAgentDomain(d: unknown): d is string {
 }
 
 /** Minutes an idle workshop machine keeps running before it stops (Réglages); the first is the default. */
+/**
+ * A Mac of 8 GiB or less: a smaller machine, models unloaded sooner, and « Économiser la mémoire » on until the user
+ * chooses. `force` (RESSAC_TEST_SMALL_MAC, tests): "1" or "0" overrides the memory.
+ */
+export const isSmallMac = (totalBytes: number, force?: string | null) => (force === "1" || force === "0" ? force === "1" : totalBytes <= 8 * 2 ** 30);
+
 export const MACHINE_IDLE_MINUTES = [5, 15, 30, 60] as const;
 export type MachineIdleMinutes = (typeof MACHINE_IDLE_MINUTES)[number];
 export const MachineIdleSchema = z.literal(MACHINE_IDLE_MINUTES);

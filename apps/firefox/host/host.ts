@@ -37,7 +37,7 @@ const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./de
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createWriterChoice } = await import("./writer.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
-const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, smallMac, vmImage } = await import("./machine.ts");
+const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, memoryCalm, smallMac, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
@@ -136,6 +136,9 @@ const idRecap = (v: unknown): v is string => typeof v === "string" && ID_RECAP.t
 let agentDomains: string[] = [];
 // How long the idle machine keeps running (Settings), sent by the chrome at start and on change.
 let machineIdleMinutes = 5;
+// « Économiser la mémoire » (told by the chrome): scheduled harvests and page indexing wait for calm memory.
+let saveMemory = false;
+const memoryAllows = () => (saveMemory ? memoryCalm() : Promise.resolve(true));
 // An apply while the kernel is down leaves the MCP port closed on purpose: openAgentSession applies again before any session.
 // Without `network` the kernel applies no firewall: it must stay passed. The MCP port is known once the kernel is up, read at each apply.
 // The workshop's engines: Ressac's machine, Docker while the machine is not ready (or for good where it cannot run).
@@ -253,7 +256,7 @@ const ask = createAsk({ embed: ai.embed, history: () => hist ?? null });
 // The pages' vectors for ⌘T Demander, computed in the background while AI is on and the search model is installed.
 // RESSAC_TEST_INDEX_IDLE_MS (e2e): pages seeded after launch get their vectors without waiting for a pass.
 const testIndexIdle = Number(process.env.RESSAC_TEST_INDEX_IDLE_MS);
-const indexer = hist && createPageIndexer({ history: hist, embed: llamaEmbed(() => ai.embed.ready()), ...(testIndexIdle ? { idleMs: testIndexIdle, passEveryMs: 0 } : {}) });
+const indexer = hist && createPageIndexer({ history: hist, embed: llamaEmbed(() => ai.embed.ready()), calm: memoryAllows, ...(testIndexIdle ? { idleMs: testIndexIdle, passEveryMs: 0 } : {}) });
 const startIndexer = () => {
   if (aiOn && ai.embed.installed()) indexer?.start();
 };
@@ -329,6 +332,8 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     // Widgets and actions wrote something, or a grant changed: the page reads again.
     onChange: () => rpc.notify("home.change"),
     notify: notify,
+    // Scheduled harvests may boot the workshop machine: not under memory pressure.
+    calm: memoryAllows,
     ...(process.env.RESSAC_TEST_LOCAL_ADDRESSES === "1" ? { localAddresses: true } : {}),
     ...(duckduckgo ? { searchUrl: duckduckgo } : {}),
   }).then(
@@ -616,6 +621,9 @@ const rpc = createRpc({
           console.error("[ressac] agent domains not applied:", e);
           return sessions.relaunchActive();
         });
+    },
+    "settings.saveMemory": (p: { on?: unknown }) => {
+      saveMemory = p?.on === true;
     },
     "settings.machineIdle": (p: { minutes: unknown }) => {
       const r = MachineIdleSchema.safeParse(p?.minutes);

@@ -68,6 +68,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
         error: z.string().nullable(),
         sound: z.enum(["playing", "muted"]).nullable(),
         playback: z.enum(["playing", "paused"]).nullable(),
+        unloaded: z.boolean(),
       })
       .partial(),
   }),
@@ -172,6 +173,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("setSidebarSide"), side: z.enum(["left", "right"]) }),
   z.object({ type: z.literal("setStartOnHome"), enabled: z.boolean() }),
   z.object({ type: z.literal("setAuraMotion"), enabled: z.boolean() }),
+  z.object({ type: z.literal("setSaveMemory"), enabled: z.boolean() }),
   z.object({ type: z.literal("chooseAppearance"), appearance: z.enum(APPEARANCES) }),
   z.object({ type: z.literal("chooseLanguage"), language: z.string().regex(LANGUAGE_SETTING) }),
   /** The chrome only: the language shown after resolving « system » (chrome/store). */
