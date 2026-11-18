@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -33,8 +33,9 @@ export const DIFF_LINES_MAX = 2000;
 const isMarker = (s: string | undefined) => s?.startsWith("\u0000") ?? false;
 
 export function lineDiff(before: string, after: string): DiffLine[] | null {
-  const a = before.split("\n");
-  const b = after.split("\n");
+  // An empty side is no lines, so a created or deleted file has no spurious blank line.
+  const a = before === "" ? [] : before.split("\n");
+  const b = after === "" ? [] : after.split("\n");
   if (a.length > DIFF_LINES_MAX || b.length > DIFF_LINES_MAX) return null;
   // lcs[i][j]: longest common subsequence of a[i..] and b[j..].
   const lcs = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
@@ -69,24 +70,41 @@ export class InstructionReview {
 
   /** The stored reference; with no file yet (first run), the shipped templates of the space language. */
   private async load(): Promise<Snapshot> {
+    let raw: string;
     try {
-      return (JSON.parse(await readFile(join(this.dir, "reference.json"), "utf8")) as { files: Snapshot }).files;
-    } catch {
+      raw = await readFile(join(this.dir, "reference.json"), "utf8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
       const lang = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(this.locale()) && existsSync(join(this.models, this.locale())) ? this.locale() : "en";
       const ref: Snapshot = {};
       for (const t of TEXTS) ref[`/workspace/${t}`] = await readFile(join(this.models, existsSync(join(this.models, lang, t)) ? lang : "en", t), "utf8");
       return ref;
     }
+    const files = (JSON.parse(raw) as { files?: unknown }).files;
+    if (typeof files !== "object" || files === null || Array.isArray(files)) throw new Error("instructions reference: no files object");
+    return files as Snapshot;
+  }
+
+  private chain: Promise<unknown> = Promise.resolve();
+  /** Reference updates are read-modify-write: two windows' sessions must not overwrite each other. */
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(fn);
+    this.chain = run.catch(() => {});
+    return run;
   }
 
   private async save(files: Snapshot) {
     await mkdir(this.dir, { recursive: true });
-    const tmp = join(this.dir, "reference.json.tmp");
+    const tmp = join(this.dir, `reference.${randomUUID()}.tmp`);
     await writeFile(tmp, JSON.stringify({ files }));
     await rename(tmp, join(this.dir, "reference.json"));
   }
 
-  async pending(kind: InstructionKind): Promise<{ snapshot: Snapshot; changes: InstructionChange[] }> {
+  pending(kind: InstructionKind): Promise<{ snapshot: Snapshot; changes: InstructionChange[] }> {
+    return this.serial(() => this.compare(kind));
+  }
+
+  private async compare(kind: InstructionKind): Promise<{ snapshot: Snapshot; changes: InstructionChange[] }> {
     const ref = await this.load();
     const snapshot = await this.io.read(WATCHED[kind].files, WATCHED[kind].trees);
     const changes: InstructionChange[] = [];
@@ -108,9 +126,11 @@ export class InstructionReview {
     return { snapshot, changes };
   }
 
-  async keep(kind: InstructionKind, snapshot: Snapshot): Promise<void> {
-    const ref = Object.fromEntries(Object.entries(await this.load()).filter(([p]) => !this.inKind(kind, p)));
-    await this.save({ ...ref, ...Object.fromEntries(Object.entries(snapshot).filter(([p]) => this.inKind(kind, p))) });
+  keep(kind: InstructionKind, snapshot: Snapshot): Promise<void> {
+    return this.serial(async () => {
+      const ref = Object.fromEntries(Object.entries(await this.load()).filter(([p]) => !this.inKind(kind, p)));
+      await this.save({ ...ref, ...Object.fromEntries(Object.entries(snapshot).filter(([p]) => this.inKind(kind, p))) });
+    });
   }
 
   async revert(kind: InstructionKind, snapshot: Snapshot): Promise<void> {

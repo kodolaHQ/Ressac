@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { DEFAULT_TEMPLATES } from "../../src/workspace/initialize.js";
@@ -117,4 +117,28 @@ test("acceptedAgents writes the reference AGENTS.md (the template on first run)"
   expect(await readFile(path, "utf8")).toBe(await template("fr", "AGENTS.md"));
   expect(ACCEPTED_AGENTS_IN_CONTAINER).toBe("/workspace/.ressac/instructions/AGENTS.md");
   expect(WATCHED.claude.trees).toEqual([]);
+});
+
+test("a created file shows only added lines", async () => {
+  const { review } = await setup({ [CODEX_HOME]: "a\nb" });
+  expect((await review.pending("codex")).changes[0]?.lines).toEqual([
+    { kind: "+", text: "a" },
+    { kind: "+", text: "b" },
+  ]);
+});
+
+test("two concurrent keeps both end up in the reference", async () => {
+  const { review } = await setup({ [AGENTS]: "mine", [CODEX_HOME]: "x" });
+  const p = await review.pending("codex");
+  await Promise.all([review.keep("claude", p.snapshot), review.keep("codex", p.snapshot)]);
+  expect((await review.pending("codex")).changes).toEqual([]);
+});
+
+test("an unreadable reference throws instead of falling back to the first run", async () => {
+  const { review, paths } = await setup();
+  await mkdir(join(paths.internal, "instructions"), { recursive: true });
+  await writeFile(join(paths.internal, "instructions", "reference.json"), "{ nope");
+  await expect(review.pending("claude")).rejects.toThrow();
+  await writeFile(join(paths.internal, "instructions", "reference.json"), '{"files":null}');
+  await expect(review.pending("claude")).rejects.toThrow();
 });
