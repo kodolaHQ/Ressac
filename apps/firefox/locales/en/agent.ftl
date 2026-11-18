@@ -142,6 +142,11 @@ agent-review-intro = Since the last session, these files were modified, perhaps 
 agent-review-created = new
 agent-review-deleted = deleted
 agent-review-too-long = File too long to show
+agent-review-too-many = Too many files to show
+agent-review-unreadable = Unreadable file
+agent-review-binary = Binary file, not shown
+agent-review-other = Special file, not shown
+agent-review-link = Link to { $target }
 agent-review-folded = ⋯ { $count ->
         [one] { $count } line
        *[other] { $count } lines

@@ -142,6 +142,11 @@ agent-review-intro = Depuis la dernière session, ces fichiers ont été modifi�
 agent-review-created = nouveau
 agent-review-deleted = supprimé
 agent-review-too-long = Fichier trop long pour être affiché
+agent-review-too-many = Trop de fichiers pour être affichés
+agent-review-unreadable = Fichier illisible
+agent-review-binary = Fichier binaire, non affiché
+agent-review-other = Fichier spécial, non affiché
+agent-review-link = Lien vers { $target }
 agent-review-folded = ⋯ { $count ->
         [one] { $count } ligne
        *[other] { $count } lignes

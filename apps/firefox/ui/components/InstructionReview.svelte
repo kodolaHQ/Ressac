@@ -13,8 +13,10 @@
   let answered = $state<number>();
   const answer = (choice: "keep" | "revert") => {
     answered = id;
-    void api.agent.review(id, choice);
+    // A failed request leaves the buttons usable: the host's id check still refuses a stale answer.
+    api.agent.review(id, choice).catch(() => (answered = undefined));
   };
+  const markerText: Record<string, string> = { binary: "agent-review-binary", other: "agent-review-other", unreadable: "agent-review-unreadable", "too-many": "agent-review-too-many" };
   // The safe choice takes the keyboard when a review shows in a visible panel.
   $effect(() => {
     void id;
@@ -33,7 +35,7 @@
         {#if f.status !== "changed"}<span class="badge">{t(f.status === "created" ? "agent-review-created" : "agent-review-deleted")}</span>{/if}
       </p>
       {#if f.lines === null}
-        <p class="too-long">{t("agent-review-too-long")}</p>
+        <p class="too-long">{f.marker?.startsWith("link:") ? t("agent-review-link", { target: f.marker.slice("link:".length) }) : t(markerText[f.marker ?? ""] ?? "agent-review-too-long")}</p>
       {:else}
         <div class="code-diff">
           {#each foldLines(f.lines) as l, i (i)}
