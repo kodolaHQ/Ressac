@@ -96,6 +96,14 @@
   const onSubscription = (id: string) =>
     id === "codex" ? browserState.value?.settings.codexEngine.kind === "chatgpt" : id === "claude" ? (browserState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription" : true;
   const signedOutCodex = $derived(current === "codex" && onSubscription("codex") && account("codex")?.state === "logged-out");
+  // The sign-in finishes elsewhere (Réglages, the browser): read the account again until it does, and at each session state.
+  $effect(() => {
+    void appState;
+    if (!visible || !signedOutCodex) return;
+    void refreshAccounts();
+    const timer = setInterval(() => void refreshAccounts(), 3000);
+    return () => clearInterval(timer);
+  });
   const profileChoice = $derived(profiles.length >= 2);
   // Every profile: Navigateur runs only Claude Code and Codex, a custom profile asks for Atelier (the kernel says so).
   const modeChoice = $derived(current !== null);
@@ -267,12 +275,13 @@
   .handle:hover, .handle:active { background: color-mix(in srgb, var(--accent) 40%, transparent); }
   /* The panel's header moves the window, its menu aside. */
   header { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 12px; flex: none; -moz-window-dragging: drag; }
-  header select { -moz-window-dragging: no-drag; }
+  /* A narrow panel shortens the agent's name, never pushes the mode switch out. */
+  header select { -moz-window-dragging: no-drag; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .orb { flex: none; width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(from var(--ang), var(--a1), var(--a2), var(--a3), var(--a1)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--a2) 16%, transparent); transition: box-shadow 300ms var(--out); }
   .orb.busy { animation: orb-spin 1.8s linear infinite; box-shadow: 0 0 0 3px color-mix(in oklab, var(--a2) 28%, transparent), 0 0 12px color-mix(in oklab, var(--a1) 55%, transparent); }
   @keyframes orb-spin { to { --ang: 360deg; } }
   @media (prefers-reduced-motion: reduce) { .orb.busy { animation: none; } }
-  .name { font: 600 14px/1 var(--font-display); letter-spacing: -0.01em; }
+  .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1 var(--font-display); letter-spacing: -0.01em; }
   select { appearance: none; padding: 5px 26px 5px 10px; border-radius: 10px; border: 1px solid var(--border); background: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%) no-repeat right 14px center / 5px 5px, linear-gradient(-45deg, transparent 50%, var(--text-muted) 50%) no-repeat right 9px center / 5px 5px, var(--glass-hi); color: var(--text); font: 600 13px/1.2 var(--font-display); transition: transform var(--tap), border-color var(--tap); }
   select:hover { border-color: var(--glass-edge); }
   select:active { transform: scale(0.97); }
@@ -285,7 +294,7 @@
   .built-in .terminal { margin: 0; border-radius: 0; box-shadow: none; }
   .terminal.masked { visibility: hidden; }
   /* Two options in one glass pill, the chosen one lifted (like the Applications filters). */
-  .mode { display: flex; gap: 2px; padding: 2px; margin-left: auto; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); -moz-window-dragging: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .mode { flex: none; display: flex; gap: 2px; padding: 2px; margin-left: auto; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); -moz-window-dragging: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .mode button { margin: 0; padding: 4px 10px; border-radius: 8px; background: transparent; color: var(--text-muted); font: 600 12px/1.2 var(--font-ui); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .mode button[aria-checked="true"] { background: var(--glass); color: var(--text); box-shadow: var(--lift), inset 0 0 0 1px var(--glass-edge); }
   .engine-changed { display: flex; flex-direction: column; animation: ressac-rise var(--spring-d) var(--spring) backwards; }

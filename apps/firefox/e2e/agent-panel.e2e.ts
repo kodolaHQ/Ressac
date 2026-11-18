@@ -305,6 +305,9 @@ describe("the agent selector", () => {
     await click(m, '[data-testid="agent-login-settings"]', { frame: "agent" });
     for (const end = Date.now() + 10_000; !Object.values((await state(m)).tabs).some((t) => t.url === "ressac://settings"); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > end) throw new Error("Settings did not open");
+    // Signed in elsewhere while the panel stays open: the line goes on its own.
+    writeFileSync(join(w!.dataDir, "workspace", "fake-codex-auth"), "{}");
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"agent-login-settings\"]')", [], 15_000, "agent");
   });
 });
 
