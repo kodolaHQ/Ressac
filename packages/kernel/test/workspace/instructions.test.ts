@@ -220,3 +220,10 @@ test("revert keeps what it replaced in replaced.json, only the changed paths", a
   const saved = JSON.parse(await readFile(join(paths.internal, "instructions", "replaced.json"), "utf8"));
   expect(saved.files).toEqual({ [AGENTS]: "mine", [SKILL]: "new" });
 });
+
+test("Codex's own config.toml is watched for codex, not for claude", async () => {
+  const { review, disk } = await setup();
+  disk.set("/home/node/.codex/config.toml", 'model_instructions_file = "/tmp/x"');
+  expect((await review.pending("codex")).changes).toMatchObject([{ path: "/home/node/.codex/config.toml", status: "created" }]);
+  expect((await review.pending("claude")).changes).toEqual([]);
+});

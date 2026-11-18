@@ -19,11 +19,13 @@ export interface InstructionIo {
 
 const TEXTS = ["AGENTS.md", "guides/widgets.md", "guides/extensions.md", "guides/actions.md", "guides/site-apps.md"];
 const CLAUDE_FILES = TEXTS.map((t) => `/workspace/${t}`);
+/** The interactive TUI has no --ignore-user-config, and this file can name an instruction file (model_instructions_file). */
+const CODEX_CONFIG = "/home/node/.codex/config.toml";
 export const WATCHED: Record<InstructionKind, { files: string[]; trees: string[] }> = {
   claude: { files: CLAUDE_FILES, trees: [] },
   // Codex 0.169 skill roots ($CODEX_HOME/skills, ~/.agents/skills, project .codex/skills and .agents/skills); the whole project .codex also holds a config.toml.
   codex: {
-    files: [...CLAUDE_FILES, "/workspace/AGENTS.override.md", "/home/node/.codex/AGENTS.md", "/home/node/.codex/AGENTS.override.md"],
+    files: [...CLAUDE_FILES, "/workspace/AGENTS.override.md", "/home/node/.codex/AGENTS.md", "/home/node/.codex/AGENTS.override.md", CODEX_CONFIG],
     trees: ["/workspace/.agents/skills", "/workspace/.codex", "/home/node/.codex/skills", "/home/node/.agents/skills"],
   },
 };
