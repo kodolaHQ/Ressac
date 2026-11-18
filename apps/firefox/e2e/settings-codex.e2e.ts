@@ -11,7 +11,7 @@ import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, startAgentSession, waitUi } from "./ui";
 
-// Plan 45 Task 7: Codex in Settings › Agents (sign-in by code, its engine, the compatible API key).
+// Plan 45 Task 7: Codex in Settings › Agent (sign-in by code, its engine, the compatible API key).
 
 const PAGE = '[data-testid="settings-page"]';
 const CARD = '[data-testid="codex-engine"]';
@@ -125,7 +125,7 @@ describe("Codex in Settings", () => {
 
   it("engine persists; an invalid field says so and changes nothing", async () => {
     await launch();
-    await shows("codex-engine", "Moteur de Codex");
+    await shows("codex-engine", "Moteur");
     await shows("codex-engine", "Un changement s'applique à la prochaine session ; l'agent ouvert propose de se relancer.");
     await click(m, `${CARD} [data-testid="engine-ollama"]`);
     await fill("ollama-url", server.url);

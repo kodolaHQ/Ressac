@@ -38,6 +38,7 @@
   </nav>
 
   <div class="content">
+    <h2 class="visually-hidden">{t(`settings-section-${currentSection()}`)}</h2>
     <Page />
   </div>
 </section>
@@ -46,6 +47,7 @@
   /* The page: icon tabs on top, then one centred column of groups. Each setting is a two-column row (SettingsRow). */
   .settings { display: flex; flex-direction: column; height: 100%; color: var(--text); font-size: 13px; }
   nav { flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 16px 12px; border-bottom: 1px solid var(--border); }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   h1 { margin: 0; font: 600 13px/1.2 var(--font-ui); color: var(--text-muted); }
   .tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; }
   .tabs button { all: unset; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 56px; padding: 8px 6px 7px; border-radius: 10px; color: var(--text-muted); font-size: 11.5px; font-weight: 500; cursor: default; transition: transform var(--tap), background var(--tap), color var(--tap); }

@@ -72,7 +72,7 @@ Firefox under the hood, a quiet sidebar, nothing to sign up for, nothing to swit
 - **AI stays off until you switch it on.** Docker, the local models and the agent start only once you say yes.
 - **Open source.** Built on Firefox, under the MPL 2.0.
 
-During the beta, Ressac sends crash and error reports (without page addresses) and an anonymous install id to its developer, to fix bugs; turn it off in Réglages › Vie privée.
+During the beta, Ressac sends crash and error reports (without page addresses) and an anonymous install id to its developer, to fix bugs; turn it off in Réglages › Confidentialité.
 
 ## Get Ressac
 

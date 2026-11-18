@@ -19,7 +19,6 @@
   type Engine = ClaudeEngine | CodexEngine;
   const A = $derived({
     claude: {
-      name: "Claude",
       agentName: "Claude Code",
       kinds: [
         { kind: "subscription", label: t("agent-engine-kind-subscription") },
@@ -37,7 +36,6 @@
       deleteKey: s.deleteClaudeKey,
     },
     codex: {
-      name: "Codex",
       agentName: "Codex",
       kinds: [
         { kind: "chatgpt", label: t("agent-engine-kind-chatgpt") },
@@ -97,7 +95,7 @@
 {/snippet}
 
 <div data-testid="{agent}-engine">
-  <SettingsRow label={t("agent-engine-title", { name: A.name })} labelId="{agent}-engine-label" help={t("agent-engine-next-session")}>
+  <SettingsRow label={t("agent-engine-label")} labelId="{agent}-engine-label" help={t("agent-engine-next-session")}>
     <div class="kinds" role="radiogroup" aria-labelledby="{agent}-engine-label">
       {#each A.kinds as k (k.kind)}
         <label><input type="radio" name="{agent}-engine" data-testid="engine-{k.kind}" checked={engine.kind === k.kind} onchange={() => A.choose({ ...engine, kind: k.kind } as Engine)} />{k.label}</label>

@@ -2,7 +2,7 @@
 
 ## Moteur d'un agent (Réglages › Agent)
 
-agent-engine-title = Moteur de { $name }
+agent-engine-label = Moteur
 agent-engine-next-session = Un changement s'applique à la prochaine session ; l'agent ouvert propose de se relancer.
 agent-engine-kind-subscription = Abonnement Claude
 agent-engine-kind-chatgpt = Abonnement ChatGPT
@@ -75,7 +75,7 @@ agent-permission-media-micro = Micro
 agent-permission-midi = MIDI
 agent-permission-drm = Contenu protégé
 agent-screen-title = Partage d'écran
-agent-screen-broken = Le partage d'écran ne marche plus
+agent-screen-broken = Le partage d'écran ne marche plus ?
 agent-screen-help = Après une mise à jour, macOS peut bloquer le partage alors qu'il paraît autorisé. Réparer lui fait redemander l'autorisation.
 agent-screen-repaired = Quittez puis rouvrez Ressac. Au prochain partage, macOS redemandera l'autorisation.
 agent-screen-failed = La réparation a échoué. Dans Réglages Système › Confidentialité et sécurité › Enregistrement de l'écran, retirez Ressac puis relancez-le.

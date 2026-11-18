@@ -392,13 +392,13 @@ let defaultProfile = "claude";
 let agentMode: "browser" | "workshop" = "browser";
 let kernelLaunched = false;
 
-// Codex's and Claude's engines (Settings › Agents) and the relay that adds each one's compatible API key, which stays on the Mac.
+// Codex's and Claude's engines (Settings › Agent) and the relay that adds each one's compatible API key, which stays on the Mac.
 let engine = DEFAULT_CODEX_ENGINE;
 let claudeEngine = DEFAULT_CLAUDE_ENGINE;
 let relocalized = 0;
 const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY) };
 const cachedKeys: { codex?: string; claude?: string } = {};
-// Called after a key is written or removed (Settings › Agents).
+// Called after a key is written or removed (Settings › Agent).
 const forgetKey = (kind: "codex" | "claude") => {
   delete cachedKeys[kind];
   writerChoice.reset();

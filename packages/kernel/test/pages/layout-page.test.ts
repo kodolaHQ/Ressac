@@ -92,7 +92,7 @@ describe("layOut", () => {
   });
 
   it("no account or limit: the fixed text is the reason, any other error stays generic", async () => {
-    const none = "Connectez Claude Code ou Codex dans Réglages › Agents pour les résumés";
+    const none = "Connectez Claude Code ou Codex dans Réglages › Agent pour les résumés";
     expect((await launch(fake([() => Promise.reject(new Error(none))]))).reason).toBe(none);
     expect((await launch(fake([() => Promise.reject(new Error("secret"))]))).reason).not.toMatch(/secret/);
   });

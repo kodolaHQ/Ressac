@@ -11,6 +11,13 @@
   /** A widget or action grant whose removal awaits confirmation. */
   let asking = $state<GrantRow | null>(null);
   const load = async () => (rows = await s.grants());
+  /** The search field shows past this many rows; it matches the site's name and the access it has. */
+  const SEARCH_FROM = 6;
+  let query = $state("");
+  const shown = $derived.by(() => {
+    const q = query.trim().toLocaleLowerCase();
+    return !rows || !q ? rows : rows.filter((r) => `${r.name} ${r.detail}`.toLocaleLowerCase().includes(q));
+  });
   $effect(() => void load());
 
   async function revoke(r: GrantRow) {
@@ -26,12 +33,17 @@
 </script>
 
 <section data-testid="settings-privacy" aria-label={t("settings-section-privacy")}>
-  <h3 class="group-title">{t("settings-group-permissions")}</h3>
+  <div class="group-head">
+    <h3 class="group-title">{t("settings-group-permissions")}</h3>
+    {#if rows && rows.length >= SEARCH_FROM}
+      <input class="search appear" type="search" data-testid="permissions-search" placeholder={t("settings-permissions-search")} aria-label={t("settings-permissions-search")} bind:value={query} spellcheck="false" />
+    {/if}
+  </div>
   {#if !rows}
     <p class="status"><span class="pill" data-tone="warn">{t("settings-checking")}</span></p>
   {:else}
     <div class="group" data-testid="settings-permissions">
-      {#each rows as r (`${r.kind}:${r.key}`)}
+      {#each shown ?? [] as r (`${r.kind}:${r.key}`)}
         <div data-testid="grant-row" data-kind={r.kind}>
           <div class="row">
             <div class="grow">
@@ -52,7 +64,7 @@
           {/if}
         </div>
       {:else}
-        <div class="row muted">{t("agent-grants-none")}</div>
+        <div class="row muted" data-testid={rows.length ? "permissions-no-match" : undefined}>{t(rows.length ? "settings-permissions-no-match" : "agent-grants-none")}</div>
       {/each}
     </div>
   {/if}
@@ -66,10 +78,12 @@
         <button data-testid="screen-sharing-repair-button" onclick={async () => (repaired = await s.repairScreenSharing())}>{t("agent-screen-repair")}</button>
       {/if}
       {#snippet below()}
-        <span class="help">{t("agent-screen-broken")}. {#if repaired}{t("agent-screen-repaired")}{:else if repaired === false}{t("agent-screen-failed")}{:else}{t("agent-screen-help")}{/if}</span>
+        <span class="help">{t("agent-screen-broken")} {#if repaired}{t("agent-screen-repaired")}{:else if repaired === false}{t("agent-screen-failed")}{:else}{t("agent-screen-help")}{/if}</span>
       {/snippet}
     </SettingsRow>
-    {#if telemetry}
+    {#if !telemetry}
+      <SettingsRow label={t("settings-telemetry-label")}><span class="pill" data-tone="warn">{t("settings-checking")}</span></SettingsRow>
+    {:else}
       <SettingsRow label={t("settings-telemetry-label")} id="telemetry-switch" help={t("agent-telemetry-notice")}>
         <input
           id="telemetry-switch"
@@ -92,3 +106,7 @@
     {/if}
   </div>
 </section>
+
+<style>
+  .search { width: 220px; min-height: 28px; }
+</style>

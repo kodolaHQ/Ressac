@@ -383,7 +383,7 @@ test("a submitted prefill sends Enter apart from its text", async () => {
   }
 });
 
-describe("engine change (Réglages › Agents)", () => {
+describe("engine change (Réglages › Agent)", () => {
   function withEngine() {
     let engine = "subscription";
     const opens: { profile: string; resume: boolean }[] = [];

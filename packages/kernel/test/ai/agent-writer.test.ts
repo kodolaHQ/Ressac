@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CODEX_DISABLED_FEATURES, SYSTEM_PROMPT, claudeWriterArgv, codexWriterArgv, createAgentWriter, type WriterAgent } from "../../src/ai/agent-writer.js";
 import { WRITER_JSON_INVALID } from "../../src/ai/dispatcher.js";
 
-const NONE = "Connectez Claude Code ou Codex dans Réglages › Agents pour les résumés";
+const NONE = "Connectez Claude Code ou Codex dans Réglages › Agent pour les résumés";
 const ok = (stdout: string, code = 0, stderr = "") => ({ code, stdout, stderr });
 const claudeOut = (result: string, is_error = false) =>
   JSON.stringify({ type: "result", is_error, result, usage: { input_tokens: 3, cache_read_input_tokens: 18000, output_tokens: 40 } });

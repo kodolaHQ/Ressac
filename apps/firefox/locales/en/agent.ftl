@@ -2,7 +2,7 @@
 
 ## An agent's engine (Settings › Agent)
 
-agent-engine-title = { $name } engine
+agent-engine-label = Engine
 agent-engine-next-session = A change applies to the next session; an open agent offers to restart.
 agent-engine-kind-subscription = Claude subscription
 agent-engine-kind-chatgpt = ChatGPT subscription
@@ -75,7 +75,7 @@ agent-permission-media-micro = Microphone
 agent-permission-midi = MIDI
 agent-permission-drm = Protected content
 agent-screen-title = Screen sharing
-agent-screen-broken = Screen sharing no longer works
+agent-screen-broken = Screen sharing stopped working?
 agent-screen-help = After an update, macOS can block sharing even though it looks allowed. Repairing makes it ask for permission again.
 agent-screen-repaired = Quit and reopen Ressac. At the next share, macOS will ask for permission again.
 agent-screen-failed = The repair failed. In System Settings › Privacy & Security › Screen Recording, remove Ressac then relaunch it.

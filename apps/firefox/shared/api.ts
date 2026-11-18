@@ -295,7 +295,7 @@ export interface ApiRessac {
     current(): Promise<string | null>;
     /** Chooses the profile and switches this window's agent to it; settles once the host has answered (a failure is logged, never thrown). */
     switch(profile: string): Promise<void>;
-    /** After an engine change (Réglages › Agents): restarts this window's agent on the new engine, resuming its conversation. */
+    /** After an engine change (Réglages › Agent): restarts this window's agent on the new engine, resuming its conversation. */
     relaunch(): Promise<void>;
     /** The answer on the changed-instructions card; settles once the host has answered (a failure is logged, never thrown). */
     review(id: number, choice: "keep" | "revert"): Promise<void>;

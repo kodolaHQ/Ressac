@@ -78,6 +78,26 @@ describe("Settings page, permissions and data", () => {
     await waitFor(m, "return true", () => !read(join(dataDir, "permissions.json")).includes("https://a.fr"));
   });
 
+  it("permissions: past five sites, a search filters on the site and the access", async () => {
+    await prepare();
+    const sites = { "https://alpha.fr media-camera": "allow", "https://beta.fr media-micro": "allow", "https://gamma.fr notifications": "deny", "https://delta.fr geolocation": "allow", "https://epsilon.fr midi": "allow", "https://zeta.fr drm": "allow" };
+    writeFileSync(join(dataDir, "permissions.json"), JSON.stringify(sites));
+    await launch();
+    await openPage("privacy");
+    await count('[data-testid="grant-row"]', 6);
+    const search = (q: string) => inUi(m, "const f = doc.querySelector('[data-testid=\"permissions-search\"]'); f.value = arguments[0]; f.dispatchEvent(new ui.Event('input', { bubbles: true }));", [q]);
+    await search("BETA");
+    await count('[data-testid="grant-row"]', 1);
+    await search("caméra");
+    await count('[data-testid="grant-row"]', 1);
+    expect(await inUi(m, "return doc.querySelector('[data-testid=\"grant-row\"]').textContent")).toContain("alpha.fr");
+    await search("nulle-part");
+    await count('[data-testid="grant-row"]', 0);
+    await waitUi(m, "return doc.querySelector('[data-testid=\"permissions-no-match\"]')?.textContent === 'Aucun site ne correspond.'");
+    await search("");
+    await count('[data-testid="grant-row"]', 6);
+  });
+
   it("the browsing notes button reveals the notes file", async () => {
     await prepare();
     await launch();

@@ -192,7 +192,7 @@ describe("Settings page", () => {
     await launch();
     await openPage();
     await go("workshop");
-    await shows("workshop-state", "Atelier démarré");
+    await shows("workshop-state", "Démarré");
     const file = join(w!.dataDir, "workspace", "fake-docker-calls.log");
     const log = () => (existsSync(file) ? readFileSync(file, "utf8") : "");
     await click(m, '[data-testid="workshop-restart"]');
@@ -204,7 +204,7 @@ describe("Settings page", () => {
     await shows("settings-workshop", "La reconstruction réinstalle Claude Code et Codex et prend quelques minutes. Les agents et les applis en cours s'arrêtent ; vos projets et les connexions de Claude et de Codex restent.");
     await click(m, '[data-testid="confirm-workshop"]');
     await waitFor(m, "return true", () => log().split("\n").some((l) => l.startsWith("build ") && l.includes("--no-cache")), 20_000);
-    await shows("workshop-state", "Atelier démarré", 20_000);
+    await shows("workshop-state", "Démarré", 20_000);
   });
 
   it("workshop: a container app installed but stopped offers « Démarrer OrbStack »", async () => {
@@ -224,7 +224,7 @@ describe("Settings page", () => {
       await launch({ RESSAC_TEST_MACHINE: "running" });
       await openPage();
       await go("workshop");
-      await shows("machine-state", "Machine de l'atelier : démarrée");
+      await shows("machine-state", "Démarrée");
       await shows("machine-usage", "0,6 Go de mémoire · 1,8 Go sur le disque");
       expect(await inUi(m, `return ["workshop-restart", "workshop-rebuild", "machine-remove"].every((id) => doc.querySelector('[data-testid="' + id + '"]'))`)).toBe(true);
       await click(m, '[data-testid="machine-remove"]');
@@ -242,13 +242,13 @@ describe("Settings page", () => {
       await go("workshop");
       await click(m, '[data-testid="machine-remove"]');
       await click(m, '[data-testid="confirm-machine"]');
-      await shows("machine-state", "Machine de l'atelier : supprimée. Elle ne revient que si vous l'installez (environ 500 Mo).");
+      await shows("machine-state", "Supprimée. Elle ne revient que si vous l'installez (environ 500 Mo).");
       await w!.close();
       w = undefined;
       await launch({ RESSAC_TEST_MACHINE: "running" }, {}, dataDir); // the next launch, AI on
       await openPage();
       await go("workshop");
-      await shows("machine-state", "Machine de l'atelier : supprimée.");
+      await shows("machine-state", "Supprimée.");
       expect(calls()).toEqual(["remove"]);
       await click(m, '[data-testid="machine-install"]');
       await waitFor(m, "return true", () => calls().includes("install"), 10_000);
@@ -293,8 +293,8 @@ describe("Settings page", () => {
       await launch({ RESSAC_TEST_MACHINE: "absent:auto", RESSAC_TEST_MACHINE_DELAY_MS: "8000" });
       await openPage();
       await go("workshop");
-      await shows("machine-state", "pas encore téléchargée");
-      await shows("machine-state", "Machine de l'atelier : démarrée", 20_000);
+      await shows("machine-state", "Pas encore téléchargée");
+      await shows("machine-state", "Démarrée", 20_000);
     });
 
     it("a hand-over waiting for Docker's sessions says so; « Passer maintenant » asks, then switches", async () => {

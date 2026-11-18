@@ -8,7 +8,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
-// Plan 51 Task 1: the Mozilla account in Settings › Agents.
+// Plan 51 Task 1: the Mozilla account in Settings › Agent.
 
 const PAGE = '[data-testid="settings-page"]';
 const CARD = '[data-testid="mozilla-account"]';

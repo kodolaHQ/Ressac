@@ -92,7 +92,7 @@ interface Entry {
    * resumed by its id (`sent`: it got a message, so Claude keeps it); the others resume their workdir's latest.
    */
   ran: Map<string, { id: string; sent: boolean }>;
-  /** The engine (Réglages › Agents) the running session started with: a change applies only to the next session. */
+  /** The engine (Réglages › Agent) the running session started with: a change applies only to the next session. */
   engine?: string;
   /** The engine changed since this session started: the panel offers to relaunch it. */
   engineChanged?: boolean;

@@ -9,7 +9,7 @@ import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, startAgentSession, waitUi } from "./ui";
 
-// Plan 48 Task 4: Claude's engine in Settings › Agents, its Ollama model picked from the installed ones.
+// Plan 48 Task 4: Claude's engine in Settings › Agent, its Ollama model picked from the installed ones.
 
 const PAGE = '[data-testid="settings-page"]';
 const CARD = '[data-testid="claude-engine"]';
@@ -95,7 +95,7 @@ describe("Claude in Settings", () => {
   it("Ollama: the warning, the model picked from the list, the sign-in hint gone", { timeout: 60_000 }, async () => {
     await launch();
     await shows('[data-testid="agent-claude"]', HINT);
-    await shows(CARD, "Moteur de Claude");
+    await shows(CARD, "Moteur");
     await shows(CARD, "Abonnement Claude");
     await ollamaAt(ollama.url);
     await click(m, inCard("engine-ollama"));
