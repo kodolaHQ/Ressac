@@ -43,8 +43,11 @@ afterAll(() => w?.close());
 
 it("a session that just worked is left alone; once quiet it sleeps, and the next message resumes its conversation", async () => {
   const pid = read(workspace("fake-agent-pid"));
+  const started: string[] = JSON.parse(read(workspace("fake-agent-args.json")));
+  const id = started[started.indexOf("--session-id") + 1]!;
   await typeText(m, "ab");
-  await terminalShows("ready> ab");
+  await pressKeys(m, "Enter");
+  await terminalShows("received: ab");
   await press();
   await waitFor(m, "return 1", () => relieves() === 1, 10_000);
   expect(alive(pid)).toBe(true);
@@ -57,12 +60,12 @@ it("a session that just worked is left alone; once quiet it sleeps, and the next
   // Stopped before the machine was relieved.
   expect(alive(pid)).toBe(false);
   // The conversation's screen stays under the line.
-  expect(await inUi<string>(m, TERMINAL, [], "agent")).toContain("ready> ab");
+  expect(await inUi<string>(m, TERMINAL, [], "agent")).toContain("received: ab");
 
   await typeText(m, "hello");
   await pressKeys(m, "Enter");
   await waitFor(m, "return 1", () => read(workspace("fake-agent-pid")) !== pid, 20_000);
-  expect(JSON.parse(read(workspace("fake-agent-args.json")))).toContain("--continue");
+  expect(JSON.parse(read(workspace("fake-agent-args.json"))).join(" ")).toContain(`--resume ${id}`);
   await terminalShows("received: hello");
   expect(await asleepShown()).toBe(false);
 });

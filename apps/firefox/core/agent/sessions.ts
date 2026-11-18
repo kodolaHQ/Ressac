@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { WorkshopError, type BuildProgress, type InstructionChange } from "@ressac/kernel";
 import type { AgentPanelState, TerminalSize } from "../../shared/api";
 import type { WindowId } from "../../shared/model";
@@ -48,6 +49,21 @@ export class SessionBuffer {
   }
 }
 
+/** A whole terminal reply (focus, mouse report, device attributes, cursor position, OSC/DCS answer): never the user's key. */
+const TERMINAL_REPLY = /^\x1b(?:\[[IO]|\[<[\d;]+[Mm]|\[M[\s\S]{3}|\[[?>][\d;]*c|\[\d+;\d+R|\][\s\S]*|P[\s\S]*)$/;
+
+/** Keys buffered while an agent wakes, as messages: each Enter outside a paste submits the text before it; the rest stays a draft. */
+export function messages(keys: string): { text: string; submit?: true }[] {
+  const out: { text: string; submit?: true }[] = [];
+  let text = "";
+  for (const [k] of keys.matchAll(/\x1b\[200~[\s\S]*?(?:\x1b\[201~|$)|[\s\S]/g)) {
+    if (k !== "\r") text += k;
+    else if (text) out.push({ text, submit: true }), (text = "");
+  }
+  if (text) out.push({ text });
+  return out;
+}
+
 /** What the manager uses of a kernel SessionAgent. */
 export interface SessionLike {
   readonly active: boolean;
@@ -71,8 +87,11 @@ interface Entry {
   prefill?: { text: string; written?: () => void; submit?: boolean };
   /** This window's agent profile, fixed when the entry is made. */
   profile: string;
-  /** Profiles whose session was active in this window: switching back to one resumes its conversation. */
-  ran: Set<string>;
+  /**
+   * Profiles whose session was active in this window, with its conversation: switching back to one resumes it. Claude's is
+   * resumed by its id (`sent`: it got a message, so Claude keeps it); the others resume their workdir's latest.
+   */
+  ran: Map<string, { id: string; sent: boolean }>;
   /** The engine (Réglages › Agents) the running session started with: a change applies only to the next session. */
   engine?: string;
   /** The engine changed since this session started: the panel offers to relaunch it. */
@@ -85,8 +104,10 @@ interface Entry {
   last?: number;
   /** Stopped under memory pressure (sleepIdle): the next input resumes its conversation. */
   asleep?: boolean;
-  /** Keys typed since the wake, written once the resumed agent first speaks (its TUI is then up). */
+  /** Keys typed since the wake, written once the resumed agent first speaks (its TUI is then up), then while they are delivered. */
   waking?: string;
+  /** The buffered keys and pre-fill are being written to the woken agent (deliver). */
+  delivering?: boolean;
 }
 
 /** One agent session per window (spec §8): it survives tab changes and the panel closing. */
@@ -103,6 +124,8 @@ export class SessionsAgent {
         s: {
           profile: string;
           resume: boolean;
+          /** This window's conversation id for this profile (a new one unless resuming); only Claude uses it. */
+          conversation: string;
           onBuildProgress: (p: BuildProgress) => void;
           /** Settles on answerReview, or rejects when the entry is dropped: the kernel never waits forever. */
           review: (changes: InstructionChange[]) => Promise<"keep" | "revert">;
@@ -118,7 +141,7 @@ export class SessionsAgent {
     },
   ) {}
 
-  private entry(f: WindowId, size: TerminalSize, profile = this.profileOf(f), ran = new Set<string>()): Entry {
+  private entry(f: WindowId, size: TerminalSize, profile = this.profileOf(f), ran: Entry["ran"] = new Map()): Entry {
     let e = this.inputs.get(f);
     if (!e) this.inputs.set(f, (e = { buffer: new SessionBuffer(BUFFER_MAX), toSend: "", size, profile, ran }));
     return e;
@@ -159,10 +182,15 @@ export class SessionsAgent {
     entry.buffer.clear();
     this.cancelSend(entry);
     this.o.send(f, "state", { state: "preparing" });
+    const was = entry.ran.get(entry.profile);
+    // Claude resumes this window's own conversation by id, and only one that got a message: before it, Claude keeps none.
+    if (entry.profile === "claude" && !was?.sent) resume = false;
+    const conversation = resume && was ? was.id : randomUUID();
     entry.startup = this.o
       .open(f, size, {
         profile: entry.profile,
         resume,
+        conversation,
         onBuildProgress: (p) => {
           if (this.inputs.get(f) === entry && !entry.session && !entry.review) this.o.send(f, "state", { state: "preparing", ...p });
         },
@@ -180,7 +208,7 @@ export class SessionsAgent {
           // Window closed or agent switched during startup: nobody will display this agent.
           if (this.inputs.get(f) !== entry) return void s.stop();
           entry.session = s;
-          entry.ran.add(entry.profile);
+          entry.ran.set(entry.profile, { id: conversation, sent: resume });
           entry.engine = this.o.engineOf?.(entry.profile);
           entry.engineChanged = false;
           entry.last = Date.now();
@@ -189,22 +217,20 @@ export class SessionsAgent {
             entry.buffer.add(d);
             entry.toSend += d;
             entry.timer ??= setTimeout(() => this.sendOutput(f, entry), GROUPING_MS);
-            const w = entry.waking;
-            if (w === undefined || entry.session !== s) return;
-            entry.waking = undefined;
-            // A trailing Enter goes apart, as a submitted pre-fill: in the same write the TUI takes it as a pasted newline.
-            if (w) this.writePrefill(f, s, w.endsWith("\r") ? { text: w.slice(0, -1), submit: true } : { text: w });
+            if (entry.waking !== undefined && !entry.delivering && entry.session === s) void this.deliver(f, entry, s);
           });
           s.onEnd((code) => {
             // Session replaced (relancerTout): its end is not that of the displayed conversation.
             if (entry.session !== s) return;
+            entry.waking = undefined;
             this.sendOutput(f, entry);
             entry.session = undefined;
             this.o.send(f, "state", { state: "done", code });
           });
           this.o.send(f, "state", { state: "active" });
-          const p = entry.prefill;
-          entry.prefill = undefined;
+          // Waking: the pre-fill goes with the buffered keys, once the agent speaks (deliver).
+          const p = entry.waking === undefined ? entry.prefill : undefined;
+          if (p) entry.prefill = undefined;
           if (p) this.writePrefill(f, s, p);
         },
         (err: Error) => {
@@ -282,20 +308,17 @@ export class SessionsAgent {
     // Keys and pastes are the user's; the terminal's own replies (focus, queries, a click's mouse report) start with ESC.
     const user = !d.startsWith("\x1b") || d.startsWith("\x1b[200~");
     if (e?.asleep || e?.waking !== undefined) {
-      // Any input wakes a sleeping agent (an empty write is the panel's click); only the user's keys are kept for it.
-      e.waking = (e.waking ?? "") + (user ? d : "");
+      // Any input wakes a sleeping agent (an empty write is the panel's click); the terminal's own replies are not kept.
+      e.waking = (e.waking ?? "") + (TERMINAL_REPLY.test(d) ? "" : d);
       if (user && d) e.touched = true;
-      if (e.asleep) {
-        e.asleep = false;
-        void this.start(f, e.size, true);
-      }
+      this.wake(f, e);
       return;
     }
     if (!e?.session) return;
     e.last = Date.now();
     e.session.write(d);
     if (user) e.touched = true;
-    if (d.includes("\r")) this.o.onSend?.(f);
+    if (d.includes("\r")) this.sent(f, e);
   }
 
   /**
@@ -306,8 +329,10 @@ export class SessionsAgent {
   prefill(f: WindowId, text: string, written?: () => void, submit = false): void {
     const p = { text: text, ...(written ? { written: written } : {}), ...(submit ? { submit: true } : {}) };
     let e = this.inputs.get(f);
-    if (e?.session?.active) return this.writePrefill(f, e.session, p);
+    if (e?.session?.active && e.waking === undefined) return this.writePrefill(f, e.session, p);
     e ??= this.entry(f, { cols: 80, rows: 24 });
+    // A sleeping agent wakes for it; the text goes as its own message, before the keys typed meanwhile.
+    if (e.asleep) this.wake(f, e);
     const pending = e.prefill;
     // A message waiting to be sent (remarks, a ⌘T question) wins over a mere pre-fill (the panel's context), whose share still runs.
     if (pending?.submit && !submit) {
@@ -328,8 +353,45 @@ export class SessionsAgent {
       if (e?.session !== s || !s.active) return;
       s.write("\r");
       e.touched = true;
-      this.o.onSend?.(f);
+      this.sent(f, e);
     }, SUBMIT_DELAY_MS);
+  }
+
+  /** A message went to the agent: its conversation now exists to resume. */
+  private sent(f: WindowId, e: Entry): void {
+    const c = e.ran.get(e.profile);
+    if (c) c.sent = true;
+    this.o.onSend?.(f);
+  }
+
+  private wake(f: WindowId, e: Entry): void {
+    if (!e.asleep) return;
+    e.asleep = false;
+    e.waking ??= "";
+    void this.start(f, e.size, true);
+  }
+
+  /** The woken agent spoke: the pre-fill, then the keys typed meanwhile, each submitted line as its own message. */
+  private async deliver(f: WindowId, e: Entry, s: SessionLike): Promise<void> {
+    e.delivering = true;
+    try {
+      for (;;) {
+        const p = e.prefill;
+        e.prefill = undefined;
+        const queue = [...(p ? [p] : []), ...messages(e.waking ?? "")];
+        e.waking = "";
+        if (!queue.length) return;
+        for (const m of queue) {
+          if (e.session !== s || !s.active) return;
+          this.writePrefill(f, s, m);
+          // Its Enter goes first (writePrefill), then the next message.
+          if (m.submit) await new Promise((r) => setTimeout(r, 2 * SUBMIT_DELAY_MS));
+        }
+      }
+    } finally {
+      e.delivering = false;
+      if (e.session === s) e.waking = undefined;
+    }
   }
 
   /**
@@ -338,7 +400,9 @@ export class SessionsAgent {
    */
   async sleepIdle(idleMs: number): Promise<void> {
     const now = Date.now();
-    const idle = [...this.inputs].filter(([, e]) => e.session?.active && !e.startup && e.waking === undefined && now - (e.last ?? 0) >= idleMs);
+    // Only Claude resumes by id: another profile resumes its workdir's latest conversation, which may be another window's.
+    const alone = (e: Entry) => e.profile === "claude" || [...this.inputs.values()].every((o) => o === e || o.profile !== e.profile);
+    const idle = [...this.inputs].filter(([, e]) => e.session?.active && !e.startup && e.waking === undefined && alone(e) && now - (e.last ?? 0) >= idleMs);
     await Promise.all(
       idle.map(([f, e]) => {
         const s = e.session!;
@@ -382,8 +446,9 @@ export class SessionsAgent {
 
   /** Workshop restart: every window that had an agent gets a new one of its own profile, at the same size, without resuming. */
   async relaunchAll(): Promise<void> {
-    const olds = [...this.inputs];
-    this.inputs.clear();
+    // A sleeping agent stays asleep: its next input starts it in the new workshop.
+    const olds = [...this.inputs].filter(([, e]) => !e.asleep);
+    for (const [f] of olds) this.inputs.delete(f);
     for (const [, e] of olds) this.drop(e);
     // A text queued to send (⌘T, a design remark) waits for the new session.
     await Promise.all(olds.map(([f, e]) => ((this.entry(f, e.size, e.profile, e.ran).prefill = e.prefill), this.start(f, e.size))));

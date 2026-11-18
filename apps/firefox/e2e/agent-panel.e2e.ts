@@ -85,6 +85,9 @@ it("the panel runs the real CLI with the session's MCP config", async () => {
     "claude",
     "--append-system-prompt",
     "Always reply to the user in French, whatever language the instructions are written in.",
+    // This window's conversation, resumed by this id.
+    "--session-id",
+    expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
     "--disallowedTools",
     "Bash,mcp__ressac__launch_app",
     "--strict-mcp-config",
@@ -104,9 +107,13 @@ it("the panel runs the real CLI with the session's MCP config", async () => {
 
 it("« Atelier » relaunches the agent with its shell, the choice is saved, another window offers « Relancer »", async () => {
   await launch();
-  await openPanel();
-  await terminalShows("fake agent ready>");
+  await homeAgent();
   const args = () => read(join(w!.dataDir, "workspace", "fake-agent-args.json"));
+  // Claude resumes only a conversation that got a message, by its id.
+  const started: string[] = JSON.parse(args());
+  const id = started[started.indexOf("--session-id") + 1]!;
+  await send("bonjour");
+  await terminalShows("received: bonjour");
   const first = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
   const second = await newWindow(m);
   await inWindow(m, second, async () => {
@@ -118,7 +125,7 @@ it("« Atelier » relaunches the agent with its shell, the choice is saved, anot
   await click(m, '[data-testid="agent-mode-workshop"]', { frame: "agent" });
   await waitUi(m, "return doc.querySelector('[data-testid=\"agent-mode-workshop\"]').getAttribute('aria-checked') === 'true'", [], 10_000, "agent");
   // The relaunch resumes the conversation, now with the shell.
-  await expect.poll(args, { timeout: 20_000 }).toContain("--continue");
+  await expect.poll(args, { timeout: 20_000 }).toContain(`"--resume","${id}"`);
   expect(args()).not.toMatch(/Bash|launch_app|strict-mcp-config/);
   expect((await state(m)).settings.agentMode).toBe("workshop");
   // The other window's agent still runs in browser mode: its panel offers the relaunch.
@@ -260,8 +267,10 @@ describe("the agent selector", () => {
 
   it("switching to Codex opens a new conversation in this window only; switching back resumes; new windows take the last choice", async () => {
     await launch();
-    await openPanel();
-    await terminalShows("fake agent ready>");
+    await homeAgent();
+    const id = args()[args().indexOf("--session-id") + 1]!;
+    await send("a1");
+    await terminalShows("received: a1");
     const a = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     const second = await newWindow(m);
     await inWindow(m, second, async () => {
@@ -285,7 +294,8 @@ describe("the agent selector", () => {
       expect(await inUi(m, `return doc.querySelector(${JSON.stringify(SELECT)}).value`, [], "agent")).toBe("claude");
     });
     await pick("claude");
-    await waitFor(m, "return 1", () => args().includes("--continue"), 20_000);
+    // Its own conversation, not the latest of the workdir (window B's).
+    await waitFor(m, "return 1", () => args().join(" ").includes(`--resume ${id}`), 20_000);
     await pick("codex");
     await waitFor(m, "return 1", () => args().includes("resume") && args().includes("--last"), 20_000);
     expect(args()[0]).toBe("codex");

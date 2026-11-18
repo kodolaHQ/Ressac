@@ -326,7 +326,11 @@ describe("agent host", { timeout: 30_000 }, () => {
   it("agent.switch: only this window's agent, resumed on the way back", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
-    await agentReady(h, "f1");
+    const first = await agentReady(h, "f1");
+    const id = first[first.indexOf("--session-id") + 1];
+    // Claude resumes only a conversation that got a message.
+    h.rpc.notify("agent.write", { window: "f1", data: "hi\r" });
+    await until(() => h.data().includes("received: hi"));
     const stops = sessionStops(h);
     const ready = h.data().split("fake agent ready>").length;
     await h.rpc.request("agent.switch", { window: "f1", profile: "codex" });
@@ -337,7 +341,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     const again = h.data().split("fake agent ready>").length;
     await h.rpc.request("agent.switch", { window: "f1", profile: "claude" });
     await until(() => h.data().split("fake agent ready>").length > again);
-    expect(args(h)).toContain("--continue");
+    expect(args(h).join(" ")).toContain(`--resume ${id}`);
     await h.rpc.request("agent.switch", { window: "f1", profile: "../x" });
     expect(await h.rpc.request("agent.current", { window: "f1" })).toBe("claude");
   });

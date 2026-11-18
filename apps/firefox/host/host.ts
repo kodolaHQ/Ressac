@@ -492,7 +492,7 @@ const sessions = new SessionsAgent({
   defaultProfile: () => defaultProfile,
   // The mode counts as part of the engine: a change offers « Relancer » in the other windows' panels.
   engineOf: (p) => (p === "claude" ? JSON.stringify([claudeEngine, agentMode]) : p === "codex" ? JSON.stringify([engine, agentMode]) : ""),
-  async open(f, t, { profile, resume, onBuildProgress, review }) {
+  async open(f, t, { profile, resume, conversation, onBuildProgress, review }) {
     if (!aiOn) throw new Error("ai-off");
     await aiSwitch;
     const n = await ready;
@@ -515,7 +515,7 @@ const sessions = new SessionsAgent({
     try {
       const relayed = token ? { url: relay.containerUrl, token } : null;
       const extra = profile === "claude" ? claudeEngineEnv(e as ClaudeEngine, relayed) : codexEngineArgs(e as CodexEngine, relayed);
-      const session = await n.openAgentSession({ ...t, window: f, profile, resume, extra, mode: agentMode, onBuildProgress, review });
+      const session = await n.openAgentSession({ ...t, window: f, profile, resume, ...(claude ? { conversation } : {}), extra, mode: agentMode, onBuildProgress, review });
       if (token) session.onEnd(() => relay.closeSession(token));
       return session;
     } catch (err) {

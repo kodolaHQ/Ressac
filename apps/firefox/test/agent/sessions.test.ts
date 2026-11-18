@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { WorkshopError } from "@ressac/kernel";
-import { GROUPING_MS, SUBMIT_DELAY_MS, SessionsAgent, BUFFER_MAX, SessionBuffer, type SessionLike } from "../../core/agent/sessions";
+import { GROUPING_MS, SUBMIT_DELAY_MS, SessionsAgent, BUFFER_MAX, SessionBuffer, messages, type SessionLike } from "../../core/agent/sessions";
 
 class FakeSession implements SessionLike {
   active = true;
@@ -312,6 +312,7 @@ describe("each window keeps its agent", () => {
   test("switch back resumes", async () => {
     const w = windows();
     await w.manager.start("f1", size);
+    w.manager.write("f1", "hi\r");
     await w.manager.switchProfile("f1", "codex");
     await w.manager.switchProfile("f1", "claude");
     expect(w.calls.at(-1)).toEqual({ f: "f1", profile: "claude", resume: true });
@@ -423,6 +424,7 @@ describe("engine change (Réglages › Agents)", () => {
   test("relaunch: the old session stops, the new one resumes the conversation without the notice", async () => {
     const w = withEngine();
     await w.manager.start("F", size);
+    w.manager.write("F", "hi\r");
     w.setEngine("ollama");
     w.manager.engineChanged("claude");
     await w.manager.relaunch("F");
@@ -436,6 +438,7 @@ describe("engine change (Réglages › Agents)", () => {
   test("relaunchActive: every running session, whatever its profile, starts again and resumes; an ended one does not", async () => {
     const w = withEngine();
     await w.manager.start("F", size);
+    w.manager.write("F", "hi\r");
     await w.manager.switchProfile("G", "mine");
     await w.manager.start("H", size);
     w.sessions[2]!.finish(0);
@@ -605,14 +608,17 @@ describe("instruction review before a session", () => {
 });
 
 describe("memory pressure: idle sessions sleep", () => {
-  function sleepy() {
+  function sleepy(defaultProfile = "claude") {
     const opens: boolean[] = [];
+    const conversations: string[] = [];
     const sessions: FakeSession[] = [];
     const p = prepare();
     // Records the `resume` of each start.
     const manager = new SessionsAgent({
+      defaultProfile: () => defaultProfile,
       open: async (_f, _t, o) => {
         opens.push(o.resume);
+        conversations.push(o.conversation);
         const s = new FakeSession();
         sessions.push(s);
         return s;
@@ -620,7 +626,7 @@ describe("memory pressure: idle sessions sleep", () => {
       send: (f, channel, v) => p.sends.push({ f, channel, v }),
       onSend: (f) => p.messages.push(f),
     });
-    return { ...p, management: manager, sessions, opens };
+    return { ...p, management: manager, sessions, opens, conversations };
   }
 
   test("a session quiet for the given time is stopped and shown asleep; a working one is untouched", async () => {
@@ -677,14 +683,18 @@ describe("memory pressure: idle sessions sleep", () => {
   test("the next key resumes the conversation; the keys typed meanwhile reach the agent once it speaks", async () => {
     vi.useFakeTimers();
     try {
-      const { management: manager, sessions, opens, states, messages } = sleepy();
+      const { management: manager, sessions, opens, states, messages, conversations } = sleepy();
       await manager.start("F", size);
+      manager.write("F", "first\r");
+      messages.length = 0;
       await manager.sleepIdle(0);
       manager.write("F", "h");
       manager.write("F", "\x1b[<0;3;4M"); // a click's mouse report: wakes, never typed
       manager.write("F", "i\r");
       await vi.advanceTimersByTimeAsync(0);
       expect(opens).toEqual([false, true]);
+      // Its own conversation, by id.
+      expect(conversations[1]).toBe(conversations[0]);
       expect(states().slice(-2)).toEqual([{ state: "preparing" }, { state: "active" }]);
       const s = sessions[1]!;
       expect(s.written).toEqual([]);
@@ -694,6 +704,7 @@ describe("memory pressure: idle sessions sleep", () => {
       await vi.advanceTimersByTimeAsync(SUBMIT_DELAY_MS);
       expect(s.written).toEqual(["hi", "\r"]);
       expect(messages).toEqual(["F"]);
+      await vi.advanceTimersByTimeAsync(SUBMIT_DELAY_MS);
       manager.write("F", "x");
       expect(s.written.at(-1)).toBe("x");
     } finally {
@@ -704,11 +715,99 @@ describe("memory pressure: idle sessions sleep", () => {
   test("a click alone wakes the agent", async () => {
     const { management: manager, sessions, opens } = sleepy();
     await manager.start("F", size);
+    manager.write("F", "hi\r");
     await manager.sleepIdle(0);
     manager.write("F", "");
     await new Promise((r) => setTimeout(r, 0));
     expect(opens).toEqual([false, true]);
     sessions[1]!.emit("ready");
     expect(sessions[1]!.written).toEqual([]);
+  });
+
+  test("a conversation that never got a message wakes as a new one (Claude kept none to resume)", async () => {
+    const { management: manager, opens, conversations } = sleepy();
+    await manager.start("F", size);
+    await manager.sleepIdle(0);
+    manager.write("F", "a");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(opens).toEqual([false, false]);
+    expect(conversations[1]).not.toBe(conversations[0]);
+  });
+
+  test("a pre-fill wakes the agent and goes as its own message, before the keys typed meanwhile", async () => {
+    vi.useFakeTimers();
+    try {
+      const { management: manager, sessions, opens } = sleepy();
+      await manager.start("F", size);
+      manager.write("F", "hi\r");
+      await manager.sleepIdle(0);
+      manager.prefill("F", "[question]", undefined, true);
+      manager.write("F", "draft");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(opens).toEqual([false, true]);
+      const s = sessions[1]!;
+      expect(s.written).toEqual([]);
+      s.emit("ready");
+      expect(s.written).toEqual(["[question]"]);
+      await vi.advanceTimersByTimeAsync(2 * SUBMIT_DELAY_MS);
+      expect(s.written).toEqual(["[question]", "\r", "draft"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("buffered keys: the user's escape keys stay, the terminal's replies go, each Enter submits its own line", async () => {
+    vi.useFakeTimers();
+    try {
+      const { management: manager, sessions } = sleepy();
+      await manager.start("F", size);
+      manager.write("F", "hi\r");
+      await manager.sleepIdle(0);
+      for (const d of ["one", "\x1b[I", "\x1b[<0;3;4M", "\x1b[?1;2c", "\x1b[12;40R", "\r", "\x1b[D", "two", "\r"]) manager.write("F", d);
+      await vi.advanceTimersByTimeAsync(0);
+      const s = sessions[1]!;
+      s.emit("ready");
+      await vi.advanceTimersByTimeAsync(4 * SUBMIT_DELAY_MS);
+      expect(s.written).toEqual(["one", "\r", "\x1b[Dtwo", "\r"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("an Enter inside a paste does not submit", () => {
+    expect(messages("\x1b[200~a\rb\x1b[201~\rc")).toEqual([{ text: "\x1b[200~a\rb\x1b[201~", submit: true }, { text: "c" }]);
+  });
+
+  test("a woken agent that ends before speaking drops the keys", async () => {
+    const { management: manager, sessions } = sleepy();
+    await manager.start("F", size);
+    manager.write("F", "hi\r");
+    await manager.sleepIdle(0);
+    manager.write("F", "x");
+    await new Promise((r) => setTimeout(r, 0));
+    sessions[1]!.finish(1);
+    await manager.start("F", size);
+    sessions[2]!.emit("ready");
+    expect(sessions[2]!.written).toEqual([]);
+  });
+
+  test("a workshop restart leaves a sleeping agent asleep", async () => {
+    const { management: manager, sessions, states } = sleepy();
+    await manager.start("F", size);
+    await manager.sleepIdle(0);
+    await manager.relaunchAll();
+    expect(sessions).toHaveLength(1);
+    expect(states().at(-1)).toEqual({ state: "asleep" });
+  });
+
+  test("Codex, which resumes its workdir's latest, sleeps only when no other window runs Codex", async () => {
+    const { management: manager, sessions } = sleepy("codex");
+    await manager.start("F", size);
+    await manager.start("G", size);
+    await manager.sleepIdle(0);
+    expect(sessions.map((s) => s.stopped)).toEqual([false, false]);
+    await manager.closeWindow("G");
+    await manager.sleepIdle(0);
+    expect(sessions[0]!.stopped).toBe(true);
   });
 });
