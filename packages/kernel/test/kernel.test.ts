@@ -687,8 +687,10 @@ describe("openAgentSession with a profile", () => {
       expect(claudeArgs.at(-2)).toBe("--mcp-config");
       expect(workshop).not.toMatch(/Bash|launch_app|strict-mcp-config|setting-sources|AGENTS/);
       expect(none).toContain("--disallowedTools Bash,mcp__ressac__launch_app");
-      expect(codex).toContain(`--ignore-user-config --disable shell_tool -c mcp_servers.ressac.disabled_tools=["launch_app"] -c notify=[] -c model_provider="openai" -m x`);
-      expect(codexWorkshop).not.toMatch(/shell_tool|launch_app|notify|model_provider|ignore-user-config/);
+      expect(codex).toContain(`--disable shell_tool -c mcp_servers.ressac.disabled_tools=["launch_app"] -c notify=[] -c model_provider="openai" -m x`);
+      // Codex's interactive TUI (0.169) refuses --ignore-user-config: only `codex exec` takes it.
+      expect(codex).not.toContain("--ignore-user-config");
+      expect(codexWorkshop).not.toMatch(/shell_tool|launch_app|notify|model_provider/);
       for (const s of opened) await s.stop();
     });
   });
