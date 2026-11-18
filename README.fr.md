@@ -35,7 +35,7 @@ Firefox sous le capot, une barre latérale discrète, rien à créer, rien à ac
 Le *ressac*, c'est la vague qui revient vers le rivage. Tu envoies l'agent sur le web, il te revient avec la réponse.
 
 **Un agent qui navigue avec toi**
-- Claude Code ou Codex tourne dans un conteneur isolé, avec **ton propre compte**, à l'intérieur d'une petite machine Linux que Ressac télécharge une fois (environ 500 Mo) et éteint après 5 minutes sans usage. Pas besoin de Docker.
+- Claude Code ou Codex tourne dans un conteneur isolé, avec **ton propre compte**, à l'intérieur d'une petite machine Linux que Ressac télécharge une fois (environ 500 Mo) et éteint après 5 minutes sans usage (réglable dans Réglages › Atelier). Pas besoin de Docker.
 - Il navigue dans son propre onglet, que tu peux regarder ; une vignette montre ce qu'il fait pendant que tu continues.
 - Avant un achat ou un choix, il remplit un **récap en direct** : critères, sources indépendantes, offres, avantages et inconvénients sourcés.
 - Il demande avant d'ouvrir une adresse qu'il a écrite lui-même, et te rend la main quand une page a besoin de toi (connexion, captcha).
