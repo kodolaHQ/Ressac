@@ -202,7 +202,8 @@ if (args[0] === "exec") {
       const r = spawnSync(process.execPath, command.slice(1), { input: JSON.stringify(paths(JSON.parse(input), false)), encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
       if (r.status !== 0) quit(r.status ?? 1, "", r.stderr);
       const out = JSON.parse(r.stdout);
-      quit(0, JSON.stringify(typeof out === "object" && out ? paths(out, true) : out));
+      // Not quit(): process.exit() would cut an output larger than the pipe's 64 KB.
+      process.stdout.write(JSON.stringify(typeof out === "object" && out ? paths(out, true) : out), () => process.exit(0));
     });
     return;
   }
