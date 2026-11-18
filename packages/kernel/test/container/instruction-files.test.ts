@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
+import { lstatSync, mkdirSync, truncateSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
@@ -57,8 +57,27 @@ test("a file over FILE_MAX is read as a too-long marker", () => {
   const big = Buffer.alloc(FILE_MAX + 1, "a");
   writeFileSync(join(r, "big.md"), big);
   expect(readInstructionFiles({ files: [join(r, "big.md")], trees: [] })).toEqual({
-    [join(r, "big.md")]: `\u0000too-long:${createHash("sha256").update(big).digest("hex")}`,
+    [join(r, "big.md")]: `\u0000too-long:${createHash("sha256").update(big).update(String(big.length)).digest("hex")}`,
   });
+});
+
+test("a huge sparse file is hashed over its first MiB and its size, never read whole", () => {
+  const r = root();
+  const huge = join(r, "huge.md");
+  writeFileSync(huge, "head");
+  const size = 64 * 1024 * 1024 * 1024;
+  truncateSync(huge, size);
+  const head = Buffer.alloc(1024 * 1024);
+  head.write("head");
+  const started = Date.now();
+  expect(readInstructionFiles({ files: [huge], trees: [] })).toEqual({ [huge]: `\u0000too-long:${createHash("sha256").update(head).update(String(size)).digest("hex")}` });
+  expect(Date.now() - started).toBeLessThan(5000);
+});
+
+test("folders count toward the tree limit", () => {
+  const r = root();
+  for (let i = 0; i < 3; i++) mkdirSync(join(r, `d${i}`));
+  expect(() => readInstructionFiles({ files: [], trees: [r] }, { file: FILE_MAX, total: TOTAL_MAX, tree: 2 })).toThrow();
 });
 
 test("more than TREE_FILES_MAX files or TOTAL_MAX bytes throws", () => {

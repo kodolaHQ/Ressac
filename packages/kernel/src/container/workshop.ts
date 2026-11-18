@@ -392,22 +392,22 @@ export class Workshop {
 
   /** The agent's instruction files as they are in the container, links never followed (InstructionIo.read). */
   readInstructions(files: string[], trees: string[]): Promise<Snapshot> {
-    return this.instructionScript(readInstructionFiles, { files, trees }, LIMITS);
+    return this.instructionScript("reading", readInstructionFiles, { files, trees }, LIMITS);
   }
 
   /** Restores (null deletes) instruction files in the container; throws if any could not be (InstructionIo.write). */
   async writeInstructions(entries: Record<string, string | null>): Promise<void> {
-    if ((await this.instructionScript(writeInstructionFiles, entries)) !== "done") throw new Error("Restauration des consignes impossible");
+    if ((await this.instructionScript("restoring", writeInstructionFiles, entries)) !== "done") throw new Error("restoring the instruction files failed for some of them");
   }
 
   /** `fn(input, extra)` run by node as the agent's user in the container, JSON on stdin and stdout. */
-  private async instructionScript<T>(fn: (...args: any[]) => T, input: unknown, extra?: unknown): Promise<T> {
+  private async instructionScript<T>(what: "reading" | "restoring", fn: (...args: any[]) => T, input: unknown, extra?: unknown): Promise<T> {
     if (!this.docker) throw new Error(say(this.locale(), "kernel-workshop-no-engine"));
     if (!this.secured) await this.secureNetwork();
     // tsx (esbuild keepNames) wraps inner functions in __name(), absent in the child.
     const script = `var __name = (f) => f; const input = JSON.parse(process.getBuiltinModule("node:fs").readFileSync(0, "utf8")); process.stdout.write(JSON.stringify((${fn.toString()})(input, ${JSON.stringify(extra) ?? "undefined"})))`;
     const r = await this.launch(["exec", "-i", "-u", "node", "-w", "/", containerName(), "node", "-e", script, "ressac-instructions"], PROBE_DELAY_MS, JSON.stringify(input));
-    if (r.code !== 0) throw new Error(`Lecture des consignes impossible : ${tail(r.stderr) || `code ${r.code}`}`);
+    if (r.code !== 0) throw new Error(`${what} the instruction files failed: ${tail(r.stderr) || `code ${r.code}`}`);
     return JSON.parse(r.stdout) as T;
   }
 

@@ -20,7 +20,8 @@ async function setup(files: Snapshot = {}, locale = "en") {
   const writes: Record<string, string | null>[] = [];
   const io: InstructionIo = {
     async read(fs, trees) {
-      return Object.fromEntries([...disk].filter(([p]) => fs.includes(p) || trees.some((t) => p.startsWith(`${t}/`))));
+      // Like the real reader: a watched path, anything under a tree, or a link at or above a watched path.
+      return Object.fromEntries([...disk].filter(([p]) => [...fs, ...trees].some((w) => w === p || w.startsWith(`${p}/`)) || trees.some((t) => p.startsWith(`${t}/`))));
     },
     async write(entries) {
       writes.push(entries);
@@ -141,4 +142,26 @@ test("an unreadable reference throws instead of falling back to the first run", 
   await expect(review.pending("claude")).rejects.toThrow();
   await writeFile(join(paths.internal, "instructions", "reference.json"), '{"files":null}');
   await expect(review.pending("claude")).rejects.toThrow();
+});
+
+test("revert deletes before it writes: a folder the agent replaced by a link goes before the files beneath it", async () => {
+  const link = "/home/node/.codex/skills";
+  const skill = `${link}/x/SKILL.md`;
+  const { review, disk, writes } = await setup({ [skill]: "s" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  disk.delete(skill);
+  disk.set(link, "\u0000link:/elsewhere");
+  await review.revert("codex", (await review.pending("codex")).snapshot);
+  expect(Object.entries(writes.at(-1)!)).toEqual([[link, null], [skill, "s"]]);
+});
+
+test("a link at a tree root or above a watched file is kept like any change", async () => {
+  const { review, disk } = await setup();
+  disk.set("/home/node/.codex/skills", "\u0000link:/a");
+  disk.set("/home/node/.codex", "\u0000link:/b");
+  const p = await review.pending("codex");
+  expect(p.changes.map((c) => c.path).sort()).toEqual(["/home/node/.codex", "/home/node/.codex/skills"]);
+  await review.keep("codex", p.snapshot);
+  expect((await review.pending("codex")).changes).toEqual([]);
+  expect((await review.pending("claude")).changes).toEqual([]);
 });

@@ -11,8 +11,8 @@ export const LIMITS: InstructionLimits = { file: FILE_MAX, total: TOTAL_MAX, tre
 /**
  * Child side: the `files` and every file under the `trees` (absolute paths), each path walked from `/` with lstat. A link
  * anywhere is recorded as `"\u0000link:" + target` at its own path and nothing under it is read; an absent file has no
- * key; a file over `limits.file` is `"\u0000too-long:" + sha256`, one not UTF-8 text (or with a NUL) `"\u0000binary:" + sha256`; a fifo, socket… is `"\u0000other"`. Throws past
- * `limits.tree` tree files or `limits.total` bytes.
+ * key; a file over `limits.file` is `"\u0000too-long:" + sha256(first MiB + size)`, one not UTF-8 text (or with a NUL) `"\u0000binary:" + sha256`; a fifo, socket… is `"\u0000other"`. Throws past
+ * `limits.tree` tree entries (folders count) or `limits.total` bytes.
  */
 export function readInstructionFiles(input: { files: string[]; trees: string[] }, limits: InstructionLimits = LIMITS): Snapshot {
   const fs = process.getBuiltinModule("node:fs");
@@ -20,25 +20,24 @@ export function readInstructionFiles(input: { files: string[]; trees: string[] }
   const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = fs.constants;
   const out: Snapshot = {};
   let total = 0;
-  let treeFiles = 0;
+  let treeEntries = 0;
   const readFile = (path: string): string => {
     const fd = fs.openSync(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
     try {
-      if (!fs.fstatSync(fd).isFile()) return "\u0000other";
-      const hash = createHash("sha256");
+      const stat = fs.fstatSync(fd);
+      if (!stat.isFile()) return "\u0000other";
+      // At most 1 MiB read: a huge or sparse file must not stall the read; past the limit, its head and size identify it.
+      const head = 1024 * 1024;
       const chunks: Buffer[] = [];
       let size = 0;
       const buffer = Buffer.alloc(64 * 1024);
-      for (let n; (n = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0; ) {
-        hash.update(buffer.subarray(0, n));
-        if ((size += n) <= limits.file) chunks.push(Buffer.from(buffer.subarray(0, n)));
-      }
-      if (size > limits.file) return `\u0000too-long:${hash.digest("hex")}`;
-      if ((total += size) > limits.total) throw new Error("instruction files too large");
+      for (let n; size < head && (n = fs.readSync(fd, buffer, 0, Math.min(buffer.length, head - size), null)) > 0; size += n) chunks.push(Buffer.from(buffer.subarray(0, n)));
       const bytes = Buffer.concat(chunks);
+      if (size > limits.file || stat.size > limits.file) return `\u0000too-long:${createHash("sha256").update(bytes).update(String(Math.max(size, stat.size))).digest("hex")}`;
+      if ((total += size) > limits.total) throw new Error("instruction files too large");
       const text = bytes.toString("utf8");
       // Not text: never restored, so a revert cannot write a lossy decoding back.
-      if (bytes.includes(0) || !Buffer.from(text, "utf8").equals(bytes)) return `\u0000binary:${hash.digest("hex")}`;
+      if (bytes.includes(0) || !Buffer.from(text, "utf8").equals(bytes)) return `\u0000binary:${createHash("sha256").update(bytes).digest("hex")}`;
       return text;
     } finally {
       fs.closeSync(fd);
@@ -53,7 +52,7 @@ export function readInstructionFiles(input: { files: string[]; trees: string[] }
         const child = `${path}/${name}`;
         const cl = fs.lstatSync(child, { throwIfNoEntry: false });
         if (!cl) continue;
-        if (!cl.isDirectory() && ++treeFiles > limits.tree) throw new Error("too many instruction files");
+        if (++treeEntries > limits.tree) throw new Error("too many instruction entries");
         record(child, cl, true);
       }
     } else out[path] = l.isFile() ? readFile(path) : "\u0000other";

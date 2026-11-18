@@ -65,7 +65,8 @@ export class InstructionReview {
 
   private inKind(kind: InstructionKind, path: string) {
     const w = WATCHED[kind];
-    return w.files.includes(path) || w.trees.some((t) => path.startsWith(`${t}/`));
+    // A link is recorded where it sits: at a tree root or on a folder above a watched path.
+    return [...w.files, ...w.trees].some((x) => x === path || x.startsWith(`${path}/`)) || w.trees.some((t) => path.startsWith(`${t}/`));
   }
 
   /** The stored reference; with no file yet (first run), the shipped templates of the space language. */
@@ -144,7 +145,8 @@ export class InstructionReview {
       if (target === null && snapshot[path] === undefined) continue;
       entries[path] = target;
     }
-    await this.io.write(entries);
+    // Deletes first: a folder the agent replaced by a link goes before the files beneath it are written.
+    await this.io.write(Object.fromEntries(Object.entries(entries).sort(([, a], [, b]) => Number(a !== null) - Number(b !== null))));
   }
 
   async acceptedAgents(): Promise<string> {

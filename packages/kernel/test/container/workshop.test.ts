@@ -810,7 +810,8 @@ describe("instruction files", () => {
     await new Workshop({ paths: paths, docker: "docker", run: ok.run }).writeInstructions({ "/workspace/AGENTS.md": null });
     expect(JSON.parse(ok.calls[0]!.opts!.input!)).toEqual({ "/workspace/AGENTS.md": null });
     await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ressac-instructions/, { code: 0, stdout: '"failed"' }]]).run }).writeInstructions({})).rejects.toThrow();
-    await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ressac-instructions/, { code: 1, stderr: "boom" }]]).run }).readInstructions([], [])).rejects.toThrow("boom");
+    await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ressac-instructions/, { code: 1, stderr: "boom" }]]).run }).readInstructions([], [])).rejects.toThrow("reading the instruction files failed: boom");
+    await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ressac-instructions/, { code: 1, stderr: "boom" }]]).run }).writeInstructions({})).rejects.toThrow("restoring the instruction files failed: boom");
   });
 });
 
