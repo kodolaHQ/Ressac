@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Fake docker for the end-to-end tests: no real container, no network. See plan 3.
 const { createHash } = require("node:crypto");
-const { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } = require("node:fs");
+const { appendFileSync, existsSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } = require("node:fs");
 const { dirname, join } = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 
@@ -182,6 +182,30 @@ if (args[0] === "exec") {
     return;
   }
   if (command[0] === "curl" && command.includes("https://1.1.1.1")) quit(7);
+  // Instruction files (Workshop.readInstructions/writeInstructions): the same node -e runs here, /workspace becoming
+  // RESSAC_ROOT and /home/node a fake-home beside it, in the paths (arrays, keys) only, never in file contents.
+  if (command.includes("ressac-instructions")) {
+    const root = realpathSync(env.RESSAC_ROOT);
+    const pairs = [["/workspace", root], ["/home/node", join(dirname(root), "fake-home")]];
+    const swap = (s, back) => {
+      for (const [inside, outside] of pairs) {
+        const [from, to] = back ? [outside, inside] : [inside, outside];
+        if (s === from || s.startsWith(`${from}/`)) return to + s.slice(from.length);
+      }
+      return s;
+    };
+    const paths = (v, back) =>
+      Object.fromEntries(Object.entries(v).map(([k, x]) => [swap(k, back), Array.isArray(x) ? x.map((s) => swap(s, back)) : x]));
+    let input = "";
+    process.stdin.on("data", (c) => (input += c));
+    process.stdin.on("end", () => {
+      const r = spawnSync(process.execPath, command.slice(1), { input: JSON.stringify(paths(JSON.parse(input), false)), encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      if (r.status !== 0) quit(r.status ?? 1, "", r.stderr);
+      const out = JSON.parse(r.stdout);
+      quit(0, JSON.stringify(typeof out === "object" && out ? paths(out, true) : out));
+    });
+    return;
+  }
   // Codex's requirements (Workshop.restrictCodex), written as root from stdin: drained, not a stop.
   if (command[0] === "sh" && command[2].includes("/etc/codex/requirements.toml")) {
     process.stdin.resume();

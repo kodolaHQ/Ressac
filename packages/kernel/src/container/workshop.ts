@@ -11,6 +11,8 @@ import { dockerEngine, type ContainerEngine } from "./engine.js";
 import { CODE_TIMEOUT_EXCEEDED, createRunner, type RunResult, type Runner } from "./runner.js";
 import { inFolder, listFolder, readFiles, type ReadFiles } from "../workspace/confined.js";
 import { realInternal } from "../workspace/initialize.js";
+import type { Snapshot } from "../workspace/instructions.js";
+import { LIMITS, readInstructionFiles, writeInstructionFiles } from "./instruction-files.js";
 
 export const CONTAINER_NAME = "ressac-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
@@ -386,6 +388,27 @@ export class Workshop {
       codexRequirements(url),
     );
     if (r.code !== 0) throw new Error(`Restriction de Codex impossible : ${tail(r.stderr) || `code ${r.code}`}`);
+  }
+
+  /** The agent's instruction files as they are in the container, links never followed (InstructionIo.read). */
+  readInstructions(files: string[], trees: string[]): Promise<Snapshot> {
+    return this.instructionScript(readInstructionFiles, { files, trees }, LIMITS);
+  }
+
+  /** Restores (null deletes) instruction files in the container; throws if any could not be (InstructionIo.write). */
+  async writeInstructions(entries: Record<string, string | null>): Promise<void> {
+    if ((await this.instructionScript(writeInstructionFiles, entries)) !== "done") throw new Error("Restauration des consignes impossible");
+  }
+
+  /** `fn(input, extra)` run by node as the agent's user in the container, JSON on stdin and stdout. */
+  private async instructionScript<T>(fn: (...args: any[]) => T, input: unknown, extra?: unknown): Promise<T> {
+    if (!this.docker) throw new Error(say(this.locale(), "kernel-workshop-no-engine"));
+    if (!this.secured) await this.secureNetwork();
+    // tsx (esbuild keepNames) wraps inner functions in __name(), absent in the child.
+    const script = `var __name = (f) => f; const input = JSON.parse(process.getBuiltinModule("node:fs").readFileSync(0, "utf8")); process.stdout.write(JSON.stringify((${fn.toString()})(input, ${JSON.stringify(extra) ?? "undefined"})))`;
+    const r = await this.launch(["exec", "-i", "-u", "node", "-w", "/", containerName(), "node", "-e", script, "ressac-instructions"], PROBE_DELAY_MS, JSON.stringify(input));
+    if (r.code !== 0) throw new Error(`Lecture des consignes impossible : ${tail(r.stderr) || `code ${r.code}`}`);
+    return JSON.parse(r.stdout) as T;
   }
 
   /** One run at a time, shared: two sessions opening together apply the rules once. */
