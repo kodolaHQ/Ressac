@@ -223,7 +223,18 @@ test("revert keeps what it replaced in replaced.json, only the changed paths", a
 
 test("Codex's own config.toml is watched for codex, not for claude", async () => {
   const { review, disk } = await setup();
-  disk.set("/home/node/.codex/config.toml", 'model_instructions_file = "/tmp/x"');
-  expect((await review.pending("codex")).changes).toMatchObject([{ path: "/home/node/.codex/config.toml", status: "created" }]);
+  disk.set("/home/node/.codex/config.toml", '[tui]\nscreen_reader_detection_done = true\n');
+  expect((await review.pending("codex")).changes).toEqual([]);
+  disk.set("/home/node/.codex/config.toml", '[tui]\nscreen_reader_detection_done = true\nmodel_instructions_file = "/tmp/x"\n');
+  expect((await review.pending("codex")).changes).toMatchObject([{ path: "/home/node/.codex/config.toml", status: "changed" }]);
   expect((await review.pending("claude")).changes).toEqual([]);
+});
+
+test("config.toml lines Codex writes itself pass silently; any other key, a quoted key or a profile shows the card", async () => {
+  const { review, disk } = await setup();
+  const config = "/home/node/.codex/config.toml";
+  disk.set(config, 'model = "gpt-6"\nmodel_reasoning_effort = "high"\n\n[notice]\nhide_full_access_warning = true\nrate_limit_acknowledged = true\n\n[projects."/workspace"]\ntrust_level = "trusted"\n');
+  expect((await review.pending("codex")).changes).toEqual([]);
+  for (const bad of ['"model_instructions_file" = "/tmp/x"', "[profiles.p]", 'notify = ["sh"]', 'profile = "p"', 'model = "a\\"b"'])
+    disk.set(config, `model = "gpt-6"\n${bad}\n`), expect((await review.pending("codex")).changes.map((c) => c.path), bad).toEqual([config]);
 });

@@ -58,6 +58,15 @@ export function lineDiff(before: string, after: string): DiffLine[] | null {
   return out;
 }
 
+/**
+ * A config.toml line Codex writes on its own (screen reader check, notices, trust, /model): a table header or a bare key
+ * with a plain value. A quoted key could spell any key, so none is taken; anything else (model_instructions_file,
+ * profiles, mcp_servers, notify…) shows the card.
+ */
+const CODEX_OWN_LINE =
+  /^\s*(#.*)?$|^\s*\[(tui|notice|notice\.[a-z0-9_]+|projects\.("[^"\n]*"|'[^'\n]*'))\]\s*$|^\s*(screen_reader_detection_done|hide_[a-z0-9_]+|[a-z0-9_]+_(acknowledged|seen|shown|done)|trust_level|model|model_reasoning_effort)\s*=\s*("[^"\\\n]*"|true|false|-?\d+)\s*$/;
+const codexOwnChange = (lines: DiffLine[] | null) => !!lines && lines.every((l) => l.kind === " " || CODEX_OWN_LINE.test(l.text));
+
 export class InstructionReview {
   constructor(
     private readonly paths: SpacePaths,
@@ -127,6 +136,11 @@ export class InstructionReview {
       if (now === before) continue;
       const rel = path.slice("/workspace/".length);
       if (now !== undefined && TEXTS.includes(rel) && path.startsWith("/workspace/") && (await shippedHashes(rel, this.models)).has(createHash("sha256").update(now).digest("hex"))) {
+        ref[path] = now;
+        moved = true;
+        continue;
+      }
+      if (path === CODEX_CONFIG && now !== undefined && ![now, before].some(isMarker) && codexOwnChange(lineDiff(before ?? "", now))) {
         ref[path] = now;
         moved = true;
         continue;
