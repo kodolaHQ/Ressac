@@ -49,7 +49,7 @@
   /* First line of the sidebar's footer, above the spaces, a hairline between: enter spring, exit fade (DESIGN.md). */
   /* Its basis makes up for the negative margins: at 100% its outer width left room for the spaces' nav (basis 0) on this
      line, squeezed to nothing. */
-  .site-bar { flex: 1 0 calc(100% + 12px); display: flex; flex-wrap: wrap; gap: 4px; margin: -2px -6px 2px; padding: 0 6px 8px; border-bottom: 1px solid var(--border); -moz-window-dragging: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .site-bar { flex: 1 0 calc(100% + 12px); display: flex; flex-wrap: wrap; gap: 4px; margin: 2px -6px 2px; padding: 0 6px 8px; border-bottom: 1px solid var(--border); -moz-window-dragging: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   /* Glass tiles the size of the space chips, dressed like the active chip (a --border ring and --lift: the white
      glass edge vanished on the light theme's glass), so the site's own icon stands out on any aura. */
   .site { all: unset; position: relative; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 9px; background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--border), var(--lift); transition: transform var(--tap), background var(--tap), box-shadow var(--tap); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
