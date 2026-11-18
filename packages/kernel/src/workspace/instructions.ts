@@ -6,10 +6,11 @@ import type { SpacePaths } from "../paths.js";
 import { shippedHashes } from "./initialize.js";
 
 export type InstructionKind = "claude" | "codex";
-/** Container path to content; an absent file has no key, a link or too-long file is a marker starting with "\u0000". */
+/** Container path to content; an absent file has no key, a link, too-long, binary, unreadable file or too-many tree is a marker starting with "\u0000". */
 export type Snapshot = Record<string, string>;
 export type DiffLine = { kind: " " | "+" | "-"; text: string };
-export type InstructionChange = { path: string; status: "changed" | "created" | "deleted"; lines: DiffLine[] | null };
+/** `marker`: what stands in for unshown content ("too-long", "binary", "other", "unreadable", "too-many" or "link:" + target). */
+export type InstructionChange = { path: string; status: "changed" | "created" | "deleted"; lines: DiffLine[] | null; marker?: string };
 export interface InstructionIo {
   read(files: string[], trees: string[]): Promise<Snapshot>;
   /** null deletes. */
@@ -29,6 +30,8 @@ export const WATCHED: Record<InstructionKind, { files: string[]; trees: string[]
 
 export const ACCEPTED_AGENTS_IN_CONTAINER = "/workspace/.ressac/instructions/AGENTS.md";
 export const DIFF_LINES_MAX = 2000;
+/** Codex installs its own system skills here, and reinstalls them on an update or when they go missing. */
+const CODEX_SYSTEM_SKILLS = "/home/node/.codex/skills/.system/";
 
 const isMarker = (s: string | undefined) => s?.startsWith("\u0000") ?? false;
 
@@ -94,11 +97,11 @@ export class InstructionReview {
     return run;
   }
 
-  private async save(files: Snapshot) {
+  private async save(files: Snapshot, name = "reference") {
     await mkdir(this.dir, { recursive: true });
-    const tmp = join(this.dir, `reference.${randomUUID()}.tmp`);
+    const tmp = join(this.dir, `${name}.${randomUUID()}.tmp`);
     await writeFile(tmp, JSON.stringify({ files }));
-    await rename(tmp, join(this.dir, "reference.json"));
+    await rename(tmp, join(this.dir, `${name}.json`));
   }
 
   pending(kind: InstructionKind): Promise<{ snapshot: Snapshot; changes: InstructionChange[] }> {
@@ -110,6 +113,9 @@ export class InstructionReview {
     const snapshot = await this.io.read(WATCHED[kind].files, WATCHED[kind].trees);
     const changes: InstructionChange[] = [];
     let moved = false;
+    // Codex's first install of its system skills is no change anyone made: taken in silently, watched from then on.
+    if (!Object.keys(ref).some((p) => p.startsWith(CODEX_SYSTEM_SKILLS)))
+      for (const [p, c] of Object.entries(snapshot)) if (p.startsWith(CODEX_SYSTEM_SKILLS)) (ref[p] = c), (moved = true);
     for (const path of new Set([...Object.keys(snapshot), ...Object.keys(ref).filter((p) => this.inKind(kind, p))])) {
       const now = snapshot[path];
       const before = ref[path];
@@ -120,8 +126,9 @@ export class InstructionReview {
         moved = true;
         continue;
       }
-      const markerSide = isMarker(now) || isMarker(before);
-      changes.push({ path, status: before === undefined ? "created" : now === undefined ? "deleted" : "changed", lines: markerSide ? null : lineDiff(before ?? "", now ?? "") });
+      const marker = [now, before].find(isMarker)?.slice(1).replace(/^(too-long|binary):.*$/s, "$1");
+      const status = before === undefined ? "created" : now === undefined ? "deleted" : "changed";
+      changes.push(marker === undefined ? { path, status, lines: lineDiff(before ?? "", now ?? "") } : { path, status, lines: null, marker });
     }
     if (moved) await this.save(ref);
     return { snapshot, changes };
@@ -134,17 +141,23 @@ export class InstructionReview {
     });
   }
 
-  async revert(kind: InstructionKind, snapshot: Snapshot): Promise<void> {
+  revert(kind: InstructionKind, snapshot: Snapshot): Promise<void> {
+    return this.serial(() => this.restore(kind, snapshot));
+  }
+
+  private async restore(kind: InstructionKind, snapshot: Snapshot): Promise<void> {
     const ref = await this.load();
     const entries: Record<string, string | null> = {};
     for (const path of new Set([...Object.keys(snapshot), ...Object.keys(ref).filter((p) => this.inKind(kind, p))])) {
       if (snapshot[path] === ref[path]) continue;
       const before = ref[path];
-      // A link or too-long file is never recreated.
+      // A marker is never recreated; a marker the snapshot holds (a too-many tree…) is removed whole.
       const target = before === undefined || isMarker(before) ? null : before;
       if (target === null && snapshot[path] === undefined) continue;
       entries[path] = target;
     }
+    // What Revenir replaces is kept, last revert only: a user's own edit or file is never lost for good.
+    await this.save(Object.fromEntries(Object.keys(entries).flatMap((p) => (snapshot[p] === undefined ? [] : [[p, snapshot[p]!]]))), "replaced");
     // Deletes first: a folder the agent replaced by a link goes before the files beneath it are written.
     await this.io.write(Object.fromEntries(Object.entries(entries).sort(([, a], [, b]) => Number(a !== null) - Number(b !== null))));
   }

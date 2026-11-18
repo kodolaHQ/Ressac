@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, truncateSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, truncateSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
@@ -77,17 +77,49 @@ test("a huge sparse file is hashed over its first MiB and its size, never read w
 test("folders count toward the tree limit", () => {
   const r = root();
   for (let i = 0; i < 3; i++) mkdirSync(join(r, `d${i}`));
-  expect(() => readInstructionFiles({ files: [], trees: [r] }, { file: FILE_MAX, total: TOTAL_MAX, tree: 2 })).toThrow();
+  expect(readInstructionFiles({ files: [], trees: [r] }, { file: FILE_MAX, total: TOTAL_MAX, tree: 2 })).toEqual({ [r]: "\u0000too-many" });
 });
 
-test("more than TREE_FILES_MAX files or TOTAL_MAX bytes throws", () => {
+test("more than TREE_FILES_MAX files or TOTAL_MAX bytes is a too-many marker at the tree root, other trees still read", () => {
   const many = root();
   for (let i = 0; i <= TREE_FILES_MAX; i++) writeFileSync(join(many, `f${i}`), "");
-  expect(() => readInstructionFiles({ files: [], trees: [many] })).toThrow();
   const heavy = root();
   const chunk = Buffer.alloc(FILE_MAX, "a");
   for (let i = 0; i <= TOTAL_MAX / FILE_MAX; i++) writeFileSync(join(heavy, `f${i}`), chunk);
-  expect(() => readInstructionFiles({ files: [], trees: [heavy] })).toThrow();
+  const light = root();
+  writeFileSync(join(light, "a.md"), "a");
+  expect(readInstructionFiles({ files: [], trees: [many, heavy, light] })).toEqual({ [many]: "\u0000too-many", [heavy]: "\u0000too-many", [join(light, "a.md")]: "a" });
+});
+
+test.skipIf(process.getuid?.() === 0)("an unreadable file or folder is an unreadable marker at its path", () => {
+  const r = root();
+  writeFileSync(join(r, "AGENTS.md"), "x");
+  chmodSync(join(r, "AGENTS.md"), 0);
+  mkdirSync(join(r, "skills/locked"), { recursive: true });
+  writeFileSync(join(r, "skills/locked/SKILL.md"), "s");
+  writeFileSync(join(r, "skills/ok.md"), "ok");
+  chmodSync(join(r, "skills/locked"), 0);
+  try {
+    expect(readInstructionFiles({ files: [join(r, "AGENTS.md")], trees: [join(r, "skills")] })).toEqual({
+      [join(r, "AGENTS.md")]: "\u0000unreadable",
+      [join(r, "skills/locked")]: "\u0000unreadable",
+      [join(r, "skills/ok.md")]: "ok",
+    });
+  } finally {
+    chmodSync(join(r, "skills/locked"), 0o755);
+  }
+});
+
+test("deleting a real folder removes it whole, never following a link inside", () => {
+  const r = root();
+  writeFileSync(join(r, "outside"), "keep");
+  mkdirSync(join(r, "skills/a"), { recursive: true });
+  writeFileSync(join(r, "skills/a/SKILL.md"), "s");
+  symlinkSync(join(r, "outside"), join(r, "skills/a/link"));
+  expect(writeInstructionFiles({ [join(r, "skills")]: null, [join(r, "skills/b/SKILL.md")]: "back" })).toBe("done");
+  expect(existsSync(join(r, "skills/a"))).toBe(false);
+  expect(readFileSync(join(r, "skills/b/SKILL.md"), "utf8")).toBe("back");
+  expect(readFileSync(join(r, "outside"), "utf8")).toBe("keep");
 });
 
 test("write creates missing parent folders and deletes null entries", () => {

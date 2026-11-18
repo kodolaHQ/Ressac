@@ -172,3 +172,40 @@ test("a link at a tree root or above a watched file is kept like any change", as
   expect((await review.pending("codex")).changes).toEqual([]);
   expect((await review.pending("claude")).changes).toEqual([]);
 });
+
+const SYSTEM = "/home/node/.codex/skills/.system";
+
+test("Codex's own .system skills are accepted silently while the reference has none, then changes there show", async () => {
+  const { review, disk } = await setup({ [`${SYSTEM}/a/SKILL.md`]: "a", [`${SYSTEM}/.codex-system-skills.marker`]: "1" });
+  expect((await review.pending("codex")).changes).toEqual([]);
+  disk.set(`${SYSTEM}/a/SKILL.md`, "evil");
+  expect((await review.pending("codex")).changes).toMatchObject([{ path: `${SYSTEM}/a/SKILL.md`, status: "changed" }]);
+});
+
+test("revert of a too-many tree removes the tree, then writes the reference files back", async () => {
+  const tree = "/home/node/.codex/skills";
+  const { review, disk, writes } = await setup({ [`${tree}/x/SKILL.md`]: "s" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  disk.delete(`${tree}/x/SKILL.md`);
+  disk.set(tree, "\u0000too-many");
+  const p = await review.pending("codex");
+  expect(p.changes).toMatchObject([{ path: tree, status: "created", lines: null, marker: "too-many" }, { path: `${tree}/x/SKILL.md`, status: "deleted" }]);
+  await review.revert("codex", p.snapshot);
+  expect(Object.entries(writes.at(-1)!)).toEqual([[tree, null], [`${tree}/x/SKILL.md`, "s"]]);
+});
+
+test("a change names its marker kind: link target, binary, unreadable", async () => {
+  const { review } = await setup({ [CODEX_HOME]: "\u0000link:/etc", [SKILL]: "\u0000binary:abc", "/workspace/AGENTS.override.md": "\u0000unreadable" });
+  const markers = Object.fromEntries((await review.pending("codex")).changes.map((c) => [c.path, c.marker]));
+  expect(markers).toEqual({ [CODEX_HOME]: "link:/etc", [SKILL]: "binary", "/workspace/AGENTS.override.md": "unreadable" });
+});
+
+test("revert keeps what it replaced in replaced.json, only the changed paths", async () => {
+  const { review, disk, paths } = await setup({ [CODEX_HOME]: "kept" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  disk.set(AGENTS, "mine");
+  disk.set(SKILL, "new");
+  await review.revert("codex", (await review.pending("codex")).snapshot);
+  const saved = JSON.parse(await readFile(join(paths.internal, "instructions", "replaced.json"), "utf8"));
+  expect(saved.files).toEqual({ [AGENTS]: "mine", [SKILL]: "new" });
+});
