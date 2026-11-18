@@ -644,6 +644,8 @@ export type AgentPanelState =
   | { state: "error"; message: string }
   | { state: "active"; engineChanged?: true }
   | { state: "done"; code: number }
+  /** Stopped under memory pressure: the terminal keeps its screen, the next input resumes the conversation. */
+  | { state: "asleep" }
   /** Instruction files changed since the last session: the session waits on the user's answer (agent.review). */
   | { state: "review"; id: number; files: InstructionChange[] };
 

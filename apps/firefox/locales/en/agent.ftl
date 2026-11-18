@@ -129,6 +129,7 @@ agent-panel-build-step =
 agent-panel-docker-absent = Docker is not running. Browsing works; only the agent is unavailable.
 agent-panel-error = The agent could not start: { $message }
 agent-panel-done = The agent has stopped.
+agent-panel-asleep = Put to sleep to free memory — resumes at your next message
 agent-panel-retry = Try again
 agent-panel-restart = Restart
 agent-panel-engine-changed = The agent's engine or mode changed. Restart to use it: the conversation resumes.

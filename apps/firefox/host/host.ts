@@ -552,10 +552,15 @@ const rpc = createRpc({
       aiOn = p?.on === true;
       return serialAi(applyAi).catch((e) => console.error(`[ressac] AI ${aiOn ? "on" : "off"} failed:`, e));
     },
-    // macOS runs short of memory (Firefox's memory-pressure): the local models unload, the machine stops unless in use.
+    // macOS runs short of memory (Firefox's memory-pressure): the local models unload, idle agent sessions sleep, the
+    // machine stops unless in use.
     "memory.pressure": () => {
       void ai.stopServers().catch(() => {});
-      void machine.relieve().catch((e) => console.error("[ressac] the machine did not stop:", e));
+      void sessions
+        .sleepIdle(Number(process.env.RESSAC_TEST_AGENT_SLEEP_MS) || 2 * 60_000)
+        .catch((e) => console.error("[ressac] the agent sessions did not sleep:", e))
+        .then(() => machine.relieve())
+        .catch((e) => console.error("[ressac] the machine did not stop:", e));
     },
     // Only new windows take the new default: open agents stay.
     changeProfile: (p: { agentProfile: string }) => {

@@ -167,6 +167,12 @@
     const relaunches = [100, 500].map((ms) => setTimeout(() => !terminalAgent.hasFocus() && aim(), ms));
     return () => relaunches.forEach(clearTimeout);
   });
+  /** Asleep, then waking until active: the terminal stays shown, so it keeps the keyboard for the keys typed meanwhile. */
+  let waking = $state(false);
+  $effect.pre(() => {
+    const s = appState.state;
+    untrack(() => (waking = s === "asleep" || (waking && s === "preparing")));
+  });
   // A session still preparing masks its terminal, which cannot take the keyboard: it does once active (a first opening).
   let focusOwed = false;
   $effect(() => {
@@ -256,12 +262,16 @@
   {:else if appState.state === "error"}
     <p class="message">{t("agent-panel-error", { message: appState.message })}</p>
     <button onclick={terminalAgent.reset}>{t("agent-panel-retry")}</button>
+  {:else if appState.state === "asleep"}
+    <p class="message" data-testid="agent-asleep" in:fade={{ duration: 150 }}>{t("agent-panel-asleep")}</p>
   {:else if appState.state === "done"}
     <p class="message">{t("agent-panel-done")}</p>
     <button onclick={terminalAgent.reset}>{t("agent-panel-restart")}</button>
   {/if}
   {/if}
-  <div class="terminal" bind:this={hostEl} hidden={!aiOn()} class:masked={appState.state !== "active" && appState.state !== "done"}></div>
+  <!-- Asleep: a click wakes the agent too (a TUI without mouse reporting sends nothing for it). -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="terminal" bind:this={hostEl} hidden={!aiOn()} class:masked={appState.state !== "active" && appState.state !== "done" && !waking} onpointerdown={() => appState.state === "asleep" && api.agent.write("")}></div>
 </section>
 
 <style>

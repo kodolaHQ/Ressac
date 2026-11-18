@@ -81,6 +81,12 @@ interface Entry {
   touched?: boolean;
   /** The kernel waits on the user's answer about changed instruction files before this session starts. */
   review?: { id: number; files: InstructionChange[]; resolve: (c: "keep" | "revert") => void; reject: (e: Error) => void };
+  /** Last output or input of the running session (Date.now()): what memory pressure measures idleness by. */
+  last?: number;
+  /** Stopped under memory pressure (sleepIdle): the next input resumes its conversation. */
+  asleep?: boolean;
+  /** Keys typed since the wake, written once the resumed agent first speaks (its TUI is then up). */
+  waking?: string;
 }
 
 /** One agent session per window (spec §8): it survives tab changes and the panel closing. */
@@ -129,6 +135,13 @@ export class SessionsAgent {
   start(f: WindowId, size: TerminalSize, resume = false): Promise<void> {
     const entry = this.entry(f, size);
     entry.size = size;
+    if (entry.asleep) {
+      // The panel reloaded: the conversation's last screen and the asleep line, the agent left asleep.
+      this.o.send(f, "state", { state: "asleep" });
+      const buffer = entry.buffer.text();
+      if (buffer) this.o.send(f, "data", buffer);
+      return Promise.resolve();
+    }
     if (entry.session?.active) {
       entry.session.resize(size.cols, size.rows);
       this.o.send(f, "state", this.activeState(entry));
@@ -170,10 +183,17 @@ export class SessionsAgent {
           entry.ran.add(entry.profile);
           entry.engine = this.o.engineOf?.(entry.profile);
           entry.engineChanged = false;
+          entry.last = Date.now();
           s.onData((d) => {
+            entry.last = Date.now();
             entry.buffer.add(d);
             entry.toSend += d;
             entry.timer ??= setTimeout(() => this.sendOutput(f, entry), GROUPING_MS);
+            const w = entry.waking;
+            if (w === undefined || entry.session !== s) return;
+            entry.waking = undefined;
+            // A trailing Enter goes apart, as a submitted pre-fill: in the same write the TUI takes it as a pasted newline.
+            if (w) this.writePrefill(f, s, w.endsWith("\r") ? { text: w.slice(0, -1), submit: true } : { text: w });
           });
           s.onEnd((code) => {
             // Session replaced (relancerTout): its end is not that of the displayed conversation.
@@ -190,6 +210,7 @@ export class SessionsAgent {
         (err: Error) => {
           // Startup abandoned (window closed, relancerTout): its failure no longer concerns the panel.
           if (this.inputs.get(f) !== entry) return;
+          entry.waking = undefined;
           this.o.send(
             f,
             "state",
@@ -258,10 +279,22 @@ export class SessionsAgent {
 
   write(f: WindowId, d: string): void {
     const e = this.inputs.get(f);
+    // Keys and pastes are the user's; the terminal's own replies (focus, queries, a click's mouse report) start with ESC.
+    const user = !d.startsWith("\x1b") || d.startsWith("\x1b[200~");
+    if (e?.asleep || e?.waking !== undefined) {
+      // Any input wakes a sleeping agent (an empty write is the panel's click); only the user's keys are kept for it.
+      e.waking = (e.waking ?? "") + (user ? d : "");
+      if (user && d) e.touched = true;
+      if (e.asleep) {
+        e.asleep = false;
+        void this.start(f, e.size, true);
+      }
+      return;
+    }
     if (!e?.session) return;
+    e.last = Date.now();
     e.session.write(d);
-    // Keys and pastes are the user's; the terminal's own replies (focus, queries) start with ESC.
-    if (!d.startsWith("\x1b") || d.startsWith("\x1b[200~")) e.touched = true;
+    if (user) e.touched = true;
     if (d.includes("\r")) this.o.onSend?.(f);
   }
 
@@ -297,6 +330,26 @@ export class SessionsAgent {
       e.touched = true;
       this.o.onSend?.(f);
     }, SUBMIT_DELAY_MS);
+  }
+
+  /**
+   * macOS runs short of memory: every session with no output nor input for `idleMs` stops, as Relancer stops one (its
+   * mark leaves the workshop, which can then stop), and its panel says it sleeps. A session working is never touched.
+   */
+  async sleepIdle(idleMs: number): Promise<void> {
+    const now = Date.now();
+    const idle = [...this.inputs].filter(([, e]) => e.session?.active && !e.startup && e.waking === undefined && now - (e.last ?? 0) >= idleMs);
+    await Promise.all(
+      idle.map(([f, e]) => {
+        const s = e.session!;
+        this.sendOutput(f, e);
+        // Taken away first: its end is not shown as the agent stopping.
+        e.session = undefined;
+        e.asleep = true;
+        this.o.send(f, "state", { state: "asleep" });
+        return s.stop();
+      }),
+    );
   }
 
   resize(f: WindowId, t: TerminalSize): void {

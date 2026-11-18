@@ -603,3 +603,112 @@ describe("instruction review before a session", () => {
     expect(w.answers).toEqual([new Error("closed"), "revert"]);
   });
 });
+
+describe("memory pressure: idle sessions sleep", () => {
+  function sleepy() {
+    const opens: boolean[] = [];
+    const sessions: FakeSession[] = [];
+    const p = prepare();
+    // Records the `resume` of each start.
+    const manager = new SessionsAgent({
+      open: async (_f, _t, o) => {
+        opens.push(o.resume);
+        const s = new FakeSession();
+        sessions.push(s);
+        return s;
+      },
+      send: (f, channel, v) => p.sends.push({ f, channel, v }),
+      onSend: (f) => p.messages.push(f),
+    });
+    return { ...p, management: manager, sessions, opens };
+  }
+
+  test("a session quiet for the given time is stopped and shown asleep; a working one is untouched", async () => {
+    vi.useFakeTimers();
+    try {
+      const { management: manager, sessions, states } = sleepy();
+      await manager.start("F", size);
+      await manager.start("G", size);
+      vi.advanceTimersByTime(60_000);
+      sessions[1]!.emit("still working");
+      vi.advanceTimersByTime(60_000);
+      await manager.sleepIdle(120_000);
+      expect(sessions[0]!.stopped).toBe(true);
+      expect(sessions[1]!.stopped).toBe(false);
+      expect(states("F").at(-1)).toEqual({ state: "asleep" });
+      expect(states("G").at(-1)).toEqual({ state: "active" });
+      expect(manager.active("F")).toBe(false);
+      // Its end, which the stop causes, is not shown as the agent stopping.
+      sessions[0]!.finish(0);
+      expect(states("F").at(-1)).toEqual({ state: "asleep" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("user input counts as activity", async () => {
+    vi.useFakeTimers();
+    try {
+      const { management: manager, sessions } = sleepy();
+      await manager.start("F", size);
+      vi.advanceTimersByTime(119_000);
+      manager.write("F", "a");
+      vi.advanceTimersByTime(119_000);
+      await manager.sleepIdle(120_000);
+      expect(sessions[0]!.stopped).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("the panel reloading shows the asleep screen again, without waking the agent", async () => {
+    const { management: manager, sessions, sends, states } = sleepy();
+    await manager.start("F", size);
+    sessions[0]!.emit("conversation");
+    await new Promise((r) => setTimeout(r, GROUPING_MS * 3));
+    await manager.sleepIdle(0);
+    sends.length = 0;
+    await manager.start("F", size);
+    expect(sessions).toHaveLength(1);
+    expect(states()).toEqual([{ state: "asleep" }]);
+    expect(sends.filter((e) => e.channel === "data").map((e) => e.v)).toEqual(["conversation"]);
+  });
+
+  test("the next key resumes the conversation; the keys typed meanwhile reach the agent once it speaks", async () => {
+    vi.useFakeTimers();
+    try {
+      const { management: manager, sessions, opens, states, messages } = sleepy();
+      await manager.start("F", size);
+      await manager.sleepIdle(0);
+      manager.write("F", "h");
+      manager.write("F", "\x1b[<0;3;4M"); // a click's mouse report: wakes, never typed
+      manager.write("F", "i\r");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(opens).toEqual([false, true]);
+      expect(states().slice(-2)).toEqual([{ state: "preparing" }, { state: "active" }]);
+      const s = sessions[1]!;
+      expect(s.written).toEqual([]);
+      s.emit("resumed> ");
+      expect(s.written).toEqual(["hi"]);
+      // Enter apart, as a submitted pre-fill.
+      await vi.advanceTimersByTimeAsync(SUBMIT_DELAY_MS);
+      expect(s.written).toEqual(["hi", "\r"]);
+      expect(messages).toEqual(["F"]);
+      manager.write("F", "x");
+      expect(s.written.at(-1)).toBe("x");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a click alone wakes the agent", async () => {
+    const { management: manager, sessions, opens } = sleepy();
+    await manager.start("F", size);
+    await manager.sleepIdle(0);
+    manager.write("F", "");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(opens).toEqual([false, true]);
+    sessions[1]!.emit("ready");
+    expect(sessions[1]!.written).toEqual([]);
+  });
+});
