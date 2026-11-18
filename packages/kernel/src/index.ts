@@ -2,6 +2,7 @@ export * from "./paths.js";
 export * from "./i18n.js";
 export * from "./workspace/initialize.js";
 export * from "./workspace/confined.js";
+export type { InstructionKind, InstructionChange, InstructionIo, DiffLine, Snapshot } from "./workspace/instructions.js";
 export * from "./home/schemas.js";
 export * from "./home/theme.js";
 export * from "./home/read.js";

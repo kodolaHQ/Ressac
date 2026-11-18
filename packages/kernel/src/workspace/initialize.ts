@@ -299,6 +299,11 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   "guides/extensions.md": new Set(["ab3d59cd7ee04a33e9c29ee43a1bd086d16ca5b038e582b8fb2f756b7135ac9b", "bb0ef51c03aaa9bfc5788348376f42aef8555eb35536f429b30ad7cc92844436"]),
 };
 
+/** Every hash `rel` may have as a shipped text: any old version and any language's current one. */
+export async function shippedHashes(rel: string, models = DEFAULT_TEMPLATES): Promise<Set<string>> {
+  return new Set([...(OLD_TEMPLATES[rel] ?? []), ...(await currentHashes(models, await languagesOf(models), rel))]);
+}
+
 /**
  * `.ressac` as a real folder with no link at its top. Until 0.1.8 the agent could rename it and plant a link
  * (`.ressac -> ..`, `harvests -> ~`) that the workshop's mounts and the kernel's writes would follow. `rm` takes a link,
