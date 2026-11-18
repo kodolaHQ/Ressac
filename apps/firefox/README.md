@@ -53,9 +53,9 @@ Ressac's local AI is two GGUF models, each served by the `llama-server` shipped 
 
 Each model is downloaded once from Hugging Face at a pinned revision (`D1_REVISION`, `EMBED_REVISION`) into `<dataDir>/local-ai/<name>/` (resumable `.part`, capped at its pinned size, checked against its SHA-256) when AI starts and it is missing; Réglages › IA locale shows a row per model (progress, « installé », a « Télécharger » button, or the last failure). Nothing else is installed: Ressac no longer installs or starts Ollama. The agents' Ollama engine (Settings › Agent) talks to an Ollama the user runs. A dev build downloads the same files, with no variable to set. Dev and tests only: `RESSAC_D1_URL` / `RESSAC_D1_SHA256` and `RESSAC_EMBED_URL` / `RESSAC_EMBED_SHA256` point the downloads at another file (the e2e use local fakes, never the real models; an e2e launch that sets one sets both), `RESSAC_EMBED_SERVER_URL` uses a search server already running, `RESSAC_KEV_URL` one for the decisions.
 
-### Docker
+### Docker (fallback only)
 
-Same idea for the container app (`host/docker-runtime.ts`): when Docker does not answer and OrbStack or Docker Desktop is installed, Ressac opens it in the background at launch (`open -ga`), and the welcome and Settings › Atelier show « Démarrer <app> » if that failed. Ressac never quits it and never installs it: with none on the machine the pages keep the link to OrbStack's download. `RESSAC_TEST_DOCKER_KIND` fixes the status for the e2e.
+The agent's workshop runs in Ressac's own machine (Lima + Podman, see « Publish a release » and `host/machine.ts`); Docker is used only while that machine is not ready, or for good where it cannot run. For that case, same idea for the container app (`host/docker-runtime.ts`): when Docker does not answer and OrbStack or Docker Desktop is installed, Ressac opens it in the background at launch (`open -ga`), and the welcome and Settings › Atelier show « Démarrer <app> » if that failed. Ressac never quits it and never installs it: with none on the machine the pages keep the link to OrbStack's download. `RESSAC_TEST_DOCKER_KIND` fixes the status for the e2e.
 
 ## AI features switch
 

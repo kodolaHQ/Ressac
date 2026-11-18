@@ -35,7 +35,7 @@ Firefox sous le capot, une barre latérale discrète, rien à créer, rien à ac
 Le *ressac*, c'est la vague qui revient vers le rivage. Tu envoies l'agent sur le web, il te revient avec la réponse.
 
 **Un agent qui navigue avec toi**
-- Claude Code ou Codex tourne dans un conteneur isolé sur ton Mac, avec **ton propre compte**.
+- Claude Code ou Codex tourne dans un conteneur isolé, avec **ton propre compte**, à l'intérieur d'une petite machine Linux que Ressac télécharge une fois (environ 500 Mo) et éteint après 5 minutes sans usage. Pas besoin de Docker.
 - Il navigue dans son propre onglet, que tu peux regarder ; une vignette montre ce qu'il fait pendant que tu continues.
 - Avant un achat ou un choix, il remplit un **récap en direct** : critères, sources indépendantes, offres, avantages et inconvénients sourcés.
 - Il demande avant d'ouvrir une adresse qu'il a écrite lui-même, et te rend la main quand une page a besoin de toi (connexion, captcha).
@@ -67,17 +67,17 @@ Le *ressac*, c'est la vague qui revient vers le rivage. Tu envoies l'agent sur l
 
 - **Pas de compte.** Ressac n'en demande aucun. L'agent utilise ton propre compte Claude ou ChatGPT, une clé d'API, ou des modèles locaux.
 - **Ta navigation reste sur ton Mac.** L'agent ne voit que les pages qu'il ouvre dans son onglet et ce que tu lui donnes.
-- **L'IA reste éteinte tant que tu ne l'actives pas.** Docker, les modèles locaux et l'agent ne démarrent qu'une fois que tu as dit oui.
+- **L'IA reste éteinte tant que tu ne l'actives pas.** La machine de l'agent, les modèles locaux et l'agent ne démarrent qu'une fois que tu as dit oui.
 - **Open source.** Construit sur Firefox, sous licence MPL 2.0.
 
-Pendant la bêta, Ressac envoie à son développeur les plantages et les erreurs (sans adresse de page) et un identifiant d'installation anonyme, pour corriger les bugs ; désactivable dans Réglages › Vie privée.
+Pendant la bêta, Ressac envoie à son développeur les plantages et les erreurs (sans adresse de page) et un identifiant d'installation anonyme, pour corriger les bugs ; désactivable dans Réglages › Confidentialité.
 
 ## Obtenir Ressac
 
 Ressac est en bêta fermée, avec un petit groupe de testeurs. Ils reçoivent un DMG signé et notarisé par Apple, puis Ressac se met à jour tout seul. **Pour en faire partie, demandez une invitation sur [getressac.app](https://getressac.app/fr/#invite).**
 
 - **Pour naviguer** : macOS 13.3 ou plus récent, puce Apple.
-- **Pour l'agent** : Docker ([OrbStack](https://orbstack.dev) ou Docker Desktop) et un compte Claude ou ChatGPT (ou une clé d'API, ou ton propre [Ollama](https://ollama.com) pour des modèles locaux). Ressac démarre lui-même l'app de conteneurs si elle est installée.
+- **Pour l'agent** : un compte Claude ou ChatGPT (ou une clé d'API, ou, si tu veux, ton propre [Ollama](https://ollama.com) pour des modèles locaux). Rien d'autre à installer : Ressac télécharge la machine de l'agent au premier usage.
 - **Pour l'IA locale** : rien à installer. Quand tu actives l'IA, Ressac télécharge une fois ses deux petits modèles, chacun vérifié par son SHA-256 : d1-2B (1,1 Go) et EmbeddingGemma (334 Mo). Les résumés des widgets et les pages d'actions sont écrits par ton compte Claude Code ou Codex, il faut donc que l'un des deux soit connecté.
 
 Tu viens de WebAiOs, l'ancien nom de Ressac ? Quitte-le d'abord : au premier lancement, Ressac reprend tes données, ton profil, tes mots de passe et tes extensions.
