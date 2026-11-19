@@ -1,4 +1,5 @@
 import type { AgentHost } from "../agent/host";
+import { testEnv } from "../test-env";
 
 /** A click on a notification: the last used window is restored and focused, its tab unchanged. */
 export function focusRecentWindow(wm = Services.wm): void {
@@ -21,7 +22,7 @@ export const alertObserver = {
  * fallback opens a window). Under RESSAC_TEST_NOTIFICATIONS it is written to that file instead, like the host does.
  */
 export function showAlert(title: string, text: string): void {
-  const file = Services.env.get("RESSAC_TEST_NOTIFICATIONS");
+  const file = testEnv("RESSAC_TEST_NOTIFICATIONS");
   if (file) return void IOUtils.writeUTF8(file, JSON.stringify({ title, text }) + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.error("[ressac] notification not written:", e));
   try {
     const alert = Cc["@mozilla.org/alert-notification;1"].createInstance(Ci.nsIAlertNotification);

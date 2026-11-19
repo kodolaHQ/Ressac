@@ -20,6 +20,7 @@ import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
 import { frameError, frameInjection, frameMemory, framePosition, frameResume, inheritedProfile, openedFromTab, siteOfFrame, type FrameSite } from "./site-frames";
 import { forgetHome, serveHome, servedHost, siteImage } from "./site-home";
 import { cutFrameNetwork } from "../window/frame-network";
+import { testEnv } from "../test-env";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
 const SITE_FRAMES = "ressac-sites";
@@ -202,7 +203,7 @@ const closeListeners = new Set<() => void>();
 const context = (s: { site: SiteChrome }): NavigationContext => ({
   domains: s.site.domains,
   login: s.site.declaration.login ?? [],
-  localAddresses: Services.env.get("RESSAC_TEST_LOCAL_ADDRESSES") === "1",
+  localAddresses: testEnv("RESSAC_TEST_LOCAL_ADDRESSES") === "1",
 });
 
 function hostOf(url: string): string {

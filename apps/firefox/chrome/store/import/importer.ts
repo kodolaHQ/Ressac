@@ -5,6 +5,7 @@ import { showAlert } from "../notifications";
 import type { Store } from "../store";
 import { parseArcSidebar, parseZenSpaces, planSpaceImport, planTabImport } from "./spaces";
 import { chromiumMigrator, chromiumProfiles, appIcon, detectSources, firefoxMigrator, sourceApp, firefoxProfiles, safariMigrator, sourceRoot, type SourceDef } from "./sources";
+import { testEnv } from "../../test-env";
 
 /** Visits per `history.import` call (the host takes up to 50 000). */
 export const HISTORY_BATCH = 5000;
@@ -108,7 +109,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
   const { PlacesUtils } = ChromeUtils.importESModule("resource://gre/modules/PlacesUtils.sys.mjs");
   const { MigratorBase } = ChromeUtils.importESModule("moz-src:///browser/components/migration/MigratorBase.sys.mjs");
   const BITS: Partial<Record<ImportType, number>> = { bookmarks: MigrationUtils.resourceTypes.BOOKMARKS, history: MigrationUtils.resourceTypes.HISTORY, passwords: MigrationUtils.resourceTypes.PASSWORDS };
-  const testHome = Services.env.get("RESSAC_TEST_IMPORT_HOME");
+  const testHome = testEnv("RESSAC_TEST_IMPORT_HOME");
   const home = testHome || Services.dirsvc.get("Home", Ci.nsIFile).path;
   const tmp = PathUtils.join(dataDir, "import-tmp");
   // A quit or crash mid-import may have left copies (Login Data, History): never kept. A run waits for it.
@@ -122,7 +123,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
   // Since macOS 26, reading another app's data needs the person's consent: a folder picker on that folder gives it
   // (the engine's getPermissions does the same). Firefox and Zen are not asked, as in the engine.
   // shortcut: granted for this launch only (any check is a read that macOS would block); upgrade if testers mind the picker per launch.
-  const testAccess = (Services.env.get("RESSAC_TEST_IMPORT_ACCESS") || "").split(",");
+  const testAccess = (testEnv("RESSAC_TEST_IMPORT_ACCESS") || "").split(",");
   const granted = new Set<string>();
   // Read once: a run switches the engine's answer off while it reads, which must not open other browsers.
   const protectedData = MigratorBase.needsFolderSelectionToReadData();
@@ -133,7 +134,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
 
   /** The macOS folder picker opened on `folder`: false when cancelled. Tests answer from RESSAC_TEST_IMPORT_PICK. */
   async function pickFolder(folder: string): Promise<boolean> {
-    const test = Services.env.get("RESSAC_TEST_IMPORT_PICK");
+    const test = testEnv("RESSAC_TEST_IMPORT_PICK");
     if (testHome) return !test || (await IOUtils.readUTF8(test).catch(() => "")).trim() !== "cancel";
     const fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
     // No title, as the engine: macOS open panels do not show one (the import screen explains the step).
@@ -421,7 +422,7 @@ export function createBrowserImporter(dataDir: string, host: Pick<AgentHost, "re
     },
     progress: async () => progress && structuredClone(progress),
     async importPasswordsCsv() {
-      let path = Services.env.get("RESSAC_TEST_IMPORT_CSV");
+      let path = testEnv("RESSAC_TEST_IMPORT_CSV");
       if (!path) {
         const fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
         fp.init(Services.wm.getMostRecentBrowserWindow()?.browsingContext, say("chrome-import-csv-pick"), Ci.nsIFilePicker.modeOpen);

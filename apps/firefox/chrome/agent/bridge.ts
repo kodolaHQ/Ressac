@@ -11,6 +11,7 @@ import type { WindowRegistry } from "../store/windows";
 import type { AgentHost } from "./host";
 import { readHtml, readPage } from "./invisible";
 import type { Questions } from "./questions";
+import { testEnv } from "../test-env";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
 /** An agent app window seen as a tab: `app:<dossier>`. */
@@ -178,7 +179,7 @@ export function bridgeHandlers(
     },
     // The agent's search tab, in its own login profile; `reuse`: that tab goes to the new address instead.
     "search.open": async ([win, target, reuse]: [WindowId | undefined, { query: string } | { url: string }, string?]) => {
-      const template = Services.env.get("RESSAC_TEST_SEARCH_URL") || searchTemplate(store.state.settings);
+      const template = testEnv("RESSAC_TEST_SEARCH_URL") || searchTemplate(store.state.settings);
       const url = "query" in target ? template.replace("%s", encodeURIComponent(target.query)) : target.url;
       if (reuse !== undefined && store.state.tabs[reuse]) {
         tab(reuse);

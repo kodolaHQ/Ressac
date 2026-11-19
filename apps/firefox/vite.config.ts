@@ -27,6 +27,7 @@ export default defineConfig(({ mode }) => {
   if (mode === "store")
     return {
       define: {
+        __RESSAC_PACKAGED__: JSON.stringify(packaged),
         "process.pid": "0",
         __RESSAC_NODE__: JSON.stringify(packaged ? "" : nodePath),
         __RESSAC_TSX__: JSON.stringify(packaged ? "" : tsxPath),
@@ -64,6 +65,7 @@ export default defineConfig(({ mode }) => {
     };
   if (mode === "host")
     return {
+      define: { __RESSAC_PACKAGED__: JSON.stringify(packaged) },
       build: {
         ssr: "host/host.ts",
         outDir: "dist-host",
@@ -76,6 +78,7 @@ export default defineConfig(({ mode }) => {
     };
   if (mode === "actor")
     return {
+      define: { __RESSAC_PACKAGED__: JSON.stringify(packaged) },
       resolve: { alias: [zodJitless] },
       build: {
         outDir,
@@ -103,6 +106,7 @@ export default defineConfig(({ mode }) => {
     };
   if (mode === "window")
     return {
+      define: { __RESSAC_PACKAGED__: JSON.stringify(packaged) },
       resolve: { alias: [zodJitless] },
       build: { outDir, emptyOutDir: false, lib: { entry: "chrome/window/index.ts", formats: ["iife"], name: "ressacWindow", fileName: () => "window.js" } },
     };

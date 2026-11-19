@@ -39,6 +39,14 @@ async function readLines(pipe: any, cb: (line: string) => void): Promise<void> {
   }
 }
 
+/**
+ * The browser's environment minus what would inject code or certificates into the host's Node (NODE_OPTIONS, NODE_PATH,
+ * NODE_EXTRA_CA_CERTS… and the dynamic loader's DYLD_*): whoever sets the app's environment must not run code in the host.
+ */
+export function hostEnvironment(env: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith("NODE_") && !k.startsWith("DYLD_")));
+}
+
 export function createHost(o: {
   dataDir: string;
   agentProfile: () => string;
@@ -67,8 +75,7 @@ export function createHost(o: {
     const proc = await Subprocess.call({
       command: cmd.command,
       arguments: cmd.arguments,
-      environment: { ...cmd.environment, RESSAC_DATA_DIR: o.dataDir },
-      environmentAppend: true,
+      environment: { ...hostEnvironment(Subprocess.getEnvironment()), ...cmd.environment, RESSAC_DATA_DIR: o.dataDir },
       stderr: "pipe",
     });
     const rpc = createRpc({ send: (line) => void proc.stdin.write(line + "\n").catch(() => {}), handlers });

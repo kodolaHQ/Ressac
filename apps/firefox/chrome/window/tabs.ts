@@ -1,6 +1,7 @@
 import type { Action } from "../../shared/api";
 import { FAVICON_MAX, KEEP_LOADED_HOSTS, hasView, keptLoaded, tabProfile, type BrowserState, type WindowId, type TabId, type Tab } from "../../shared/model";
 import type { RessacStore } from "../store";
+import { testEnv } from "../test-env";
 
 export const TAB_ID = "ressac-tab-id";
 export const PARKING = "ressac-parking";
@@ -20,7 +21,7 @@ type TabFields = Extract<Action, { type: "updateTab" }>["fields"];
  * Hosts whose essentials stay loaded while saving memory; RESSAC_TEST_KEEP_LOADED_HOSTS (tests, comma-separated) replaces
  * them here only: the essential's menu still ticks by the real list.
  */
-export const keepLoadedHosts: readonly string[] = Services.env.get("RESSAC_TEST_KEEP_LOADED_HOSTS")?.split(",").filter(Boolean) || KEEP_LOADED_HOSTS;
+export const keepLoadedHosts: readonly string[] = testEnv("RESSAC_TEST_KEEP_LOADED_HOSTS")?.split(",").filter(Boolean) || KEEP_LOADED_HOSTS;
 /** An essential's tab that stays loaded and that Firefox never unloads: always, unless saving memory and not kept loaded. */
 const stays = (state: BrowserState, o: Tab) => o.link?.type === "essential" && (!state.settings.saveMemory || keptLoaded(state, o, keepLoadedHosts));
 /** When a tab unload last asked the host to relieve memory: under pressure Firefox unloads one tab every few seconds. */

@@ -6,6 +6,7 @@ import { CSP_WIDGET, displayServed } from "../window/widget-frame";
 import { containerFor } from "./containers";
 import { containerRequests, isLink, loadImage, realPath, toDataUrl } from "./site-home";
 import THEME from "../../ui/theme.css?raw";
+import { testEnv } from "../test-env";
 
 /** The kernel's COMPONENT_HTML_MAX (pages/agent-components.ts), copied: that module's node:fs imports have no shim in this bundle. Drift test in action-media.test.ts. */
 export const COMPONENT_HTML_MAX = 256 * 1024;
@@ -32,7 +33,7 @@ const allowed = (u: string) => u.startsWith("https://") && openableUrl(u);
 export async function actionImage(url: string): Promise<string | null> {
   const open = containerRequests(actionImagesContainer(), { anonymous: true });
   // Under the hook, an https redirect would be judged allowed and followed natively: test servers redirect to http.
-  const origin = Services.env.get("RESSAC_TEST_ACTION_IMAGES") || undefined;
+  const origin = testEnv("RESSAC_TEST_ACTION_IMAGES") || undefined;
   const image = await loadImage((u, o) => open(actionImageTestUrl(u, origin), o), url, { allowed: allowed, cookies: false, max: ACTION_IMAGE_MAX });
   return image && toDataUrl(image);
 }

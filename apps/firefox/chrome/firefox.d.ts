@@ -73,6 +73,8 @@ declare const __RESSAC_HOST__: string;
 declare const __RESSAC_LLAMA__: string;
 declare const __RESSAC_SENTRY_DSN__: string;
 declare const __RESSAC_VERSION__: string;
+/** RESSAC_PACKAGE=1 at build time (chrome/test-env.ts). */
+declare const __RESSAC_PACKAGED__: boolean;
 // Vite's raw imports (a file's text, bundled).
 declare module "*?raw" {
   const text: string;

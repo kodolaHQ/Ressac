@@ -1,6 +1,7 @@
 import { backupDate, RESET_FILE } from "../../core/state/format";
 import { updateDownloadUrl } from "../../core/update";
 import { relaunchAfterQuit } from "./relaunch";
+import { testEnv } from "../test-env";
 
 const ENABLED = "ressac.telemetry.enabled";
 /** Firefox's own default browser service. */
@@ -50,7 +51,7 @@ export function bundleId(plist: string): string | null {
 }
 
 function openSystemSettings(url: string): void {
-  const test = Services.env.get("RESSAC_TEST_REVEAL");
+  const test = testEnv("RESSAC_TEST_REVEAL");
   if (test) return void IOUtils.writeUTF8(test, url + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[settings] open not noted:", e));
   try {
     const handler = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService).getProtocolHandlerInfo("x-apple.systempreferences");
@@ -64,7 +65,7 @@ function openSystemSettings(url: string): void {
 export function createSettingsChrome(dataDir: string, telemetryActive: boolean, updates: { check(): void; restart(): void }): SettingsChrome {
   let lastExportFolder = "";
   // A test never changes the owner's macOS (default browser, screen recording grant): the request is only remembered.
-  const test = !!Services.env.get("RESSAC_TEST_NO_SYSTEM");
+  const test = !!testEnv("RESSAC_TEST_NO_SYSTEM");
   let testDefault = false;
   const shell = () => ChromeUtils.importESModule(SHELL_SERVICE).ShellService;
   return {
@@ -77,7 +78,7 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean, 
     updateDownloadUrl: () => updateDownloadUrl(String(Services.policies?.getActivePolicies()?.AppUpdateURL ?? Services.appinfo.updateURL)),
     reveal(path) {
       if (!revealable(dataDir, lastExportFolder, path)) return;
-      const test = Services.env.get("RESSAC_TEST_REVEAL");
+      const test = testEnv("RESSAC_TEST_REVEAL");
       if (test) return void IOUtils.writeUTF8(test, path + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[settings] reveal not noted:", e));
       try {
         const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
@@ -135,7 +136,7 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean, 
       if (!cancel.data) Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit);
       // attemptingQuit: every window agreed to close (shuttingDown waits for them to be closed).
       if (!cancel.data && Services.startup.attemptingQuit) {
-        if (Services.env.get("RESSAC_TEST_NO_RESTART") !== "1") relaunchAfterQuit();
+        if (testEnv("RESSAC_TEST_NO_RESTART") !== "1") relaunchAfterQuit();
         return true;
       }
       await IOUtils.remove(marker, { ignoreAbsent: true });

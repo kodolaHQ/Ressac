@@ -9,6 +9,7 @@ import type { DesignService } from "./design";
 import { appContainer, isAppContainer, removeAppContainer } from "./containers";
 import { frameFeatures, frameOf, installGuard, openInContainer } from "./sites";
 import { agentPorts, installAgentPageGuard } from "../agent/page-guard";
+import { testEnv } from "../test-env";
 
 /** The window.arguments[1] key that marks an agent app window from its creation (read before anything claims it). */
 export const APP_WINDOW_KEY = "ressac-app";
@@ -185,7 +186,7 @@ export const apps = {
   reveal(folder: string): void {
     if (typeof folder !== "string" || folder === "" || folder === "." || folder === ".." || /[/\\\0]/.test(folder) || !dataDir) return;
     const path = PathUtils.join(dataDir, "workspace", "projects", folder);
-    const test = Services.env.get("RESSAC_TEST_REVEAL");
+    const test = testEnv("RESSAC_TEST_REVEAL");
     if (test) return void IOUtils.writeUTF8(test, path + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[apps] reveal not noted:", e));
     try {
       const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);

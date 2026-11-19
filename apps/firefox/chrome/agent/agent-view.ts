@@ -4,6 +4,7 @@ import { createActivity } from "../../core/agent/activity";
 import type { Store } from "../store/store";
 import type { WindowRegistry } from "../store/windows";
 import { HOST_EXITED, type AgentHost } from "./host";
+import { testEnv } from "../test-env";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
 const CAPTURE_EVERY_MS = 700;
@@ -26,7 +27,7 @@ export function createAgentView(o: { store: Store; host: AgentHost; access: () =
   const activity = createActivity(Date.now);
   const listeners = new Set<(s: AgentViewState | null) => void>();
   const watchers = new Set<(frame: string | null) => void>();
-  const test = Services.env.get("RESSAC_TEST_AGENT_VIEW") ? { captures: 0, ms: [] as number[] } : undefined;
+  const test = testEnv("RESSAC_TEST_AGENT_VIEW") ? { captures: 0, ms: [] as number[] } : undefined;
   let shown: AgentViewState | null = null;
   /** The tab loaded or changed since the last frame. */
   let moved = true;

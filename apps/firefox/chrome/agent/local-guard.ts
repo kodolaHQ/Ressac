@@ -1,7 +1,8 @@
 import { isIP } from "../shims/net";
 import { localUrl } from "../shims/kernel";
+import { testEnv } from "../test-env";
 
-const TEST_PUBLIC = "RESSAC_TEST_PUBLIC_ADDRESSES";
+const TEST_PUBLIC = "RESSAC_TEST_PUBLIC_ADDRESSES" as const;
 
 /**
  * Addresses e2e tests serve their "public" pages from (comma separated). Firefox honours them only under automation:
@@ -11,7 +12,7 @@ const TEST_PUBLIC = "RESSAC_TEST_PUBLIC_ADDRESSES";
 const automated = () => Cu.isInAutomation || Cc["@mozilla.org/remote/marionette;1"].getService(Ci.nsIMarionette).running;
 function testPublic(): Set<string> {
   const raw: string =
-    typeof Services !== "undefined" ? (automated() ? Services.env.get(TEST_PUBLIC) : "") : ((globalThis as any).process?.env[TEST_PUBLIC] ?? "");
+    (typeof Services !== "undefined" ? (automated() ? testEnv(TEST_PUBLIC) : "") : (globalThis as any).process?.env[TEST_PUBLIC]) ?? "";
   return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
 }
 

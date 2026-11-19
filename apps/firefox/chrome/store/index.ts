@@ -42,6 +42,7 @@ import { gestureGuard } from "../../shared/widget-gesture";
 import { resolveLocale } from "../../shared/i18n";
 import { isSmallMac, memoryPrefs } from "../../shared/settings";
 import { keepLoadedHosts } from "../window/tabs";
+import { testEnv } from "../test-env";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
@@ -120,7 +121,7 @@ const PAGE_ACTOR = "chrome://browser/content/ressac/page-actor.sys.mjs";
  * security.sandbox.content.mac.testing_read_path1 set to that folder: spike S5), so the e2e run without a rebuild of the app.
  */
 function actorModule(name: string): string {
-  const dir = Services.env.get("RESSAC_TEST_EXTENSION_ACTOR");
+  const dir = testEnv("RESSAC_TEST_EXTENSION_ACTOR");
   if (!dir) return `chrome://browser/content/ressac/${name}.sys.mjs`;
   const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
   Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution("ressac-test", Services.io.newFileURI(new FileUtils.File(dir)));
@@ -194,7 +195,7 @@ let uiNetState: UiNetworkState;
 
 async function start(): Promise<RessacStore> {
   // The UI's network net first, before any await: the windows read its state before they give their frames a src.
-  uiNetState = installUiNetwork(Services.env.get("RESSAC_TEST_UI_NETWORK_FAIL") || null);
+  uiNetState = installUiNetwork(testEnv("RESSAC_TEST_UI_NETWORK_FAIL") || null);
   // Before anything else can fail: its errors are reported.
   const telemetry = installTelemetry();
   // Before anything touches the data folder: an unknown format sets it aside (workspace/ stays).
@@ -229,10 +230,10 @@ async function start(): Promise<RessacStore> {
   // The agent components' copies too.
   await IOUtils.remove(PathUtils.join(dataDir, "ressac-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies not erfacées :", e));
   let setAside: string | null = null;
-  const smallMac = isSmallMac(Services.sysinfo.getProperty("memsize"), Services.env.get("RESSAC_TEST_SMALL_MAC"));
+  const smallMac = isSmallMac(Services.sysinfo.getProperty("memsize"), testEnv("RESSAC_TEST_SMALL_MAC"));
   const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => {
     const skip = Services.env.get("RESSAC_SKIP_WELCOME") === "1";
-    const aiOff = Services.env.get("RESSAC_TEST_AI") === "0";
+    const aiOff = testEnv("RESSAC_TEST_AI") === "0";
     // A test launch skips the welcome: AI on for a fresh profile unless the test asks for it off.
     const aiEnabled = aiOff ? false : skip && !s.settings.onboarded ? true : s.settings.aiEnabled;
     return skip ? { ...s, settings: { ...s.settings, onboarded: true, aiEnabled, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s;
@@ -304,7 +305,7 @@ async function start(): Promise<RessacStore> {
   const showLocale = () => {
     let system: string[] = [];
     try {
-      const test = Services.env.get("RESSAC_TEST_MAC_LANGUAGES");
+      const test = testEnv("RESSAC_TEST_MAC_LANGUAGES");
       system = test ? test.split(",") : Cc["@mozilla.org/intl/ospreferences;1"].getService(Ci.mozIOSPreferences).systemLocales;
     } catch (e) {
       // Never worth a broken start: without the Mac's languages, « system » shows English.

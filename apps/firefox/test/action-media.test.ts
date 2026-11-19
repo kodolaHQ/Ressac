@@ -67,6 +67,8 @@ beforeAll(() => {
       },
     },
     ChromeUtils: { importESModule: () => ({ FileUtils: { File: class { constructor(public path: string) {} } } }) },
+    // A dev build, as the e2e run: its test hooks are read (chrome/test-env.ts).
+    __RESSAC_PACKAGED__: false,
     Services: {
       env: { get: (k: string) => (k === "RESSAC_TEST_ACTION_IMAGES" ? env : "") },
       io: {

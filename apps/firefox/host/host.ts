@@ -18,6 +18,10 @@ process.on("SIGTERM", () => process.exit(0));
 process.env.RESSAC_CONTAINER ||= "ressac-workshop-firefox";
 // The existing container's name and host ports: renaming them would orphan it.
 process.env.RESSAC_CONTAINER_PORTS ||= "5300-5319";
+// A packaged host never honours the e2e hooks: dropped before any module reads them, so neither the kernel nor the
+// processes it starts see one. The dev host runs from source under tsx, where the build flag is absent.
+declare const __RESSAC_PACKAGED__: boolean | undefined;
+if (typeof __RESSAC_PACKAGED__ !== "undefined" && __RESSAC_PACKAGED__) for (const k of Object.keys(process.env)) if (k.startsWith("RESSAC_TEST_")) delete process.env[k];
 
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");

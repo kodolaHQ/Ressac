@@ -10,6 +10,7 @@ import { createWatchdog } from "./crash-watchdog";
 import { consoleLevel, MAX_CRASHES } from "../../core/extensions/consoles";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
+import { testEnv } from "../test-env";
 
 const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
 const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
@@ -475,7 +476,7 @@ function watchCrashes(crashed: (addonId: string) => void): { backgroundError(add
   });
 
   let pinged: ReturnType<typeof ChromeUtils.getAllDOMProcesses>[number] | undefined;
-  const testWindow = Number(Services.env.get("RESSAC_TEST_WATCHDOG_MS"));
+  const testWindow = Number(testEnv("RESSAC_TEST_WATCHDOG_MS"));
   const watchdog = createWatchdog({
     // e2e only (three kills in 60 s); floored so it can never make the watchdog trigger-happy.
     ...(testWindow > 0 ? { windowMs: Math.max(testWindow, 2_000) } : {}),

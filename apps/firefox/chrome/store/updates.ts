@@ -3,6 +3,7 @@ import type { UpdatePhase } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
 import { isSignatureFailure, isStaleUpdate, plistVersion, updatePhase } from "../../core/update";
 import { relaunchAfterQuit, relaunchEnv } from "./relaunch";
+import { testEnv } from "../test-env";
 
 const PHASES: readonly UpdatePhase[] = ["idle", "checking", "downloading", "ready", "failed", "unreachable", "unwritable", "disabled"];
 
@@ -24,14 +25,14 @@ export function installUpdates(dispatch: (a: Action) => void, report: (e: Report
     );
   });
   // RESSAC_TEST_UPDATE=<phase>:<version> (e.g. ready:0.1.5): the dev app's policy disables the updater, so tests set the state.
-  const test = Services.env.get("RESSAC_TEST_UPDATE");
+  const test = testEnv("RESSAC_TEST_UPDATE");
   if (test) {
     const [phase, version = null] = test.split(":");
     if (PHASES.includes(phase as UpdatePhase)) dispatch({ type: "setUpdate", update: { phase: phase as UpdatePhase, version, progress: null } });
     return {
       check() {},
       restart() {
-        const file = Services.env.get("RESSAC_TEST_REVEAL");
+        const file = testEnv("RESSAC_TEST_REVEAL");
         if (file) void IOUtils.writeUTF8(file, "restart\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[update] restart not noted:", e));
       },
     };
