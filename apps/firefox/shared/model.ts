@@ -290,6 +290,8 @@ export interface BrowserState {
      */
     saveMemory: boolean;
     saveMemoryChosen: boolean;
+    /** « Juge local des recherches »: the decision model pauses search gestures it finds off-goal. Off by default (measured: it pauses many honest ones). */
+    localJudge: boolean;
     /** « system » (the Mac's language when Ressac has it) or a shipped language code (shared/i18n.ts). */
     language: string;
     /** The user's own bindings; an action absent here keeps its default (shared/shortcuts.ts). */

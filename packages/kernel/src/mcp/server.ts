@@ -1744,8 +1744,8 @@ export async function startMcpServer(o: {
   sites?: SitesTools;
   /** The agent's search sessions; with the bridge's `search`, the `search_web` tool exists. */
   search?: SearchSessions;
-  /** Judges the agent's actions during a search (absent: every action passes). */
-  watcher?: Watcher;
+  /** Judges the agent's actions during a search, read at each request (absent or undefined: every action passes). */
+  watcher?: () => Watcher | undefined;
   /** The agent's research notebook; without it, no `note_lesson` and no notebook at a search's start. */
   notes?: BrowsingNotes;
   /** Pause between two reads of the search page while its results come (tests: 0). */
@@ -1787,8 +1787,9 @@ export async function startMcpServer(o: {
     // A session of another agent (profile) asks under its own name; the pending-request maps stay shared.
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
-    // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.watcher ? { watcher: o.watcher } : {}), ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow);
+    // Stateless mode: a new server and transport per request (so a judge turned on or off applies at the next one).
+    const watcher = o.watcher?.();
+    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(watcher ? { watcher } : {}), ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

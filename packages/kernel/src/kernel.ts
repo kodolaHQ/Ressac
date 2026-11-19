@@ -342,6 +342,8 @@ export async function createKernel(o: {
   onActivity?: (a: AgentActivity) => void;
   /** Local AI for the harvests; stopped with the kernel. */
   ai?: LocalAi;
+  /** The local judge of searches is on (Réglages, off by default), read at each MCP request; it also needs `ai`. */
+  judge?: () => boolean;
   /** Workflow engine, mounted in the harvest container (by default `<resources>/docker/engine`). */
   engine?: string;
   /** The workflow open in a window's builder (MCP tool `open_workflow`). */
@@ -469,12 +471,13 @@ export async function createKernel(o: {
     loc,
   );
   const outflow = new Outflow();
+  const watcher = aiAccess ? createWatcher(aiAccess) : undefined;
   const server = await startMcpServer({
     bridge: o.bridge,
     policy: policy,
     search: search,
     outflow: outflow,
-    ...(aiAccess ? { watcher: createWatcher(aiAccess) } : {}),
+    watcher: () => (o.judge?.() ? watcher : undefined),
     notes: notes,
     token: token,
     agent: profile.name,

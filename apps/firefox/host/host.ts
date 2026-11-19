@@ -146,6 +146,8 @@ let agentDomains: string[] = [];
 let machineIdleMinutes = 5;
 // « Économiser la mémoire » (told by the chrome): scheduled harvests and page indexing wait for calm memory.
 let saveMemory = false;
+// « Juge local des recherches » (Réglages), off until the chrome says otherwise.
+let localJudge = false;
 const calm = () => memoryAllows(saveMemory);
 // Critical pressure while saving memory: the chrome unloads a tab now, and again every 10 s while it lasts (warn is
 // left to Firefox's own unloading). The sysctl, not Firefox's topic: Firefox does not tell warn from critical.
@@ -332,6 +334,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     onRecapChange: (id) => rpc.notify("recaps.changed", { id }),
     onActivity: (a) => rpc.notify("agent.activity", a),
     ai: ai,
+    judge: () => localJudge,
     profilingFolder: join(dataDir, "profiling"),
     extensions: extensions.tools(),
     sites: sites.tools,
@@ -585,9 +588,9 @@ const rpc = createRpc({
       defaultProfile = p.agentProfile;
       refreshProfileAgents();
     },
-    // The decision server loads (1.1 GB) as a session starts, ready for the watch's first question; it stops after 10 min idle.
+    // With the judge on, the decision server loads (1.1 GB) as a session starts, ready for its first question; it stops after 10 min idle.
     "agent.start": (p: { window: string; size: TerminalSize }) => {
-      if (aiOn) ai.warmDecision();
+      if (aiOn && localJudge) ai.warmDecision();
       return sessions.start(p.window, p.size);
     },
     "agent.relaunch": (p: { window: string }) => sessions.relaunch(p.window),
@@ -637,6 +640,10 @@ const rpc = createRpc({
     },
     "settings.saveMemory": (p: { on?: unknown }) => {
       saveMemory = p?.on === true;
+    },
+    // Read by the kernel at each MCP request: applies to the agent's next tool call.
+    "settings.localJudge": (p: { on?: unknown }) => {
+      localJudge = p?.on === true;
     },
     "settings.machineIdle": (p: { minutes: unknown }) => {
       const r = MachineIdleSchema.safeParse(p?.minutes);

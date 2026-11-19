@@ -534,6 +534,7 @@ async function start(): Promise<RessacStore> {
       notify("settings.agentDomains", { domains: store.state.settings.agentDomains });
       notify("settings.machineIdle", { minutes: store.state.settings.machineIdleMinutes });
       notify("settings.saveMemory", { on: store.state.settings.saveMemory });
+      notify("settings.localJudge", { on: store.state.settings.localJudge });
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
       for (const e of store.state.spaces) if (e.private) notify("history.makePrivate", { spaceId: e.id });
       agentExtensions.hostStarted();

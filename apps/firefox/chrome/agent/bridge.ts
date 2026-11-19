@@ -295,6 +295,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
     if (changed(state.settings.agentDomains, previous.settings.agentDomains)) host.notify("settings.agentDomains", { domains: state.settings.agentDomains });
     if (state.settings.machineIdleMinutes !== previous.settings.machineIdleMinutes) host.notify("settings.machineIdle", { minutes: state.settings.machineIdleMinutes });
     if (state.settings.saveMemory !== previous.settings.saveMemory) host.notify("settings.saveMemory", { on: state.settings.saveMemory });
+    if (state.settings.localJudge !== previous.settings.localJudge) host.notify("settings.localJudge", { on: state.settings.localJudge });
     if (state.locale !== previous.locale) host.notify("settings.locale", { locale: state.locale });
     if (changed(state.settings.claudeEngine, previous.settings.claudeEngine)) host.notify("agent.claudeEngine", { engine: state.settings.claudeEngine });
     if (state.settings.agentMode !== previous.settings.agentMode) host.notify("agent.mode", { mode: state.settings.agentMode });

@@ -502,6 +502,7 @@ describe("agent host", { timeout: 30_000 }, () => {
       return { h, pidFile, alive };
     };
     const warm = async (h: Host, pidFile: string) => {
+      h.rpc.notify("settings.localJudge", { on: true }); // only the judge warms the decision server; set before start answers
       await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
       await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } }); // warms the decision server
       await until(() => existsSync(pidFile) && readFileSync(pidFile, "utf8").trim() !== "");

@@ -414,6 +414,18 @@ test("vimMode: missing or malformed loads off, true is kept", async () => {
   expect((await loadSession(d)).settings.vimMode).toBe(true);
 });
 
+test("localJudge: off for a new or older session, true is kept", async () => {
+  expect(initialState().settings.localJudge).toBe(false);
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.localJudge;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.localJudge).toBe(false);
+  old.settings.localJudge = true;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.localJudge).toBe(true);
+});
+
 test("existing session never welcomes", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
