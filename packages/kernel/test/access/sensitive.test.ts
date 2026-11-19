@@ -21,6 +21,14 @@ test.each([
   "https://www.ameli.fr/assure/compte",
   "https://www.impots.gouv.fr/accueil/espace-particulier",
   "https://MAIL.GOOGLE.COM/",
+  "https://mail.google.com./",
+  "https://MAIL.GOOGLE.COM.",
+  "view-source:https://mail.google.com/",
+  "blob:https://mail.google.com/0b1c-uuid",
+  "view-source:view-source:https://mail.google.com/",
+  "ABOUT:LOGINS",
+  "about:logins?x",
+  "about:preferences?a#b",
 ])("sensitive: %s", (url) => expect(isSensitive(url)).toBe(true));
 
 test.each([
@@ -31,6 +39,8 @@ test.each([
   "https://docs.stripe.com/billing",
   "https://example.com/accounting-tips",
   "https://example.com/docs/billing",
+  "view-source:https://www.marmiton.org/x",
+  "view-source:view-source:view-source:view-source:https://mail.google.com/",
   "not a url",
   "",
 ])("not sensitive: %s", (url) => expect(isSensitive(url)).toBe(false));

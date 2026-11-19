@@ -27,15 +27,17 @@ const SEGMENTS = new Set([
   "settings", "account", "myaccount", "compte", "espace-client", "espace-particulier", "security", "login", "signin",
 ]);
 
-export function isSensitive(url: string): boolean {
+export function isSensitive(url: string, depth = 0): boolean {
   let u: URL;
   try {
     u = new URL(url);
   } catch {
     return false;
   }
-  if (u.protocol === "about:") return /^(logins|preferences)$/.test(u.pathname);
-  const host = u.hostname.toLowerCase();
+  // these wrappers show the inner page: classify what they wrap (bounded so nesting cannot loop)
+  if (u.protocol === "view-source:" || u.protocol === "blob:") return depth < 3 && isSensitive(u.pathname, depth + 1);
+  if (u.protocol === "about:") return /^(logins|preferences)$/.test(u.pathname.toLowerCase());
+  const host = u.hostname.toLowerCase().replace(/\.+$/, ""); // "mail.google.com." loads the same site
   if (HOSTS.some((d) => host === d || host.endsWith("." + d))) return true;
   const parts = u.pathname.toLowerCase().split("/").filter(Boolean);
   if (parts.some((p) => SEGMENTS.has(p))) return true;
