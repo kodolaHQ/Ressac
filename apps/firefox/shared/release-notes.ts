@@ -1,6 +1,14 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.18",
+    date: "novembre 2026",
+    items: [
+      "Moteur Firefox 160.0.1 : correctifs de sécurité, et des onglets qui plantaient sur certains sites (dont ChatGPT) ne plantent plus.",
+      "Sécurité : une page servie par l'agent ne peut plus faire sortir de données par le nom d'une connexion WebSocket bloquée.",
+    ],
+  },
+  {
     version: "0.1.17",
     date: "novembre 2026",
     items: [
