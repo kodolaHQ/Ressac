@@ -12,9 +12,9 @@ res=$app/Contents/Resources
 host=$res/ressac-host
 kernel=$repo_root/packages/kernel
 
-node_version=v22.23.2
+node_version=v22.23.5
 node_tar=node-$node_version-darwin-arm64.tar.gz
-node_sha256=61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6
+node_sha256=e7131995759b61a0170b646010d2ad35a5d37b4cb0d471f3e8317eac6f742f3d
 # Under dist/ (git-ignored), outside $work: neither the cleanup, the leak check nor the DMG touch it.
 node_cache=$app_dir/dist/cache
 sentry_cli=@sentry/cli@2.58.6
