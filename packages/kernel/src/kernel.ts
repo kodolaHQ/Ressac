@@ -26,6 +26,7 @@ import { createRecaps, type Recaps } from "./recaps/recaps.js";
 import type { ProfileFiles } from "./mcp/devtools.js";
 import { DevToolsTracking } from "./devtools/tracking.js";
 import type { LocalAi } from "./ai/local-ai.js";
+import { Outflow } from "./outflow/outflow.js";
 import { createAiDispatcher } from "./ai/dispatcher.js";
 import { ID_EXECUTION, listRuns, readRun, type Execution, type ResumeExecution } from "./workflows/executions.js";
 import { DEFAULT_PACING } from "./workflows/run.js";
@@ -230,6 +231,8 @@ export interface Kernel {
   policy: AccessPolicy;
   /** The agent's visible searches, one per window. */
   search: SearchSessions;
+  /** What the agent read and the user typed, per window (outflow rules); the host feeds the typed side. */
+  outflow: Outflow;
   /** Name of the agent of this kernel's profile (the one that holds the accesses). */
   agent: string;
   /** The Mac port of the MCP server: the only one besides the relay's that the agent's container may reach. */
@@ -339,6 +342,8 @@ export async function createKernel(o: {
   onActivity?: (a: AgentActivity) => void;
   /** Local AI for the harvests; stopped with the kernel. */
   ai?: LocalAi;
+  /** The local judge of searches is on (Réglages, off by default), read at each MCP request; it also needs `ai`. */
+  judge?: () => boolean;
   /** Workflow engine, mounted in the harvest container (by default `<resources>/docker/engine`). */
   engine?: string;
   /** The workflow open in a window's builder (MCP tool `open_workflow`). */
@@ -465,11 +470,14 @@ export async function createKernel(o: {
     templates ?? DEFAULT_TEMPLATES,
     loc,
   );
+  const outflow = new Outflow();
+  const watcher = aiAccess ? createWatcher(aiAccess) : undefined;
   const server = await startMcpServer({
     bridge: o.bridge,
     policy: policy,
     search: search,
-    ...(aiAccess ? { watcher: createWatcher(aiAccess) } : {}),
+    outflow: outflow,
+    watcher: () => (o.judge?.() ? watcher : undefined),
     notes: notes,
     token: token,
     agent: profile.name,
@@ -666,6 +674,7 @@ export async function createKernel(o: {
     actions,
     policy: policy,
     search: search,
+    outflow: outflow,
     agent: profile.name,
     mcpPort: server.port,
     workshopState: () => workshop.state(),
@@ -728,6 +737,9 @@ export async function createKernel(o: {
         // After the card: a refused card leaves the other windows' grants alone, and nothing granted meanwhile leaks into this conversation.
         policy.reset();
         search.reset();
+        // The outflow's reads are kept: a profile switched back resumes a conversation with its reads in context (over-retaining only over-blocks); the host forgets them when the window closes.
+        // What the user typed is theirs to send for this conversation only: a new one forgets it (a profile switch over-blocks, acceptable).
+        if (win !== undefined && !resume) outflow.forgetTyped(win);
         if (win !== undefined) sessionToken = server.openSession(win, chosen.name);
         let mcpConfig: string;
         let env: Record<string, string> = {};

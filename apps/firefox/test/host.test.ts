@@ -278,6 +278,46 @@ describe("agent host", { timeout: 30_000 }, () => {
     await until(() => h.data().includes("bonjour"));
   });
 
+  it("outflow: keystrokes and the ⌘T question count as typed, prefills do not, closing the window forgets", async () => {
+    const h = startHost();
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    const check = (window: string, text: string) => h.rpc.request("debug.outflowCheck", { window, text });
+    const iban = "FR7630006000011234567890189";
+    const key = "ghp_x7Kq9LmN2pRs4TuVw6YzA8bCdEfGhJ1kMn3P";
+    // Prefill is not typed: the tab title in the context prefix stays a secret the user never wrote.
+    h.rpc.notify("agent.panelOpened", { window: "f1", tab: { id: "t1", title: iban, url: "https://un.test/", space: "Perso" } });
+    expect(await check("f1", iban)).toMatchObject({ kind: "iban" });
+    h.rpc.notify("agent.write", { window: "f1", data: `${iban}\r` });
+    expect(await check("f1", iban)).toBeNull();
+    // ⌘T before the window's agent runs (its usual case): the question is typed once written into the new conversation;
+    // the page titles shown with it are not typed.
+    await h.rpc.request("ask.handOff", { window: "f2", question: `corrige ${key}`, shown: [{ url: "https://un.test/", title: iban, lastVisit: "2026-11-19" }] });
+    await h.rpc.request("agent.start", { window: "f2", size: { cols: 80, rows: 24 } });
+    await until(() => h.data().includes("received: corrige"));
+    expect(await check("f2", key)).toBeNull();
+    expect(await check("f2", iban)).toMatchObject({ kind: "iban" });
+    h.rpc.notify("agent.closeWindow", { window: "f1" });
+    expect(await check("f1", iban)).toMatchObject({ kind: "iban" });
+    // Memory made again while the agent stops (here a late keystroke) is forgotten once it has stopped.
+    h.rpc.notify("agent.closeWindow", { window: "f2" });
+    h.rpc.notify("agent.write", { window: "f2", data: `${key}\r` });
+    expect(await check("f2", key)).toBeNull();
+    const end = Date.now() + 10_000;
+    while ((await check("f2", key)) === null) {
+      if (Date.now() > end) throw new Error("the closed window's memory was not forgotten after the stop");
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    // A window reopened on the same id (chrome/store/windows.ts reuses the last one) keeps its new memory past the old stop.
+    await agentReady(h, "f3");
+    const stops = sessionStops(h);
+    h.rpc.notify("agent.closeWindow", { window: "f3" });
+    await h.rpc.request("agent.start", { window: "f3", size: { cols: 80, rows: 24 } });
+    h.rpc.notify("agent.write", { window: "f3", data: `${key}\r` });
+    await until(() => sessionStops(h) > stops);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await check("f3", key)).toBeNull();
+  });
+
   it("a repeat demarrer with the same profile keeps the kernel and its sessions", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
@@ -462,6 +502,7 @@ describe("agent host", { timeout: 30_000 }, () => {
       return { h, pidFile, alive };
     };
     const warm = async (h: Host, pidFile: string) => {
+      h.rpc.notify("settings.localJudge", { on: true }); // only the judge warms the decision server; set before start answers
       await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
       await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } }); // warms the decision server
       await until(() => existsSync(pidFile) && readFileSync(pidFile, "utf8").trim() !== "");
@@ -475,6 +516,15 @@ describe("agent host", { timeout: 30_000 }, () => {
       await until(() => !alive(), 2000); // well before the 4 s session stop ends
       await stopped;
       expect(await h.exited).toBe(0);
+    });
+
+    it("switching the judge on with AI on warms the decision server", async () => {
+      const { h, pidFile, alive } = withLlama();
+      await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+      h.rpc.notify("settings.localJudge", { on: true });
+      await until(() => existsSync(pidFile) && readFileSync(pidFile, "utf8").trim() !== "");
+      await h.rpc.request("stop").catch(() => {});
+      await until(() => !alive(), 2000);
     });
 
     it("SIGTERM (Firefox's kill after its 5 s): exits 0 and kills the llama-servers' groups", async () => {

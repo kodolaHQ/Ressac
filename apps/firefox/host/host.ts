@@ -146,6 +146,8 @@ let agentDomains: string[] = [];
 let machineIdleMinutes = 5;
 // « Économiser la mémoire » (told by the chrome): scheduled harvests and page indexing wait for calm memory.
 let saveMemory = false;
+// « Juge local des recherches » (Réglages), off until the chrome says otherwise.
+let localJudge = false;
 const calm = () => memoryAllows(saveMemory);
 // Critical pressure while saving memory: the chrome unloads a tab now, and again every 10 s while it lasts (warn is
 // left to Firefox's own unloading). The sysctl, not Firefox's topic: Firefox does not tell warn from critical.
@@ -332,6 +334,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     onRecapChange: (id) => rpc.notify("recaps.changed", { id }),
     onActivity: (a) => rpc.notify("agent.activity", a),
     ai: ai,
+    judge: () => localJudge,
     profilingFolder: join(dataDir, "profiling"),
     extensions: extensions.tools(),
     sites: sites.tools,
@@ -585,9 +588,9 @@ const rpc = createRpc({
       defaultProfile = p.agentProfile;
       refreshProfileAgents();
     },
-    // The decision server loads (1.1 GB) as a session starts, ready for the watch's first question; it stops after 10 min idle.
+    // With the judge on, the decision server loads (1.1 GB) as a session starts, ready for its first question; it stops after 10 min idle.
     "agent.start": (p: { window: string; size: TerminalSize }) => {
-      if (aiOn) ai.warmDecision();
+      if (aiOn && localJudge) ai.warmDecision();
       return sessions.start(p.window, p.size);
     },
     "agent.relaunch": (p: { window: string }) => sessions.relaunch(p.window),
@@ -637,6 +640,12 @@ const rpc = createRpc({
     },
     "settings.saveMemory": (p: { on?: unknown }) => {
       saveMemory = p?.on === true;
+    },
+    // Read by the kernel at each MCP request: applies to the agent's next tool call.
+    "settings.localJudge": (p: { on?: unknown }) => {
+      localJudge = p?.on === true;
+      // As at agent.start: ready for the judge's first question.
+      if (aiOn && localJudge) ai.warmDecision();
     },
     "settings.machineIdle": (p: { minutes: unknown }) => {
       const r = MachineIdleSchema.safeParse(p?.minutes);
@@ -930,7 +939,11 @@ const rpc = createRpc({
       const shown = (p.shown as Partial<Record<"url" | "title" | "lastVisit", unknown>>[])
         .filter((h): h is { url: string; title: string; lastVisit: string } => str(h?.url) && str(h?.title) && str(h?.lastVisit))
         .slice(0, 3);
-      sessions.prefill(p.window, handOffText(p.question.slice(0, 2000), shown, hostSay("host-ask-shown-pages")), undefined, true);
+      const question = p.question.slice(0, 2000);
+      const win = p.window;
+      // Outflow rules: only the question is the user's own text, not the page titles shown with it. Fed as it is written,
+      // after a fresh session's reset (⌘T usually opens the window's agent), not when it is queued.
+      sessions.prefill(win, handOffText(question, shown, hostSay("host-ask-shown-pages")), () => kernel?.outflow.typed(win, question + "\r"), true);
     }),
     stop: async () => {
       try {
@@ -940,12 +953,24 @@ const rpc = createRpc({
         setImmediate(() => writeStdout("", () => process.exit(0)));
       }
     },
-    "agent.write": (p: { window: string; data: string }) => sessions.write(p.window, p.data),
+    // The user's keystrokes and pastes: what they type is theirs to send (outflow rules). Prefills never come through here.
+    "agent.write": (p: { window: string; data: string }) => {
+      kernel?.outflow.typed(p.window, p.data);
+      sessions.write(p.window, p.data);
+    },
     "agent.resize": (p: { window: string; size: TerminalSize }) => sessions.resize(p.window, p.size),
     "agent.closeWindow": (p: { window: string }) => {
       selections.delete(p.window);
       actives.delete(p.window);
-      void sessions.closeWindow(p.window);
+      kernel?.outflow.forget(p.window);
+      // Again once the agent is stopped: a tool call answered while it stopped would have made the window's memory anew.
+      // Not if the window reopened on the same id meanwhile (chrome/store/windows.ts reuses it): that memory is the new session's.
+      void sessions
+        .closeWindow(p.window)
+        .catch((e) => console.error("[ressac] agent window close:", e))
+        .finally(() => {
+          if (!sessions.has(p.window)) kernel?.outflow.forget(p.window);
+        });
     },
     privateTabs: (p: { privateTabs: string[]; activePrivate: boolean }) => bridge.setPrivate(p),
     "policy.navigated": (p: { id: string; url: string }) => { kernel?.policy.tabNavigated(p.id, p.url); kernel?.search.tabNavigated(p.id, p.url); },
@@ -1016,7 +1041,17 @@ const rpc = createRpc({
     // The settings page (host/settings.ts): `settings` is made after `sites` and `actions`, below.
     ...Object.fromEntries(SETTINGS_METHODS.map((k) => [k, AI_SETTINGS.has(k) ? aiOnly((p: unknown) => settings[k]!(p)) : (p: unknown) => settings[k]!(p)])),
     ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
-    ...(process.env.RESSAC_HOST_TEST === "1" ? { "debug.locale": () => ({ locale: hostLocale(), relocalized }), "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
+    ...(process.env.RESSAC_HOST_TEST === "1"
+      ? {
+          "debug.locale": () => ({ locale: hostLocale(), relocalized }),
+          "debug.log": (p: { text: string }) => console.log(p.text),
+          "debug.outflowCheck": async (p: { window: string; text: string }) => {
+            // A notification runs one microtask after it arrives (shared/rpc.ts): yield so the ones sent before are applied.
+            await null;
+            return kernel?.outflow.check(p.window, p.text) ?? null;
+          },
+        }
+      : {}),
   },
 });
 // Errors go to Firefox, which reports them (chrome/store/telemetry.ts), on top of the stderr log.

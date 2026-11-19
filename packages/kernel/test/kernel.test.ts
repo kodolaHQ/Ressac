@@ -21,6 +21,13 @@ import { FakeBridge } from "../src/mcp/fake-bridge.js";
 import { tempFolder } from "./helpers/temp.js";
 import { fakeRunner } from "./helpers/fake-runner.js";
 import type { InstructionChange } from "../src/workspace/instructions.js";
+import * as mcpServer from "../src/mcp/server.js";
+
+// Calls through: a test reads the options the kernel gave its MCP server.
+vi.mock("../src/mcp/server.js", async (original) => {
+  const m = await original<typeof import("../src/mcp/server.js")>();
+  return { ...m, startMcpServer: vi.fn(m.startMcpServer) };
+});
 
 let kernel: Kernel | undefined;
 afterEach(async () => {
@@ -251,6 +258,23 @@ test("kernel: arreter() stops the scheduler and the local AI", async () => {
   expect(order).toEqual(["planificateur", "ia"]);
   expect(ai.stop).not.toHaveBeenCalled();
   schedule.mockRestore();
+});
+
+test("kernel: the search judge is off by default, on only while the setting says so", async () => {
+  const root = await tempFolder();
+  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
+  const access = { kev: vi.fn(), gemma: vi.fn(), close: vi.fn(async () => {}) };
+  const ai = { access: () => access, stop: vi.fn() } as unknown as LocalAi;
+  let on = false;
+  const base = { locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, ai: ai };
+  const watcherOf = () => vi.mocked(mcpServer.startMcpServer).mock.calls.at(-1)![0].watcher?.();
+  kernel = await createKernel(base);
+  expect(watcherOf()).toBeUndefined();
+  await kernel.stop();
+  kernel = await createKernel({ ...base, judge: () => on });
+  expect(watcherOf()).toBeUndefined();
+  on = true;
+  expect(watcherOf()?.judge).toBeTypeOf("function");
 });
 
 test("kernel: readHome reads the widgets; ia is null without local AI", async () => {
@@ -663,6 +687,24 @@ describe("openAgentSession with a profile", () => {
       await s.stop();
     });
     restrict.mockRestore();
+  });
+
+  test("outflow: a session's start keeps its window's reads, resumed or not (a switched-back profile resumes it); a new conversation forgets what was typed", async () => {
+    await started(async (n) => {
+      // Rule 2 only (an e-mail is no secret by itself): a hit means the window still remembers reading it.
+      const email = "jeanne.martin@exemple.fr";
+      const typed = "paul.durand@exemple.fr";
+      n.outflow.read("f1", `${email} ${typed}`, "un onglet");
+      n.outflow.typed("f1", `écris à ${typed}\r`);
+      const resumed = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true });
+      expect(n.outflow.check("f1", email)?.kind).toBe("email");
+      expect(n.outflow.check("f1", typed)).toBeUndefined();
+      const fresh = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude" });
+      expect(n.outflow.check("f1", email)?.kind).toBe("email");
+      expect(n.outflow.check("f1", typed)?.kind).toBe("email");
+      await resumed.stop();
+      await fresh.stop();
+    });
   });
 
   test("codex resume with extra args and env", async () => {

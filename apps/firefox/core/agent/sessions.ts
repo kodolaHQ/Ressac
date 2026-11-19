@@ -299,6 +299,11 @@ export class SessionsAgent {
     return [...this.inputs.values()].some((e) => (e.touched || e.prefill?.submit) && (e.session?.active || e.startup));
   }
 
+  /** The window has an agent entry (started, starting, asleep, or a text waiting for its session). */
+  has(f: WindowId): boolean {
+    return this.inputs.has(f);
+  }
+
   active(f: WindowId): boolean {
     return this.inputs.get(f)?.session?.active ?? false;
   }

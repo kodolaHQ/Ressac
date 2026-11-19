@@ -133,6 +133,7 @@ home-request-console = L'agent demande à voir toute la console de « { $name } 
 home-request-console-reason = Raison donnée par { $agent } : « { $reason } »
 home-request-console-unlock = Débloquer
 home-request-address-reason = Sa raison : { $reason }
+home-request-address-danger = ⚠ { $danger }
 home-request-address-opinion = Avis du surveillant : { $opinion }
 home-request-why = Pourquoi on me demande ça ?
 home-request-why-1 = L'agent ouvre librement les liens qu'il trouve dans les pages qu'il lit et dans ses résultats de recherche. Cette adresse, il ne l'a trouvée nulle part : il l'a écrite lui-même.

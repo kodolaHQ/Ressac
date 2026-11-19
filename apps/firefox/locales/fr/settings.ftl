@@ -147,5 +147,7 @@ settings-credits-licenses-before = Il embarque Node.js, node-pty et llama.cpp (l
 settings-agent-domains = Domaines autorisés pour l'agent
 settings-agent-domains-help = Un domaine par ligne (`*.exemple.com` pour ses sous-domaines). L'agent joint aussi Claude, OpenAI, npm, PyPI et GitHub.
 settings-agent-domains-ignored = Ignoré : { $line }
+settings-local-judge = Juge local des recherches
+settings-local-judge-help = Un petit modèle local met en pause les gestes qui lui semblent hors sujet. Il en laisse passer beaucoup et interrompt souvent un travail honnête.
 settings-data-reset-label = Réinitialiser Ressac
 settings-data-reset-help = Met vos données de côté dans une sauvegarde, puis redémarre à neuf.

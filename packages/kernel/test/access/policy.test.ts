@@ -362,3 +362,23 @@ test("retirerLectureSite (app deleted): the grant drops, the badge follows; pend
   expect(p.siteReadRemovals("youtube")).toBe(0);
   expect(n).toBe(2);
 });
+
+test("a tab the user shared stays shared across reset(), until it closes", () => {
+  expect(p.sharedByUser(github.id, github.url)).toBe(false);
+  p.userInteraction(github);
+  expect(p.sharedByUser(github.id, github.url)).toBe(true);
+  expect(p.sharedByUser(gmail.id, gmail.url)).toBe(false);
+  p.reset();
+  expect(p.sharedByUser(github.id, github.url)).toBe(true);
+  p.tabClosed(github.id);
+  expect(p.sharedByUser(github.id, github.url)).toBe(false);
+});
+
+test("a shared tab is shared only on the site it was shared on", () => {
+  p.userInteraction(github);
+  expect(p.sharedByUser(github.id, "https://github.com/autre")).toBe(true);
+  p.tabNavigated(github.id, "https://prive.example/");
+  expect(p.sharedByUser(github.id, "https://prive.example/")).toBe(false);
+  p.tabNavigated(github.id, github.url);
+  expect(p.sharedByUser(github.id, github.url)).toBe(true);
+});
