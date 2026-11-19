@@ -199,10 +199,8 @@ Limits:
   - `RESSAC_TEST_IMPORT_HOME` replaces the home for source paths. Every e2e launch defaults it to an empty folder, so a test never reads the real `~/Library`.
   - Under a test home, Safari's engine migrator never runs, and Chromium passwords never touch the keychain.
   - `RESSAC_TEST_IMPORT_CSV` replaces the CSV file picker.
-- **Manual checks:**
-  - a real Chrome import, with the keychain prompt;
-  - Safari with Full Disk Access;
-  - a Zen import.
+- **Tried for real** during the beta: Arc, Chrome (with the keychain prompt) and Zen imports.
+- **Manual check left:** Safari with Full Disk Access.
 
 ## Site permissions
 
