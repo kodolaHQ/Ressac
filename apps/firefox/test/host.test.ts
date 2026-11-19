@@ -518,6 +518,15 @@ describe("agent host", { timeout: 30_000 }, () => {
       expect(await h.exited).toBe(0);
     });
 
+    it("switching the judge on with AI on warms the decision server", async () => {
+      const { h, pidFile, alive } = withLlama();
+      await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+      h.rpc.notify("settings.localJudge", { on: true });
+      await until(() => existsSync(pidFile) && readFileSync(pidFile, "utf8").trim() !== "");
+      await h.rpc.request("stop").catch(() => {});
+      await until(() => !alive(), 2000);
+    });
+
     it("SIGTERM (Firefox's kill after its 5 s): exits 0 and kills the llama-servers' groups", async () => {
       const { h, pidFile, alive } = withLlama();
       await warm(h, pidFile);

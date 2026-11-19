@@ -644,6 +644,8 @@ const rpc = createRpc({
     // Read by the kernel at each MCP request: applies to the agent's next tool call.
     "settings.localJudge": (p: { on?: unknown }) => {
       localJudge = p?.on === true;
+      // As at agent.start: ready for the judge's first question.
+      if (aiOn && localJudge) ai.warmDecision();
     },
     "settings.machineIdle": (p: { minutes: unknown }) => {
       const r = MachineIdleSchema.safeParse(p?.minutes);
