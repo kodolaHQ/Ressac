@@ -237,6 +237,16 @@ describe("openedFromTab", () => {
     expect(openedFromTab(make(make()), own)).toBe(false);
     expect(openedFromTab(null, own)).toBe(false);
   });
+  it("ends on an opener cycle: window.open(url, name) to an existing window makes the caller its opener", () => {
+    const a = make();
+    const b = make(a);
+    a.browsingContext.opener = { top: b.browsingContext };
+    const self = make();
+    self.browsingContext.opener = { top: self.browsingContext };
+    expect(openedFromTab(b, () => false)).toBe(false);
+    expect(openedFromTab(self, () => false)).toBe(false);
+    expect(openedFromTab(b, (x) => x === a)).toBe(true);
+  });
 });
 
 describe("inheritedProfile", () => {

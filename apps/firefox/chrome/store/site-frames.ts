@@ -118,10 +118,11 @@ export async function frameResume(wgp: any, s: FrameSite | undefined, duration: 
  * popups (a sign-in's steps): popups are plain Firefox windows, only their opener chain tells where they come from.
  */
 export function openedFromTab(browser: any, own: (browser: any) => boolean): boolean {
-  let bc = browser?.browsingContext;
-  while (bc) {
+  // The chain can loop: window.open(url, name) to an existing window makes the caller its opener (nsWindowWatcher).
+  const seen = new Set();
+  for (let bc = browser?.browsingContext; bc && !seen.has(bc); bc = bc.opener?.top) {
     if (own(bc.embedderElement)) return true;
-    bc = bc.opener?.top;
+    seen.add(bc);
   }
   return false;
 }

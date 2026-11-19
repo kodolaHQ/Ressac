@@ -344,6 +344,23 @@ describe("window controller", () => {
     await waitFor(m, "return " + POPUPS + ".map((w) => w.document.title)", (t: string[]) => t.length === 1 && t[0] === `${new URL(server.url).host} — Page A`);
   });
 
+  it("a popup that window.opens into itself by name (its opener becomes itself) does not freeze the browser", async () => {
+    const a = await open("/popup.html");
+    await waitTitle(a, "Popup source");
+    await click(a, "#ouvrir-reste");
+    await waitFor(m, `return ${POPUPS}.length`, (n) => n === 1);
+    await inPopup("popup-reste", async () => {
+      await m.setContext("content");
+      try {
+        await m.execute("window.name = 'boucle'; window.open('a.html', 'boucle'); return 0");
+      } finally {
+        await m.setContext("chrome");
+      }
+    });
+    // The new page's request goes through the site guard's opener walk (sites.ts): it used to loop forever there.
+    await waitFor(m, "return " + POPUPS + ".map((w) => w.gBrowser.selectedBrowser.currentURI.spec)", (u: string[]) => u.length === 1 && u[0]!.endsWith("/a.html"));
+  });
+
   it("an about:blank popup written by its opener shows about:blank, not only the title it was given", async () => {
     const a = await open("/popup.html");
     await waitTitle(a, "Popup source");

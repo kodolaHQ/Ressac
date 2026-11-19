@@ -6,12 +6,13 @@ import { FIREFOX_COMMANDS } from "./keys";
  * the tab behind that one. None once the opener and its tab are gone.
  */
 function popupSource(win: Window): TabId | undefined {
-  let bc = win.gBrowser.selectedBrowser.browsingContext?.opener?.top;
-  while (bc) {
+  // The chain can loop: window.open(url, name) to an existing window makes the caller its opener (nsWindowWatcher).
+  const seen = new Set();
+  for (let bc = win.gBrowser.selectedBrowser.browsingContext?.opener?.top; bc && !seen.has(bc); bc = bc.opener?.top) {
     const browser = bc.embedderElement;
     const tabId = browser?.ownerDocument.defaultView?.gBrowser?.getTabForBrowser(browser)?.getAttribute("ressac-tab-id");
     if (tabId) return tabId;
-    bc = bc.opener?.top;
+    seen.add(bc);
   }
   return undefined;
 }
