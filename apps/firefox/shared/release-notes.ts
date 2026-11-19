@@ -1,6 +1,15 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.17",
+    date: "novembre 2026",
+    items: [
+      "Sécurité : une appli de site écrite par l'agent ne charge plus rien sans votre accord. La carte « Ouvrir l'appli ? » montre son adresse complète et ses domaines, et revient si l'un d'eux change. Vos applis existantes sont acceptées une fois.",
+      "Sécurité : votre accord pour un widget ou une action est lié à son code. Si le code change, la mise à jour s'arrête et Ressac vous redemande votre accord. Les widgets et actions fournis n'ont plus d'accès au web accordé d'office : acceptez-le une fois.",
+      "Sécurité : l'application ignore les réglages réservés aux tests, et ses mises à jour peuvent aussi être signées par une clé de secours gardée hors ligne.",
+    ],
+  },
+  {
     version: "0.1.16",
     date: "novembre 2026",
     items: [
