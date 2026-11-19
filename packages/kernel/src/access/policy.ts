@@ -68,6 +68,8 @@ export class AccessPolicy {
   private readonly sitesRead = new Map<string, string | null>();
   /** Withdrawals of the read grant per app (deletions): a card posted before one of them grants nothing. */
   private readonly siteRemovals = new Map<string, number>();
+  /** Tabs the user shared with the agent (opened the panel or spoke from them); kept across conversations, until closed. */
+  private readonly shared = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private conversationNumber = 0;
   private readonly portBuilt: (port: number) => boolean;
@@ -221,6 +223,7 @@ export class AccessPolicy {
   }
 
   userInteraction(o: TabInfo): void {
+    this.shared.add(o.id);
     this.denial.clear();
     this.allow(o);
     this.change();
@@ -260,7 +263,13 @@ export class AccessPolicy {
     this.change();
   }
 
+  /** The user shared this tab with the agent (`userInteraction`), in this conversation or an earlier one. */
+  sharedByUser(id: string): boolean {
+    return this.shared.has(id);
+  }
+
   tabClosed(id: string): void {
+    this.shared.delete(id);
     this.forget(id);
     this.change();
   }
