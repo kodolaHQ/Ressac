@@ -21,6 +21,8 @@ const HOSTS = [
   "impots.gouv.fr", "ameli.fr", "caf.fr", "franceconnect.gouv.fr", "urssaf.fr",
   // account pages
   "myaccount.google.com", "account.apple.com", "appleid.apple.com", "account.microsoft.com",
+  // private messages and files
+  "web.whatsapp.com", "messenger.com", "drive.google.com", "docs.google.com",
 ];
 
 const SEGMENTS = new Set([
@@ -40,6 +42,11 @@ export function isSensitive(url: string, depth = 0): boolean {
   const host = u.hostname.toLowerCase().replace(/\.+$/, ""); // "mail.google.com." loads the same site
   if (HOSTS.some((d) => host === d || host.endsWith("." + d))) return true;
   const parts = u.pathname.toLowerCase().split("/").filter(Boolean);
+  // a Slack workspace (app. or <team>.), not Slack's own site or API docs
+  if (host.endsWith(".slack.com") && host !== "www.slack.com" && host !== "api.slack.com") return true;
+  if (/(^|\.)linkedin\.com$/.test(host) && parts[0] === "messaging") return true;
+  // Amazon orders, on any of its country domains
+  if (/(^|\.)amazon\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host) && ((parts[0] === "gp" && parts[1] === "your-account") || parts.includes("your-orders"))) return true;
   if (parts.some((p) => SEGMENTS.has(p))) return true;
   return parts.includes("billing") && !host.startsWith("docs.") && !parts.includes("docs");
 }
