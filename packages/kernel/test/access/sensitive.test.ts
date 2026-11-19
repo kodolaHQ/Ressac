@@ -39,6 +39,14 @@ test.each([
   "https://www.amazon.fr/gp/your-account/order-history",
   "https://www.amazon.com/your-orders/orders",
   "https://www.amazon.co.uk/gp/your-account/order-details?orderID=1",
+  "https://mail.ovh.net/owa/",
+  "https://mail.infomaniak.com/",
+  "https://webmail.gandi.net/",
+  "https://mail.zoho.eu/zm/",
+  "https://particuliers.sg.fr/icd/x",
+  "about:reader?url=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2F0%2F",
+  // Nesting past what is unwrapped fails closed.
+  "view-source:view-source:view-source:view-source:https://www.marmiton.org/x",
 ])("sensitive: %s", (url) => expect(isSensitive(url)).toBe(true));
 
 test.each([
@@ -55,7 +63,8 @@ test.each([
   "https://example.com/accounting-tips",
   "https://example.com/docs/billing",
   "view-source:https://www.marmiton.org/x",
-  "view-source:view-source:view-source:view-source:https://mail.google.com/",
+  "about:reader?url=https%3A%2F%2Fwww.marmiton.org%2Fx",
+  "https://www.mailchimp.com/",
   "not a url",
   "",
 ])("not sensitive: %s", (url) => expect(isSensitive(url)).toBe(false));

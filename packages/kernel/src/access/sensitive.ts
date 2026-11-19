@@ -6,7 +6,7 @@ const HOSTS = [
   "mail.google.com", "outlook.live.com", "outlook.office.com", "outlook.office365.com", "mail.proton.me",
   "mail.yahoo.com", "icloud.com", "webmail.orange.fr", "messagerie.orange.fr", "webmail.sfr.fr", "imp.free.fr",
   // banks and neobanks
-  "bnpparibas.net", "mabanque.bnpparibas", "societegenerale.fr", "credit-agricole.fr", "lcl.fr",
+  "bnpparibas.net", "mabanque.bnpparibas", "societegenerale.fr", "sg.fr", "credit-agricole.fr", "lcl.fr",
   "banquepopulaire.fr", "caisse-epargne.fr", "creditmutuel.fr", "cic.fr", "labanquepostale.fr",
   "boursobank.com", "fortuneo.fr", "hellobank.fr", "qonto.com", "shine.fr", "revolut.com", "n26.com", "nickel.eu",
   // payment
@@ -36,11 +36,14 @@ export function isSensitive(url: string, depth = 0): boolean {
   } catch {
     return false;
   }
-  // these wrappers show the inner page: classify what they wrap (bounded so nesting cannot loop)
-  if (u.protocol === "view-source:" || u.protocol === "blob:") return depth < 3 && isSensitive(u.pathname, depth + 1);
+  // these wrappers show the inner page: classify what they wrap (bounded so nesting cannot loop; deeper fails closed)
+  const reader = u.protocol === "about:" && u.pathname.toLowerCase() === "reader" ? u.searchParams.get("url") : null;
+  if (u.protocol === "view-source:" || u.protocol === "blob:" || reader !== null) return depth >= 3 || isSensitive(reader ?? u.pathname, depth + 1);
   if (u.protocol === "about:") return /^(logins|preferences)$/.test(u.pathname.toLowerCase());
   const host = u.hostname.toLowerCase().replace(/\.+$/, ""); // "mail.google.com." loads the same site
   if (HOSTS.some((d) => host === d || host.endsWith("." + d))) return true;
+  // a webmail on its own host (mail.ovh.net, webmail.gandi.net)
+  if (/^(?:web)?mail\./.test(host)) return true;
   const parts = u.pathname.toLowerCase().split("/").filter(Boolean);
   // a Slack workspace (app. or <team>.), not Slack's own site or API docs
   if (host.endsWith(".slack.com") && host !== "www.slack.com" && host !== "api.slack.com") return true;
