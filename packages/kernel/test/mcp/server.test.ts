@@ -1204,6 +1204,15 @@ test("navigate to https://pub.example: navigationOutsideSite, no tab opened; to 
   expect(siteCards()).toHaveLength(1);
 });
 
+test("site app: a link read in its view counts as written (its tweaks put it there): navigate by link asks, nothing becomes free", async () => {
+  await withSite({ widgetData: true });
+  bridge.linkSequence = [[{ text: "Suite", url: "https://vidola-a.example/film/2?d=secret" }]];
+  expect(text(await client.callTool({ name: "read_tab", arguments: { id: "site:vidola", links: true } }))).toContain("Suite");
+  expect(text(await client.callTool({ name: "navigate", arguments: { id: "site:vidola", link: 0 } }))).toBe(DENIAL_TEXT);
+  expect(text(await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2?d=secret" } }))).toBe(DENIAL_TEXT);
+  expect(bridgeCalls("navigate")).toHaveLength(0);
+});
+
 test("navigate outside the site without a grant: the app's card first; refused → DENIAL_TEXT, never navigationOutsideSite (nothing learned about the domains)", async () => {
   await withSite({ widgetData: false });
   const r = await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://vidola-ancien.example/" } });

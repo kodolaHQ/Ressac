@@ -439,8 +439,9 @@ function createToolsServer(
 
   /** `view`: a search read's state line and, unless the whole text is asked, its reduced page. `full`: every link read. */
   const present = (o: TabInfo, r: TabRead, withLinks: boolean, head: string[] = [], view?: { state: string; text?: string; shown?: number; total?: number }, full = false): Result => {
-    // Every link read counts as seen, shown or not; never a local page's: the agent writes those (its demos).
-    if (!isLocal(o.url)) seen.add([o.url, ...(r.links ?? []).map((l) => l.url), ...photos(r.links)]);
+    // Every link read counts as seen, shown or not; never a local page's nor a site app's: the agent writes those (its demos,
+    // the app's tweaks).
+    if (!isLocal(o.url) && o.site === undefined) seen.add([o.url, ...(r.links ?? []).map((l) => l.url), ...photos(r.links)]);
     const ranked = withLinks ? rankLinks(r.links ?? [], o.url) : [];
     const top = full ? ranked : ranked.slice(0, LINKS_SHOWN);
     if (withLinks) {
@@ -773,8 +774,9 @@ function createToolsServer(
         // to its domains: elsewhere, nothing loads and no tab opens (the browser checks again).
         if (!(await access(o))) return text(DENIAL_TEXT);
         if (!bridge.siteUrlAllowed?.(o.site, url)) return text(navigationOutsideSite(url), true);
-        // Inside the app's domains too, an address the agent wrote can carry data there: the same card as elsewhere.
-        const refusal = link === undefined ? await composedRefusal("navigate", url, reason, extra?.signal) : null;
+        // Inside the app's domains too, an address the agent wrote can carry data there: the same card as elsewhere. A
+        // link counts as written too: the app's tweaks put it in the page, as for a local page.
+        const refusal = await composedRefusal("navigate", url, reason, extra?.signal);
         if (refusal) return text(refusal);
         if ((await working(id, () => bridge.navigate(id, url), `Va sur ${siteOf(url)}`)) === "pending") return text(PENDING_SITE_NAVIGATION);
         return text(`Appli de site ${id} → ${url}`);
