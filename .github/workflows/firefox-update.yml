@@ -1,0 +1,106 @@
+name: Firefox update
+# Each day: when Mozilla ships a newer Firefox than surfer.json's, pushes a branch firefox-<version> with the bump,
+# opens an issue, then applies our patches and builds the engine on that branch and reports in the issue.
+# No signing, no publishing: the DMG, the VM trial and the release stay on the maintainer's Mac.
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Pretend Mozilla ships this version (empty: ask Mozilla)"
+        required: false
+      build_ref:
+        description: "Only build this branch, skip the check"
+        required: false
+
+permissions: read-all
+
+concurrency:
+  group: firefox-update
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    outputs:
+      branch: ${{ steps.bump.outputs.branch }}
+      issue: ${{ steps.bump.outputs.issue }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: bump
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FIREFOX_LATEST: ${{ inputs.version }}
+          BUILD_REF: ${{ inputs.build_ref }}
+        run: |
+          if [[ -n $BUILD_REF ]]; then echo "branch=$BUILD_REF" >> "$GITHUB_OUTPUT"; exit 0; fi
+          version=$(.github/scripts/firefox-bump.sh apps/firefox/surfer.json)
+          if [[ -z $version ]]; then echo "Firefox is up to date"; exit 0; fi
+          branch=firefox-$version
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then echo "$branch already exists"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -am "chore(engine): Firefox $version"
+          git push origin "$branch"
+          url=$(gh issue create --title "Firefox $version est sortie" --body "La branche \`$branch\` monte le moteur en Firefox $version. La compilation tourne : son résultat arrive ici. Notes de Mozilla : https://www.mozilla.org/firefox/$version/releasenotes/")
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "issue=$url" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: check
+    if: needs.check.outputs.branch != ''
+    runs-on: macos-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.check.outputs.branch }}
+          persist-credentials: false
+      - name: Tools
+        run: |
+          brew install gnu-tar
+          command -v corepack || npm install -g corepack
+          corepack enable
+      # The local scripts pin the Command Line Tools SDK 26.5; the runner has Xcode's.
+      - name: SDK path
+        run: |
+          sdk="$(xcrun --show-sdk-path)"
+          sed -i '' "s|/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk|$sdk|" apps/firefox/scripts/env.sh apps/firefox/configs/macos/mozconfig
+      - name: Install
+        run: corepack pnpm install --frozen-lockfile
+      - name: Unit tests
+        run: corepack pnpm --filter firefox-ressac exec vitest run test
+      - name: Download Firefox
+        working-directory: apps/firefox
+        run: zsh scripts/env.sh ./node_modules/.bin/surfer download
+      - id: import
+        name: Import patches
+        working-directory: apps/firefox
+        run: echo N | corepack pnpm run engine:import
+      - name: Bootstrap
+        working-directory: apps/firefox
+        run: corepack pnpm run engine:bootstrap
+      - name: Build
+        working-directory: apps/firefox
+        run: echo N | corepack pnpm run build
+      - name: Report
+        if: always() && needs.check.outputs.issue != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ needs.check.outputs.issue }}
+          RESULT: ${{ job.status }}
+          IMPORT: ${{ steps.import.outcome }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ $RESULT == success ]]; then text="✅ Patchs appliqués, tests unitaires et compilation OK. Reste : suite e2e, DMG, essai VM, publication."
+          elif [[ $IMPORT == failure ]]; then text="❌ Un de nos patchs ne s'applique plus sur cette version."
+          else text="❌ Échec (tests unitaires, téléchargement ou compilation)."; fi
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "$text Détails : $RUN"
