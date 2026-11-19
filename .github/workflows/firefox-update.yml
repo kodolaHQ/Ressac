@@ -67,7 +67,6 @@ jobs:
       - name: Tools
         run: |
           brew install gnu-tar
-          command -v corepack || npm install -g corepack
           corepack enable
       # The local scripts pin the Command Line Tools SDK 26.5; the runner has Xcode's.
       - name: SDK path
