@@ -307,6 +307,15 @@ describe("agent host", { timeout: 30_000 }, () => {
       if (Date.now() > end) throw new Error("the closed window's memory was not forgotten after the stop");
       await new Promise((r) => setTimeout(r, 25));
     }
+    // A window reopened on the same id (chrome/store/windows.ts reuses the last one) keeps its new memory past the old stop.
+    await agentReady(h, "f3");
+    const stops = sessionStops(h);
+    h.rpc.notify("agent.closeWindow", { window: "f3" });
+    await h.rpc.request("agent.start", { window: "f3", size: { cols: 80, rows: 24 } });
+    h.rpc.notify("agent.write", { window: "f3", data: `${key}\r` });
+    await until(() => sessionStops(h) > stops);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await check("f3", key)).toBeNull();
   });
 
   it("a repeat demarrer with the same profile keeps the kernel and its sessions", async () => {

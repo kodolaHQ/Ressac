@@ -955,7 +955,13 @@ const rpc = createRpc({
       actives.delete(p.window);
       kernel?.outflow.forget(p.window);
       // Again once the agent is stopped: a tool call answered while it stopped would have made the window's memory anew.
-      void sessions.closeWindow(p.window).finally(() => kernel?.outflow.forget(p.window));
+      // Not if the window reopened on the same id meanwhile (chrome/store/windows.ts reuses it): that memory is the new session's.
+      void sessions
+        .closeWindow(p.window)
+        .catch((e) => console.error("[ressac] agent window close:", e))
+        .finally(() => {
+          if (!sessions.has(p.window)) kernel?.outflow.forget(p.window);
+        });
     },
     privateTabs: (p: { privateTabs: string[]; activePrivate: boolean }) => bridge.setPrivate(p),
     "policy.navigated": (p: { id: string; url: string }) => { kernel?.policy.tabNavigated(p.id, p.url); kernel?.search.tabNavigated(p.id, p.url); },
