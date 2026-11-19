@@ -31,7 +31,7 @@ export type BarNotice =
 export const INFO_NOTICE_DURATION_MS = 5000;
 
 /** The « Ouvrir l'appli ? » card: the agent-written addresses Ressac would fetch, and the key the click accepts. */
-export type SiteStartRequest = { name: string; url: string; page: string | null; hash: string };
+export type SiteStartRequest = { name: string; url: string; page: string | null; domains: string[]; hash: string };
 
 export type SiteGrantRequest = {
   name: string;

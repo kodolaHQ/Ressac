@@ -295,7 +295,7 @@ export function createSites(o: {
     await startsReady;
     const hash = siteStartKey(d);
     const starts = await readSiteStarts(o.dataDir).catch(() => null);
-    return starts?.[id] === hash ? null : { name: d.name, url: d.url, page: d.urlTracking?.page ?? null, hash };
+    return starts?.[id] === hash ? null : { name: d.name, url: d.url, page: d.urlTracking?.page ?? null, domains: [...d.domains], hash };
   }
 
   const clearMemory = (id: string) =>

@@ -227,3 +227,21 @@ export const serveWav = (wav: Buffer): SiteRoute => (req, res) => {
   res.writeHead(206, { "Content-Type": "audio/wav", "Content-Length": to - from + 1, "Content-Range": `bytes ${from}-${to}/${wav.length}`, "Accept-Ranges": "bytes" });
   res.end(wav.subarray(from, to + 1));
 };
+
+/**
+ * « Ouvrir » on the card an app's home puts up for an address other than its start (in its window's bar), once armed;
+ * nothing if no card shows within `waitMs`. True if clicked.
+ */
+export function acceptHomeCard(m: Marionette, id: string, waitMs = 3000, button = "accept-start"): Promise<boolean> {
+  return inSiteBar<boolean>(
+    m,
+    id,
+    `for (let t = 0; t < arguments[0]; t += 100) {
+       const c = doc.querySelector('[data-testid="site-home-zone"] [data-testid="site-start-card"][data-armed]');
+       if (c) { c.querySelector('[data-testid="' + arguments[1] + '"]').click(); return true; }
+       await new Promise((r) => setTimeout(r, 100));
+     }
+     return false;`,
+    [waitMs, button],
+  );
+}

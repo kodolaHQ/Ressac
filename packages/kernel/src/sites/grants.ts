@@ -119,11 +119,12 @@ export async function storeSiteGrant(profile: string, id: string, d: Declaration
 }
 
 /**
- * What the « Ouvrir l'appli ? » card commits to: the start address and the tracking reference page, both written by the
- * agent and both fetched by Ressac (a composed address would carry data to its site).
+ * What the « Ouvrir l'appli ? » card commits to: the start address, the tracking reference page and the domains (where
+ * the app and its home may go), all written by the agent (a composed address would carry data to its site).
  */
 export function siteStartKey(d: DeclarationSite): string {
-  return createHash("sha256").update(JSON.stringify([d.url, d.urlTracking?.page ?? null])).digest("hex");
+  const domains = unique(d.domains.map((x) => x.toLowerCase())).sort();
+  return createHash("sha256").update(JSON.stringify([d.url, d.urlTracking?.page ?? null, domains])).digest("hex");
 }
 
 export const siteStartsFile = (profile: string) => join(profile, "site-starts.json");

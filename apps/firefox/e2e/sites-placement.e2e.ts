@@ -86,6 +86,7 @@ afterEach(async () => expect(await missingApi(m)).toEqual([]));
 
 // One app taken through every placement, in order: each step starts where the last one left it.
 describe("site app placement", () => {
+
   it("« Dans les essentiels »: an essential in the app's container, its window closed, its tweaks applied in the tab", async () => {
     await openPage();
     await click(m, '[data-testid="site-vidola-open"]');
@@ -200,6 +201,11 @@ describe("an app essential's home", () => {
     expect(await tabUrl(tab)).toBe(url("/", "maison-a.localhost"));
     expect(await homeShown(tab)).toBe(true);
     await realClick(tab, "#ouvrir");
+    // Not the start address: the « Ouvrir l'appli ? » card over the tab's home shows it whole; nothing loads before « Ouvrir ».
+    const card = `${homeOver(tab)}?.contentDocument.querySelector('[data-testid="site-start-card"][data-armed]')`;
+    await expect.poll(() => m.execute<string | null>(`return ${card}?.querySelector('[data-testid="site-start-url"]').textContent ?? null;`), { timeout: 10_000 }).toBe(url("/serie", "maison-a.localhost"));
+    expect(await tabUrl(tab)).toBe(url("/", "maison-a.localhost"));
+    await m.execute(`${card}.querySelector('[data-testid="accept-start"]').click(); return true;`);
     await expect.poll(() => tabUrl(tab), { timeout: 15_000 }).toBe(url("/serie", "maison-a.localhost"));
     await expect.poll(() => m.execute<boolean>(`return !${homeOver(tab)};`), { timeout: 5_000 }).toBe(true);
 

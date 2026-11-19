@@ -4,7 +4,7 @@
 import type { Action, DesignState } from "../../shared/api";
 import type { FrameBounds } from "../../shared/model";
 import { DEFAULT_AURA, type AuraId } from "../../shared/aura";
-import { INFO_NOTICE_DURATION_MS, ICON_MAX, type BarNotice, type SiteWindowState, type MessageToHome } from "../../shared/sites";
+import { INFO_NOTICE_DURATION_MS, ICON_MAX, type BarNotice, type SiteWindowState, type SiteStartRequest, type MessageToHome } from "../../shared/sites";
 import type { TweakError } from "../../core/sites/injection";
 import { decisionNavigation, homeOpenUrl, openDecision, type NavigationContext } from "../../core/sites/navigation";
 import { relativeUrl, hostInSite } from "../../../../packages/kernel/src/sites/urls";
@@ -72,12 +72,16 @@ export interface SiteWindowController {
   homeGesture(): void;
   /** Watches the home's frame: any document load in it other than a page of the served copy is cancelled before it starts. */
   guardHome(frame: HTMLIFrameElement): void;
+  /** An address the home asked for that is not the accepted start: shown on the « Ouvrir l'appli ? » card over the home, or null. */
+  homeAsk(): SiteStartRequest | null;
+  /** The card's choice: « Ouvrir » loads the address it showed (`hash`), « Ne pas ouvrir » stays on the home. */
+  answerHomeAsk(yes: boolean, hash: string): void;
   /** This window's design mode: the target is the controller's app (`site`), never an id from the bar. */
   design: { state(): Promise<DesignState>; toggle(): void; review(): void; openCart(): void; onChange(cb: () => void): () => void };
 }
 
 /** What the home's frame (ui/SiteHomeFrame.svelte) asks of the chrome, in an app window or over an essential tab. */
-export type HomeChrome = Pick<SiteWindowController, "homeUrl" | "homeGesture" | "guardHome">;
+export type HomeChrome = Pick<SiteWindowController, "homeUrl" | "homeGesture" | "guardHome" | "homeAsk" | "answerHomeAsk">;
 
 /** What the home shown over an app essential's tab drives (sidebar.html?tabhome, set on its frame as `ressacOverlay.api`). */
 export interface TabHomeController extends HomeChrome, Pick<SiteWindowController, "enter" | "memory" | "onMemory" | "openFromHome" | "image"> {
@@ -127,6 +131,8 @@ interface OpenSite {
   notice: BlockedNotice;
   /** When the home last opened an address. */
   lastHomeOpen: number;
+  /** The address the home asked for, waiting on the card (homeAsk). */
+  homeAsked?: SiteStartRequest | null;
   /** The address of the last load Ressac started in the view: the address follow reads it back. */
   target: string | null;
   /** A reading of the reference page is under way (the bar's button shows it). */
@@ -150,7 +156,14 @@ const tabSites = new Map<any, TabSite>();
  * `home`: the tab wants its app's home over its page (from its creation, and at each click on its essential); shown
  * once the host's reading says the app has a home and needs no grant. `frame`: the home's frame over the page.
  */
-type TabSite = { id: string; s?: FrameSite; ready?: Promise<void>; home: boolean; frame?: HTMLIFrameElement; leaving?: ReturnType<typeof setTimeout>; lastHomeOpen: number; listeners: Set<() => void> };
+type TabSite = { id: string; s?: FrameSite; ready?: Promise<void>; home: boolean; frame?: HTMLIFrameElement; leaving?: ReturnType<typeof setTimeout>; lastHomeOpen: number; listeners: Set<() => void>; homeAsked?: SiteStartRequest | null };
+
+/**
+ * An agent-written home can compose any address on the app's domain (data in its query): only the accepted start opens
+ * at once, any other waits for « Ouvrir » on the card over the home.
+ */
+const homeAsk = (site: SiteChrome, url: string): SiteStartRequest | null =>
+  url === site.start ? null : { name: site.declaration.name, url, page: null, domains: [...site.domains], hash: `home ${url}` };
 
 /** The served home copy of each app, shared by its window and its essentials' tabs, until its files change. */
 const served = new Map<string, Promise<string | null>>();
@@ -574,6 +587,11 @@ function tabHomeController(browser: any, t: TabSite): TabHomeController {
       // Without a recent real press in this tab's home nothing opens, as in the window.
       if (!url || !tabGestures.accept(browser.browserId, t.id)) return false;
       t.lastHomeOpen = now;
+      t.homeAsked = homeAsk(s.site, url);
+      if (t.homeAsked) {
+        for (const cb of t.listeners) cb();
+        return false;
+      }
       const uri = Services.io.newURI(url);
       browser.loadURI(uri, { triggeringPrincipal: Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: siteContainer(t.id) }) });
       t.home = false;
@@ -586,6 +604,19 @@ function tabHomeController(browser: any, t: TabSite): TabHomeController {
       if (shown()) tabGestures.gesture(browser.browserId, t.id);
     },
     guardHome: (frame) => guardHome(t.id, frame),
+    homeAsk: () => (shown() ? (t.homeAsked ?? null) : null),
+    answerHomeAsk(yes, hash) {
+      const a = t.homeAsked;
+      if (!a || a.hash !== hash || !shown()) return;
+      t.homeAsked = null;
+      if (yes) {
+        t.lastHomeOpen = Date.now();
+        const uri = Services.io.newURI(a.url);
+        browser.loadURI(uri, { triggeringPrincipal: Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: siteContainer(t.id) }) });
+        t.home = false;
+        renderTab(browser, t);
+      } else for (const cb of t.listeners) cb();
+    },
   };
 }
 
@@ -643,13 +674,30 @@ function controllerOf(s: OpenSite): SiteWindowController {
       const url = homeOpenUrl(address, s.site, s.lastHomeOpen, now, !!context(s).localAddresses);
       // Without a recent real gesture nothing opens: a home that asks on load would send back to the site at each ⌂.
       if (!url || !gestures.accept(id, id) || s.viewState !== "home") return false;
+      s.lastHomeOpen = now;
+      s.homeAsked = homeAsk(s.site, url);
+      if (s.homeAsked) {
+        broadcast(s);
+        return false;
+      }
       loadInView(s, url);
       s.viewState = "site";
       broadcast(s);
-      s.lastHomeOpen = now;
       return true;
     },
     guardHome: (frame) => guardHome(id, frame),
+    homeAsk: () => (open.get(id) === s && s.viewState === "home" ? (s.homeAsked ?? null) : null),
+    answerHomeAsk(yes, hash) {
+      const a = s.homeAsked;
+      if (open.get(id) !== s || !a || a.hash !== hash || s.viewState !== "home") return;
+      s.homeAsked = null;
+      if (yes) {
+        s.lastHomeOpen = Date.now();
+        loadInView(s, a.url);
+        s.viewState = "site";
+      }
+      broadcast(s);
+    },
     image: async (url) => (open.get(id) === s && typeof url === "string" ? siteImage(s.userContextId, url, s.site.domains) : null),
     homeUrl: () => (open.get(id) === s && s.site.hasHome ? servedHome(id) : Promise.resolve(null)),
     homeGesture() {

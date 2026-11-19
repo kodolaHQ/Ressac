@@ -112,10 +112,12 @@ test("siteExtensionsHash: stable for another name, other tweaks, another reprise
   expect(siteExtensionsHash({ ...base, domains: [], login: ["vidola-a.example"] })).not.toBe(e);
 });
 
-test("start key: the start address and the reference page; the starts file: null until written, fresh only the first time", async () => {
+test("start key: the start address, the reference page and the domains; the starts file: null until written, fresh only the first time", async () => {
   const composed = { ...base, url: "https://vidola-a.example/?mails=secret" };
   expect(siteStartKey(composed)).not.toBe(siteStartKey(base));
   expect(siteStartKey({ ...base, urlTracking: { page: "https://ref.example/?x=1", pattern: "vidola" } })).not.toBe(siteStartKey(base));
+  expect(siteStartKey({ ...base, domains: [...base.domains, "evil.example"] })).not.toBe(siteStartKey(base));
+  expect(siteStartKey({ ...base, domains: ["VIDOLA-A.example"] })).toBe(siteStartKey(base));
   expect(siteStartKey({ ...base, name: "Autre", tweaks: [] })).toBe(siteStartKey(base));
   const dir = await tempFolder();
   try {

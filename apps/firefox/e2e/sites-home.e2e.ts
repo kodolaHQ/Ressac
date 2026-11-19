@@ -7,7 +7,7 @@ import { testActor } from "./agent-extensions";
 import { waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { SITE_HOME, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { SITE_HOME, acceptHomeCard, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
 // Plan 31 Task 5: the site app's home screen and its messages. The home is the test
@@ -104,10 +104,14 @@ async function homeReady(id: string): Promise<void> {
   await expect.poll(async () => ((await received(id).catch(() => null)) ?? []).length, { timeout: 15_000 }).toBeGreaterThan(0);
 }
 
-/** Sets the home's `adresse`, then a real WebDriver click on « Reprendre » in the home. */
-async function clickOpen(id: string, address: string): Promise<void> {
+/**
+ * Sets the home's `adresse`, then a real WebDriver click on « Reprendre » in the home. An address other than the start
+ * waits on the « Ouvrir l'appli ? » card over the home: with `accept` (default), « Ouvrir » once it shows (`wait` ms at most).
+ */
+async function clickOpen(id: string, address: string, o: { accept?: boolean; wait?: number } = {}): Promise<void> {
   await inHome(id, "fw.adresse = arguments[0]; return true;", [address]);
   await realClick(id, "#ouvrir");
+  if (o.accept !== false) await acceptHomeCard(m, id, o.wait ?? 3000);
 }
 
 /**
@@ -257,7 +261,7 @@ describe("site app home screen", () => {
   it("it asks for javascript:alert(1), //pub.localhost/x, https://pub.localhost/: nothing opens", async () => {
     await openHome();
     // After a real click in the home: refused all the same.
-    for (const address of ["javascript:alert(1)", "//pub.localhost/x", "https://pub.localhost/", url("/x", "pub.localhost"), "/\\pub.localhost/x", "x".repeat(2001)]) await clickOpen("vidola", address);
+    for (const address of ["javascript:alert(1)", "//pub.localhost/x", "https://pub.localhost/", url("/x", "pub.localhost"), "/\\pub.localhost/x", "x".repeat(2001)]) await clickOpen("vidola", address, { accept: false });
     await ask("vidola", { type: "open", url: "javascript:alert(1)" });
     // The same refusals through the bar's API (what the relay calls).
     const api = (a: string) => inSiteBar<boolean>(m, "vidola", "return await doc.defaultView.ressac.site.open(arguments[0]);", [a]);
@@ -269,6 +273,19 @@ describe("site app home screen", () => {
     // The refusals consumed nothing: an address of the site opens right after a click.
     await clickOpen("vidola", "/serie/the-bear?e=4");
     await expect.poll(async () => (await viewState("vidola"))?.url, { timeout: 10_000 }).toBe(url("/serie/the-bear?e=4"));
+  });
+
+  it("an address the home composed waits on the card with the whole address: « Ne pas ouvrir » requests nothing, « Ouvrir » loads it", async () => {
+    await openHome();
+    await clickOpen("vidola", "/serie/the-bear?d=secret", { accept: false });
+    await expect.poll(() => inSiteBar<string | null>(m, "vidola", `return doc.querySelector('[data-testid="site-home-zone"] [data-testid="site-start-url"]')?.textContent ?? null;`), { timeout: 10_000 }).toBe(url("/serie/the-bear?d=secret"));
+    expect(await acceptHomeCard(m, "vidola", 3000, "refuse-start")).toBe(true);
+    await sleep(1000);
+    expect(server.requests.filter((r) => r.path.includes("secret"))).toEqual([]);
+    expect(await viewState("vidola")).toEqual({ url: "", visible: false });
+    await sleep(1100);
+    await clickOpen("vidola", "/serie/the-bear?d=secret");
+    await expect.poll(async () => (await viewState("vidola"))?.url, { timeout: 10_000 }).toBe(url("/serie/the-bear?d=secret"));
   });
 
   it("at most one address opened per second from the home", async () => {

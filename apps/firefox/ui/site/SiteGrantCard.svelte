@@ -36,6 +36,10 @@
     <dl>
       <dt>{ts("chrome-start-url")}</dt>
       <dd data-testid="site-start-url"><code>{start.url}</code></dd>
+      {#if start.domains.length}
+        <dt>{ts("chrome-grant-domains")}</dt>
+        <dd data-testid="site-start-domains">{start.domains.join(", ")}</dd>
+      {/if}
       {#if start.page}
         <dt>{ts("chrome-start-page")}</dt>
         <dd data-testid="site-start-page"><code>{start.page}</code></dd>

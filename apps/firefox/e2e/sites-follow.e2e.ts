@@ -7,7 +7,7 @@ import { testActor } from "./agent-extensions";
 import { waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { SITE_HOME, grantSite, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { SITE_HOME, acceptHomeCard, grantSite, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
 // Plan 32 Task 4: the address follow.
@@ -187,6 +187,7 @@ describe("site app address follow", () => {
     await expect.poll(() => homeFrame("t59", `return home.contentDocument.getElementById("domaine").textContent;`), { timeout: 15_000 }).toBe("vidola-b.localhost");
     await homeFrame("t59", `home.contentWindow.wrappedJSObject.adresse = "/serie/the-bear?e=4"; return true;`);
     await realClickInHome("t59", "#ouvrir");
+    expect(await acceptHomeCard(m, "t59")).toBe(true);
     await viewAt("t59", b("/serie/the-bear?e=4"));
   });
 
