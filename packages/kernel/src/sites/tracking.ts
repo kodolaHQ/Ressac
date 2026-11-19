@@ -2,7 +2,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { queued, writeAtomic } from "../workflows/executions.js";
-import { removeSiteGrant } from "./grants.js";
+import { changeSiteStarts, removeSiteGrant } from "./grants.js";
 import { effectiveDomains, type UrlState } from "./urls.js";
 import { ID_SITE, type DeclarationSite } from "./schemas.js";
 
@@ -62,10 +62,11 @@ export function changeUrl(sitesFolder: string, id: string, d: DeclarationSite, f
   });
 }
 
-/** Forgets what Ressac keeps about an app: memory, address (under `<profil>/sites/<id>/`) and grant. */
+/** Forgets what Ressac keeps about an app: memory, address (under `<profil>/sites/<id>/`), grant and accepted start. */
 export async function deleteSiteData(profile: string, id: string): Promise<void> {
   checkId(id);
   const sitesFolder = join(profile, "sites");
   await queued(join(sitesFolder, id), () => rm(join(sitesFolder, id), { recursive: true, force: true }));
   await removeSiteGrant(profile, id);
+  await changeSiteStarts(profile, (s) => void delete s[id]);
 }

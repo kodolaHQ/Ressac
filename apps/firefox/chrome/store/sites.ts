@@ -457,6 +457,7 @@ function stateOf(s: OpenSite): SiteWindowState {
     search: s.searching,
     notice: s.notice.notice ?? s.hostNotice,
     grant: s.viewState === "grant" ? s.site.request : null,
+    start: s.viewState === "grant" ? s.site.startCheck : null,
     locale: shownLocale(),
   };
 }
@@ -783,8 +784,8 @@ export const sites = {
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(frame));
-    // The card first if the tweaks need their grant: the view loads nothing until it is answered (nextView).
-    const s: OpenSite = { site, aura: activeAura(), tweaks: tweaks, errors: [], userContextId, window: win, view: null, viewState: site.grantRequired ? "grant" : site.hasHome ? "home" : "site", toLoad: null, agentToLoad: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
+    // The card first if the start address or the tweaks need the user's yes: the view loads nothing until it is answered (nextView).
+    const s: OpenSite = { site, aura: activeAura(), tweaks: tweaks, errors: [], userContextId, window: win, view: null, viewState: site.grantRequired || site.startCheck ? "grant" : site.hasHome ? "home" : "site", toLoad: null, agentToLoad: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
     publishOpen();
@@ -892,13 +893,15 @@ export const sites = {
     let reloaded = false;
     // The hash is that of the rights asked (rightsHash).
     const grown = before.request.hash !== site.request.hash;
-    if (site.grantRequired && s.viewState !== "grant" && (!before.grantRequired || grown)) {
+    // New start addresses: the card comes back over the page already shown (an accepted one), which stays as it is.
+    if (site.startCheck && s.viewState !== "grant" && site.startCheck.hash !== before.startCheck?.hash) s.viewState = "grant";
+    else if (site.grantRequired && s.viewState !== "grant" && (!before.grantRequired || grown)) {
       s.viewState = "grant";
       if (s.loaded) {
         reloadView(s);
         reloaded = true;
       }
-    } else if (s.viewState === "grant" && !site.grantRequired) nextView(s);
+    } else if (s.viewState === "grant" && !site.grantRequired && !site.startCheck) nextView(s);
     else if (s.viewState === "home" && !site.hasHome) nextView(s);
     s.window.gBrowser?.updateTitlebar();
     broadcast(s);
@@ -910,7 +913,7 @@ export const sites = {
     if (!s || s.window.closed || s.viewState !== "grant") return;
     if (site) s.site = site;
     // The grant given does not cover today's declaration (site.json rewritten meanwhile): the card stays.
-    if (site?.grantRequired) return broadcast(s);
+    if (site?.grantRequired || (site ?? s.site).startCheck) return broadcast(s);
     // A page already loaded (without tweaks) is reloaded to receive them.
     const reload = site !== null && s.loaded && s.toLoad === null;
     nextView(s);

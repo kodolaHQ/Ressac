@@ -30,6 +30,9 @@ export type BarNotice =
 /** Display duration of an `info` notice in the bar, in ms. */
 export const INFO_NOTICE_DURATION_MS = 5000;
 
+/** The « Ouvrir l'appli ? » card: the agent-written addresses Ressac would fetch, and the key the click accepts. */
+export type SiteStartRequest = { name: string; url: string; page: string | null; hash: string };
+
 export type SiteGrantRequest = {
   name: string;
   domains: string[];
@@ -57,6 +60,8 @@ export type SiteWindowState = {
   search: boolean;
   notice: BarNotice | null;
   grant: SiteGrantRequest | null;
+  /** Shown before the grant card: nothing loads until the start address is accepted. */
+  start: SiteStartRequest | null;
   /** The language shown (the window has no browser state to read it from). */
   locale: string;
 };

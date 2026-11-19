@@ -1,18 +1,19 @@
 <script lang="ts">
   import { ts } from "./locale.svelte";
-  import type { SiteGrantRequest } from "../../shared/sites";
+  import type { SiteGrantRequest, SiteStartRequest } from "../../shared/sites";
 
   /**
    * The grant card for the app's tweaks, in its window: what the agent asks for (domains, sign-in, frames,
-   * resume) and what it injects. Everything comes from site.json, written by the agent: shown as text, never as HTML.
+   * resume) and what it injects. Before it, `start`: the agent-written start address, accepted or refused (the window closes).
+   * Everything comes from site.json, written by the agent: shown as text, never as HTML.
    */
-  let { grant, onGrant: giveGrant }: { grant: SiteGrantRequest; onGrant: (yes: boolean, hash: string) => Promise<void> } = $props();
+  let { grant, start, onGrant: giveGrant }: { grant: SiteGrantRequest | null; start: SiteStartRequest | null; onGrant: (yes: boolean, hash: string) => Promise<void> } = $props();
   let running = $state(false);
   // The card can replace the app under the pointer (the agent rewrote site.json): it takes a click only after ARM_MS,
   // re-armed for each new set of rights.
   const ARM_MS = 500;
   let armed = $state(false);
-  const rights = $derived(grant.hash);
+  const rights = $derived(start?.hash ?? grant?.hash);
   $effect(() => {
     void rights;
     armed = false;
@@ -24,11 +25,29 @@
     if (running || !armed) return;
     running = true;
     // The hash of the rights shown: the main process only grants those.
-    void giveGrant(yes, grant.hash).finally(() => (running = false));
+    void giveGrant(yes, rights ?? "").finally(() => (running = false));
   };
 </script>
 
 <section class="zone" data-testid="site-grant-zone">
+  {#if start}
+  <div class="card" role="dialog" aria-labelledby="site-start-title" data-testid="site-start-card" data-armed={armed || undefined}>
+    <h2 id="site-start-title">{ts("chrome-start-title", { name: start.name })}</h2>
+    <dl>
+      <dt>{ts("chrome-start-url")}</dt>
+      <dd data-testid="site-start-url"><code>{start.url}</code></dd>
+      {#if start.page}
+        <dt>{ts("chrome-start-page")}</dt>
+        <dd data-testid="site-start-page"><code>{start.page}</code></dd>
+      {/if}
+    </dl>
+    <p class="muted">{ts("chrome-start-warning")}</p>
+    <div class="buttons">
+      <button data-testid="refuse-start" disabled={running} onclick={() => choose(false)}>{ts("chrome-start-refuse")}</button>
+      <button data-testid="accept-start" class="main" disabled={running} onclick={() => choose(true)}>{ts("chrome-start-open")}</button>
+    </div>
+  </div>
+  {:else if grant}
   <div class="card" role="dialog" aria-labelledby="site-grant-title" data-testid="site-grant-card" data-armed={armed || undefined}>
     <h2 id="site-grant-title">{ts("chrome-grant-title", { name: grant.name })}</h2>
     <dl>
@@ -62,6 +81,7 @@
       <button data-testid="grant-site" class="main" disabled={running} onclick={() => choose(true)}>{ts("chrome-grant-allow")}</button>
     </div>
   </div>
+  {/if}
 </section>
 
 <style>

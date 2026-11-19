@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   grantCovers, grantNeeded, storeSiteGrant, rightsOf, siteExtensionsHash, siteReadHash, readSiteGrants, removeSiteGrant,
+  siteStartKey, readSiteStarts, changeSiteStarts,
 } from "../../src/sites/grants.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
 import { tempFolder } from "../helpers/temp.js";
@@ -109,4 +110,24 @@ test("siteExtensionsHash: stable for another name, other tweaks, another reprise
   expect(siteExtensionsHash({ ...base, domains: [...base.domains, "autre.example"] })).not.toBe(e);
   expect(siteExtensionsHash({ ...base, login: ["login.example"] })).not.toBe(e);
   expect(siteExtensionsHash({ ...base, domains: [], login: ["vidola-a.example"] })).not.toBe(e);
+});
+
+test("start key: the start address and the reference page; the starts file: null until written, fresh only the first time", async () => {
+  const composed = { ...base, url: "https://vidola-a.example/?mails=secret" };
+  expect(siteStartKey(composed)).not.toBe(siteStartKey(base));
+  expect(siteStartKey({ ...base, urlTracking: { page: "https://ref.example/?x=1", pattern: "vidola" } })).not.toBe(siteStartKey(base));
+  expect(siteStartKey({ ...base, name: "Autre", tweaks: [] })).toBe(siteStartKey(base));
+  const dir = await tempFolder();
+  try {
+    expect(await readSiteStarts(dir)).toBeNull();
+    const fresh: boolean[] = [];
+    await changeSiteStarts(dir, (s, f) => void (fresh.push(f), (s.vidola = siteStartKey(base))));
+    await changeSiteStarts(dir, (_s, f) => void fresh.push(f));
+    expect(fresh).toEqual([true, false]);
+    expect({ ...(await readSiteStarts(dir)) }).toEqual({ vidola: siteStartKey(base) });
+    await writeFile(join(dir, "site-starts.json"), "{oops");
+    expect({ ...(await readSiteStarts(dir)) }).toEqual({});
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

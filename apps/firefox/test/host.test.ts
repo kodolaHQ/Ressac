@@ -532,6 +532,8 @@ describe("agent host", { timeout: 30_000 }, () => {
       handlers: {
         listTabs: () => [...tabs, site],
         askWidgetData: () => true,
+        // The agent wrote these addresses: the « agent-address » card is asked first, even on the app's domains.
+        askAddress: () => true,
         navigate: ([, url]: [string, string]) => void navigations.push(url),
         "sites.openIds": () => ["vidola"],
       },

@@ -133,9 +133,11 @@ describe("the agent on a site app window", () => {
     expect(await tabUrls()).toEqual(tabs);
     expect(server.requests.some((r) => r.host === "pub.localhost" && r.path === "/x")).toBe(false);
 
-    // On the site: the app view goes there.
+    // On the site: an address the agent wrote asks first (« agent-address » card), then the app view goes there.
     const film = url("/film/2");
-    expect((await call("navigate", { id: "site:vidola", url: film })).error).toBe(false);
+    const going = call("navigate", { id: "site:vidola", url: film });
+    await click(m, '[data-testid="address-request"] button', { text: "Autoriser" });
+    expect((await going).error).toBe(false);
     await expect.poll(() => viewUrl(), { timeout: 10_000 }).toBe(film);
     await expect.poll(() => view("document.title")).toBe("Film 2");
     expect(await tabUrls()).toEqual(tabs);
@@ -302,6 +304,7 @@ describe("the agent on a site app window", () => {
     const navigating = call("navigate", { id: "site:vidola", url: film });
     await cardText();
     await answer(ALLOW);
+    await click(m, '[data-testid="address-request"] button', { text: "Autoriser" });
     expect((await navigating).error).toBe(false);
     await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(film);
     const hits = () => server.requests.filter((r) => r.path === "/film/2").length;

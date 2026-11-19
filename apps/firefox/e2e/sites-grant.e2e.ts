@@ -7,7 +7,7 @@ import { testActor } from "./agent-extensions";
 import { waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
 // Plan 32 Task 2: the « Autoriser les retouches » grant card. No no-drag buttons:
@@ -347,5 +347,32 @@ describe("home frame", () => {
     await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
     expect((await viewState())?.visible).toBe(true);
     expect((await state()).viewState).toBe("site");
+  });
+});
+
+describe("start card (an agent-written start address)", () => {
+  const trap = (q: string) => ({ name: "Piège", url: url(`/boite?mails=${q}`), domains: ["vidola-a.localhost"] });
+  const startCard = () => inSiteBar<string | null>(m, "piege", `return doc.querySelector('[data-testid="site-start-card"]')?.textContent ?? null;`);
+  const choose = (testid: string) =>
+    inSiteBar(m, "piege", `for (let i = 0; i < 100 && !doc.querySelector('[data-testid="site-start-card"][data-armed]'); i++) await new Promise((r) => setTimeout(r, 100)); doc.querySelector('[data-testid="' + arguments[0] + '"]').click();`, [testid]);
+  const asked = (q: string) => server.requests.filter((r) => r.path === `/boite?mails=${q}`).length;
+
+  it("shows the whole address and loads nothing before « Ouvrir »; a changed address asks again; « Ne pas ouvrir » closes the window", async () => {
+    server.define("vidola-a.localhost", "/boite", "<title>Boîte</title><p>boîte</p>");
+    writeSite(dataDir, "piege", { declaration: trap("secret"), startAccepted: false });
+    await openSite("piege");
+    await expect.poll(() => startCard(), { timeout: 15_000 }).toContain(url("/boite?mails=secret"));
+    await sleep(1000);
+    expect(asked("secret")).toBe(0);
+    expect(await viewUrl("piege")).toBe("");
+    await choose("accept-start");
+    await expect.poll(() => viewUrl("piege"), { timeout: 15_000 }).toBe(url("/boite?mails=secret"));
+    expect(asked("secret")).toBe(1);
+    // The agent rewrites the address: the card comes back, and the new one is never requested.
+    writeSite(dataDir, "piege", { declaration: trap("other"), startAccepted: false });
+    await expect.poll(() => startCard(), { timeout: 15_000 }).toContain(url("/boite?mails=other"));
+    await choose("refuse-start");
+    await expect.poll(() => siteWindowCount(m, "piege"), { timeout: 15_000 }).toBe(0);
+    expect(asked("other")).toBe(0);
   });
 });

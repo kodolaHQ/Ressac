@@ -13,6 +13,9 @@ import {
   effectiveDomains,
   rightsOf,
   siteReadHash,
+  siteStartKey,
+  readSiteStarts,
+  changeSiteStarts,
   ID_SITE,
   readSiteGrants,
   readUrlState,
@@ -32,7 +35,7 @@ import {
   readFiles,
   type ReadFiles,
 } from "../../../packages/kernel/src/index.ts";
-import { urlChanged, urlUnchanged, urlNotFound, ICON_MAX, editWithAgent, type ActionSite, type BarNotice, type SiteGrantRequest, type MessageToHome, type ShownSite } from "../shared/sites.ts";
+import { urlChanged, urlUnchanged, urlNotFound, ICON_MAX, editWithAgent, type ActionSite, type BarNotice, type SiteGrantRequest, type SiteStartRequest, type MessageToHome, type ShownSite } from "../shared/sites.ts";
 import type { FrameBounds } from "../shared/model.ts";
 import type { TweakError, MemoryResponse, OpenableSite } from "../core/sites/injection.ts";
 import { UrlTracking } from "../core/sites/tracking.ts";
@@ -42,8 +45,8 @@ import { hostSay } from "./locale.ts";
 
 // The site apps service on the host side.
 
-/** The app as the chrome gets it: what opens, its grant card, and its hash (list_tabs). */
-export type SiteChrome = OpenableSite & { request: SiteGrantRequest; hash: string };
+/** The app as the chrome gets it: what opens, its grant card, its start card (null once accepted), and its hash (list_tabs). */
+export type SiteChrome = OpenableSite & { request: SiteGrantRequest; startCheck: SiteStartRequest | null; hash: string };
 
 const uniques = (l: string[]) => [...new Set(l)];
 
@@ -275,6 +278,26 @@ export function createSites(o: {
   const granted = (id: string) => (openSites.get(id) ?? tabSites.get(id))?.grantRequired === false;
   const positions = createPositions({ memory: (id) => (granted(id) ? memory(id) : Promise.reject(new Error("pas d'accord"))), granted: granted });
 
+  /**
+   * Before the start card existed every app opened without it: at the first run, the apps already there count as accepted
+   * (site apps are all agent-written, so this trusts what the user already had). Later apps get the card.
+   */
+  const startsReady = (async () => {
+    if ((await readSiteStarts(o.dataDir)) !== null) return;
+    const existing = await readSites(o.paths, reading);
+    await changeSiteStarts(o.dataDir, (starts, fresh) => {
+      if (fresh) for (const s of existing) if (!("error" in s) && ID_SITE.test(s.id)) starts[s.id] = siteStartKey(s.declaration);
+    });
+  })().catch((e) => console.error("[sites] accepted starts not migrated:", e));
+
+  /** The start card, or null when the user accepted these addresses (an unreadable file asks again). */
+  async function startCheck(id: string, d: DeclarationSite): Promise<SiteStartRequest | null> {
+    await startsReady;
+    const hash = siteStartKey(d);
+    const starts = await readSiteStarts(o.dataDir).catch(() => null);
+    return starts?.[id] === hash ? null : { name: d.name, url: d.url, page: d.urlTracking?.page ?? null, hash };
+  }
+
   const clearMemory = (id: string) =>
     memories
       .get(id)
@@ -299,6 +322,8 @@ export function createSites(o: {
     if (!still()) return null;
     const files = await tweakFiles(parsed);
     if (!still()) return null;
+    const start = await startCheck(id, d);
+    if (!still()) return null;
     const site: OpenableSite = {
       id,
       declaration: d,
@@ -307,7 +332,7 @@ export function createSites(o: {
       start: startUrl(d, state),
       grantRequired: grantNeeded(d) && !grantCovers(grant, d, effectiveDomains(d, state)),
     };
-    return { site: { ...site, request: grantRequest(site), hash: siteReadHash(d) }, tweaks: files };
+    return { site: { ...site, request: grantRequest(site), startCheck: start, hash: siteReadHash(d) }, tweaks: files };
   }
 
   async function grantOf(id: string): Promise<SiteRights | null> {
@@ -334,7 +359,8 @@ export function createSites(o: {
   async function searchUrl(id: string, url: string | null): Promise<void> {
     const s = opened.has(id) ? openSites.get(id) : undefined;
     const d = s?.declaration;
-    if (!s || !d?.urlTracking || deletions.has(id)) return;
+    // The reference page is the agent's writing too: never read before the user accepted it on the start card.
+    if (!s || !d?.urlTracking || s.startCheck || deletions.has(id)) return;
     // A reading is already under way: the follow answers « trop-tot » without doubling it.
     const running = searches.has(id);
     const control = new AbortController();
@@ -590,6 +616,20 @@ export function createSites(o: {
     if (!subscriptions.has(id)) subscriptions.set(id, m.onChange(() => void memoryMessage(id, m).then((msg) => o.notifyMemory(id, msg), () => {})));
   };
 
+  /** « Ouvrir » / « Ne pas ouvrir » on the start card: only the addresses the clicked card showed are accepted. */
+  async function acceptStart(id: string, yes: boolean, hash: string, shown: SiteStartRequest): Promise<void> {
+    if (!yes) return o.chrome.close(id);
+    if (shown.hash !== hash) return o.chrome.rebroadcast(id);
+    reviews.set(id, (reviews.get(id) ?? 0) + 1);
+    await changeSiteStarts(o.dataDir, (starts) => void (starts[id] = hash));
+    const s = openSites.get(id);
+    if (!s || deletions.has(id)) return;
+    const after = s.startCheck?.hash === hash ? { ...s, startCheck: null } : s;
+    openSites.set(id, after);
+    await o.chrome.afterGrant(id, after);
+    void reread(id);
+  }
+
   const list = async () => (await lines()).map(({ hash: _, ...l }) => l);
 
   function forget(id: string): void {
@@ -700,6 +740,7 @@ export function createSites(o: {
       // Taken before any wait: site.json may grow between the card and the click.
       const shown = openSites.get(id);
       if (!shown || deletions.has(id) || (await o.chrome.view(id)) !== "grant") return;
+      if (shown.startCheck) return acceptStart(id, yes, hash, shown.startCheck);
       if (!yes) return o.chrome.afterGrant(id, null);
       // Granted only if its rights are the clicked card's (the agent picks its moment).
       const d = shown.declaration;

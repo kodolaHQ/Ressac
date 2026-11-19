@@ -1,8 +1,8 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import { storeSiteGrant, DeclarationSite } from "../../../packages/kernel/src/index";
+import { storeSiteGrant, siteStartKey, siteStartsFile, DeclarationSite } from "../../../packages/kernel/src/index";
 import type { Marionette } from "./marionette";
 
 // Site app helpers.
@@ -81,8 +81,11 @@ export interface SiteTest {
   files?: Record<string, string | Buffer>;
 }
 
-/** Writes a site app into `<dataDir>/workspace/sites/<id>/` (what the agent would write there). */
-export function writeSite(dataDir: string, id: string, s: SiteTest): void {
+/**
+ * Writes a site app into `<dataDir>/workspace/sites/<id>/` (what the agent would write there). Its start address counts as
+ * accepted on the « Ouvrir l'appli ? » card (`site-starts.json`), unless `startAccepted` is false or site.json is not valid.
+ */
+export function writeSite(dataDir: string, id: string, s: SiteTest & { startAccepted?: boolean }): void {
   const folder = path.join(dataDir, "workspace", "sites", id);
   mkdirSync(folder, { recursive: true });
   writeFileSync(path.join(folder, "site.json"), typeof s.declaration === "string" ? s.declaration : JSON.stringify(s.declaration));
@@ -90,6 +93,13 @@ export function writeSite(dataDir: string, id: string, s: SiteTest): void {
     mkdirSync(path.join(folder, relPath, ".."), { recursive: true });
     writeFileSync(path.join(folder, relPath), content);
   }
+  const d = typeof s.declaration === "object" ? DeclarationSite.safeParse(s.declaration) : null;
+  if (s.startAccepted === false || !d?.success) return;
+  let starts: Record<string, string> = {};
+  try {
+    starts = JSON.parse(readFileSync(siteStartsFile(dataDir), "utf8"));
+  } catch {}
+  writeFileSync(siteStartsFile(dataDir), JSON.stringify({ ...starts, [id]: siteStartKey(d.data) }));
 }
 
 /** « Autoriser » done ahead (`<dataDir>/site-grants.json`), by the kernel's own grantSite: the app opens granted. */

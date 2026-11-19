@@ -128,6 +128,40 @@ function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLink
     keep: (p: Promise<void> | null) => (kept = p), setErrors: (e: typeof chromeErrors) => (chromeErrors = e) };
 }
 
+describe("start card", () => {
+  const composed = { ...declaration, url: "https://vidola-a.example/?mails=secret" };
+
+  it("apps there before the first run are accepted; one the agent writes later opens on the card, and nothing is read for it", async () => {
+    const readLinks = vi.fn(async () => []);
+    const m = mount(undefined, readLinks);
+    await m.sites.openById("vidola");
+    expect(m.sites.openSites.get("vidola")!.startCheck).toBeNull();
+    m.write("piege", JSON.stringify({ ...composed, urlTracking: { page: "https://adresses.example/?mails=secret", pattern: "vidola" } }));
+    await m.sites.openById("piege");
+    expect(m.sites.openSites.get("piege")!.startCheck).toMatchObject({ name: "Vidola", url: composed.url, page: "https://adresses.example/?mails=secret" });
+    await m.sites.lookupAddress("piege", null);
+    expect(readLinks).not.toHaveBeenCalled();
+  });
+
+  it("« Ouvrir » with the card's hash accepts that address only; another address asks again; « Ne pas ouvrir » closes", async () => {
+    const m = mount();
+    await m.sites.openById("vidola");
+    m.write("piege", JSON.stringify(composed));
+    await m.sites.openById("piege");
+    m.setView("grant");
+    const start = m.sites.openSites.get("piege")!.startCheck!;
+    await m.sites.grant("piege", true, "0".repeat(64));
+    expect(m.calls.rebroadcast).toEqual(["piege"]);
+    await m.sites.grant("piege", true, start.hash);
+    expect(m.calls.after).toEqual([["piege", expect.objectContaining({ startCheck: null })]]);
+    m.write("piege", JSON.stringify({ ...composed, url: "https://vidola-a.example/?mails=other" }));
+    await m.sites.openById("piege");
+    expect(m.sites.openSites.get("piege")!.startCheck?.url).toBe("https://vidola-a.example/?mails=other");
+    await m.sites.grant("piege", false, "");
+    expect(m.log).toContain("fermer piege");
+  });
+});
+
 describe("lookupAddress", () => {
   const NOTICE_CHANGED = "Vidola a changé d'adresse : vidola-b.example. Il faudra peut-être te reconnecter.";
 

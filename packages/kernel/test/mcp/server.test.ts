@@ -1192,6 +1192,10 @@ test("navigate to https://pub.example: navigationOutsideSite, no tab opened; to 
   expect(bridgeCalls("openTab")).toHaveLength(0);
   // The app's grant first (one card), then the address.
   expect(siteCards()).toHaveLength(1);
+  // An address the agent wrote, even on the app's domains, needs the user's yes (no address card here: refused).
+  expect(text(await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2?mails=x" } }))).toBe(DENIAL_TEXT);
+  expect(bridgeCalls("navigate")).toHaveLength(0);
+  policy.grantAddress("https://vidola-a.example/film/2");
   const inside = await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
   expect(inside.isError).toBeFalsy();
   expect(bridgeCalls("navigate").map((a) => a.args)).toEqual([["site:vidola", "https://vidola-a.example/film/2"]]);
@@ -1212,6 +1216,7 @@ test("navigate outside the site without a grant: the app's card first; refused �
 
 test("navigate during the tweaks card: PENDING_SITE_NAVIGATION, never « fait »", async () => {
   await withSite({ widgetData: true, waiting: ["vidola"] });
+  policy.grantAddress("https://vidola-a.example/film/2");
   const r = await client.callTool({ name: "navigate", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
   expect(text(r)).toBe(PENDING_SITE_NAVIGATION);
   expect(text(r)).not.toContain("→");

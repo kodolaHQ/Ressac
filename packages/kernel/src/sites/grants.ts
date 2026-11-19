@@ -118,6 +118,46 @@ export async function storeSiteGrant(profile: string, id: string, d: Declaration
   });
 }
 
+/**
+ * What the « Ouvrir l'appli ? » card commits to: the start address and the tracking reference page, both written by the
+ * agent and both fetched by Ressac (a composed address would carry data to its site).
+ */
+export function siteStartKey(d: DeclarationSite): string {
+  return createHash("sha256").update(JSON.stringify([d.url, d.urlTracking?.page ?? null])).digest("hex");
+}
+
+export const siteStartsFile = (profile: string) => join(profile, "site-starts.json");
+
+/** The accepted start keys by app id; null when the file was never written (an install from before the card). */
+async function readStarts(profile: string, strict: boolean): Promise<Record<string, string> | null> {
+  const starts: Record<string, string> = Object.create(null);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(siteStartsFile(profile), "utf8"));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    // damaged: nothing accepted (the card comes back); any other failure makes a write fail
+    if (strict && !(e instanceof SyntaxError)) throw e;
+    return starts;
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw))
+    for (const [id, key] of Object.entries(raw)) if (ID_SITE.test(id) && typeof key === "string") starts[id] = key;
+  return starts;
+}
+
+export const readSiteStarts = (profile: string): Promise<Record<string, string> | null> => readStarts(profile, false);
+
+/** One write at a time; `fresh`: the file did not exist yet. */
+export function changeSiteStarts(profile: string, change: (starts: Record<string, string>, fresh: boolean) => void): Promise<void> {
+  const key = siteStartsFile(profile);
+  return queued(key, async () => {
+    const starts = await readStarts(profile, true);
+    const next = starts ?? Object.create(null);
+    change(next, starts === null);
+    await writeAtomic(key, JSON.stringify({ ...next }, null, 2));
+  });
+}
+
 export async function removeSiteGrant(profile: string, id: string): Promise<void> {
   checkId(id);
   return modify(profile, (grants) => {

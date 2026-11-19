@@ -28,8 +28,8 @@
   <!-- Under the bar: the site's view (set by the main process) in « site » view, home otherwise. -->
   {#if appState.viewState === "home"}
     <HomeFrame {api} controller={window.parent.ressacSiteWindow!} />
-  {:else if appState.viewState === "grant" && appState.grant}
-    <SiteGrantCard grant={appState.grant} onGrant={(yes, hash) => api.grant(yes, hash)} />
+  {:else if appState.viewState === "grant" && (appState.start || appState.grant)}
+    <SiteGrantCard grant={appState.grant} start={appState.start} onGrant={(yes, hash) => api.grant(yes, hash)} />
   {/if}
 {/if}
 

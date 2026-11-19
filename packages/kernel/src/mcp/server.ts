@@ -773,6 +773,9 @@ function createToolsServer(
         // to its domains: elsewhere, nothing loads and no tab opens (the browser checks again).
         if (!(await access(o))) return text(DENIAL_TEXT);
         if (!bridge.siteUrlAllowed?.(o.site, url)) return text(navigationOutsideSite(url), true);
+        // Inside the app's domains too, an address the agent wrote can carry data there: the same card as elsewhere.
+        const refusal = link === undefined ? await composedRefusal("navigate", url, reason, extra?.signal) : null;
+        if (refusal) return text(refusal);
         if ((await working(id, () => bridge.navigate(id, url), `Va sur ${siteOf(url)}`)) === "pending") return text(PENDING_SITE_NAVIGATION);
         return text(`Appli de site ${id} → ${url}`);
       }
