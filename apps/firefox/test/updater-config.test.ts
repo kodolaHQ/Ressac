@@ -16,13 +16,14 @@ describe("updater configuration", () => {
     expect(read("src/build/moz-build.patch")).toContain('+    appini_defines["MOZ_APPUPDATE_HOST"] = "updates.getressac.app"');
   });
 
-  it("both MAR certificates are ours", () => {
+  it("both MAR certificates are ours: the main key and its offline backup (scripts/mar-key-backup.sh), two different keys", () => {
     const d1 = join(certs, "dep1.der");
     const d2 = join(certs, "dep2.der");
     expect(existsSync(d1) && existsSync(d2)).toBe(true);
-    expect(readFileSync(d1).equals(readFileSync(d2))).toBe(true);
-    const subject = execFileSync("openssl", ["x509", "-inform", "DER", "-noout", "-subject", "-in", d1], { encoding: "utf8" });
-    expect(subject).toMatch(/CN ?= ?Ressac MAR/);
+    expect(readFileSync(d1).equals(readFileSync(d2))).toBe(false);
+    const subject = (f: string) => execFileSync("openssl", ["x509", "-inform", "DER", "-noout", "-subject", "-in", f], { encoding: "utf8" });
+    expect(subject(d1)).toMatch(/CN ?= ?Ressac MAR$/m);
+    expect(subject(d2)).toMatch(/CN ?= ?Ressac MAR backup$/m);
   });
 
   it("update prefs", () => {

@@ -97,7 +97,7 @@ describe("package.sh update archive", () => {
     const verify = at("codesign --verify --deep --strict $app");
     const full = at("make_full_update.sh");
     const sign = at("-n ressac-mar -s");
-    const check = at("signmar -D $app_dir/src/toolkit/mozapps/update/updater/dep1.der -v $mar");
+    const check = at("signmar -D $certs/dep1.der -v $mar");
     const xml = at("scripts/update-xml.mjs");
     expect(verify).toBeLessThan(full);
     expect(full).toBeLessThan(sign);
