@@ -123,7 +123,9 @@ test("a 100 KB text stays fast", () => {
 
 test("mask", () => {
   expect(mask("FR7630006000011234567890189")).toBe("FR76••••0189");
-  expect(mask("abc123xyz")).toBe("ab••••");
+  expect(mask("abc123xyz")).toBe("ab••••yz");
+  expect(mask("0612345678")).toBe("06••••78");
+  expect(mask("abc")).toBe("••••");
 });
 
 test("card next to other digits: expiry, CVV, a number before it", () => {
@@ -211,4 +213,34 @@ test("a readable slug is not a random secret, a secret padded into one still is"
 test("a separator in a random string does not shorten it", () => {
   expect(kinds("Zx8Kq2LmN9p-Rs4TuVw6YzA8")).toEqual(["random"]);
   expect(kinds("Zx8Kq2LmN9p_Rs4TuVw6YzA8")).toEqual(["random"]);
+});
+
+test("256 KB of Google Docs host names stays fast", () => {
+  const text = "docs.google.com/".repeat(16_384);
+  const start = performance.now();
+  findSecrets(text);
+  expect(performance.now() - start).toBeLessThan(100);
+});
+
+test("numbers spaced as French pages print them are still found", () => {
+  const card = luhn("497010123456789");
+  const groups = card.match(/\d{4}/g)!;
+  for (const sep of [" ", " ", "  ", "/", "_", ","])
+    expect(findSecrets(`carte ${groups.join(sep)}`), JSON.stringify(sep)).toEqual([{ kind: "card", value: card }]);
+  const valid = "FR7630006000011234567890189";
+  for (const sep of [".", "-", " ", " "])
+    expect(findSecrets(`FR76${sep}3000${sep}6000${sep}0112${sep}3456${sep}7890${sep}189`), JSON.stringify(sep)).toEqual([{ kind: "iban", value: valid }]);
+  const body = "1850578006084";
+  const key = nirKey(body);
+  expect(findSecrets(`nir 1 85 05 78 006 084 ${key}`)).toEqual([{ kind: "nir", value: body + key }]);
+  // Full-width digits read as their ASCII form.
+  const wide = card.replace(/\d/g, (d) => String.fromCharCode(0xff10 + Number(d)));
+  expect(findSecrets(`carte ${wide}`)).toEqual([{ kind: "card", value: card }]);
+});
+
+test("mask shows at most half of a value", () => {
+  for (const v of ["0612345678", "FR7630006000011234567890189", "abc123xyz", "ab", "4970101234567893"]) {
+    const shown = mask(v).replace(/•/g, "").length;
+    expect(shown, v).toBeLessThanOrEqual(Math.floor(v.length / 2));
+  }
 });

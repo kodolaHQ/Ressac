@@ -372,3 +372,32 @@ test("an all-caps code in groups is an identifier, not a slug of words", () => {
   o.read("w", "Code de récupération : XKQZPWRT-7M2RLD-PLMWQZVB", "mail.google.com");
   expect(o.check("w", "code XKQZPWRT 7M2RLD")).toMatchObject({ kind: "token" });
 });
+
+test("a long typed text and a long query keep check fast", () => {
+  const o = new Outflow();
+  o.read("w", "réf A1b2C3d4E5f6G7h8", "page");
+  o.typed("w", Array.from({ length: 8000 }, (_, i) => `m${i}`).join(" ").slice(0, 64 * 1024) + "\r");
+  const query = Array.from({ length: 4000 }, (_, i) => `q${i}`).join(" ").slice(0, 20_000);
+  o.check("w", query);
+  const start = performance.now();
+  expect(o.check("w", query)).toBeUndefined();
+  expect(performance.now() - start).toBeLessThan(150);
+});
+
+test("a number read with no-break spaces or full-width digits comes back", () => {
+  const o = new Outflow();
+  o.read("w", "Tél. 06 12 34 56 78", "mail.google.com");
+  expect(o.check("w", "0612345678")).toMatchObject({ kind: "phone", source: "mail.google.com" });
+  const wide = "０６１２３４５６７８";
+  expect(o.check("w", `appel ${wide}`)).toMatchObject({ source: "mail.google.com" });
+});
+
+test("forgetTyped clears what was typed, not what was read", () => {
+  const o = new Outflow();
+  o.read("w", "camille.roussel@example.com", "mail.google.com");
+  o.typed("w", "écris à camille.roussel@example.com\r");
+  expect(o.check("w", "camille.roussel@example.com")).toBeUndefined();
+  o.forgetTyped("w");
+  expect(o.check("w", "camille.roussel@example.com")).toMatchObject({ kind: "email" });
+  expect(o.lastMessage("w")).toBeUndefined();
+});

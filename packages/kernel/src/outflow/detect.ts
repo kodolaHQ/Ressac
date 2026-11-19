@@ -8,8 +8,9 @@ export interface Secret {
 const VARIANTS_MAX = 32;
 // Each decoding yields two variants (lowercased, without separators).
 const DECODINGS_MAX = VARIANTS_MAX / 2;
-// Separators people type inside long numbers; `+` is a space in a query string.
-const SEP = "[ .+-]?";
+// Separators people type inside long numbers, French pages' `/` `_` `,` included; `+` is a space in a query string.
+const SEPS = "[ .+/_,-]";
+const SEP = `${SEPS}?`;
 
 const API_KEY =
   /\b(?:(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{22,}|xox[abprs]-[A-Za-z0-9-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|sk-[A-Za-z0-9_-]{20,})/g;
@@ -17,26 +18,32 @@ const API_KEY =
 const PRIVATE_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----/g;
 const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
 // Digit groups joined by one separator each, e.g. "4970 1012 3456 7893 03".
-const DIGIT_CHAIN = /\d+(?:[ .+-]\d+)*/g;
+const DIGIT_CHAIN = new RegExp(`\\d+(?:${SEPS}\\d+)*`, "g");
 // Groupings cards are printed in; a single contiguous group is also accepted.
 const CARD_SHAPES = ["4,6,4", "4,6,5", "4,4,4,4", "4,4,4,4,3"];
 // No trailing boundary: a BIC, city or year often follows, so the country's length cuts the candidate.
-const IBAN = /(?<![0-9A-Za-z])[A-Z]{2}\d{2}(?:[ +]?[A-Z0-9]){11,30}/gi;
-// prettier-ignore
-const IBAN_LENGTHS: Record<string, number> = {
-  AD: 24, AT: 20, BE: 16, BG: 22, CH: 21, CY: 28, CZ: 24, DE: 22, DK: 18, EE: 20, ES: 24, FI: 18, FR: 27, GB: 22,
-  GI: 23, GR: 27, HR: 21, HU: 28, IE: 22, IS: 26, IT: 27, LI: 21, LT: 20, LU: 20, LV: 21, MC: 27, MT: 31, NL: 18,
-  NO: 15, PL: 28, PT: 25, RO: 24, SE: 24, SI: 19, SK: 24, SM: 27, VA: 22,
-};
+const IBAN = new RegExp(`(?<![0-9A-Za-z])[A-Z]{2}\\d{2}(?:${SEP}[A-Z0-9]){11,30}`, "gi");
+// IBAN length per country, built from a string so country codes are not identifiers.
+const IBAN_LENGTHS = new Map(
+  (
+    "AD24 AT20 BE16 BG22 CH21 CY28 CZ24 DE22 DK18 EE20 ES24 FI18 FR27 GB22 GI23 GR27 HR21 HU28 IE22 IS26 IT27 LI21 " +
+    "LT20 LU20 LV21 MC27 MT31 NL18 NO15 PL28 PT25 RO24 SE24 SI19 SK24 SM27 VA22"
+  )
+    .split(" ")
+    .map((e) => [e.slice(0, 2), Number(e.slice(2))] as const),
+);
 const NIR = new RegExp(
   `(?<![0-9A-Za-z])[12]${SEP}\\d{2}${SEP}\\d{2}${SEP}(?:\\d{2}|2[AB])${SEP}\\d{3}${SEP}\\d{3}${SEP}\\d{2}(?![0-9A-Za-z])`,
   "gi",
 );
 const TOKEN = /[A-Za-z0-9_-]{24,}/g;
 // Google document ids are long and random-looking but name a document, not a credential.
-const GOOGLE_DOC_ID = /\b(?:docs|drive)\.google\.com\/(?:[^\s/?#]+\/)*d\/[A-Za-z0-9_-]+/g;
+// Path depth bounded: an unbounded `(?:…\/)*` is quadratic on a long run of host names.
+const GOOGLE_DOC_ID = /\b(?:docs|drive)\.google\.com\/(?:[^\s/?#]+\/){0,4}d\/[A-Za-z0-9_-]+/g;
 
-const compact = (s: string) => s.replace(/[ .+-]/g, "");
+const compact = (s: string) => s.replace(new RegExp(SEPS, "g"), "");
+/** Compatibility forms folded (full-width digits, no-break spaces) and runs of spaces made one, so a number reads one way. */
+export const plain = (s: string) => s.normalize("NFKC").replace(/[^\S\r\n]+/g, " ");
 
 const mod97 = (digits: string) => [...digits].reduce((r, d) => (r * 10 + Number(d)) % 97, 0);
 
@@ -63,8 +70,8 @@ function issued(d: string): boolean {
 function cards(text: string): string[] {
   const found: string[] = [];
   for (const [chain] of text.matchAll(DIGIT_CHAIN)) {
-    const groups = chain.split(/[ .+-]/);
-    const seps = chain.match(/[ .+-]/g) ?? [];
+    const groups = chain.split(new RegExp(SEPS));
+    const seps = chain.match(new RegExp(SEPS, "g")) ?? [];
     for (let i = 0; i < groups.length; ) {
       let taken = 0;
       for (let n = 1; n <= 5 && i + n <= groups.length && !taken; n++) {
@@ -87,8 +94,8 @@ function ibans(text: string): string[] {
   const re = new RegExp(IBAN);
   for (let m; (m = re.exec(text)); re.lastIndex = m.index + 1) {
     const candidate = compact(m[0]).toUpperCase();
-    const iban = candidate.slice(0, IBAN_LENGTHS[candidate.slice(0, 2)] ?? 0);
-    if (iban.length === IBAN_LENGTHS[iban.slice(0, 2)] && ibanValid(iban)) found.push(iban);
+    const iban = candidate.slice(0, IBAN_LENGTHS.get(candidate.slice(0, 2)) ?? 0);
+    if (iban.length === IBAN_LENGTHS.get(iban.slice(0, 2)) && ibanValid(iban)) found.push(iban);
   }
   return found;
 }
@@ -203,7 +210,7 @@ function random(text: string): string[] {
 
 /** Secrets in `text` or in any of its decodings, each kind + value once. */
 export function findSecrets(text: string): Secret[] {
-  const all = decodings(text);
+  const all = [...new Set(decodings(text).map(plain))];
   const found = all.flatMap(specific);
   for (const token of all.flatMap(random))
     if (!found.some((s) => s.value.includes(token))) found.push({ kind: "random", value: token });
@@ -211,6 +218,8 @@ export function findSecrets(text: string): Secret[] {
   return found.filter((s) => !seen.has(`${s.kind}\n${s.value}`) && !!seen.add(`${s.kind}\n${s.value}`));
 }
 
+/** At most half of `value` shown: a quarter at each end, at most 4 characters each. */
 export function mask(value: string): string {
-  return value.length < 10 ? `${value.slice(0, 2)}••••` : `${value.slice(0, 4)}••••${value.slice(-4)}`;
+  const n = Math.min(4, Math.floor(value.length / 4));
+  return n ? `${value.slice(0, n)}••••${value.slice(-n)}` : "••••";
 }

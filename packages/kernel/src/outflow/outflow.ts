@@ -1,4 +1,4 @@
-import { findSecrets, mask, opaque, variants, type SecretKind } from "./detect.js";
+import { findSecrets, mask, opaque, plain, variants, type SecretKind } from "./detect.js";
 
 export interface OutflowHit {
   kind: SecretKind | "email" | "phone" | "digits" | "token";
@@ -103,12 +103,13 @@ function sameAddress(raw: string): string | undefined {
 }
 
 /** Lowercase letters and digits only (plus `@`, which splits an e-mail): any separator can re-space a number. */
-const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}@]/gu, "");
+const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}@]/gu, "");
 /** Like `norm` but keeps `/`, to tell a match inside a path segment from one glued across segments. */
-const softNorm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}@/]/gu, "");
+const softNorm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}@/]/gu, "");
 
 /** Distinctive items in `text`, each normalised form once: secrets first, then the others in text order. */
-function extract(text: string): Omit<Item, "source">[] {
+function extract(raw: string): Omit<Item, "source">[] {
+  const text = plain(raw);
   const others: { at: number; kind: Item["kind"]; value: string }[] = [];
   for (const m of text.matchAll(EMAIL)) others.push({ at: m.index, kind: "email", value: m[0] });
   for (const m of text.matchAll(PHONE)) others.push({ at: m.index, kind: "phone", value: m[0].replace(/\D/g, "") });
@@ -321,8 +322,9 @@ export class Outflow {
     const hit = (item: Item): OutflowHit => ({ kind: item.kind, masked: mask(item.value), source: item.source });
     // A piece the user typed is theirs to send, even if a read item contains it.
     const found = (p: string, keep: (item: Item) => boolean = () => true) => {
-      if (typedNow.includes(p)) return undefined;
       const at = w.shingles.get(p);
+      // The index first: scanning the typed text for every piece of a long query is quadratic.
+      if (!at || typedNow.includes(p)) return undefined;
       for (const item of at instanceof Set ? at : at ? [at] : []) if (keep(item) && !typed(item.norm)) return item;
     };
     const sizes = new Set([DIGIT_CHUNK, TEXT_CHUNK, ...w.shortLengths.keys()]);
@@ -345,6 +347,16 @@ export class Outflow {
       }
     }
     return undefined;
+  }
+
+  /** A new conversation in the window: what the user typed before is no longer theirs to send; what was read stays. */
+  forgetTyped(win: string): void {
+    const w = this.wins.get(win);
+    if (!w) return;
+    w.typedItems.clear();
+    w.typedText = w.buffer = w.carry = "";
+    delete w.last;
+    w.paste = false;
   }
 
   forget(win: string): void {
