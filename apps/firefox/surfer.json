@@ -5,7 +5,7 @@
   "binaryName": "ressac",
   "version": {
     "product": "firefox",
-    "version": "160.0"
+    "version": "160.0.1"
   },
   "buildOptions": {
     "generateBranding": true
@@ -18,7 +18,7 @@
       "brandShortName": "Ressac",
       "brandFullName": "Ressac",
       "release": {
-        "displayVersion": "0.1.6"
+        "displayVersion": "0.1.18"
       }
     }
   },
