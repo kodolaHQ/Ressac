@@ -666,7 +666,7 @@ function createToolsServer(
 
   /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks). */
   function danger(url: string): { danger?: string } {
-    const hit = outflow?.check(key, url);
+    const hit = outflow?.check(key, url, true);
     return hit ? { danger: OUTFLOW_DANGER(hit) } : {};
   }
 

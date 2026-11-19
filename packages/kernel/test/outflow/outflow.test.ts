@@ -325,3 +325,20 @@ test("a slug read in a tab's address is not an identifier, a code glued to a wor
   o.read("w", "Votre dossier : order-AB12CD34EF", "mail.google.com");
   expect(o.check("w", "suivi commande AB12CD34EF")).toMatchObject({ kind: "token", source: "mail.google.com" });
 });
+
+test("an address read whole in a private source is a followed link, not a leak; rule 1 and queries are unchanged", () => {
+  const o = new Outflow();
+  const article = "https://www.lemonde.fr/economie/article/2026/11/09/pompes-a-chaleur_6398712_3234.html";
+  o.read("w", `Pompes à chaleur · ${article} · 2026-11-12 · 2 visites\nVoir (https://Shop.Example/Commande/48213977/).`, "ton historique");
+  expect(o.check("w", article, true)).toBeUndefined();
+  // Same address up to host case, a trailing slash, percent-encoding and the text's punctuation.
+  expect(o.check("w", "https://shop.example/Commande/48213977", true)).toBeUndefined();
+  expect(o.check("w", "https://www.lemonde.fr/economie/article/2026/11/09/pompes-%61-chaleur_6398712_3234.html", true)).toBeUndefined();
+  // Anything else carrying the number is still a hit: another address, an added parameter, a search query.
+  expect(o.check("w", "https://x.example/?id=6398712", true)).toMatchObject({ kind: "digits", source: "ton historique" });
+  expect(o.check("w", `${article}?ref=48213977`, true)).toMatchObject({ kind: "digits" });
+  expect(o.check("w", article)).toMatchObject({ kind: "digits" });
+  // A secret in a read address still shows on the card.
+  o.read("w", "https://x.example/cb?key=sk_live_51NxQk2LmN8pRs4TuVw6YzA8b", "mail.google.com");
+  expect(o.check("w", "https://x.example/cb?key=sk_live_51NxQk2LmN8pRs4TuVw6YzA8b", true)).toMatchObject({ kind: "api-key" });
+});

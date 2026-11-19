@@ -40,6 +40,8 @@ interface Win {
   pieces: number;
   /** Lengths of the short items indexed whole, with their count. */
   shortLengths: Map<number, number>;
+  /** Whole addresses seen in reads, normalised, oldest first: opening one is following a link, not composing. */
+  urls: Set<string>;
   typedItems: Set<string>;
   /** Normalised submitted messages, newest last. */
   typedText: string;
@@ -65,6 +67,9 @@ const READ_KIND_PIECES_MAX = PIECES_MAX / 10;
 const TYPED_ITEMS_MAX = 5000;
 const TYPED_MAX = 64 * 1024;
 const CARRY_MAX = 4096;
+// Addresses over 500 characters are refused by the tools, so they are not kept: 5 000 stay under 5 MB.
+const URLS_MAX = 5000;
+const URL_LENGTH_MAX = 500;
 const DIGIT_CHUNK = 6;
 const TEXT_CHUNK = 8;
 
@@ -79,6 +84,23 @@ const DATE = new RegExp(`^(?:${Y}${S}?${M}${S}?${D}|${D}${S}${M}${S}${Y})$`);
 // A date (or year-month) at the start of a run, as in "2024-11-19 12:30", is cut off and the rest judged alone.
 const DATE_PREFIX = new RegExp(`^(?:${Y}${S}${M}(?:${S}${D})?|${D}${S}${M}${S}${Y})(?=${S}|$)`);
 const GLUED_DATE = new RegExp(`^(?:${Y}${M}${D}|${D}${M}${Y})$`);
+
+const URL_IN_TEXT = /https?:\/\/[^\s<>"'`]+/gi;
+/** An address as compared for « read whole »: scheme and host lowercased, percent-decoded, no trailing slash. */
+function sameAddress(raw: string): string | undefined {
+  try {
+    const href = new URL(raw).href;
+    let decoded = href;
+    try {
+      decoded = decodeURI(href);
+    } catch {
+      // A stray % stays as written.
+    }
+    return decoded.replace(/\/$/, "");
+  } catch {
+    return undefined;
+  }
+}
 
 /** Lowercase letters and digits only (plus `@`, which splits an e-mail): any separator can re-space a number. */
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}@]/gu, "");
@@ -152,6 +174,7 @@ export class Outflow {
         shingles: new Map(),
         pieces: 0,
         shortLengths: new Map(),
+        urls: new Set(),
         typedItems: new Set(),
         typedText: "",
         buffer: "",
@@ -165,6 +188,14 @@ export class Outflow {
 
   read(win: string, text: string, source: string): void {
     const w = this.win(win);
+    for (const m of text.matchAll(URL_IN_TEXT)) {
+      // Punctuation of the sentence around it is not part of the address.
+      const url = m[0].length <= URL_LENGTH_MAX + 8 ? sameAddress(m[0].replace(/[).,;:!?»\]]+$/, "")) : undefined;
+      if (!url || url.length > URL_LENGTH_MAX) continue;
+      w.urls.delete(url);
+      w.urls.add(url);
+      if (w.urls.size > URLS_MAX) w.urls.delete(w.urls.values().next().value!);
+    }
     const perKind = new Map<string, { items: number; pieces: number }>();
     for (const found of extract(text)) {
       const known = w.read.get(found.norm);
@@ -266,7 +297,8 @@ export class Outflow {
     return w?.buffer.trim() || w?.last;
   }
 
-  check(win: string, out: string): OutflowHit | undefined {
+  /** `address`: `out` is an address the agent opens, not a search query. */
+  check(win: string, out: string, address = false): OutflowHit | undefined {
     const w = this.wins.get(win);
     const typedNow = w ? w.typedText + "\n" + norm(w.buffer) : "";
     const typed = (n: string) => !!w && (w.typedItems.has(n) || typedNow.includes(n));
@@ -278,6 +310,8 @@ export class Outflow {
       return { kind: s.kind, masked: mask(s.value), ...(source ? { source } : {}) };
     }
     if (!w?.read.size) return undefined;
+    // An address a private read showed whole is a link followed: it tells its site nothing the link did not already hold.
+    if (address && w.urls.has(sameAddress(out) ?? "")) return undefined;
 
     const hit = (item: Item): OutflowHit => ({ kind: item.kind, masked: mask(item.value), source: item.source });
     // A piece the user typed is theirs to send, even if a read item contains it.
