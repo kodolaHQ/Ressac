@@ -445,7 +445,8 @@ function createToolsServer(
   const followed = new WeakMap<Result, readonly string[]>();
   /** `r` lets the agent follow `urls`, less those it may have written: a local page's, an open site app's. */
   const follow = async (r: Result, urls: string[]): Promise<Result> => {
-    const apps = (await bridge.listTabs()).flatMap((o) => (o.site === undefined ? [] : [o.site]));
+    // A failed tab list never fails the read: local addresses are still left out.
+    const apps = (await bridge.listTabs().catch(() => [])).flatMap((o) => (o.site === undefined ? [] : [o.site]));
     followed.set(r, urls.filter((u) => !isLocal(u) && !apps.some((site) => bridge.siteUrlAllowed?.(site, u))));
     return r;
   };

@@ -63,6 +63,7 @@ Known limits are marked with `shortcut:` comments in the code (for example custo
 - A page that steers the agent during a search where it gets lost can still leave one lesson in the notebook.
 - The judge is off by default; on, it fails open, only advises on address cards, and does not watch the developer reads.
 - The outflow rules look only at a `search_web` query and at an address the agent composed. They do not check: which link the agent chooses to follow among those it read (a page can lay out links whose choice encodes data), nor an address a private page showed whole (how the agent percent-encodes it is a small channel too); screen captures; files in the workspace; `run_js`; what leaves through a workflow, a widget, an action or `launch_app`.
+- A history entry of a site app whose window is closed still counts as a followed link (its address is on that app's own domains).
 - They catch only shaped items. Private text without one leaves unseen: a message, a name, a street address, health data, a list of holdings. So does data the agent never read through a remembered source (a file in the workspace, something from an earlier session, a screenshot), and a password with no recognizable shape.
 - What you typed in this conversation is never caught if it leaks: a page that steers the agent can send it out.
 - The memory of what the agent read is per window and is lost when Ressac restarts or the local AI is switched off and on. Rule 2's false alarms grow with how much the window has read: the measured rate is for windows that read little.
