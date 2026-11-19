@@ -190,13 +190,14 @@ export class Outflow {
   /**
    * `links`: the text shows the user's own links (history, bookmarks, tab list, a tab of theirs), so its addresses may
    * be followed. Never for a tool whose output the agent writes (run_js, a widget, a site memory): it would write an
-   * address there, then open it unflagged.
+   * address there, then open it unflagged. A list: only these addresses may be followed (the text's are not harvested).
    */
-  read(win: string, text: string, source: string, links = false): void {
+  read(win: string, text: string, source: string, links: boolean | readonly string[] = false): void {
     const w = this.win(win);
-    for (const m of links ? text.matchAll(URL_IN_TEXT) : []) {
-      // Punctuation of the sentence around it is not part of the address.
-      const url = m[0].length <= URL_LENGTH_MAX + 8 ? sameAddress(m[0].replace(/[).,;:!?»\]]+$/, "")) : undefined;
+    // Punctuation of the sentence around it is not part of the address.
+    const found = Array.isArray(links) ? links : links ? [...text.matchAll(URL_IN_TEXT)].map((m) => m[0].replace(/[).,;:!?»\]]+$/, "")) : [];
+    for (const raw of found) {
+      const url = raw.length <= URL_LENGTH_MAX + 8 ? sameAddress(raw) : undefined;
       if (!url || url.length > URL_LENGTH_MAX) continue;
       w.urls.delete(url);
       w.urls.add(url);
