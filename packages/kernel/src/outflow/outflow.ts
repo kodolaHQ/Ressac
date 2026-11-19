@@ -41,14 +41,12 @@ const READ_MAX = 20_000;
 const PIECES_MAX = 140_000;
 // Bounds one long item's share of the index; a long secret is still caught whole by rule 1.
 const ITEM_PIECES_MAX = 256;
-// One read keeps new items in text order, up to a quarter of the window per kind so padding of one kind does not
-// hide another, and half the window in all so flushing earlier reads takes at least two reads.
-// shortcut: padding of the same kind before an item in one read (5 000 items or 35 000 pieces) still hides it; a hard
+// One read keeps new items in text order, up to a tenth of the window per kind: padding of one kind never uses
+// another kind's budget, and the five kinds together fill at most half the window, so one read never flushes it.
+// shortcut: padding of the same kind before an item in one read (2 000 items or 14 000 pieces) still hides it; a hard
 // memory bound needs a limit somewhere, revisit if reads get split per source.
-const READ_KIND_MAX = READ_MAX / 4;
-const READ_KIND_PIECES_MAX = PIECES_MAX / 4;
-const READ_NEW_MAX = READ_MAX / 2;
-const READ_NEW_PIECES_MAX = PIECES_MAX / 2;
+const READ_KIND_MAX = READ_MAX / 10;
+const READ_KIND_PIECES_MAX = PIECES_MAX / 10;
 const TYPED_ITEMS_MAX = 5000;
 const TYPED_MAX = 64 * 1024;
 const CARRY_MAX = 4096;
@@ -99,7 +97,7 @@ function* pieces(norm: string, size: number) {
 
 const alternations = (piece: string) => piece.match(/\p{L}(?=\p{N})|\p{N}(?=\p{L})/gu)?.length ?? 0;
 
-/** The pieces of a read item that may reveal it on their own; an item shorter than a piece is its own piece. */
+/** The pieces of a read item that may reveal it on their own, each once; a shorter item is its own piece. */
 function* indexed(item: Pick<Item, "kind" | "norm">) {
   const size = chunkSize(item.norm);
   if (item.norm.length < size) {
@@ -110,12 +108,13 @@ function* indexed(item: Pick<Item, "kind" | "norm">) {
   // A piece made mostly of an e-mail's domain matches every address there, and the domain's own site.
   const lastStart = item.kind === "email" ? at - Math.min(4, at) : Infinity;
   let i = 0;
-  let n = 0;
+  const seen = new Set<string>();
   for (const p of pieces(item.norm, size)) {
-    if (i++ > lastStart || n >= ITEM_PIECES_MAX) break;
+    if (i++ > lastStart || seen.size >= ITEM_PIECES_MAX) break;
     // A word glued to a number (release2024) has one letter/digit switch; a random token's piece has more.
     if (item.kind === "token" && alternations(p) < 2) continue;
-    n++;
+    if (seen.has(p)) continue;
+    seen.add(p);
     yield p;
   }
 }
@@ -148,7 +147,6 @@ export class Outflow {
 
   read(win: string, text: string, source: string): void {
     const w = this.win(win);
-    let [added, addedPieces] = [0, 0];
     const perKind = new Map<string, { items: number; pieces: number }>();
     for (const found of extract(text)) {
       const known = w.read.get(found.norm);
@@ -164,10 +162,7 @@ export class Outflow {
       const group = ["email", "phone", "digits", "token"].includes(item.kind) ? item.kind : "secret";
       const kind = perKind.get(group) ?? { items: 0, pieces: 0 };
       perKind.set(group, kind);
-      if (added >= READ_NEW_MAX || addedPieces + ps.length > READ_NEW_PIECES_MAX) continue;
       if (kind.items >= READ_KIND_MAX || kind.pieces + ps.length > READ_KIND_PIECES_MAX) continue;
-      added++;
-      addedPieces += ps.length;
       kind.items++;
       kind.pieces += ps.length;
       w.pieces += ps.length;
@@ -189,8 +184,8 @@ export class Outflow {
     for (const p of indexed(item)) {
       w.pieces--;
       const at = w.shingles.get(p);
-      if (!(at instanceof Set)) w.shingles.delete(p);
-      else if (at.delete(item) && at.size === 1) w.shingles.set(p, at.values().next().value!);
+      if (at === item) w.shingles.delete(p);
+      else if (at instanceof Set && at.delete(item) && at.size === 1) w.shingles.set(p, at.values().next().value!);
     }
   }
 

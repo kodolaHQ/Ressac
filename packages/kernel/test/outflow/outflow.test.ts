@@ -242,8 +242,8 @@ test("long junk tokens cannot flush the memory either", () => {
 
 test("many items sharing a piece keep reads fast", () => {
   const o = new Outflow();
-  for (let r = 0; r < 8; r++) {
-    const text = Array.from({ length: 5000 }, (_, i) => "000000" + String(r * 5000 + i).padStart(6, "0")).join(", ");
+  for (let r = 0; r < 20; r++) {
+    const text = Array.from({ length: 2000 }, (_, i) => "000000" + String(r * 2000 + i).padStart(6, "0")).join(", ");
     const start = performance.now();
     o.read("w", text, "page");
     expect(performance.now() - start).toBeLessThan(300);
@@ -277,4 +277,43 @@ test("padding of one kind does not hide an item of another kind", () => {
   const numbers = Array.from({ length: 5000 }, (_, i) => String(100000 + i)).join(", ");
   o.read("w", `${numbers}, camille.roussel@example.com`, "mail.google.com");
   expect(o.check("w", "q=camille.roussel@example.com")).toMatchObject({ kind: "email" });
+});
+
+test("padding of two kinds does not hide items of the other kinds", () => {
+  const numbers = Array.from({ length: 5000 }, (_, i) => String(100000 + i)).join(", ");
+  const tokens = Array.from({ length: 5000 }, (_, i) => `Qz${100000 + i}pad9x`).join(" ");
+  const phones = Array.from({ length: 5000 }, (_, i) => `07 ${String(10000000 + i).replace(/(..)(?=.)/g, "$1 ")}`).join(", ");
+  const real = "camille.roussel@example.com, 06 12 34 56 78, ref Zx81Qa92Lp07Wm33";
+
+  const o = new Outflow();
+  o.read("w", `${numbers} ${tokens} ${real}`, "mail.google.com");
+  expect(o.check("w", "q=camille.roussel@example.com")).toMatchObject({ kind: "email" });
+  expect(o.check("w", "q=0612345678")).toMatchObject({ kind: "phone" });
+
+  const p = new Outflow();
+  p.read("w", `${numbers} ${phones} ${real}`, "mail.google.com");
+  expect(p.check("w", "q=camille.roussel@example.com")).toMatchObject({ kind: "email" });
+  expect(p.check("w", "q=Zx81Qa92Lp07Wm33")).toMatchObject({ kind: "token" });
+});
+
+test("one read padded with every kind cannot flush the memory", () => {
+  const o = new Outflow();
+  o.read("w", "tok A1b2C3d4E5f6G7h8", "first");
+  const pad = Array.from(
+    { length: 5000 },
+    (_, i) => `${100000 + i}, junk${i}x${i}Qz9pad, u${i}@j.io, +33 7 ${String(10000000 + i)}`,
+  ).join(" ");
+  o.read("w", pad, "evil.example");
+  expect(o.check("w", "A1b2C3d4E5f6G7h8")).toMatchObject({ source: "first" });
+});
+
+test("evicting an item whose piece repeats keeps the other owner of that piece", () => {
+  const o = new Outflow();
+  o.read("w", "id 482139-555-482139", "old");
+  o.read("w", "code 482139", "kept");
+  // Each read retains a token and its digit run: with the last one, 20 001 items, so only the first is evicted.
+  for (let i = 0; i < 9_999; i++) o.read("w", `id Zz${String(i).padStart(6, "0")}QqWw`, "page");
+  o.read("w", "n 771234", "page");
+  expect(o.check("w", "q=139555")).toBeUndefined();
+  expect(o.check("w", "q=482139")).toMatchObject({ source: "kept" });
 });
