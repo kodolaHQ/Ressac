@@ -33,7 +33,7 @@ beforeAll(async () => {
       "/beacon": html(`<title>beacon</title><script>addEventListener("pagehide", () => navigator.sendBeacon("${to}/beacon?d=1", "x"))</script>`),
       "/link": html(`<title>link</title><a id="out" href="${to}/arrive">out</a>`),
       // A secret as a host name: the cancel must come before its DNS lookup.
-      "/dns": html(`<title>dns</title><img src="http://img-leak.${SFX}:${web.port}/p.png"><script>fetch("http://fetch-leak.${SFX}:${web.port}/f").catch(() => {})</script>`),
+      "/dns": html(`<title>dns</title><img src="http://img-leak.${SFX}:${web.port}/p.png"><script>fetch("http://fetch-leak.${SFX}:${web.port}/f").catch(() => {}); try { new WebSocket("ws://ws-leak.${SFX}:${web.port}/w"); } catch (e) {}</script>`),
     },
   });
   w = await launchRessac({ prefs: NET_PREFS, env: { ...netEnv(logDir), RESSAC_TEST_PUBLIC_ADDRESSES: "127.0.0.1", RESSAC_CONTAINER_PORTS: `${agent.port}-${agent.port}` } });
@@ -89,7 +89,7 @@ it("a beacon an agent page sends as it unloads never reaches the web", async () 
   expect(web.paths).not.toContain("/beacon");
 });
 
-it("an agent page's request to a public name is cancelled before its DNS lookup", async () => {
+it("an agent page's request or WebSocket to a public name is cancelled before its DNS lookup", async () => {
   await open(`http://localhost:${agent.port}/dns`);
   // The witness: a tab's own navigation resolves its name, so the log does record lookups.
   await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `http://witness.${SFX}:${web.port}/arrive`, activate: true });

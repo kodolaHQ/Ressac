@@ -47,6 +47,24 @@ let observing = false;
 /** A sandboxed document (a null principal) is judged by the page that created it. */
 const principalSpec = (p: any): string => (p?.isNullPrincipal ? p.precursorPrincipal : p)?.spec ?? "";
 
+/** Whether an agent page's request must not leave (see installAgentPageGuard). */
+function blocked(ch: any, range: [number, number]): boolean {
+  const li = ch.loadInfo;
+  if (!li || li.triggeringPrincipal?.isSystemPrincipal) return false;
+  const document = li.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_DOCUMENT;
+  const top = (li.browsingContext ?? li.workerAssociatedBrowsingContext)?.top;
+  const froms: string[] = document
+    ? [principalSpec(li.triggeringPrincipal)]
+    : [
+        principalSpec(li.triggeringPrincipal),
+        principalSpec(li.loadingPrincipal),
+        top?.currentURI?.spec ?? "",
+        principalSpec(top?.currentWindowGlobal?.documentPrincipal),
+      ];
+  const o = { to: ch.URI.spec as string, document, gesture: li.hasValidUserGestureActivation, method: ch.requestMethod ?? "GET" };
+  return !froms.every((from) => agentPageDecision({ ...o, from }, range) === "allow");
+}
+
 /**
  * Before any request connects (http-on-modify-request). The channel's own DNS prefetch would come first: it is off
  * (network.dns.disablePrefetch, ressac.js; e2e/agent-page-guard.e2e.ts checks no name is resolved). A top-level load is judged by the page that started it (its
@@ -54,35 +72,39 @@ const principalSpec = (p: any): string => (p?.isNullPrincipal ? p.precursorPrinc
  * sent on pagehide may run under the next page) and by the tab's top-level page, its address and its principal (an
  * about:blank window an agent page opened and writes into has the agent page's principal). What Ressac itself loads
  * (the system principal: the address bar, its own fetches) is never judged. The port range is read once.
+ * A WebSocket resolves its host (WebSocketChannel::DoAdmissionDNS) before that observer, unless a proxy is set
+ * (OnProxyAvailable skips the lookup): a blocked channel gets a dead proxy from a channel filter, then the cancel.
  * shortcut: WebRTC is not guarded (no HTTP request); upgrade if agent pages must never open a socket to the web.
- * shortcut: a WebSocket resolves its host (WebSocketChannel::DoAdmissionDNS) before its HTTP channel exists, so the name
- * reaches DNS before the cancel; closing it needs an engine patch or a content policy in each content process.
  */
 export function installAgentPageGuard(ports: () => [number, number]): void {
   if (observing) return;
   observing = true;
   const range = ports();
+  const pps = Cc["@mozilla.org/network/protocol-proxy-service;1"].getService(Ci.nsIProtocolProxyService);
+  // Port 9 (discard) on the loopback: nothing listens, the connection is refused, and no name is resolved.
+  const dead = pps.newProxyInfo("http", "127.0.0.1", 9, "", "", 0, 0, null);
+  pps.registerChannelFilter(
+    {
+      QueryInterface: ChromeUtils.generateQI(["nsIProtocolProxyChannelFilter"]),
+      applyFilter(ch: any, proxy: any, cb: any) {
+        let out = proxy;
+        try {
+          if (blocked(ch.QueryInterface(Ci.nsIHttpChannel), range)) out = dead;
+        } catch {
+          // not an HTTP channel: nothing to judge
+        }
+        cb.onProxyFilterResult(out);
+      },
+    },
+    0,
+  );
   Services.obs.addObserver(
     {
       observe(subject: any) {
         const ch = subject.QueryInterface(Ci.nsIHttpChannel);
-        const li = ch.loadInfo;
-        if (li.triggeringPrincipal?.isSystemPrincipal) return;
-        const document = li.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_DOCUMENT;
-        const top = (li.browsingContext ?? li.workerAssociatedBrowsingContext)?.top;
-        const froms: string[] = document
-          ? [principalSpec(li.triggeringPrincipal)]
-          : [
-              principalSpec(li.triggeringPrincipal),
-              principalSpec(li.loadingPrincipal),
-              top?.currentURI?.spec ?? "",
-              principalSpec(top?.currentWindowGlobal?.documentPrincipal),
-            ];
-        const to: string = ch.URI.spec;
-        const o = { to, document, gesture: li.hasValidUserGestureActivation, method: ch.requestMethod };
-        if (froms.every((from) => agentPageDecision({ ...o, from }, range) === "allow")) return;
+        if (!blocked(ch, range)) return;
         ch.cancel(Cr.NS_ERROR_ABORT);
-        console.warn("[agent-page] blocked: " + to.slice(0, 80));
+        console.warn("[agent-page] blocked: " + String(ch.URI.spec).slice(0, 80));
       },
     },
     "http-on-modify-request",
