@@ -278,6 +278,28 @@ describe("agent host", { timeout: 30_000 }, () => {
     await until(() => h.data().includes("bonjour"));
   });
 
+  it("outflow: keystrokes and the ⌘T question count as typed, prefills do not, closing the window forgets", async () => {
+    const h = startHost();
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    const check = (window: string, text: string) => h.rpc.request("debug.outflowCheck", { window, text });
+    const iban = "FR7630006000011234567890189";
+    const key = "ghp_x7Kq9LmN2pRs4TuVw6YzA8bCdEfGhJ1kMn3P";
+    // Prefill is not typed: the tab title in the context prefix stays a secret the user never wrote.
+    h.rpc.notify("agent.panelOpened", { window: "f1", tab: { id: "t1", title: iban, url: "https://un.test/", space: "Perso" } });
+    expect(await check("f1", iban)).toMatchObject({ kind: "iban" });
+    h.rpc.notify("agent.write", { window: "f1", data: `${iban}\r` });
+    expect(await check("f1", iban)).toBeNull();
+    // ⌘T before the window's agent runs (its usual case): the question is typed once written into the new conversation,
+    // so the fresh session's reset does not erase it; the page titles shown with it are not typed.
+    await h.rpc.request("ask.handOff", { window: "f2", question: `corrige ${key}`, shown: [{ url: "https://un.test/", title: iban, lastVisit: "2026-11-19" }] });
+    await h.rpc.request("agent.start", { window: "f2", size: { cols: 80, rows: 24 } });
+    await until(() => h.data().includes("received: corrige"));
+    expect(await check("f2", key)).toBeNull();
+    expect(await check("f2", iban)).toMatchObject({ kind: "iban" });
+    h.rpc.notify("agent.closeWindow", { window: "f1" });
+    expect(await check("f1", iban)).toMatchObject({ kind: "iban" });
+  });
+
   it("a repeat demarrer with the same profile keeps the kernel and its sessions", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });

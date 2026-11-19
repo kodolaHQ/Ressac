@@ -25,7 +25,7 @@ import { SeenUrls } from "./seen.js";
 import { NOTES_PREFIX, type BrowsingNotes } from "../search/notes.js";
 import { RECAP_TITLE_MAX, RECAP_UNKNOWN, type Recaps } from "../recaps/recaps.js";
 import { pageState, reducedPage, stateLine } from "./reduce.js";
-import type { Outflow, OutflowHit } from "../outflow/outflow.js";
+import { OUTFLOW_LABELS, type Outflow, type OutflowHit } from "../outflow/outflow.js";
 import { isSensitive } from "../access/sensitive.js";
 import { TabNotFound, PrivateTab, SiteChanged, PRIVATE_TEXT, type TabInfo, type PageLink, type TabRead, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
 
@@ -36,7 +36,7 @@ const TOO_LONG_TEXT = `Adresse trop longue (${URL_MAX} caractères au plus).`;
 /** The band while an address card waits: a step, so the idle delay does not end the search under the card. */
 const ADDRESS_STEP = "Accord demandé pour une adresse";
 /** The key of the search of a session without a window (the main token). */
-const MAIN_WINDOW = "main";
+export const MAIN_WINDOW = "main";
 const SETTLE_MAX_MS = 5000;
 const READ_PAGES_MAX = 6;
 const READ_PAGE_MS = 30_000;
@@ -90,19 +90,6 @@ export type AgentActivity = { tab: string; label: string };
 export type OpenWorkflow = { widget: string; block: string | null } | { action: string; block: string | null };
 const HISTORY_LIMIT = { default: 20, max: 50 };
 
-const OUTFLOW_LABELS: Record<OutflowHit["kind"], string> = {
-  "api-key": "une clé d'accès",
-  "private-key": "une clé privée",
-  jwt: "un jeton de connexion",
-  card: "un numéro de carte",
-  iban: "un IBAN",
-  nir: "un numéro de sécurité sociale",
-  random: "une chaîne qui ressemble à un secret",
-  email: "une adresse e-mail",
-  phone: "un numéro de téléphone",
-  digits: "un numéro",
-  token: "un identifiant",
-};
 const outflowWhat = (hit: OutflowHit) => `${OUTFLOW_LABELS[hit.kind]}${hit.source ? `, lu dans ${hit.source}` : ""}`;
 /** The band of a search paused because its query carries a secret or private data the agent read. */
 export const OUTFLOW_PAUSE = (hit: OutflowHit) => `Le surveillant a mis en pause : la recherche contient ${outflowWhat(hit)} (${hit.masked})`;

@@ -6,6 +6,21 @@ export interface OutflowHit {
   source?: string;
 }
 
+/** Each kind in French, as the user reads it in a pause or a refusal. */
+export const OUTFLOW_LABELS: Record<OutflowHit["kind"], string> = {
+  "api-key": "une clé d'accès",
+  "private-key": "une clé privée",
+  jwt: "un jeton de connexion",
+  card: "un numéro de carte",
+  iban: "un IBAN",
+  nir: "un numéro de sécurité sociale",
+  random: "une chaîne qui ressemble à un secret",
+  email: "une adresse e-mail",
+  phone: "un numéro de téléphone",
+  digits: "un numéro",
+  token: "un identifiant",
+};
+
 interface Item {
   kind: OutflowHit["kind"];
   value: string;

@@ -840,6 +840,17 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(bridge.calls).toEqual([]);
   });
 
+  it("a query carrying a secret is refused before any read, kind and masked value named", async () => {
+    const secret = "ghp_x7Kq9LmN2pRs4TuVw6YzA8bCdEfGhJ1kMn3P";
+    const { b, html } = await webBench(afterwards([`w.searchWeb("fix ${secret}")`, `w.searchWeb("clio", { count: 1 })`]), {
+      web: true,
+      html: { [searchUrl("clio", BASE)]: page("results.html") },
+    });
+    const r = await runWorkflow(b.ctx, b.infra);
+    expect(value(r)).toEqual(["erreur: Recherche refusée : elle contient une clé d'accès (ghp_••••Mn3P).", fixtureResults.slice(0, 1)]);
+    expect(html().map((a) => a.args[0])).toEqual([searchUrl("clio", BASE)]);
+  });
+
   it("widget with an account: WEB_REQUIRED", async () => {
     // web with an account is refused at the widget.json read; the executor refuses anyway.
     const { b, html } = await webBench(afterwards([`w.searchWeb("x")`]), {

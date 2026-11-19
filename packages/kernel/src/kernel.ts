@@ -21,11 +21,12 @@ import { SearchSessions } from "./search/sessions.js";
 import { createWatcher } from "./search/watcher.js";
 import type { BrowserBridge } from "./mcp/bridge.js";
 import type { ExtensionsTools } from "./mcp/extensions.js";
-import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow, type AgentActivity } from "./mcp/server.js";
+import { startMcpServer, generateToken, MAIN_WINDOW, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow, type AgentActivity } from "./mcp/server.js";
 import { createRecaps, type Recaps } from "./recaps/recaps.js";
 import type { ProfileFiles } from "./mcp/devtools.js";
 import { DevToolsTracking } from "./devtools/tracking.js";
 import type { LocalAi } from "./ai/local-ai.js";
+import { Outflow } from "./outflow/outflow.js";
 import { createAiDispatcher } from "./ai/dispatcher.js";
 import { ID_EXECUTION, listRuns, readRun, type Execution, type ResumeExecution } from "./workflows/executions.js";
 import { DEFAULT_PACING } from "./workflows/run.js";
@@ -230,6 +231,8 @@ export interface Kernel {
   policy: AccessPolicy;
   /** The agent's visible searches, one per window. */
   search: SearchSessions;
+  /** What the agent read and the user typed, per window (outflow rules); the host feeds the typed side. */
+  outflow: Outflow;
   /** Name of the agent of this kernel's profile (the one that holds the accesses). */
   agent: string;
   /** The Mac port of the MCP server: the only one besides the relay's that the agent's container may reach. */
@@ -465,10 +468,12 @@ export async function createKernel(o: {
     templates ?? DEFAULT_TEMPLATES,
     loc,
   );
+  const outflow = new Outflow();
   const server = await startMcpServer({
     bridge: o.bridge,
     policy: policy,
     search: search,
+    outflow: outflow,
     ...(aiAccess ? { watcher: createWatcher(aiAccess) } : {}),
     notes: notes,
     token: token,
@@ -666,6 +671,7 @@ export async function createKernel(o: {
     actions,
     policy: policy,
     search: search,
+    outflow: outflow,
     agent: profile.name,
     mcpPort: server.port,
     workshopState: () => workshop.state(),
@@ -728,6 +734,8 @@ export async function createKernel(o: {
         // After the card: a refused card leaves the other windows' grants alone, and nothing granted meanwhile leaks into this conversation.
         policy.reset();
         search.reset();
+        // A new conversation starts with an empty outflow memory; a resumed one keeps what its agent read and the user typed.
+        if (!resume) outflow.forget(win ?? MAIN_WINDOW);
         if (win !== undefined) sessionToken = server.openSession(win, chosen.name);
         let mcpConfig: string;
         let env: Record<string, string> = {};

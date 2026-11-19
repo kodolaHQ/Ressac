@@ -930,7 +930,11 @@ const rpc = createRpc({
       const shown = (p.shown as Partial<Record<"url" | "title" | "lastVisit", unknown>>[])
         .filter((h): h is { url: string; title: string; lastVisit: string } => str(h?.url) && str(h?.title) && str(h?.lastVisit))
         .slice(0, 3);
-      sessions.prefill(p.window, handOffText(p.question.slice(0, 2000), shown, hostSay("host-ask-shown-pages")), undefined, true);
+      const question = p.question.slice(0, 2000);
+      const win = p.window;
+      // Outflow rules: only the question is the user's own text, not the page titles shown with it. Fed as it is written,
+      // after a fresh session's reset (⌘T usually opens the window's agent), not when it is queued.
+      sessions.prefill(win, handOffText(question, shown, hostSay("host-ask-shown-pages")), () => kernel?.outflow.typed(win, question + "\r"), true);
     }),
     stop: async () => {
       try {
@@ -940,11 +944,16 @@ const rpc = createRpc({
         setImmediate(() => writeStdout("", () => process.exit(0)));
       }
     },
-    "agent.write": (p: { window: string; data: string }) => sessions.write(p.window, p.data),
+    // The user's keystrokes and pastes: what they type is theirs to send (outflow rules). Prefills never come through here.
+    "agent.write": (p: { window: string; data: string }) => {
+      kernel?.outflow.typed(p.window, p.data);
+      sessions.write(p.window, p.data);
+    },
     "agent.resize": (p: { window: string; size: TerminalSize }) => sessions.resize(p.window, p.size),
     "agent.closeWindow": (p: { window: string }) => {
       selections.delete(p.window);
       actives.delete(p.window);
+      kernel?.outflow.forget(p.window);
       void sessions.closeWindow(p.window);
     },
     privateTabs: (p: { privateTabs: string[]; activePrivate: boolean }) => bridge.setPrivate(p),
@@ -1016,7 +1025,17 @@ const rpc = createRpc({
     // The settings page (host/settings.ts): `settings` is made after `sites` and `actions`, below.
     ...Object.fromEntries(SETTINGS_METHODS.map((k) => [k, AI_SETTINGS.has(k) ? aiOnly((p: unknown) => settings[k]!(p)) : (p: unknown) => settings[k]!(p)])),
     ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
-    ...(process.env.RESSAC_HOST_TEST === "1" ? { "debug.locale": () => ({ locale: hostLocale(), relocalized }), "debug.log": (p: { text: string }) => console.log(p.text) } : {}),
+    ...(process.env.RESSAC_HOST_TEST === "1"
+      ? {
+          "debug.locale": () => ({ locale: hostLocale(), relocalized }),
+          "debug.log": (p: { text: string }) => console.log(p.text),
+          "debug.outflowCheck": async (p: { window: string; text: string }) => {
+            // A notification runs one microtask after it arrives (shared/rpc.ts): yield so the ones sent before are applied.
+            await null;
+            return kernel?.outflow.check(p.window, p.text) ?? null;
+          },
+        }
+      : {}),
   },
 });
 // Errors go to Firefox, which reports them (chrome/store/telemetry.ts), on top of the stderr log.

@@ -665,6 +665,22 @@ describe("openAgentSession with a profile", () => {
     restrict.mockRestore();
   });
 
+  test("outflow: a resumed session keeps the window's memory, a new one clears it, other windows keep theirs", async () => {
+    await started(async (n) => {
+      // Rule 2 only (an e-mail is no secret by itself): a hit means the window still remembers reading it.
+      const email = "jeanne.martin@exemple.fr";
+      n.outflow.read("f1", email, "un onglet");
+      n.outflow.read("f2", email, "un onglet");
+      const resumed = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true });
+      expect(n.outflow.check("f1", email)?.kind).toBe("email");
+      const fresh = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex" });
+      expect(n.outflow.check("f1", email)).toBeUndefined();
+      expect(n.outflow.check("f2", email)?.kind).toBe("email");
+      await resumed.stop();
+      await fresh.stop();
+    });
+  });
+
   test("codex resume with extra args and env", async () => {
     await started(async (n, start) => {
       const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, extra: { args: ["-m", "x"], env: { RESSAC_ENGINE_TOKEN: "t" } } });

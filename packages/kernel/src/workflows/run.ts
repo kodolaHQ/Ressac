@@ -44,6 +44,8 @@ import { REPLAY_TOO_BIG } from "./replay.js";
 import type { OutputKind, Owner } from "./schema.js";
 import { WEB_REQUIRED, type ValidWorkflow } from "./validate.js";
 import { workflowBytesHash } from "./read.js";
+import { findSecrets, mask } from "../outflow/detect.js";
+import { OUTFLOW_LABELS } from "../outflow/outflow.js";
 
 /** The run's process (the `docker run -i` client): its only channel with the kernel is stdin / stdout. */
 export interface HarvestProcess {
@@ -504,6 +506,9 @@ export async function runWorkflow(
     if (!web) throw new Error(WEB_REQUIRED(locale()));
     if (searchDenied) throw new Error(SEARCHES_STOPPED);
     if (searches >= MAX_SEARCHES) throw new Error(SEARCHES_CAP);
+    // Rule 1 of the outflow: a secret never leaves in a query. No pause card in a workflow, so the search is refused.
+    const secret = findSecrets(request)[0];
+    if (secret) throw new Error(`Recherche refusée : elle contient ${OUTFLOW_LABELS[secret.kind]} (${mask(secret.value)}).`);
     const readHtml = infra.bridge.readHtmlInvisible?.bind(infra.bridge);
     if (!readHtml) throw new Error(SEARCH_UNAVAILABLE);
     searches++;
