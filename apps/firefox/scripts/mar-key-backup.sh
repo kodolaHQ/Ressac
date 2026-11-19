@@ -12,7 +12,7 @@ ssl=/usr/bin/openssl
 (( $# == 1 )) || { print -u2 "usage: $0 <folder on offline storage>"; exit 1 }
 dest=${1:A}
 p12=$dest/mar-signing-backup.p12
-[[ $dest != $HOME* ]] || { print -u2 "$dest is under your home folder: put the backup on offline storage."; exit 1 }
+[[ $dest == /Volumes/* ]] || { print -u2 "$dest is not on an external volume (/Volumes/…): put the backup on offline storage."; exit 1 }
 [[ ! -e $p12 ]] || { print -u2 "$p12 already exists."; exit 1 }
 cmp -s $certs/dep1.der $certs/dep2.der || { print -u2 "dep2.der already differs from dep1.der: a backup key exists."; exit 1 }
 

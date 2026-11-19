@@ -6,7 +6,8 @@ set -euo pipefail
 service=ressac-mar-signing
 
 pw=$(security find-generic-password -s $service -a ressac -w) || { print -u2 "no keychain item $service"; exit 1 }
-# -U replaces the item; -T "" trusts no application, so every read prompts.
+# -U replaces the item; -T "" trusts no application, so every read prompts. Never answer « Toujours autoriser »:
+# that puts /usr/bin/security back on the list. shortcut: the password is on argv for this one call, as in mar-key.sh.
 security add-generic-password -U -s $service -a ressac -w "$pw" -T ""
 unset pw
 print "Done: reading $service now asks for your permission (package.sh will prompt once per run)."

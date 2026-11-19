@@ -219,6 +219,8 @@ mar_p12=$HOME/.config/ressac/mar-signing.p12
 # A stale update.xml, MAR or DMG from an earlier run must not outlive this one (publish would pair them).
 rm -f $app_dir/dist/update.xml $app_dir/dist/Ressac-$version.mar $app_dir/dist/Ressac-$version.dmg
 mar_pw=$(security find-generic-password -s ressac-mar-signing -w 2>/dev/null || true)
+# The key is here but its password was not given (keychain prompt denied or unanswered): stop, never ship a DMG without its update archive.
+[[ -f $mar_p12 && -z $mar_pw && -n $update_key ]] && fail "the MAR key's password was not read (keychain prompt denied?): no update archive, nothing packaged"
 if [[ ! -f $mar_p12 || -z $mar_pw || -z $update_key ]]; then
   print -ru2 -- "warning: no MAR key or no RESSAC_UPDATE_KEY, packaging without an update archive"
 else
