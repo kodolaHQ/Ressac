@@ -214,7 +214,7 @@ describe("runHarvest", () => {
     // The agent rewrites the code: nothing runs, the widget asks again, and its data stays.
     await write(`export default async (_e, w) => w.fetch("${web.url}/?vol=1");`);
     const blocked = await run();
-    expect(blocked.state).toMatchObject({ status: "grant-required", codeChanged: true, error: "Le code a changé depuis ton accord" });
+    expect(blocked.state).toMatchObject({ status: "grant-required", codeChanged: true, error: "Le code a changé depuis votre accord" });
     expect(commands).toHaveLength(1);
     expect(await readJson(join(widgetsFolder, "actus-tech", "data.json"))).toBe("lu");
     expect(web.requests.some((r) => r.url.includes("vol"))).toBe(false);
