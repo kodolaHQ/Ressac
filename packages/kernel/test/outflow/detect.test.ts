@@ -125,3 +125,77 @@ test("mask", () => {
   expect(mask("FR7630006000011234567890189")).toBe("FR76••••0189");
   expect(mask("abc123xyz")).toBe("ab••••");
 });
+
+test("card next to other digits: expiry, CVV, a number before it", () => {
+  const card = { kind: "card", value: "4970101234567893" };
+  for (const text of [
+    "carte 4970 1012 3456 7893 03/28",
+    "carte 4970 1012 3456 7893 123",
+    "4970101234567893 123",
+    "ref 32 4970 1012 3456 7893",
+  ])
+    expect(findSecrets(text), text).toContainEqual(card);
+  // Amex in its 4-6-5 grouping.
+  const amex = luhn("37828224631000");
+  expect(findSecrets(`${amex.slice(0, 4)} ${amex.slice(4, 10)} ${amex.slice(10)}`)).toEqual([{ kind: "card", value: amex }]);
+});
+
+test("card needs an issuer prefix, its length and a standard grouping", () => {
+  const visa = luhn("497010123456789");
+  expect(findSecrets(luhn("1970101234567"))).toEqual([]); // no issuer starts with 1
+  expect(findSecrets(luhn("49701012345678"))).toEqual([]); // Visa is never 15 digits
+  expect(findSecrets(`${visa.slice(0, 3)} ${visa.slice(3, 9)} ${visa.slice(9)}`)).toEqual([]); // 3-6-7
+  expect(findSecrets(`${visa.slice(0, 4)}-${visa.slice(4, 8)} ${visa.slice(8, 12)}.${visa.slice(12)}`)).toEqual([]);
+});
+
+test("iban next to a BIC, a city or a year", () => {
+  const iban = { kind: "iban", value: "FR7630006000011234567890189" };
+  for (const text of [
+    "FR76 3000 6000 0112 3456 7890 189 BIC",
+    "iban FR76 3000 6000 0112 3456 7890 189 PARIS",
+    "FR7630006000011234567890189 2026",
+    "AB12 FR76 3000 6000 0112 3456 7890 189",
+  ])
+    expect(findSecrets(text), text).toContainEqual(iban);
+});
+
+test("lowercase iban and nir", () => {
+  const iban = [{ kind: "iban", value: "FR7630006000011234567890189" }];
+  expect(findSecrets("fr76 3000 6000 0112 3456 7890 189")).toEqual(iban);
+  expect(findSecrets("fr7630006000011234567890189")).toEqual(iban);
+  expect(kinds(`185052a006084${nirKey("1850519006084")}`)).toEqual(["nir"]);
+});
+
+test("ordinary digit runs are not cards", () => {
+  let seed = 42;
+  const rand = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % n);
+  const digits = (n: number) => Array.from({ length: n }, () => rand(10)).join("");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  for (let i = 0; i < 300; i++) {
+    for (const text of [
+      `commande ${400 + rand(100)}-${digits(7)}-${digits(7)}`,
+      `prix ${rand(1000)} ${rand(1000)} ${rand(1000)} ${rand(10000)} euros`,
+      `${2000 + rand(40)}-${pad(1 + rand(12))}-${pad(1 + rand(28))} ${2000 + rand(40)}-${pad(1 + rand(12))}-${pad(1 + rand(28))}`,
+      `id ${1 + rand(9)}${digits(12)}`,
+    ])
+      expect(findSecrets(text), text).toEqual([]);
+  }
+});
+
+test("nested encodings", () => {
+  const key = "sk_live_51NxQk2LmN8pRs4TuVw6YzA8b";
+  const b64 = (s: string) => Buffer.from(s).toString("base64");
+  expect(findSecrets(b64("q=FR76%203000%206000%200112%203456%207890%20189"))).toContainEqual({
+    kind: "iban",
+    value: "FR7630006000011234567890189",
+  });
+  expect(findSecrets(b64(b64(key)))).toContainEqual({ kind: "api-key", value: key });
+  expect(findSecrets(Buffer.from(b64(key)).toString("hex"))).toContainEqual({ kind: "api-key", value: key });
+});
+
+test("1 MB of private key headers without an end stays fast", () => {
+  const text = "-----BEGIN RSA PRIVATE KEY-----".repeat(34_000);
+  const start = performance.now();
+  expect(kinds(text)).toEqual(["private-key"]);
+  expect(performance.now() - start).toBeLessThan(2000);
+});
