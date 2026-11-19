@@ -108,16 +108,29 @@ const outflowWhat = (hit: OutflowHit) => `${OUTFLOW_LABELS[hit.kind]}${hit.sourc
 export const OUTFLOW_PAUSE = (hit: OutflowHit) => `Le surveillant a mis en pause : la recherche contient ${outflowWhat(hit)} (${hit.masked})`;
 /** The red line of an address card whose address carries such data. */
 export const OUTFLOW_DANGER = (hit: OutflowHit) => `Contient ${outflowWhat(hit)} : ${hit.masked}`;
-/** Where the text a tool returns comes from, for the tools whose results the outflow remembers (rule 2). */
+/**
+ * Rule 2 remembers the text every tool returns, except these: public pages read by the search and the engine's results
+ * (search_web, read_pages), tools that feed it themselves with their exceptions (read_tab, current_page, list_tabs), an
+ * image (capture_screen), and statuses of what the agent did itself (an address it chose, an id).
+ */
+const OUTFLOW_UNFED = new Set([
+  "search_web", "read_pages", "read_tab", "current_page", "list_tabs", "capture_screen",
+  "open_tab", "navigate", "note_lesson", "launch_app", "stop_app", "open_site", "close_site", "show_recap", "open_workflow",
+]);
 const DEV_SOURCE = "outils de développement";
+/** Where a tool's text comes from, as the pause names it; any other tool: `l'outil <name>`. */
 const OUTFLOW_SOURCES: Record<string, (a: { id?: unknown }) => string> = {
-  list_tabs: () => "tes onglets",
   search_history: () => "ton historique",
   read_history: () => "ton historique",
   search_bookmarks: () => "tes favoris",
+  list_sites: () => "tes applis de site",
   site_memory: (a) => `l'appli de site ${String(a.id)}`,
+  tweak_errors: (a) => `l'appli de site ${String(a.id)}`,
+  harvest_widget: (a) => `le widget ${String(a.id)}`,
   widget_data: (a) => `le widget ${String(a.id)}`,
-  // Every tool of registerDevTools (devtools.ts): keep in step with it.
+  widget_runs: (a) => `le widget ${String(a.id)}`,
+  launch_action: (a) => `l'action ${String(a.id)}`,
+  action_runs: (a) => `l'action ${String(a.id)}`,
   ...Object.fromEntries(
     ["request_devtools", "read_console", "read_network", "read_request", "profile_performance", "memory_snapshot", "compare_memory", "run_js", "reload"].map((n) => [n, () => DEV_SOURCE]),
   ),
@@ -428,7 +441,7 @@ function createToolsServer(
   // Any tool but note_lesson closes the window's lesson slot: a lesson follows its hand-over, never a page read after it.
   const registerTool = server.registerTool.bind(server);
   server.registerTool = ((name: string, config: never, cb: (...a: unknown[]) => unknown) => {
-    const source = outflow && OUTFLOW_SOURCES[name];
+    const source = outflow && !OUTFLOW_UNFED.has(name) ? (OUTFLOW_SOURCES[name] ?? (() => `l'outil ${name}`)) : undefined;
     const run = name === "note_lesson" ? cb : (...a: unknown[]) => (searching?.notes?.forget(key), cb(...a));
     const fed = source
       ? async (...a: unknown[]) => {
@@ -676,6 +689,9 @@ function createToolsServer(
     return true;
   }
 
+  /** Rule 2, option C: a tab the user shared, still on that site, is a source only when it is sensitive. */
+  const exempt = (o: TabInfo) => policy.sharedByUser(o.id, o.url) && !isSensitive(o.url);
+
   /** `access`, then rule 3 for a sensitive tab: a card just answered yes by `access` counts for this search. */
   async function readAccess(o: TabInfo): Promise<boolean> {
     const had = policy.canRead(o);
@@ -720,8 +736,8 @@ function createToolsServer(
     if (other) return text(other);
     if (!(await readAccess(o))) return text(DENIAL_TEXT);
     const r = present(o, await working(o.id, () => bridge.readText(o.id, { expect: o.url }), `Lit ${siteOf(o.url)}`), withLinks, [], undefined, full);
-    // Rule 2 (option C): a tab the user shared is a source only when it is sensitive. The result carries the tab's URL.
-    if (!policy.sharedByUser(o.id) || isSensitive(o.url)) remember(r, siteOf(o.url));
+    // The result carries the tab's URL.
+    if (!exempt(o)) remember(r, siteOf(o.url));
     return r;
   }
 
@@ -757,7 +773,8 @@ function createToolsServer(
         "tant que l'utilisateur ne l'a pas ouverte à l'agent (read_tab le lui demande).",
     },
     protect(async () => {
-      const lines = (await bridge.listTabs()).map((o) => {
+      const tabs = await bridge.listTabs();
+      const lines = tabs.map((o) => {
         // A site app: its name (never the page title); its full address only with the grant.
         // Without a grant: the app's current domain, never the page's host (a login domain would say what the user is doing).
         if (o.site !== undefined) return `${o.id} · ${o.title} · ${policy.canRead(o) ? o.url : (o.domain ?? "")} · ${SITE_APP_LABEL}`;
@@ -766,6 +783,7 @@ function createToolsServer(
           ? `${o.id} · ${o.title} · ${o.url} · ${o.space}`
           : `${o.id} · ${NOT_SHARED_LABEL} ·  · ${o.space}`;
       });
+      remember(text(lines.filter((_, i) => !exempt(tabs[i]!)).join("\n")), "tes onglets");
       return text(lines.join("\n") || "Aucun onglet ouvert.");
     }),
   );
@@ -983,9 +1001,10 @@ function createToolsServer(
           // A search read_pages started without a reason takes this goal: the watcher works from now on.
           if (current && !current.goal) sessions.setGoal(current.tabId, goal);
           const g: Gesture = { tool: "search_web", query };
-          const what = `recherche « ${cut(query)} »`;
           // Rule 1 and 2: a query carrying a secret or private data read earlier pauses before it reaches the engine.
           const hit = outflow?.check(key, query);
+          // A held query is never shown in clear on the watcher's band.
+          const what = hit ? `recherche contenant ${hit.masked}` : `recherche « ${cut(query)} »`;
           let o: TabInfo;
           if (current) {
             if (hit) {

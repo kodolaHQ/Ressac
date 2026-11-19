@@ -1541,14 +1541,14 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[] } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools } = {},
 ) {
   const principal = generateToken();
   const fake = new FakeBridge(opts.tabs ?? [github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: { results: [] }, bookmarks: [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
-  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.outflow ? { outflow: opts.outflow } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
+  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.outflow ? { outflow: opts.outflow } : {}), ...(opts.widgets ? { widgets: opts.widgets } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
     // search_web needs a goal: a test that does not care gets one.
@@ -2929,6 +2929,69 @@ test("history asks again once per search", async () => {
     expect(cards()).toBe(1);
     expect(fake.calls.find((x) => x.method === "askWidgetData")!.args[0]).toMatchObject({ kind: "history" });
   }, { withUserData: true });
+});
+
+test("a shared tab gone to another site is a source there", async () => {
+  await withSearch(async ({ call, fake, search, bands, policy }) => {
+    policy.userInteraction(githubTab);
+    await fake.navigate("github", "https://prive.example/notes");
+    policy.tabNavigated("github", "https://prive.example/notes");
+    policy.grant((await fake.listTabs()).find((t) => t.id === "github")!);
+    await call("read_tab", { id: "github" });
+    const pending = call("search_web", { query: "lockfile 4827361" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("lu dans prive.example"));
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow(), tabs: [githubTab] });
+});
+
+test("list_tabs leaves out a shared tab that is not sensitive", async () => {
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.userInteraction(githubTab);
+    expect((await call("list_tabs", {})).text).toContain("4827361");
+    await call("search_web", { query: "lockfile 4827361" });
+    expect(opens(fake)).toEqual([{ query: "lockfile 4827361" }]);
+  }, { outflow: new Outflow(), tabs: [githubTab] });
+});
+
+test("any tool's text is a source (widget_runs); a status the agent caused (navigate) is not", async () => {
+  const widgets = {
+    read: async () => ({ name: "Commandes", account: false, data: null }),
+    runs: async () => [{ id: "r1", trigger: "manual", start: "2026-10-28T10:00:00.000Z", end: "2026-10-28T10:00:07.000Z", status: "succeeded", blocks: [{ id: "commande 48213977", status: "succeeded", items: 1 }] }],
+  } as unknown as WidgetsTools;
+  await withSearch(async ({ call, fake, search, bands, policy }) => {
+    policy.grant(github);
+    expect((await call("navigate", { id: "github", url: "https://exemple.fr/n/91827364", reason: "r" })).text).toContain("91827364");
+    await call("search_web", { query: "91827364" });
+    expect(opens(fake)).toEqual([{ query: "91827364" }]);
+    await call("widget_runs", { id: "commandes" });
+    const pending = call("search_web", { query: "commande 48213977" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    expect(bands.at(-1)![1]!.text).toContain("un numéro");
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow(), widgets, address: true });
+});
+
+test("a query both held and strange: the watcher's band shows it masked", async () => {
+  const { watcher } = fakeWatcher(() => true);
+  await withSearch(async ({ call, search, bands }) => {
+    const pending = call("search_web", { query: `clé ${SECRET}`, goal: "but" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toBe(OUTFLOW_PAUSE({ kind: "api-key", masked: mask(SECRET) })));
+    search.continue("search-1");
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("sans rapport avec"));
+    expect(bands.at(-1)![1]!.text).toContain(mask(SECRET));
+    expect(bands.at(-1)![1]!.text).not.toContain(SECRET);
+    search.continue("search-1");
+    await pending;
+    const later = call("search_web", { query: `encore ${SECRET}` });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("la recherche contient"));
+    search.continue("search-1");
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("sans rapport avec"));
+    expect(bands.at(-1)![1]!.text).not.toContain(SECRET);
+    search.continue("search-1");
+    await later;
+  }, { outflow: new Outflow(), watcher });
 });
 
 test("the watcher judges against the user's last message, else the search goal", async () => {
