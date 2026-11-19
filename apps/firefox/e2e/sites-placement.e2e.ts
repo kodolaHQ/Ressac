@@ -7,7 +7,7 @@ import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { SITE_HOME, grantSite, inBrowser, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
-import { click, missingApi, waitUi } from "./ui";
+import { click, missingApi, pressKeys, waitUi } from "./ui";
 
 // Plan 76 Task 3: where a site app lives — an essential (its own container), the sidebar bar, or nowhere.
 
@@ -68,6 +68,8 @@ beforeAll(async () => {
   writeSite(dataDir, "vidola", { declaration: vidola(), files: { "tweaks/marque.js": 'document.documentElement.dataset.retouche = "oui";' } });
   writeSite(dataDir, "autre", { declaration: autre() });
   writeSite(dataDir, "maison", { declaration: maison(), files: { "home/index.html": SITE_HOME } });
+  // Written by the agent, never accepted on the « Ouvrir l'appli ? » card.
+  writeSite(dataDir, "piege", { declaration: { name: "Piège", url: url("/?d=secret"), domains: ["vidola-a.localhost"], login: [] }, startAccepted: false });
   await grantSite(dataDir, "vidola", vidola());
   const actor = testActor(profile);
   w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
@@ -86,6 +88,14 @@ afterEach(async () => expect(await missingApi(m)).toEqual([]));
 
 // One app taken through every placement, in order: each step starts where the last one left it.
 describe("site app placement", () => {
+  it("an app whose start address was never accepted cannot go to the essentials: nothing loads", async () => {
+    await openPage();
+    await click(m, '[data-testid="site-piege-more"]');
+    expect(await waitUi(m, `return [...doc.querySelectorAll('[role="menuitemradio"]')].find((b) => b.textContent.includes("Dans les essentiels"))?.disabled;`)).toBe(true);
+    await pressKeys(m, "Escape");
+    expect(await essential("piege")).toBeUndefined();
+    expect(server.requests.filter((r) => r.path.includes("d=secret"))).toEqual([]);
+  });
 
   it("« Dans les essentiels »: an essential in the app's container, its window closed, its tweaks applied in the tab", async () => {
     await openPage();

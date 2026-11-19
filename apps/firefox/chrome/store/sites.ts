@@ -537,7 +537,8 @@ const tabGestures = gestureGuard<number>();
  */
 function renderTab(browser: any, t: TabSite): void {
   const site = t.s?.site;
-  if (site && (!site.hasHome || site.grantRequired)) t.home = false;
+  // An unaccepted start (its domains changed since) is like a waiting grant: the home opens nothing until the window's card.
+  if (site && (!site.hasHome || site.grantRequired || site.startCheck)) t.home = false;
   const show = !!site && t.home && tabSites.get(browser) === t && !gone(browser) && !!browser.parentNode;
   const f = t.frame;
   if (show && f) {
@@ -915,7 +916,7 @@ export const sites = {
   },
   /** Whether app `id`'s essential tabs can show its home (a home, no grant waiting), as last read. */
   tabHasHome(id: string): boolean {
-    return [...tabSites.values()].some((t) => t.id === id && !!t.s?.site.hasHome && !t.s.site.grantRequired);
+    return [...tabSites.values()].some((t) => t.id === id && !!t.s?.site.hasHome && !t.s.site.grantRequired && !t.s.site.startCheck);
   },
   /** The login profile a page's new tab at `url` takes from its opener's `profile`. */
   childProfile<P extends string>(profile: P | undefined, url: string): P | undefined {

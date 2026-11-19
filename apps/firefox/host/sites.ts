@@ -602,7 +602,8 @@ export function createSites(o: {
           name: s.declaration.name,
           description: s.declaration.description,
           domain: host(start),
-          start,
+          // Not accepted on the card yet: nothing may load it (« Mettre dans les essentiels » needs it).
+          start: (await startCheck(s.id, s.declaration)) ? null : start,
           icon: declared ?? favicon,
           open: opened.has(s.id),
           ...(actionError ? { actionError: actionError } : {}),
