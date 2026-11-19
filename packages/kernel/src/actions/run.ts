@@ -170,6 +170,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
     {
       owner: owner,
       valid: valid,
+      workflowHash: wf.hash,
       filesFolder: action.folder,
       config: null,
       previous: null,

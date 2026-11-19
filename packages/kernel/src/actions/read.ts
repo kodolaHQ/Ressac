@@ -71,10 +71,11 @@ export function actionValidationContext(d: DeclarationAction, locale = "en"): Va
 export async function actionWorkflow(
   a: ReadAction,
   locale = "en",
-): Promise<{ t: "ok"; valid: ValidWorkflow } | { t: "invalid" | "unreadable"; error: string } | { t: "absent" }> {
+): Promise<{ t: "ok"; valid: ValidWorkflow; hash: string } | { t: "invalid" | "unreadable"; error: string } | { t: "absent" }> {
   if ("error" in a) return { t: "unreadable", error: a.error };
   if (!(await exists(join(a.folder, "workflow.json")))) return { t: "absent" };
   const parsed = await readRawWorkflow(a.folder, locale);
-  const r = "error" in parsed ? workflowError(locale, parsed.error) : validateWorkflow(parsed.raw, actionValidationContext(a.declaration, locale));
-  return r.ok ? { t: "ok", valid: r.valid } : { t: "invalid", error: r.error };
+  if ("error" in parsed) return { t: "invalid", error: workflowError(locale, parsed.error).error };
+  const r = validateWorkflow(parsed.raw, actionValidationContext(a.declaration, locale));
+  return r.ok ? { t: "ok", valid: r.valid, hash: parsed.hash } : { t: "invalid", error: r.error };
 }

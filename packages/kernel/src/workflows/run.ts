@@ -1,5 +1,7 @@
 import { say } from "../i18n.js";
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { HARVEST_DELAY_S, type Workshop } from "../container/workshop.js";
 import { toolsPath } from "../container/runner.js";
@@ -41,6 +43,7 @@ import {
 import { REPLAY_TOO_BIG } from "./replay.js";
 import type { OutputKind, Owner } from "./schema.js";
 import { WEB_REQUIRED, type ValidWorkflow } from "./validate.js";
+import { workflowBytesHash } from "./read.js";
 
 /** The run's process (the `docker run -i` client): its only channel with the kernel is stdin / stdout. */
 export interface HarvestProcess {
@@ -112,6 +115,11 @@ const LOG_BLOCK_CHARS = 500;
 export interface WorkflowContext {
   owner: Owner;
   valid: ValidWorkflow;
+  /**
+   * sha256 of the workflow.json bytes `valid` was parsed from (null: no file, the implicit workflow). The staged copy must
+   * hold the same bytes, or none: the blocks sent to the harvester come from that read, not from the copy.
+   */
+  workflowHash: string | null;
   /** Folder of the owner's files (`.mjs` of the `code` blocks), mounted read-only on `/widget`. */
   filesFolder: string;
   config: unknown;
@@ -348,7 +356,8 @@ export async function runWorkflow(
   try {
     const staged = await infra.workshop.stageHarvest(ctx.owner, ctx.filesFolder);
     // Hashed once copied: what is checked is what runs, nothing can be swapped in between.
-    const refused = await ctx.checkStaged?.(staged);
+    const stagedWorkflow = await readFile(join(staged, "workflow.json")).then(workflowBytesHash, () => null);
+    const refused = stagedWorkflow !== ctx.workflowHash ? say(locale(), "kernel-err-code-changed") : await ctx.checkStaged?.(staged);
     if (refused) return conclude({ t: "stop", status: "grant-required", error: refused, codeChanged: true });
     const [cmd, ...argv] = infra.workshop.harvestCommand(ctx.owner, staged, infra.engine, delays.containerS);
     process = (infra.launch ?? defaultLaunch)(cmd!, argv);

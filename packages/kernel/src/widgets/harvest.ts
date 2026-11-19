@@ -138,7 +138,7 @@ export function kernelError(error: string): boolean {
 
 /** A widget's workflow: `workflow.json`, or `harvest.mjs` alone (implicit workflow). */
 type WidgetWorkflow =
-  | { t: "ok"; valid: ValidWorkflow; declaration: DeclarationWidget }
+  | { t: "ok"; valid: ValidWorkflow; hash: string | null; declaration: DeclarationWidget }
   /** The widget is unreadable: its error may quote its files. */
   | { t: "unreadable"; error: string }
   | { t: "absent" }
@@ -155,7 +155,7 @@ async function widgetWorkflow(widget: WidgetRead, locale: string): Promise<Widge
   const parsed = await readWorkflow(widget.folder, validationContext(widget.declaration, locale));
   if (!parsed) return { t: "absent" };
   if (!parsed.result.ok) return { t: "invalid", error: truncate(parsed.result.error, MAX_ERROR) };
-  return { t: "ok", valid: parsed.result.valid, declaration: widget.declaration };
+  return { t: "ok", valid: parsed.result.valid, hash: parsed.hash, declaration: widget.declaration };
 }
 
 /**
@@ -400,6 +400,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     {
       owner: owner,
       valid: valid,
+      workflowHash: parsed.hash,
       filesFolder: widget.folder,
       config: declaration.config ?? null,
       previous: dataBefore,
@@ -533,6 +534,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
     {
       owner: { type: "widget", id },
       valid: valid,
+      workflowHash: parsed.hash,
       filesFolder: widget.folder,
       config,
       previous: previous,

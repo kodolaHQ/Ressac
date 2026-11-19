@@ -28,6 +28,7 @@ import { WEB_REQUIRED } from "../../src/workflows/validate.js";
 import { LINE_MAX_BYTES, DATA_MAX_SIZE } from "../../src/workflows/protocol.js";
 import { DATA_MAX_SIZE as HOME_DATA_MAX_SIZE } from "../../src/home/schemas.js";
 import { REPLAY_TOO_BIG } from "../../src/workflows/replay.js";
+import { workflowBytesHash } from "../../src/workflows/read.js";
 import { paramsHash, type BlocksMemory } from "../../src/workflows/memory.js";
 import { validateWorkflow } from "../../src/workflows/validate.js";
 import { tempFolder } from "../helpers/temp.js";
@@ -111,6 +112,7 @@ async function bench(
     ctx: {
       owner: { type: "widget", id: "essai" },
       valid: valid(workflow),
+      workflowHash: null,
       filesFolder: folder,
       config: { interests: "rust" },
       previous: null,
@@ -202,6 +204,20 @@ describe("executerWorkflow", () => {
     expect(r.log).toContain("bonjour 2");
     expect(b.commands[0]).toEqual(["docker", "run", "essai", b.ctx.filesFolder, ENGINE]);
     expect(b.deleted).toEqual(["essai"]);
+  });
+
+  it("workflow.json swapped between its read (B) and the staging (A, the approved one): B's blocks never run", async () => {
+    const a = JSON.stringify(chain("a"));
+    const b = await bench(chain("evil"), { "workflow.json": a, "a.mjs": `export default () => 1;`, "evil.mjs": `export default () => 2;` });
+    b.ctx.workflowHash = workflowBytesHash(Buffer.from(JSON.stringify(chain("evil"))));
+    b.ctx.checkStaged = async () => null; // the staged copy is the approved code
+    const r = await runWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "stop", status: "grant-required", codeChanged: true });
+    expect(b.commands).toEqual([]);
+    // The bytes read are the bytes staged: it runs.
+    b.ctx.workflowHash = workflowBytesHash(Buffer.from(a));
+    b.ctx.valid = valid(chain("a"));
+    expect((await runWorkflow(b.ctx, b.infra)).issue.t).toBe("end");
   });
 
   it("a container of the same name left by an abrupt stop is removed before launch", async () => {
