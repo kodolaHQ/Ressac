@@ -46,8 +46,12 @@ describe("test-only environment", () => {
 
   it("the packaged host drops RESSAC_TEST_* before anything is imported; the kernel reads none", () => {
     const host = readFileSync("host/host.ts", "utf8");
-    const scrub = host.indexOf('if (k.startsWith("RESSAC_TEST_")) delete process.env[k]');
+    const scrub = host.indexOf('if (k.startsWith("RESSAC_TEST_") || DEV_OVERRIDES.includes(k)) delete process.env[k]');
     expect(scrub).toBeGreaterThan(0);
+    // The overrides that pick a binary, a model or a download go too.
+    for (const k of ["RESSAC_GIT", "RESSAC_KEV_URL", "RESSAC_EMBED_URL", "RESSAC_EMBED_SHA256", "RESSAC_D1_URL", "RESSAC_D1_SHA256"]) expect(host).toMatch(new RegExp(`DEV_OVERRIDES = \\[[^\\]]*"${k}"`));
+    // The packaged chrome keeps its trust files where no environment moves them.
+    expect(code("chrome/store/index.ts")).toMatch(/__RESSAC_PACKAGED__ === false && Services\.env\.get\("RESSAC_DATA_DIR"\)/);
     expect(scrub).toBeLessThan(host.indexOf("await import("));
     // Its static imports run first: types only, and the locale module, which reads no variable.
     const staticImports = [...host.matchAll(/^import (?!type )[^;]*from "([^"]+)";/gm)].map((m) => m[1]);

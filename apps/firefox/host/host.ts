@@ -18,10 +18,14 @@ process.on("SIGTERM", () => process.exit(0));
 process.env.RESSAC_CONTAINER ||= "ressac-workshop-firefox";
 // The existing container's name and host ports: renaming them would orphan it.
 process.env.RESSAC_CONTAINER_PORTS ||= "5300-5319";
-// A packaged host never honours the e2e hooks: dropped before any module reads them, so neither the kernel nor the
-// processes it starts see one. The dev host runs from source under tsx, where the build flag is absent.
+// A packaged host never honours the e2e hooks nor the dev overrides that pick a binary, a model or a download to run:
+// dropped before any module reads them, so neither the kernel nor the processes it starts see one. The dev host runs
+// from source under tsx, where the build flag is absent. (RESSAC_LLAMA_SERVER and RESSAC_KERNEL_RESOURCES are set by
+// the browser itself, over the inherited ones.)
 declare const __RESSAC_PACKAGED__: boolean | undefined;
-if (typeof __RESSAC_PACKAGED__ !== "undefined" && __RESSAC_PACKAGED__) for (const k of Object.keys(process.env)) if (k.startsWith("RESSAC_TEST_")) delete process.env[k];
+const DEV_OVERRIDES = ["RESSAC_GIT", "RESSAC_KEV_URL", "RESSAC_EMBED_URL", "RESSAC_EMBED_SHA256", "RESSAC_EMBED_SERVER_URL", "RESSAC_D1_URL", "RESSAC_D1_SHA256", "RESSAC_ROOT", "RESSAC_HOST_TEST", "RESSAC_MEMORY_LOOP"];
+if (typeof __RESSAC_PACKAGED__ !== "undefined" && __RESSAC_PACKAGED__)
+  for (const k of Object.keys(process.env)) if (k.startsWith("RESSAC_TEST_") || DEV_OVERRIDES.includes(k)) delete process.env[k];
 
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");

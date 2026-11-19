@@ -75,7 +75,7 @@ A packaged build with a DSN (`RESSAC_SENTRY_DSN` at package time, never in the r
 
 ## Data
 
-The Ressac state (session, settings) lives in the `data` folder next to `engine/` by default, never in `~/Ressac`. Set `RESSAC_DATA_DIR` to use another folder. The e2e always sets it to a temporary folder.
+The Ressac state (session, settings) lives in the `data` folder next to `engine/` by default, never in `~/Ressac`. Set `RESSAC_DATA_DIR` to use another folder (dev builds only: the packaged app ignores it, as it ignores the `RESSAC_TEST_*` hooks and the host's dev overrides). The e2e always sets it to a temporary folder.
 
 Two instances must never share a data folder: the session's temporary file name is the same in both (no pid in Firefox), so they would overwrite each other's session.
 

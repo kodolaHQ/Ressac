@@ -186,8 +186,10 @@ const firefoxPermissions = {
   },
 };
 
+// A dev or e2e build only: the packaged app keeps every trust file (grants, approvals) where no environment moves it.
 const dataDir =
-  Services.env.get("RESSAC_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "Ressac");
+  (typeof __RESSAC_PACKAGED__ !== "undefined" && __RESSAC_PACKAGED__ === false && Services.env.get("RESSAC_DATA_DIR")) ||
+  PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "Ressac");
 
 const widgetGestures = gestureGuard<string>();
 
