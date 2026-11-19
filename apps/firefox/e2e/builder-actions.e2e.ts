@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
@@ -195,7 +195,8 @@ describe("the builder of an action", () => {
     expect(run.status).toBe("succeeded");
     await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-pressed') === 'true';", [tid(`execution-${origin}`)], 30_000);
     // The code changes: the trial shows it, the real run does not.
-    await writeFile(path.join(actionDir("gitlab-c"), "lire.mjs"), codeGitlab("deux"));
+    // The new code needs its own approval before it reads (the action's card): given here as the user would.
+    await writeGitlab("gitlab-c", "deux");
     await click(m, tid("node-lire"));
     await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("replay")]);
     await click(m, tid("replay"));

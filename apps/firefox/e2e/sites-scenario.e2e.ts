@@ -7,7 +7,7 @@ import { testActor } from "./agent-extensions";
 import { state, waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { acceptHomeCard, grantSite, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
 // Plan 32 Task 7: the success scenario, end to end, with the examples of the site apps guide written as they are (only the
@@ -286,6 +286,8 @@ describe("end to end (AGENTS.md's examples)", () => {
     await waitSeriesCard(new RegExp(`^data:image/png;base64,${PNG.toString("base64").replace(/[+/]/g, "\\$&")}$`));
     expect(await text("vidola", "site-grant-card")).toBeNull();
     await clickSeriesCard();
+    // Not the start address: the home's card shows it, « Ouvrir » loads it.
+    expect(await acceptHomeCard(m, "vidola")).toBe(true);
     await expectResumed("vidola-a.localhost");
 
     // Nothing leaked: the cookie is the app's own, no tab, no window more than the app's.
@@ -325,6 +327,8 @@ describe("end to end (AGENTS.md's examples)", () => {
     await expect.poll(() => m.execute<boolean>(`return ${siteWindowExpr("vidola")}.document.documentElement.hasAttribute("ressac-site-home");`)).toBe(true);
     await waitSeriesCard(/^data:image\/png;base64,/);
     await clickSeriesCard();
+    // Not the start address: the home's card shows it, « Ouvrir » loads it.
+    expect(await acceptHomeCard(m, "vidola")).toBe(true);
     await expectResumed("vidola-b.localhost");
   });
 
