@@ -20,7 +20,7 @@ interface Win {
    * Piece → items containing it: 6-char pieces of digit items, 8-char pieces of the others, short items whole. Most
    * pieces belong to one item, stored bare: a Set per piece cost three times the memory.
    */
-  shingles: Map<string, Item | Item[]>;
+  shingles: Map<string, Item | Set<Item>>;
   /** Pieces in `shingles`, counted per item. */
   pieces: number;
   /** Lengths of the short items indexed whole, with their count. */
@@ -41,16 +41,19 @@ const READ_MAX = 20_000;
 const PIECES_MAX = 140_000;
 // Bounds one long item's share of the index; a long secret is still caught whole by rule 1.
 const ITEM_PIECES_MAX = 256;
-// One read keeps at most a quarter of the window, new items in text order, so flushing earlier reads takes four reads.
-const READ_NEW_MAX = READ_MAX / 4;
-const READ_NEW_PIECES_MAX = PIECES_MAX / 4;
+// One read keeps new items in text order, up to a quarter of the window per kind so padding of one kind does not
+// hide another, and half the window in all so flushing earlier reads takes at least two reads.
+// shortcut: padding of the same kind before an item in one read (5 000 items or 35 000 pieces) still hides it; a hard
+// memory bound needs a limit somewhere, revisit if reads get split per source.
+const READ_KIND_MAX = READ_MAX / 4;
+const READ_KIND_PIECES_MAX = PIECES_MAX / 4;
+const READ_NEW_MAX = READ_MAX / 2;
+const READ_NEW_PIECES_MAX = PIECES_MAX / 2;
 const TYPED_ITEMS_MAX = 5000;
 const TYPED_MAX = 64 * 1024;
 const CARRY_MAX = 4096;
 const DIGIT_CHUNK = 6;
 const TEXT_CHUNK = 8;
-// A match that only exists once path segments are glued must be this long, or /2024/11/ would match a 202411.
-const GLUED_DIGITS = 8;
 
 // Left boundary and bounded parts: without them a long run of local-part characters is matched from every position.
 const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/g;
@@ -58,8 +61,11 @@ const PHONE = /(?<!\d)0[1-9](?:[ .-]?\d{2}){4}(?!\d)|\+[1-9](?:[ .-]?\d){7,14}(?
 const DIGITS = /\d+(?:[ .-]\d+)*/g;
 const TOKEN = /[A-Za-z0-9_-]{12,}/g;
 // Dates are public, and pages are full of them: YYYY-MM-DD, YYYYMMDD, DD.MM.YYYY (DD/MM/YYYY never forms one run).
-const DATE =
-  /^(?:(?:19|20)\d{2}[ .-]?(?:0[1-9]|1[0-2])[ .-]?(?:0[1-9]|[12]\d|3[01])|(?:0[1-9]|[12]\d|3[01])[ .-](?:0[1-9]|1[0-2])[ .-](?:19|20)\d{2})$/;
+const [Y, M, D, S] = ["(?:19|20)\\d{2}", "(?:0[1-9]|1[0-2])", "(?:0[1-9]|[12]\\d|3[01])", "[ .-]"];
+const DATE = new RegExp(`^(?:${Y}${S}?${M}${S}?${D}|${D}${S}${M}${S}${Y})$`);
+// A date (or year-month) at the start of a run, as in "2024-11-19 12:30", is cut off and the rest judged alone.
+const DATE_PREFIX = new RegExp(`^(?:${Y}${S}${M}(?:${S}${D})?|${D}${S}${M}${S}${Y})(?=${S}|$)`);
+const GLUED_DATE = new RegExp(`^(?:${Y}${M}${D}|${D}${M}${Y})$`);
 
 /** Lowercase letters and digits only (plus `@`, which splits an e-mail): any separator can re-space a number. */
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}@]/gu, "");
@@ -71,9 +77,12 @@ function extract(text: string): Omit<Item, "source">[] {
   const others: { at: number; kind: Item["kind"]; value: string }[] = [];
   for (const m of text.matchAll(EMAIL)) others.push({ at: m.index, kind: "email", value: m[0] });
   for (const m of text.matchAll(PHONE)) others.push({ at: m.index, kind: "phone", value: m[0].replace(/\D/g, "") });
-  for (const m of text.matchAll(DIGITS))
-    if (m[0].replace(/\D/g, "").length >= DIGIT_CHUNK && !DATE.test(m[0]))
-      others.push({ at: m.index, kind: "digits", value: m[0].replace(/\D/g, "") });
+  for (const m of text.matchAll(DIGITS)) {
+    let run = m[0];
+    for (let date; (date = DATE_PREFIX.exec(run)); ) run = run.slice(date[0].length + 1);
+    if (run.replace(/\D/g, "").length >= DIGIT_CHUNK && !DATE.test(run))
+      others.push({ at: m.index, kind: "digits", value: run.replace(/\D/g, "") });
+  }
   for (const m of text.matchAll(TOKEN))
     if (/[a-z]/i.test(m[0]) && /\d/.test(m[0])) others.push({ at: m.index, kind: "token", value: m[0] });
   others.sort((a, b) => a.at - b.at);
@@ -140,6 +149,7 @@ export class Outflow {
   read(win: string, text: string, source: string): void {
     const w = this.win(win);
     let [added, addedPieces] = [0, 0];
+    const perKind = new Map<string, { items: number; pieces: number }>();
     for (const found of extract(text)) {
       const known = w.read.get(found.norm);
       if (known) {
@@ -151,17 +161,23 @@ export class Outflow {
       }
       const item = { ...found, source };
       const ps = [...indexed(item)];
+      const group = ["email", "phone", "digits", "token"].includes(item.kind) ? item.kind : "secret";
+      const kind = perKind.get(group) ?? { items: 0, pieces: 0 };
+      perKind.set(group, kind);
       if (added >= READ_NEW_MAX || addedPieces + ps.length > READ_NEW_PIECES_MAX) continue;
+      if (kind.items >= READ_KIND_MAX || kind.pieces + ps.length > READ_KIND_PIECES_MAX) continue;
       added++;
       addedPieces += ps.length;
+      kind.items++;
+      kind.pieces += ps.length;
       w.pieces += ps.length;
       w.read.set(item.norm, item);
       this.countShort(w, item, 1);
       for (const p of ps) {
         const at = w.shingles.get(p);
         if (!at) w.shingles.set(p, item);
-        else if (Array.isArray(at)) at.includes(item) || at.push(item);
-        else if (at !== item) w.shingles.set(p, [at, item]);
+        else if (at instanceof Set) at.add(item);
+        else if (at !== item) w.shingles.set(p, new Set([at, item]));
       }
       while (w.read.size > READ_MAX || w.pieces > PIECES_MAX) this.drop(w, w.read.values().next().value!);
     }
@@ -173,10 +189,8 @@ export class Outflow {
     for (const p of indexed(item)) {
       w.pieces--;
       const at = w.shingles.get(p);
-      const rest = Array.isArray(at) ? at.filter((i) => i !== item) : [];
-      if (rest.length > 1) w.shingles.set(p, rest);
-      else if (rest.length === 1) w.shingles.set(p, rest[0]!);
-      else w.shingles.delete(p);
+      if (!(at instanceof Set)) w.shingles.delete(p);
+      else if (at.delete(item) && at.size === 1) w.shingles.set(p, at.values().next().value!);
     }
   }
 
@@ -256,7 +270,8 @@ export class Outflow {
     // A piece the user typed is theirs to send, even if a read item contains it.
     const found = (p: string, keep: (item: Item) => boolean = () => true) => {
       if (typedNow.includes(p)) return undefined;
-      for (const item of [w.shingles.get(p) ?? []].flat()) if (keep(item) && !typed(item.norm)) return item;
+      const at = w.shingles.get(p);
+      for (const item of at instanceof Set ? at : at ? [at] : []) if (keep(item) && !typed(item.norm)) return item;
     };
     const sizes = new Set([DIGIT_CHUNK, TEXT_CHUNK, ...w.shortLengths.keys()]);
     for (const soft of new Set(variants(out).map(softNorm))) {
@@ -268,9 +283,12 @@ export class Outflow {
           }
       const glued = soft.replaceAll("/", "");
       if (glued === soft) continue;
-      for (const p of pieces(glued, GLUED_DIGITS)) {
-        if (!/^\d+$/.test(p)) continue;
-        const item = found(p) ?? found(p.slice(0, DIGIT_CHUNK), (i) => i.norm.includes(p));
+      // Across segments only 8-char pieces count, and no date, or /2024/11/ would match a 202411. Accepted trade-off:
+      // a digit item under 8 digits split by slashes (/482/1397) is missed, so URL paths stay quiet.
+      for (const p of pieces(glued, TEXT_CHUNK)) {
+        const digits = /^\d+$/.test(p);
+        if (digits && GLUED_DATE.test(p)) continue;
+        const item = found(p) ?? (digits ? found(p.slice(0, DIGIT_CHUNK), (i) => i.norm.includes(p)) : undefined);
         if (item) return hit(item);
       }
     }

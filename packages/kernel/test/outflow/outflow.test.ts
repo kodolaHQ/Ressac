@@ -239,3 +239,42 @@ test("long junk tokens cannot flush the memory either", () => {
   o.read("w", Array.from({ length: 2000 }, (_, i) => long(i)).join(" "), "evil.example");
   expect(o.check("w", "camille.roussel@example.com")).toMatchObject({ source: "mail.google.com" });
 });
+
+test("many items sharing a piece keep reads fast", () => {
+  const o = new Outflow();
+  for (let r = 0; r < 8; r++) {
+    const text = Array.from({ length: 5000 }, (_, i) => "000000" + String(r * 5000 + i).padStart(6, "0")).join(", ");
+    const start = performance.now();
+    o.read("w", text, "page");
+    expect(performance.now() - start).toBeLessThan(300);
+  }
+});
+
+test("slashes between characters do not hide an e-mail or a token", () => {
+  const o = new Outflow();
+  o.read("w", "camille.roussel@example.com, ref Zx81Qa92Lp07Wm33", "mail.google.com");
+  expect(o.check("w", "https://x.example/c/a/m/i/l/l/e/r/o/u/s/s/e/l@example.com")).toMatchObject({ kind: "email" });
+  expect(o.check("w", "https://x.example/Zx81/Qa92/Lp07/Wm33")).toMatchObject({ kind: "token" });
+});
+
+test("a date glued to a time or a number is not retained with it", () => {
+  for (const [read, out] of [
+    ["Publié le 2024-11-19 12:30", "https://news.example/2024/11/19/foo"],
+    ["Le 2024-11-19 2 commentaires", "https://news.example/2024/11/19/foo"],
+    ["Facture 2024-11 001234", "https://cdn.example/2024/11/00/x.png"],
+  ] as const) {
+    const o = new Outflow();
+    o.read("w", read, "news.example");
+    expect(o.check("w", out)).toBeUndefined();
+  }
+  const o = new Outflow();
+  o.read("w", "Facture 2024-11 001234", "shop.example");
+  expect(o.check("w", "q=001234")).toMatchObject({ kind: "digits" });
+});
+
+test("padding of one kind does not hide an item of another kind", () => {
+  const o = new Outflow();
+  const numbers = Array.from({ length: 5000 }, (_, i) => String(100000 + i)).join(", ");
+  o.read("w", `${numbers}, camille.roussel@example.com`, "mail.google.com");
+  expect(o.check("w", "q=camille.roussel@example.com")).toMatchObject({ kind: "email" });
+});
