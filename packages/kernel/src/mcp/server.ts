@@ -36,7 +36,7 @@ const TOO_LONG_TEXT = `Adresse trop longue (${URL_MAX} caractères au plus).`;
 /** The band while an address card waits: a step, so the idle delay does not end the search under the card. */
 const ADDRESS_STEP = "Accord demandé pour une adresse";
 /** The key of the search of a session without a window (the main token). */
-export const MAIN_WINDOW = "main";
+const MAIN_WINDOW = "main";
 const SETTLE_MAX_MS = 5000;
 const READ_PAGES_MAX = 6;
 const READ_PAGE_MS = 30_000;

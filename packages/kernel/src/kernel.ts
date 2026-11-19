@@ -21,7 +21,7 @@ import { SearchSessions } from "./search/sessions.js";
 import { createWatcher } from "./search/watcher.js";
 import type { BrowserBridge } from "./mcp/bridge.js";
 import type { ExtensionsTools } from "./mcp/extensions.js";
-import { startMcpServer, generateToken, MAIN_WINDOW, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow, type AgentActivity } from "./mcp/server.js";
+import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow, type AgentActivity } from "./mcp/server.js";
 import { createRecaps, type Recaps } from "./recaps/recaps.js";
 import type { ProfileFiles } from "./mcp/devtools.js";
 import { DevToolsTracking } from "./devtools/tracking.js";
@@ -734,8 +734,7 @@ export async function createKernel(o: {
         // After the card: a refused card leaves the other windows' grants alone, and nothing granted meanwhile leaks into this conversation.
         policy.reset();
         search.reset();
-        // A new conversation starts with an empty outflow memory; a resumed one keeps what its agent read and the user typed.
-        if (!resume) outflow.forget(win ?? MAIN_WINDOW);
+        // The outflow memory is not cleared here: a profile switched back resumes a conversation with its reads in context (over-retaining only over-blocks); the host forgets it when the window closes.
         if (win !== undefined) sessionToken = server.openSession(win, chosen.name);
         let mcpConfig: string;
         let env: Record<string, string> = {};

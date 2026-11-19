@@ -289,8 +289,8 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(await check("f1", iban)).toMatchObject({ kind: "iban" });
     h.rpc.notify("agent.write", { window: "f1", data: `${iban}\r` });
     expect(await check("f1", iban)).toBeNull();
-    // ⌘T before the window's agent runs (its usual case): the question is typed once written into the new conversation,
-    // so the fresh session's reset does not erase it; the page titles shown with it are not typed.
+    // ⌘T before the window's agent runs (its usual case): the question is typed once written into the new conversation;
+    // the page titles shown with it are not typed.
     await h.rpc.request("ask.handOff", { window: "f2", question: `corrige ${key}`, shown: [{ url: "https://un.test/", title: iban, lastVisit: "2026-11-19" }] });
     await h.rpc.request("agent.start", { window: "f2", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("received: corrige"));
@@ -298,6 +298,15 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(await check("f2", iban)).toMatchObject({ kind: "iban" });
     h.rpc.notify("agent.closeWindow", { window: "f1" });
     expect(await check("f1", iban)).toMatchObject({ kind: "iban" });
+    // Memory made again while the agent stops (here a late keystroke) is forgotten once it has stopped.
+    h.rpc.notify("agent.closeWindow", { window: "f2" });
+    h.rpc.notify("agent.write", { window: "f2", data: `${key}\r` });
+    expect(await check("f2", key)).toBeNull();
+    const end = Date.now() + 10_000;
+    while ((await check("f2", key)) === null) {
+      if (Date.now() > end) throw new Error("the closed window's memory was not forgotten after the stop");
+      await new Promise((r) => setTimeout(r, 25));
+    }
   });
 
   it("a repeat demarrer with the same profile keeps the kernel and its sessions", async () => {

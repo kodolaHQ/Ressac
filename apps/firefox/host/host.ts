@@ -954,7 +954,8 @@ const rpc = createRpc({
       selections.delete(p.window);
       actives.delete(p.window);
       kernel?.outflow.forget(p.window);
-      void sessions.closeWindow(p.window);
+      // Again once the agent is stopped: a tool call answered while it stopped would have made the window's memory anew.
+      void sessions.closeWindow(p.window).finally(() => kernel?.outflow.forget(p.window));
     },
     privateTabs: (p: { privateTabs: string[]; activePrivate: boolean }) => bridge.setPrivate(p),
     "policy.navigated": (p: { id: string; url: string }) => { kernel?.policy.tabNavigated(p.id, p.url); kernel?.search.tabNavigated(p.id, p.url); },
