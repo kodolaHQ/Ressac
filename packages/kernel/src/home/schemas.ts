@@ -95,6 +95,8 @@ export const WidgetState = z.object({
   /** A kernel-written writer message (no account, limit reached) that failed items of the last run; never widget text. */
   warning: z.string().optional(),
   log: z.string().optional(),
+  /** Grant required because the widget's code changed since its reads were approved (shown on the banner). */
+  codeChanged: z.literal(true).optional(),
   /** Run in progress: items done out of the total. */
   progress: z.object({ done: z.number().int().min(0), total: z.number().int().min(0) }).optional(),
   /** Tracking of fixed hours: slots « YYYY-MM-DDTHH:MM » (local time). */

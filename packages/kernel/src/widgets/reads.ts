@@ -1,4 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { queued, writeAtomic } from "../workflows/executions.js";
@@ -6,9 +7,10 @@ import { queued, writeAtomic } from "../workflows/executions.js";
 /**
  * What the user approved a widget or action without an account to read: its `public` domains and the web, as declared at the
  * time of the approval. Stored in `<widgetsFolder>/reads.json` (`<actionsFolder>/reads.json` for the actions), outside the
- * workspace: the agent cannot write it.
+ * workspace: the agent cannot write it. `code` (widgets): the `codeHash` of the files the approval was given for; the agent
+ * can rewrite them, so a harvest whose staged copy hashes otherwise does not run.
  */
-export const Reads = z.object({ public: z.array(z.string()), web: z.boolean() });
+export const Reads = z.object({ public: z.array(z.string()), web: z.boolean(), code: z.string().optional() });
 export type Reads = z.infer<typeof Reads>;
 
 const ID = /^[a-z0-9-]+$/;
@@ -46,7 +48,7 @@ export async function approveReads(folder: string, id: string, reads: Reads): Pr
   if (!ID.test(id)) throw new Error(`invalid id: ${id}`);
   const r = Reads.parse(reads);
   return modify(folder, (all) => {
-    all[id] = { public: [...r.public].sort(), web: r.web };
+    all[id] = { public: [...r.public].sort(), web: r.web, ...(r.code !== undefined ? { code: r.code } : {}) };
   });
 }
 
@@ -65,6 +67,20 @@ export function readsCovered(declaration: { sources: { public: string[]; web?: b
   return publics.every((d) => approved.public.includes(d)) && (!web || approved.web);
 }
 
+/**
+ * The hash of an owner's code as a harvest stages it: every top-level regular file but `data.json` (names and contents).
+ * Run on the staged copy, it hashes exactly what will run.
+ */
+export async function codeHash(folder: string): Promise<string> {
+  const h = createHash("sha256");
+  const names = (await readdir(folder, { withFileTypes: true })).filter((e) => e.isFile() && e.name !== "data.json").map((e) => e.name).sort();
+  for (const n of names) {
+    const content = await readFile(join(folder, n));
+    h.update(`${n}\0${content.length}\0`).update(content);
+  }
+  return h.digest("hex");
+}
+
 /** May this owner read any host? Never with an account; without one, when it declares `web` or its approval has `web`. */
 export async function readsUnrestricted(folder: string, id: string, declaration: { sources: { account: string[]; web?: boolean } }): Promise<boolean> {
   if (declaration.sources.account.length) return false;
@@ -73,15 +89,14 @@ export async function readsUnrestricted(folder: string, id: string, declaration:
 
 /**
  * The migration, once per folder: every owner without account that was on disk before this start gets its declared public
- * domains and `web`, so it keeps reading any host as before the gate. A `fresh` one (a starter just copied) gets exactly what
- * it declares. Entries already there are kept. A marker records it, so a `reads.json` the user removed later is
- * not seeded again.
+ * domains and `web`, so it keeps reading any host as before the gate. Entries already there are kept. A marker records it,
+ * so a `reads.json` the user removed later is not seeded again. Actions only: a widget's approval is the user's click.
  */
-export async function seedReads(folder: string, owners: { id: string; sources: { account: string[]; public: string[]; web?: boolean }; fresh?: boolean }[]): Promise<void> {
+export async function seedReads(folder: string, owners: { id: string; sources: { account: string[]; public: string[]; web?: boolean } }[]): Promise<void> {
   const marker = join(folder, "reads.seeded");
   if (await stat(marker).then(() => true, () => false)) return;
   await modify(folder, (all) => {
-    for (const o of owners) if (ID.test(o.id) && o.sources.account.length === 0) all[o.id] ??= { public: [...o.sources.public].sort(), web: !o.fresh || o.sources.web === true };
+    for (const o of owners) if (ID.test(o.id) && o.sources.account.length === 0) all[o.id] ??= { public: [...o.sources.public].sort(), web: true };
   });
   await writeAtomic(marker, "");
 }

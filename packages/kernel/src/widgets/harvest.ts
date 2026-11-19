@@ -7,7 +7,7 @@ import type { Workshop } from "../container/workshop.js";
 import type { LocalAi } from "../ai/local-ai.js";
 import type { BrowserBridge } from "../mcp/bridge.js";
 import { grantValid, readGrants, removeGrant } from "./grants.js";
-import { readReads, readsCovered, readsUnrestricted } from "./reads.js";
+import { codeHash, readReads, readsCovered, readsUnrestricted } from "./reads.js";
 import { message, truncate } from "../workflows/access.js";
 import {
   MAX_ERROR,
@@ -172,11 +172,24 @@ async function validGrant(widgetsFolder: string, id: string, declaration: Declar
     await deleteData(widgetsFolder, id);
     await removeGrant(widgetsFolder, id);
   }
+  const reads = (await readReads(widgetsFolder))[id];
+  // An approval from before the code hash (seeded, or older) is asked again once.
   const can =
     declaration.sources.account.length === 0
-      ? readsCovered(declaration, (await readReads(widgetsFolder))[id])
+      ? readsCovered(declaration, reads) && (!readsCode(declaration) || reads?.code !== undefined)
       : grantValid(declaration, (await readGrants(widgetsFolder))[id]);
   return { can: can, removed: removed };
+}
+
+/** A widget without account that reads something: its approval is tied to its code. */
+const readsCode = (d: DeclarationWidget) => d.sources.account.length === 0 && (d.sources.public.length > 0 || d.sources.web === true);
+
+/** The staged code must be the one the reads were approved for (see codeHash). */
+function codeCheck(widgetsFolder: string, id: string, declaration: DeclarationWidget, locale: string): Pick<WorkflowContext, "checkStaged"> {
+  if (!readsCode(declaration)) return {};
+  return {
+    checkStaged: async (staged) => ((await readReads(widgetsFolder))[id]?.code === (await codeHash(staged)) ? null : say(locale, "kernel-err-code-changed")),
+  };
 }
 
 /**
@@ -286,6 +299,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     data?: unknown;
     run?: string;
     warning?: string;
+    codeChanged?: true;
   }): Promise<HarvestResult> => {
     const state: WidgetState = {
       status: r.status,
@@ -298,6 +312,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     }
     if (r.log) state.log = r.log;
     if (r.warning) state.warning = r.warning;
+    if (r.codeChanged) state.codeChanged = true;
     await writeWidgetState(widgetsFolder, id, state);
     o.onChange?.();
     return {
@@ -401,6 +416,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       previous: dataBefore,
       memory: await readMemory(dataFolder),
       ...grantContext(widgetsFolder, id, declaration, loc(o)),
+      ...codeCheck(widgetsFolder, id, declaration, loc(o)),
       unrestricted: await readsUnrestricted(widgetsFolder, id, declaration),
       trigger: trigger,
       ...(maxDurationMinutes !== undefined ? { maxDurationMinutes: maxDurationMinutes } : {}),
@@ -470,7 +486,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
   // Progressive run: its last safe memory is kept (never when it stops for lack of a grant).
   const memory = outcome.t === "stop" && outcome.status === "grant-required" ? null : outcome.memory;
   return outcome.t === "stop"
-    ? concludeWithoutData(execution, { status: outcome.status, error: outcome.error, log: log }, memory)
+    ? concludeWithoutData(execution, { status: outcome.status, error: outcome.error, log: log, ...(outcome.codeChanged ? { codeChanged: true as const } : {}) }, memory)
     : // The provenance comes from the engine: `erreurNoyau` absent, the text may have been written by the widget's code.
       // Interrupted: the message is the kernel's, not the text the widget's code may have written.
       concludeWithoutData(
@@ -534,6 +550,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
       // A try neither receives nor keeps any memory.
       memory: {},
       ...grantContext(widgetsFolder, id, declaration, loc(o)),
+      ...codeCheck(widgetsFolder, id, declaration, loc(o)),
       unrestricted: await readsUnrestricted(widgetsFolder, id, declaration),
       trigger: "replay",
       replay: { ...replay, resumed: plan.resumed },

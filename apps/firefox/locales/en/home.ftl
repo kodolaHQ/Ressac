@@ -316,6 +316,7 @@ home-widget-workflow = View / edit the workflow
 home-widget-grant-public = This widget wants to read { $account } with your account, and will be able to contact: { $public }.
 home-widget-grant-private = This widget wants to read { $account } with your account, and will contact no other site.
 home-widget-allow = Allow…
+home-widget-code-changed = The code changed since your approval.
 home-widget-reads-public = This widget will read: { $public }
 home-widget-reads-web = This widget searches and reads the web
 home-widget-reads-public-web = This widget will read: { $public }, and searches and reads the web

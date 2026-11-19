@@ -40,6 +40,7 @@ kernel-err-grant-required = Grant required to read with your account: { $domains
 kernel-err-reads-required = Grant required to read: { $domains }
 kernel-err-reads-required-web = Grant required to read: { $domains } and the web
 kernel-err-reads-required-web-only = Grant required to search and read the web
+kernel-err-code-changed = The code changed since your approval
 kernel-err-no-result = The harvest ended without a result (code { $code })
 kernel-err-no-result-no-code = The harvest ended without a result
 kernel-err-action-stopped = Stopped at your request

@@ -15,7 +15,7 @@ import { LocalAi } from "../../src/ai/local-ai.js";
 import { toPplxScale } from "../../src/ai/d1-scale.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { giveGrant, readGrants, removeGrant } from "../../src/widgets/grants.js";
-import { approveReads, readReads, seedReads } from "../../src/widgets/reads.js";
+import { approveReads, codeHash, readReads } from "../../src/widgets/reads.js";
 import { initSpace } from "../../src/workspace/initialize.js";
 import { kernelError, runAttempt, runHarvest, WORKSHOP_STOPPED_ERROR, INTERRUPTED_ERROR, type ProcessLauncher } from "../../src/widgets/harvest.js";
 import { PROFILE_DENIED } from "../../src/workflows/run.js";
@@ -76,7 +76,7 @@ interface Context {
 }
 
 /** Creates a widget `id` (widget.json + harvest.mjs) and a launcher that runs the harvester locally, without docker. */
-/** Without `unapproved`, a widget without account is approved as seeded at the update (any host). */
+/** Without `unapproved`, a widget without account is approved for any host, tied to its code as written here. */
 async function prepare(id: string, code: string, sources = { account: [] as string[], public: [] as string[] }, config: unknown = { a: 1 }, o: { unapproved?: true } = {}): Promise<Context> {
   const space = await tempFolder();
   const folder = join(space, "home", "widgets", id);
@@ -92,7 +92,7 @@ async function prepare(id: string, code: string, sources = { account: [] as stri
   await writeFile(join(folder, "harvest.mjs"), code);
   const declaration = DeclarationWidget.parse(raw);
   const widgetsFolder = await tempFolder();
-  if (!o.unapproved && sources.account.length === 0) await approveReads(widgetsFolder, id, { public: sources.public, web: true });
+  if (!o.unapproved && sources.account.length === 0) await approveReads(widgetsFolder, id, { public: sources.public, web: true, code: await codeHash(folder) });
   const run = fakeRunner([]);
   const ctx: Context = {
     widget: {
@@ -183,30 +183,41 @@ const optionsOf = (ctx: Context) => ({
 const readJson = async (path: string) => JSON.parse(await readFile(path, "utf8"));
 
 describe("runHarvest", () => {
-  it("fresh space: a starter is held to what it declares (meteo's code swapped to an undeclared host is refused), actus-tech (web) still reads any host", async () => {
+  it("fresh space: starters read nothing before an approval; the approval is tied to the code, a rewrite blocks the harvest and keeps the data", async () => {
     const web = await webServer({ "/": (res) => res.end("lu") });
     const space = await tempFolder();
     const c = spacePaths(space);
-    const { created } = await initSpace(c, "fr");
+    await initSpace(c, "fr");
     const widgetsFolder = await tempFolder();
-    const starters = (await readHome(c, widgetsFolder, "fr")).widgets.flatMap((w) => ("error" in w ? [] : [w]));
-    await seedReads(widgetsFolder, starters.map((w) => ({ id: w.id, sources: w.declaration.sources, fresh: created.includes(join(c.widgets, w.id, "widget.json")) })));
-    expect((await readReads(widgetsFolder)).meteo!.web).toBe(false);
-    expect((await readReads(widgetsFolder))["actus-tech"]!.web).toBe(true);
-    const run = async (id: string, code: string) => {
-      const folder = join(c.widgets, id);
+    expect(await readReads(widgetsFolder)).toEqual({});
+    const folder = join(c.widgets, "actus-tech");
+    const write = async (code: string) => {
       await writeFile(join(folder, "workflow.json"), JSON.stringify({ version: 1, blocks: [{ id: "a", type: "code", params: { source: "a.mjs" } }, { id: "s", type: "output", params: { to: "widget" } }], links: [{ from: "a", to: "s" }] }));
       await writeFile(join(folder, "a.mjs"), code);
-      const widget = (await readHome(c, widgetsFolder, "fr")).widgets.find((w) => w.id === id)!;
-      const launch: ProcessLauncher = () => {
+    };
+    const commands: string[][] = [];
+    const run = async () => {
+      const widget = (await readHome(c, widgetsFolder, "fr")).widgets.find((w) => w.id === "actus-tech")!;
+      const launch: ProcessLauncher = (cmd, a) => {
+        commands.push([cmd, ...a]);
         const e = spawn(process.execPath, [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
         return { stdin: e.stdin, stdout: e.stdout, stderr: e.stderr, kill: () => void e.kill("SIGKILL"), end: new Promise((ok) => e.on("close", (x) => ok(x))) };
       };
-      return runHarvest({ id, widget, widgetsFolder, engine: ENGINE, workshop: new Workshop({ paths: c, docker: "docker", run: fakeRunner([]).run }), launch, ai: null, bridge: readBridge(), clock, locale: () => "fr", localAddresses: true });
+      return runHarvest({ id: "actus-tech", widget, widgetsFolder, engine: ENGINE, workshop: new Workshop({ paths: c, docker: "docker", run: fakeRunner([]).run }), launch, ai: null, bridge: readBridge(), clock, locale: () => "fr", localAddresses: true });
     };
-    const code = `export default async (_e, w) => w.fetch("${web.url}/");`;
-    expect((await run("meteo", code)).state).toMatchObject({ status: "error", error: expect.stringContaining("Domaine non déclaré : 127.0.0.1") });
-    expect(await run("actus-tech", code)).toMatchObject({ state: { status: "ok" }, data: "lu" });
+    await write(`export default async (_e, w) => w.fetch("${web.url}/");`);
+    expect((await run()).state).toMatchObject({ status: "grant-required" });
+    expect(commands).toEqual([]);
+    const { declaration } = (await readHome(c, widgetsFolder, "fr")).widgets.find((w) => w.id === "actus-tech")! as { declaration: DeclarationWidget };
+    await approveReads(widgetsFolder, "actus-tech", { public: declaration.sources.public, web: true, code: await codeHash(folder) });
+    expect(await run()).toMatchObject({ state: { status: "ok" }, data: "lu" });
+    // The agent rewrites the code: nothing runs, the widget asks again, and its data stays.
+    await write(`export default async (_e, w) => w.fetch("${web.url}/?vol=1");`);
+    const blocked = await run();
+    expect(blocked.state).toMatchObject({ status: "grant-required", codeChanged: true, error: "Le code a changé depuis ton accord" });
+    expect(commands).toHaveLength(1);
+    expect(await readJson(join(widgetsFolder, "actus-tech", "data.json"))).toBe("lu");
+    expect(web.requests.some((r) => r.url.includes("vol"))).toBe(false);
   });
 
   it("without account: a public domain not approved stops before the container, the approval lets it run, a lost domain still runs", async () => {
@@ -215,7 +226,7 @@ describe("runHarvest", () => {
     expect(r.state).toMatchObject({ status: "grant-required", error: "Accord requis pour lire : a.example", kernelError: true });
     expect(kernelError(r.state.error!)).toBe(true);
     expect(ctx.commands).toEqual([]);
-    await approveReads(ctx.widgetsFolder, "pub", { public: ["a.example", "b.example"], web: false });
+    await approveReads(ctx.widgetsFolder, "pub", { public: ["a.example", "b.example"], web: false, code: await codeHash(ctx.widget.folder) });
     expect((await runHarvest(optionsOf(ctx))).state.status).toBe("ok");
     ctx.widget.declaration.sources.public = ["c.example"];
     expect((await runHarvest(optionsOf(ctx))).state.status).toBe("grant-required");

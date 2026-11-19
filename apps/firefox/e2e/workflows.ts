@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { codeHash } from "../../../packages/kernel/src/widgets/reads";
 import type { Marionette } from "./marionette";
 import { click, inUi, waitUi } from "./ui";
 
@@ -9,13 +10,13 @@ export const widgetDir = (dataDir: string, id: string) => path.join(dataDir, "wo
 /**
  * A fixture without account is approved as the kernel seeds an owner present at the update (`<folder>/reads.json`): its
  * domains, and any host (`web: true`). One written after the browser started would otherwise wait for « Autoriser », or be
- * held to its declared domains.
+ * held to its declared domains. `code`: a widget's approval is tied to its code (codeHash of its folder).
  */
-export async function approveFixtureReads(folder: string, id: string, sources: { account?: string[]; public?: string[]; web?: boolean }): Promise<void> {
+export async function approveFixtureReads(folder: string, id: string, sources: { account?: string[]; public?: string[]; web?: boolean }, code?: string): Promise<void> {
   if (sources.account?.length) return;
   const file = path.join(folder, "reads.json");
   const all: Record<string, unknown> = await readFile(file, "utf8").then((t) => JSON.parse(t), () => ({}));
-  all[id] = { public: [...(sources.public ?? [])].sort(), web: true };
+  all[id] = { public: [...(sources.public ?? [])].sort(), web: true, ...(code ? { code } : {}) };
   await mkdir(folder, { recursive: true });
   await writeFile(file, JSON.stringify(all));
 }
@@ -55,7 +56,7 @@ export async function writeWidget(
   if (o.workflow !== undefined) await writeFile(path.join(dir, "workflow.json"), typeof o.workflow === "string" ? o.workflow : JSON.stringify(o.workflow));
   for (const [name, text] of Object.entries(o.files ?? {})) await writeFile(path.join(dir, name), text);
   const declared = (o.declaration?.sources ?? {}) as { account?: string[]; public?: string[]; web?: boolean };
-  await approveFixtureReads(path.join(dataDir, "widgets"), id, declared);
+  await approveFixtureReads(path.join(dataDir, "widgets"), id, declared, await codeHash(dir));
   const state = path.join(dataDir, "widgets", id);
   await mkdir(state, { recursive: true });
   const now = new Date().toISOString();

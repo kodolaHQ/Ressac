@@ -119,7 +119,7 @@
     {#if widget.state.status === "grant-required" && !denied}
       <div class="banner" data-testid="grant-banner">
         <span
-          >{widget.account.length === 0
+          >{#if widget.state.codeChanged}<strong data-testid="grant-code-changed">{t("home-widget-code-changed")}</strong> {/if}{widget.account.length === 0
             ? widget.web
               ? widget.public.length
                 ? t("home-widget-reads-public-web", { public: widget.public.join(", ") })

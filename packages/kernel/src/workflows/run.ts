@@ -124,6 +124,8 @@ export interface WorkflowContext {
   sources: { account: readonly string[]; public: readonly string[]; web?: boolean };
   /** Without account: may read any host (it declares `web`, or its approved reads have `web`, as seeded at the update). */
   unrestricted?: boolean;
+  /** On the staged copy, before anything runs: a refusal text stops the run as `grant-required` with `codeChanged`. */
+  checkStaged?(staged: string): Promise<string | null>;
   /** Re-read at each read with an account; null = grant gone. */
   grant(): Promise<{ profile: string } | null>;
   /** The browser refuses the grant's profile (deleted, became private). */
@@ -195,7 +197,7 @@ export type WorkflowOutcome =
    */
   | { t: "failure"; error: string; codeError: boolean; memory?: BlocksMemory | null }
   /** Stopped by the kernel (delay, grant, profile refused, answer too big…): the text is the kernel's. `memory`: same. */
-  | { t: "stop"; status: "error" | "grant-required"; error: string; memory?: BlocksMemory | null };
+  | { t: "stop"; status: "error" | "grant-required"; error: string; memory?: BlocksMemory | null; codeChanged?: true };
 
 function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | { success: false } }, a: unknown, f: string): T {
   const r = schema.safeParse(a);
@@ -345,6 +347,9 @@ export async function runWorkflow(
   let process: HarvestProcess;
   try {
     const staged = await infra.workshop.stageHarvest(ctx.owner, ctx.filesFolder);
+    // Hashed once copied: what is checked is what runs, nothing can be swapped in between.
+    const refused = await ctx.checkStaged?.(staged);
+    if (refused) return conclude({ t: "stop", status: "grant-required", error: refused, codeChanged: true });
     const [cmd, ...argv] = infra.workshop.harvestCommand(ctx.owner, staged, infra.engine, delays.containerS);
     process = (infra.launch ?? defaultLaunch)(cmd!, argv);
   } catch (e) {

@@ -10,7 +10,7 @@ import { createKernel, WorkshopError, type Kernel } from "../src/kernel.js";
 import type { LocalAi } from "../src/ai/local-ai.js";
 import { WidgetsScheduler } from "../src/widgets/scheduler.js";
 import { giveGrant, readGrants } from "../src/widgets/grants.js";
-import { readReads, readsCovered } from "../src/widgets/reads.js";
+import { codeHash, readReads, readsCovered } from "../src/widgets/reads.js";
 import { writeRun, idExecution, type Execution } from "../src/workflows/executions.js";
 import { writeResult } from "../src/actions/data.js";
 import { writeData, readData, readWidgetState } from "../src/home/data.js";
@@ -572,7 +572,7 @@ test("kernel.actions: accorder records the grant without running anything; refus
   expect(await n.actions.runs("gitlab")).toEqual([]);
 });
 
-test("kernel: the owners on disk at start get their reads approved once; one written after start does not; approveReads checks what was shown", async () => {
+test("kernel: actions on disk at start get their reads approved once, widgets never; approveReads checks what was shown and ties the code", async () => {
   const root = await tempFolder();
   const widgetsFolder = `${root}-widgets`;
   const decl = (publics: string[], web = false) => declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { account: [], public: publics, web } });
@@ -586,7 +586,7 @@ test("kernel: the owners on disk at start get their reads approved once; one wri
     kernel = await createKernel({ locale: () => "fr", widgetsFolder, actionsFolder, bridge: new FakeBridge([], { active: null, allow: false }), root, run });
     return { n: kernel, actionsFolder };
   })();
-  expect((await readReads(widgetsFolder)).old).toEqual({ public: ["a.fr"], web: true });
+  expect((await readReads(widgetsFolder)).old).toBeUndefined();
   expect((await readReads(actionsFolder)).pub).toEqual({ public: ["x.fr"], web: true });
 
   await writeWidget(n.paths, "fresh", decl(["b.fr"], true), { "harvest.mjs": "export default () => 1" });
@@ -594,7 +594,7 @@ test("kernel: the owners on disk at start get their reads approved once; one wri
   await expect(n.approveReads({ id: "fresh", public: ["b.fr"], web: false })).rejects.toThrow(/a changé/);
   await expect(n.approveReads({ id: "fresh", public: [], web: true })).rejects.toThrow(/a changé/);
   await n.approveReads({ id: "fresh", public: ["b.fr"], web: true });
-  expect((await readReads(widgetsFolder)).fresh).toEqual({ public: ["b.fr"], web: true });
+  expect((await readReads(widgetsFolder)).fresh).toEqual({ public: ["b.fr"], web: true, code: await codeHash(join(n.paths.widgets, "fresh")) });
   // Docker absent: the started harvest ends with « atelier arrêté », past the gate.
   await vi.waitFor(async () => expect((await readWidgetState(widgetsFolder, "fresh")).status).toBe("workshop-stopped"));
 
@@ -613,19 +613,15 @@ test("kernel: the owners on disk at start get their reads approved once; one wri
   expect((await readReads(actionsFolder)).pub).toEqual({ public: ["x.fr"], web: true });
 });
 
-test("kernel: a fresh space seeds its starters with exactly what they declare, and none waits for a card", async () => {
+test("kernel: a fresh space grants its starters nothing: each one that reads waits for the user's approval", async () => {
   const root = await tempFolder();
   const widgetsFolder = `${root}-widgets`;
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   kernel = await createKernel({ locale: () => "fr", widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root, run });
-  const reads = await readReads(widgetsFolder);
-  expect(reads.meteo).toEqual({ public: ["api.open-meteo.com", "geocoding-api.open-meteo.com"], web: false });
-  expect(reads["actus-tech"]?.web).toBe(true);
-  expect(reads["daily-dev"]).toBeUndefined();
-  for (const w of (await kernel.readHome()).widgets) {
-    if ("error" in w || w.declaration.sources.account.length) continue;
-    expect(readsCovered(w.declaration, reads[w.id]), w.id).toBe(true);
-  }
+  expect(await readReads(widgetsFolder)).toEqual({});
+  const widgets = (await kernel.readHome()).widgets.flatMap((w) => ("error" in w || w.declaration.sources.account.length ? [] : [w]));
+  expect(widgets.map((w) => w.id)).toContain("actus-tech");
+  for (const w of widgets) expect(readsCovered(w.declaration, undefined), w.id).toBe(w.declaration.sources.public.length === 0 && !w.declaration.sources.web);
 });
 
 describe("openAgentSession with a profile", () => {

@@ -33,7 +33,7 @@ import { WidgetsScheduler, type DirectState, type AttemptResult } from "./widget
 import type { NotificationWidget } from "./widgets/novelties.js";
 import { grantRequired } from "./widgets/harvest.js";
 import { giveGrant, readGrants, removeGrant } from "./widgets/grants.js";
-import { approveReads, removeReads, seedReads } from "./widgets/reads.js";
+import { approveReads, codeHash, removeReads, seedReads } from "./widgets/reads.js";
 import { readAction, readActions, type ReadAction } from "./actions/read.js";
 import { lastResult, readResult, forgetGoneActions, deleteDataAction } from "./actions/data.js";
 import { FileActions, type ActionsState, type ActionLaunch } from "./actions/file.js";
@@ -365,7 +365,7 @@ export async function createKernel(o: {
   const workshop = o.workshop ?? new Workshop({ paths: paths, run: run, ...(o.locale ? { locale: o.locale } : {}), ...(o.resources ? { dockerFolder: join(o.resources, "docker") } : {}) });
   // Before initSpace: no process left in an out-of-date container may move .ressac while the kernel writes there.
   await workshop.removeOutdated();
-  const { created } = await initSpace(paths, loc(), templates);
+  await initSpace(paths, loc(), templates);
   let relocalizing: Promise<void> = Promise.resolve();
 
   const profileId = o.profileId ?? "claude";
@@ -379,7 +379,7 @@ export async function createKernel(o: {
   // An action deleted (or put in the trash) since the last launch: its data and grant go.
   await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[ressac] forgetting gone actions:", e));
   // Once, before any harvest or run: the owners that exist at the update keep reading what they declare.
-  await seedSpaceReads(paths, widgetsFolder, actionsFolder, loc(), created).catch((e) => console.error("[ressac] reads seeding:", e));
+  await seedActionReads(paths, actionsFolder).catch((e) => console.error("[ressac] reads seeding:", e));
   const ai = o.ai ?? null;
   // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch Kev.
   const aiAccess = ai?.access() ?? null;
@@ -803,7 +803,8 @@ export async function createKernel(o: {
       if ("error" in w) throw new Error(say(loc(), "kernel-grant-widget-unreadable", { error: w.error }));
       const { account, public: publics, web } = w.declaration.sources;
       if (account.length || !sameLists(publics, shownPublic) || web !== shownWeb) throw new Error(say(loc(), "kernel-grant-widget-changed", { id }));
-      await approveReads(widgetsFolder, id, { public: publics, web });
+      // Tied to the code as it is now: a rewrite by the agent stops the harvests until a new approval.
+      await approveReads(widgetsFolder, id, { public: publics, web, code: await codeHash(w.folder) });
       report();
       scheduler.harvestNow(id).catch((e) => console.error("[ressac] harvest after reads approval:", e));
     },
@@ -842,12 +843,8 @@ export async function createKernel(o: {
   };
 }
 
-/** Seeds `reads.json` of the widgets and of the actions from the owners on disk (a folder not found seeds nothing, marker written). */
-async function seedSpaceReads(paths: SpacePaths, widgetsFolder: string, actionsFolder: string, locale: string, created: string[]): Promise<void> {
-  const widgets = (await readHome(paths, widgetsFolder, locale, false)).widgets;
-  // A starter whose declaration initSpace just copied was not on disk before: it gets what it declares, not any host.
-  const fresh = new Set(created);
-  await seedReads(widgetsFolder, widgets.flatMap((w) => ("error" in w ? [] : [{ id: w.id, sources: w.declaration.sources, fresh: fresh.has(join(paths.widgets, w.id, "widget.json")) }])));
+/** Seeds `reads.json` of the actions from the owners on disk (a folder not found seeds nothing, marker written). Widgets get none: see approveReads. */
+async function seedActionReads(paths: SpacePaths, actionsFolder: string): Promise<void> {
   const actions = await readActions(paths);
   await seedReads(actionsFolder, actions.flatMap((a) => ("error" in a ? [] : [{ id: a.id, sources: a.declaration.sources }])));
 }
