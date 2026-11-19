@@ -237,6 +237,23 @@ describe("the grant card", () => {
     expect((await wait()).accepted).toBe(true);
   });
 
+  it("an address card shows what sensitive data the address carries, as an alert above the opinion", async () => {
+    const w = await launch();
+    const m = w.marionette;
+    const win = await m.execute<string>("return window.ressacWindow.windowId");
+    await m.execute(
+      `return (async () => {
+        const s = await ChromeUtils.importESModule("${STORE}").ready;
+        s.questions.askAddress(JSON.parse(arguments[0]), arguments[1]);
+      })();`,
+      [JSON.stringify({ url: "https://exemple.com/?q=FR76", reason: "test", agent: "A", opinion: "Étrange", danger: "Contient un IBAN, lu dans ta banque : FR76••••0189" }), win],
+    );
+    await waitUi(m, `return !!doc.querySelector('[data-testid="address-request-danger"]')`);
+    expect(await inUi(m, `const d = doc.querySelector('[data-testid="address-request-danger"]'); return [d.textContent, d.getAttribute("role"), d.nextElementSibling.textContent.startsWith("Avis")]`)).toEqual([
+      "⚠ Contient un IBAN, lu dans ta banque : FR76••••0189", "alert", true,
+    ]);
+  });
+
   it("Enter refuses an extension card, even renforcée and ticked", async () => {
     const { m, wait } = await withCard({ hardened: true, allSites: true, sites: ["<all_urls>"] });
     await click(m, '[data-testid="extension-card-confirm"]');

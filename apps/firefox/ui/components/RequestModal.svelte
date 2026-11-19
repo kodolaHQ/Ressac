@@ -179,6 +179,7 @@
           <p>{t("home-request-label-address")}</p>
           <p class="address" data-testid="address-request-url">{request.origin}</p>
           {#if agentReason}<p class="reason">{t("home-request-address-reason", { reason: agentReason })}</p>{/if}
+          {#if request.danger}<p class="reason danger" role="alert" data-testid="address-request-danger">{t("home-request-address-danger", { danger: request.danger.slice(0, UNLOCK_REASON_LENGTH) })}</p>{/if}
           {#if request.opinion}<p class="reason">{t("home-request-address-opinion", { opinion: request.opinion.slice(0, UNLOCK_REASON_LENGTH) })}</p>{/if}
           <button class="why-toggle" data-testid="address-request-why" aria-expanded={why} aria-controls="address-request-why" onclick={() => (why = !why)}>{t("home-request-why")}</button>
           <div class="why" class:open={why} id="address-request-why" aria-hidden={!why}>
@@ -254,6 +255,7 @@
   .reading p { margin: 0 0 12px; font-size: 14px; overflow-wrap: anywhere; }
   .reading p.address { font-family: var(--font-mono); font-size: 12px; word-break: break-all; }
   .reading p.reason { font-size: 13px; color: var(--text-muted, inherit); }
+  .reading p.reason.danger { color: var(--in-error); font-weight: 500; }
   button.why-toggle { display: block; margin: 0 0 12px; padding: 0; border: 0; background: none; color: var(--text-muted); font: 500 12.5px var(--font-ui); text-decoration: underline; text-underline-offset: 2px; }
   button.why-toggle:hover:not(:disabled) { background: none; color: var(--text); }
   /* Opens on the spring, closes on a fade (DESIGN.md): the row grows from 0 so the buttons below slide with it. */

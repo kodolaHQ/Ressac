@@ -443,6 +443,8 @@ export interface Request {
   agent?: string;
   /** « agent-address »: the watcher's view of the address, displayed as text. */
   opinion?: string;
+  /** « agent-address »: the sensitive data the address carries (already masked), displayed as text. */
+  danger?: string;
   /** « extension »: the grant card, displayed as text. */
   extension?: ExtensionCard;
 }
