@@ -7,7 +7,9 @@ import {
   ID_EXECUTION,
   readGrants,
   readReads,
-  readsCovered,
+  readsApproved,
+  readsCode,
+  codeHash,
   removeReads,
   readAction,
   readActions,
@@ -93,7 +95,8 @@ export async function readShownActions(c: SpacePaths, actionsFolder: string): Pr
         public: d.sources.public,
         grant: Object.hasOwn(grants, a.id),
         web: d.sources.web,
-        readsNeeded: d.sources.account.length === 0 && !readsCovered(d, reads[a.id]),
+        // Approved for other code than today's (the agent rewrote it): asked again.
+        readsNeeded: d.sources.account.length === 0 && (!readsApproved(d, reads[a.id]) || (readsCode(d) && reads[a.id]?.code !== (await codeHash(a.folder).catch(() => null)))),
         last: lastRun,
       };
     }),

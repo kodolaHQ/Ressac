@@ -1,4 +1,4 @@
-import { approveReads } from "../../src/widgets/reads.js";
+import { approveReads, codeHash } from "../../src/widgets/reads.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -277,7 +277,7 @@ describe("FileActions", () => {
         return { stdin: e.stdin, stdout: e.stdout, stderr: e.stderr, kill: () => void e.kill("SIGKILL"), end: new Promise((ok) => e.on("close", (x) => ok(x))) };
       },
     });
-    await approveReads(actionsFolder, "public", { public: ["gitlab.com"], web: false });
+    await approveReads(actionsFolder, "public", { public: ["gitlab.com"], web: false, code: await codeHash(folder) });
     const a = f.launch("public", { input: null, trigger: "manual" });
     await waitUntil(() => bridge.calls.some((x) => x.method === "readPageInvisible"));
     await f.stopAll();

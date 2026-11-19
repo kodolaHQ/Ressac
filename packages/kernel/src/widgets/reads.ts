@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { say } from "../i18n.js";
 import { queued, writeAtomic } from "../workflows/executions.js";
 
 /**
@@ -87,16 +88,16 @@ export async function readsUnrestricted(folder: string, id: string, declaration:
   return declaration.sources.web === true || (await readReads(folder))[id]?.web === true;
 }
 
-/**
- * The migration, once per folder: every owner without account that was on disk before this start gets its declared public
- * domains and `web`, so it keeps reading any host as before the gate. Entries already there are kept. A marker records it,
- * so a `reads.json` the user removed later is not seeded again. Actions only: a widget's approval is the user's click.
- */
-export async function seedReads(folder: string, owners: { id: string; sources: { account: string[]; public: string[]; web?: boolean } }[]): Promise<void> {
-  const marker = join(folder, "reads.seeded");
-  if (await stat(marker).then(() => true, () => false)) return;
-  await modify(folder, (all) => {
-    for (const o of owners) if (ID.test(o.id) && o.sources.account.length === 0) all[o.id] ??= { public: [...o.sources.public].sort(), web: true };
-  });
-  await writeAtomic(marker, "");
+type Sources = { sources: { account: readonly string[]; public: readonly string[]; web?: boolean } };
+
+/** An owner without account that reads something: its approval is tied to its code. */
+export const readsCode = (d: Sources) => d.sources.account.length === 0 && (d.sources.public.length > 0 || d.sources.web === true);
+
+/** Approved reads cover the declaration, and carry a code hash when they must (one from before the hash is asked again). */
+export const readsApproved = (d: Sources & { sources: { public: string[] } }, approved?: Reads) => readsCovered(d, approved) && (!readsCode(d) || approved?.code !== undefined);
+
+/** The staged code must be the one the reads were approved for (runWorkflow's `checkStaged`). */
+export function codeCheck(folder: string, id: string, d: Sources, locale: string): { checkStaged?: (staged: string) => Promise<string | null> } {
+  if (!readsCode(d)) return {};
+  return { checkStaged: async (staged) => ((await readReads(folder))[id]?.code === (await codeHash(staged)) ? null : say(locale, "kernel-err-code-changed")) };
 }

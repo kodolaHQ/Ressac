@@ -572,7 +572,7 @@ test("kernel.actions: accorder records the grant without running anything; refus
   expect(await n.actions.runs("gitlab")).toEqual([]);
 });
 
-test("kernel: actions on disk at start get their reads approved once, widgets never; approveReads checks what was shown and ties the code", async () => {
+test("kernel: owners on disk at start get no reads approved; approveReads checks what was shown and ties the code", async () => {
   const root = await tempFolder();
   const widgetsFolder = `${root}-widgets`;
   const decl = (publics: string[], web = false) => declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { account: [], public: publics, web } });
@@ -587,7 +587,7 @@ test("kernel: actions on disk at start get their reads approved once, widgets ne
     return { n: kernel, actionsFolder };
   })();
   expect((await readReads(widgetsFolder)).old).toBeUndefined();
-  expect((await readReads(actionsFolder)).pub).toEqual({ public: ["x.fr"], web: true });
+  expect((await readReads(actionsFolder)).pub).toBeUndefined();
 
   await writeWidget(n.paths, "fresh", decl(["b.fr"], true), { "harvest.mjs": "export default () => 1" });
   expect((await readReads(widgetsFolder)).fresh).toBeUndefined();
@@ -610,7 +610,7 @@ test("kernel: actions on disk at start get their reads approved once, widgets ne
   await n.actions.denyGrant("pub");
   expect((await readReads(actionsFolder)).pub).toBeUndefined();
   await n.actions.approveReads({ id: "pub", public: ["x.fr"], web: true });
-  expect((await readReads(actionsFolder)).pub).toEqual({ public: ["x.fr"], web: true });
+  expect((await readReads(actionsFolder)).pub).toEqual({ public: ["x.fr"], web: true, code: await codeHash(join(n.paths.actions, "pub")) });
 });
 
 test("kernel: a fresh space grants its starters nothing: each one that reads waits for the user's approval", async () => {

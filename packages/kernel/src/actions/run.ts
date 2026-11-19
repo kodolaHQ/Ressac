@@ -8,7 +8,7 @@ import { BUILTIN_COMPONENTS } from "../pages/catalog.js";
 import { readAgentComponents } from "../pages/agent-components.js";
 import { layOut } from "../pages/layout-page.js";
 import { grantValid, readGrants, removeGrant } from "../widgets/grants.js";
-import { readReads, readsCovered, readsUnrestricted } from "../widgets/reads.js";
+import { codeCheck, readReads, readsApproved, readsUnrestricted } from "../widgets/reads.js";
 import { originChain, markInterrupted, grantRequired } from "../widgets/harvest.js";
 import { message, truncate } from "../workflows/access.js";
 import {
@@ -96,7 +96,7 @@ async function validGrant(actionsFolder: string, id: string, d: DeclarationActio
     await deleteDataAction(actionsFolder, id);
     await removeGrant(actionsFolder, id);
   }
-  if (d.sources.account.length === 0) return readsCovered(d, (await readReads(actionsFolder))[id]);
+  if (d.sources.account.length === 0) return readsApproved(d, (await readReads(actionsFolder))[id]);
   return grantValid(d, (await readGrants(actionsFolder))[id]);
 }
 
@@ -176,6 +176,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       // A trial neither receives nor keeps any memory.
       memory: plan ? {} : await readMemory(dataFolder),
       ...grantContext,
+      ...codeCheck(actionsFolder, id, declaration, loc()),
       unrestricted: await readsUnrestricted(actionsFolder, id, declaration),
       trigger: o.trigger,
       ...(plan ? { replay: { reruns: plan.reruns, outputs: plan.outputs, resumed: plan.resumed } } : {}),

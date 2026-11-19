@@ -7,7 +7,7 @@ import type { Workshop } from "../container/workshop.js";
 import type { LocalAi } from "../ai/local-ai.js";
 import type { BrowserBridge } from "../mcp/bridge.js";
 import { grantValid, readGrants, removeGrant } from "./grants.js";
-import { codeHash, readReads, readsCovered, readsUnrestricted } from "./reads.js";
+import { codeCheck, readReads, readsApproved, readsUnrestricted } from "./reads.js";
 import { message, truncate } from "../workflows/access.js";
 import {
   MAX_ERROR,
@@ -176,20 +176,9 @@ async function validGrant(widgetsFolder: string, id: string, declaration: Declar
   // An approval from before the code hash (seeded, or older) is asked again once.
   const can =
     declaration.sources.account.length === 0
-      ? readsCovered(declaration, reads) && (!readsCode(declaration) || reads?.code !== undefined)
+      ? readsApproved(declaration, reads)
       : grantValid(declaration, (await readGrants(widgetsFolder))[id]);
   return { can: can, removed: removed };
-}
-
-/** A widget without account that reads something: its approval is tied to its code. */
-const readsCode = (d: DeclarationWidget) => d.sources.account.length === 0 && (d.sources.public.length > 0 || d.sources.web === true);
-
-/** The staged code must be the one the reads were approved for (see codeHash). */
-function codeCheck(widgetsFolder: string, id: string, declaration: DeclarationWidget, locale: string): Pick<WorkflowContext, "checkStaged"> {
-  if (!readsCode(declaration)) return {};
-  return {
-    checkStaged: async (staged) => ((await readReads(widgetsFolder))[id]?.code === (await codeHash(staged)) ? null : say(locale, "kernel-err-code-changed")),
-  };
 }
 
 /**

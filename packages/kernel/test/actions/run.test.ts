@@ -7,7 +7,7 @@ import { PassThrough } from "node:stream";
 import { spacePaths, type SpacePaths } from "../../src/paths.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { giveGrant, removeGrant } from "../../src/widgets/grants.js";
-import { approveReads } from "../../src/widgets/reads.js";
+import { approveReads, codeHash } from "../../src/widgets/reads.js";
 import { ACTION_STOPPED, readRun, listRuns } from "../../src/workflows/executions.js";
 import { withMemory, readMemory } from "../../src/workflows/memory.js";
 import type { ProcessLauncher } from "../../src/workflows/run.js";
@@ -69,7 +69,7 @@ const workflow = () =>
     links: [{ from: "lire", to: "sortie" }],
   });
 
-/** Without `unapproved`, an action without account has its declared reads approved (like one seeded at the update). */
+/** Without `unapproved`, an action without account has its declared reads approved, tied to its code as written here. */
 async function prepare(id: string, declaration: unknown, code: string, o: { suspended?: string[]; unapproved?: true } = {}): Promise<Bench> {
   const root = await tempFolder();
   const c = spacePaths(root);
@@ -82,7 +82,7 @@ async function prepare(id: string, declaration: unknown, code: string, o: { susp
   const actionsFolder = await tempFolder();
   toClean.push(root, actionsFolder);
   const d = DeclarationAction.safeParse(declaration);
-  if (!o.unapproved && d.success && d.data.sources.account.length === 0) await approveReads(actionsFolder, id, { public: d.data.sources.public, web: d.data.sources.web });
+  if (!o.unapproved && d.success && d.data.sources.account.length === 0) await approveReads(actionsFolder, id, { public: d.data.sources.public, web: d.data.sources.web, code: await codeHash(folder) });
   const bridge = new FakeBridge([], {
     active: null,
     allow: false,
@@ -175,8 +175,13 @@ describe("runAction", () => {
     const r = await runAction(options(b, "public"));
     expect(r).toEqual({ status: "grant-required", error: "Accord requis pour lire : gitlab.com", kernelError: true });
     expect(b.commands).toEqual([]);
-    await approveReads(b.actionsFolder, "public", { public: ["gitlab.com", "x.fr"], web: false });
+    await approveReads(b.actionsFolder, "public", { public: ["gitlab.com", "x.fr"], web: false, code: await codeHash(b.folder) });
     expect((await runAction(options(b, "public"))).status).toBe("succeeded");
+    // The agent rewrites the approved code: nothing runs until a new approval.
+    await writeFile(join(b.folder, "lire.mjs"), code.replace("tickets\")", "tickets?d=secret\")"));
+    const before = b.commands.length;
+    expect(await runAction(options(b, "public"))).toMatchObject({ status: "grant-required", error: "Le code a changé depuis votre accord" });
+    expect(b.commands).toHaveLength(before);
     await writeFile(join(b.folder, "action.json"), JSON.stringify({ name: "P", sources: { public: ["gitlab.com"], web: true } }));
     expect((await runAction(options(b, "public"))).error).toBe("Accord requis pour lire : gitlab.com et le web");
   });

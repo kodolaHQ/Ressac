@@ -33,7 +33,7 @@ import { WidgetsScheduler, type DirectState, type AttemptResult } from "./widget
 import type { NotificationWidget } from "./widgets/novelties.js";
 import { grantRequired } from "./widgets/harvest.js";
 import { giveGrant, readGrants, removeGrant } from "./widgets/grants.js";
-import { approveReads, codeHash, removeReads, seedReads } from "./widgets/reads.js";
+import { approveReads, codeHash, removeReads } from "./widgets/reads.js";
 import { readAction, readActions, type ReadAction } from "./actions/read.js";
 import { lastResult, readResult, forgetGoneActions, deleteDataAction } from "./actions/data.js";
 import { FileActions, type ActionsState, type ActionLaunch } from "./actions/file.js";
@@ -379,7 +379,6 @@ export async function createKernel(o: {
   // An action deleted (or put in the trash) since the last launch: its data and grant go.
   await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[ressac] forgetting gone actions:", e));
   // Once, before any harvest or run: the owners that exist at the update keep reading what they declare.
-  await seedActionReads(paths, actionsFolder).catch((e) => console.error("[ressac] reads seeding:", e));
   const ai = o.ai ?? null;
   // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch Kev.
   const aiAccess = ai?.access() ?? null;
@@ -641,7 +640,8 @@ export async function createKernel(o: {
       if ("error" in a) throw new Error(say(loc(), "kernel-grant-action-unreadable", { error: a.error }));
       const { account, public: publics, web } = a.declaration.sources;
       if (account.length || !sameLists(publics, shownPublic) || web !== shownWeb) throw new Error(say(loc(), "kernel-grant-action-changed", { id }));
-      await approveReads(actionsFolder, id, { public: publics, web });
+      // Tied to the code as it is now, like a widget's.
+      await approveReads(actionsFolder, id, { public: publics, web, code: await codeHash(a.folder) });
     },
     async denyGrant(id) {
       // Data first: until it is gone, the grant still guards it.
@@ -843,8 +843,3 @@ export async function createKernel(o: {
   };
 }
 
-/** Seeds `reads.json` of the actions from the owners on disk (a folder not found seeds nothing, marker written). Widgets get none: see approveReads. */
-async function seedActionReads(paths: SpacePaths, actionsFolder: string): Promise<void> {
-  const actions = await readActions(paths);
-  await seedReads(actionsFolder, actions.flatMap((a) => ("error" in a ? [] : [{ id: a.id, sources: a.declaration.sources }])));
-}

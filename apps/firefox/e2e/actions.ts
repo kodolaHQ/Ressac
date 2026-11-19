@@ -1,3 +1,4 @@
+import { codeHash } from "../../../packages/kernel/src/widgets/reads";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -39,9 +40,10 @@ export async function writeAction(dataDir: string, id: string, a: TestAction): P
   const { workflow, files, sources, ...keys } = a;
   const declaration = { ...keys, sources: { account: sources?.account ?? [], public: sources?.public ?? [], ...(sources?.web !== undefined ? { web: sources.web } : {}) } };
   await writeFile(path.join(dir, "action.json"), JSON.stringify(declaration));
-  await approveFixtureReads(actionsDataDir(dataDir), id, declaration.sources);
   if (workflow !== undefined) await writeFile(path.join(dir, "workflow.json"), typeof workflow === "string" ? workflow : JSON.stringify(workflow));
   for (const [name, text] of Object.entries(files ?? {})) await writeFile(path.join(dir, name), text);
+  // After the files: the approval is tied to the code as written.
+  await approveFixtureReads(actionsDataDir(dataDir), id, declaration.sources, await codeHash(dir));
 }
 
 /** An agent component: `component.json` (without `nom`, taken from the folder) and `component.html` (aide.ts ComposantTest). */
