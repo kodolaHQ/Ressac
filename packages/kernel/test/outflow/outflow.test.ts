@@ -126,17 +126,18 @@ test("forget clears read and typed for that window only", () => {
   expect(o.lastMessage("b")).toBe("bonjour");
 });
 
-test("oldest read items are dropped past 5 000", () => {
+test("oldest read items are dropped past 20 000", () => {
   const o = new Outflow();
   o.read("w", "tok A1b2C3d4E5f6G7h8", "first");
-  for (let i = 0; i < 5000; i++) o.read("w", `id Zz${String(i).padStart(6, "0")}QqWw`, "page");
+  // Each read retains a token and its digit run.
+  for (let i = 0; i < 10_000; i++) o.read("w", `id Zz${String(i).padStart(6, "0")}QqWw`, "page");
   expect(o.check("w", "A1b2C3d4E5f6G7h8")).toBeUndefined();
   expect(o.check("w", "Zz004999QqWw")).toMatchObject({ source: "page" });
 });
 
-test("check stays fast with 5 000 items and a 2 KB URL", () => {
+test("check stays fast with 20 000 items and a 2 KB URL", () => {
   const o = new Outflow();
-  const items = Array.from({ length: 5000 }, (_, i) => `ref${i}x${(i * 7919).toString(36)}Kq${i % 97}zz9`);
+  const items = Array.from({ length: 20_000 }, (_, i) => `ref${i}x${(i * 7919).toString(36)}Kq${i % 97}zz9`);
   for (let i = 0; i < items.length; i += 500) o.read("w", items.slice(i, i + 500).join(" "), "page");
   // Encoded text the decoder expands into many variants, none of them a hit: the worst case scans every piece.
   const text = encodeURIComponent(encodeURIComponent("vélo rouge n° 2024-11 pas cher, Paris 75011 & aGVsbG8gd29ybGQ= "));
@@ -198,4 +199,43 @@ test("the message being typed is capped to its latest 64 KB", () => {
   const last = o.lastMessage("w")!;
   expect(last.length).toBe(64 * 1024);
   expect(last.endsWith("fin")).toBe(true);
+});
+
+test("junk before or after a private item in the same read does not hide it", () => {
+  const junkMails = Array.from({ length: 500 }, (_, i) => `u${i}@j.io`).join(", ");
+  const junkNumbers = Array.from({ length: 500 }, (_, i) => String(100000 + i)).join(", ");
+  for (const text of [
+    `${junkMails}, camille.roussel@example.com, ${junkNumbers}, 48213977`,
+    `camille.roussel@example.com, 48213977, ${junkMails}, ${junkNumbers}`,
+  ]) {
+    const o = new Outflow();
+    o.read("w", text, "mail.google.com");
+    expect(o.check("w", "q=camille.roussel@example.com")).toMatchObject({ kind: "email" });
+    expect(o.check("w", "q=48213977")).toMatchObject({ kind: "digits" });
+  }
+});
+
+test("dates are not retained", () => {
+  const o = new Outflow();
+  o.read("w", "Publié le 2024-11-19, le 19/11/2024, le 19.11.2024 ou le 20241119", "news.example");
+  expect(o.check("w", "https://news.example/2024/11/18/foo")).toBeUndefined();
+  expect(o.check("w", "q=20241119")).toBeUndefined();
+  expect(o.check("w", "q=19112024")).toBeUndefined();
+});
+
+test("a match glued across slashes must cover 8 digits", () => {
+  const o = new Outflow();
+  o.read("w", "Facture 202411, ref 123456, commande 48213977", "shop.example");
+  expect(o.check("w", "https://cdn.example/img/2024/11/x.png")).toBeUndefined();
+  expect(o.check("w", "https://x.example/12/34/56/")).toBeUndefined();
+  expect(o.check("w", "https://x.example/48/21/39/77")).toMatchObject({ kind: "digits" });
+  expect(o.check("w", "q=202411")).toMatchObject({ kind: "digits" });
+});
+
+test("long junk tokens cannot flush the memory either", () => {
+  const o = new Outflow();
+  o.read("w", "camille.roussel@example.com", "mail.google.com");
+  const long = (i: number) => `k${i}x9Q`.repeat(40);
+  o.read("w", Array.from({ length: 2000 }, (_, i) => long(i)).join(" "), "evil.example");
+  expect(o.check("w", "camille.roussel@example.com")).toMatchObject({ source: "mail.google.com" });
 });

@@ -16,10 +16,15 @@ interface Item {
 interface Win {
   /** Read items by normalised form, oldest first. */
   read: Map<string, Item>;
-  /** Shingle → items containing it: 6-char pieces of digit items, 8-char pieces of the others. */
-  shingles: Map<string, Set<Item>>;
-  /** Read items shorter than their shingle, matched whole. */
-  short: Set<Item>;
+  /**
+   * Piece → items containing it: 6-char pieces of digit items, 8-char pieces of the others, short items whole. Most
+   * pieces belong to one item, stored bare: a Set per piece cost three times the memory.
+   */
+  shingles: Map<string, Item | Item[]>;
+  /** Pieces in `shingles`, counted per item. */
+  pieces: number;
+  /** Lengths of the short items indexed whole, with their count. */
+  shortLengths: Map<number, number>;
   typedItems: Set<string>;
   /** Normalised submitted messages, newest last. */
   typedText: string;
@@ -30,31 +35,49 @@ interface Win {
   carry: string;
 }
 
-const READ_MAX = 5000;
-// One page full of junk must not flush what earlier reads retained.
-const READ_NEW_MAX = 500;
+// Memory follows the indexed pieces: measured 21.6 MB of heap for 160 000 distinct pieces (Node 22), so 140 000
+// pieces stay near 19 MB per window, under the 20 MB budget.
+const READ_MAX = 20_000;
+const PIECES_MAX = 140_000;
+// Bounds one long item's share of the index; a long secret is still caught whole by rule 1.
+const ITEM_PIECES_MAX = 256;
+// One read keeps at most a quarter of the window, new items in text order, so flushing earlier reads takes four reads.
+const READ_NEW_MAX = READ_MAX / 4;
+const READ_NEW_PIECES_MAX = PIECES_MAX / 4;
+const TYPED_ITEMS_MAX = 5000;
 const TYPED_MAX = 64 * 1024;
 const CARRY_MAX = 4096;
 const DIGIT_CHUNK = 6;
 const TEXT_CHUNK = 8;
+// A match that only exists once path segments are glued must be this long, or /2024/11/ would match a 202411.
+const GLUED_DIGITS = 8;
 
 // Left boundary and bounded parts: without them a long run of local-part characters is matched from every position.
 const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/g;
 const PHONE = /(?<!\d)0[1-9](?:[ .-]?\d{2}){4}(?!\d)|\+[1-9](?:[ .-]?\d){7,14}(?!\d)/g;
 const DIGITS = /\d+(?:[ .-]\d+)*/g;
 const TOKEN = /[A-Za-z0-9_-]{12,}/g;
+// Dates are public, and pages are full of them: YYYY-MM-DD, YYYYMMDD, DD.MM.YYYY (DD/MM/YYYY never forms one run).
+const DATE =
+  /^(?:(?:19|20)\d{2}[ .-]?(?:0[1-9]|1[0-2])[ .-]?(?:0[1-9]|[12]\d|3[01])|(?:0[1-9]|[12]\d|3[01])[ .-](?:0[1-9]|1[0-2])[ .-](?:19|20)\d{2})$/;
 
 /** Lowercase letters and digits only (plus `@`, which splits an e-mail): any separator can re-space a number. */
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}@]/gu, "");
+/** Like `norm` but keeps `/`, to tell a match inside a path segment from one glued across segments. */
+const softNorm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}@/]/gu, "");
 
-/** Distinctive items in `text`, each normalised form once, secrets first. */
+/** Distinctive items in `text`, each normalised form once: secrets first, then the others in text order. */
 function extract(text: string): Omit<Item, "source">[] {
-  const found: Omit<Item, "source">[] = findSecrets(text).map((s) => ({ ...s, norm: norm(s.value) }));
-  const add = (kind: Item["kind"], value: string) => found.push({ kind, value, norm: norm(value) });
-  for (const [m] of text.matchAll(EMAIL)) add("email", m);
-  for (const [m] of text.matchAll(PHONE)) add("phone", m.replace(/\D/g, ""));
-  for (const [m] of text.matchAll(DIGITS)) if (m.replace(/\D/g, "").length >= DIGIT_CHUNK) add("digits", m.replace(/\D/g, ""));
-  for (const [m] of text.matchAll(TOKEN)) if (/[a-z]/i.test(m) && /\d/.test(m)) add("token", m);
+  const others: { at: number; kind: Item["kind"]; value: string }[] = [];
+  for (const m of text.matchAll(EMAIL)) others.push({ at: m.index, kind: "email", value: m[0] });
+  for (const m of text.matchAll(PHONE)) others.push({ at: m.index, kind: "phone", value: m[0].replace(/\D/g, "") });
+  for (const m of text.matchAll(DIGITS))
+    if (m[0].replace(/\D/g, "").length >= DIGIT_CHUNK && !DATE.test(m[0]))
+      others.push({ at: m.index, kind: "digits", value: m[0].replace(/\D/g, "") });
+  for (const m of text.matchAll(TOKEN))
+    if (/[a-z]/i.test(m[0]) && /\d/.test(m[0])) others.push({ at: m.index, kind: "token", value: m[0] });
+  others.sort((a, b) => a.at - b.at);
+  const found = [...findSecrets(text), ...others].map(({ kind, value }) => ({ kind, value, norm: norm(value) }));
   const seen = new Set<string>();
   return found.filter((i) => i.norm && !seen.has(i.norm) && !!seen.add(i.norm));
 }
@@ -67,17 +90,23 @@ function* pieces(norm: string, size: number) {
 
 const alternations = (piece: string) => piece.match(/\p{L}(?=\p{N})|\p{N}(?=\p{L})/gu)?.length ?? 0;
 
-/** The pieces of a read item that may reveal it on their own. */
+/** The pieces of a read item that may reveal it on their own; an item shorter than a piece is its own piece. */
 function* indexed(item: Pick<Item, "kind" | "norm">) {
   const size = chunkSize(item.norm);
+  if (item.norm.length < size) {
+    yield item.norm;
+    return;
+  }
   const at = item.norm.indexOf("@");
   // A piece made mostly of an e-mail's domain matches every address there, and the domain's own site.
   const lastStart = item.kind === "email" ? at - Math.min(4, at) : Infinity;
   let i = 0;
+  let n = 0;
   for (const p of pieces(item.norm, size)) {
-    if (i++ > lastStart) break;
+    if (i++ > lastStart || n >= ITEM_PIECES_MAX) break;
     // A word glued to a number (release2024) has one letter/digit switch; a random token's piece has more.
     if (item.kind === "token" && alternations(p) < 2) continue;
+    n++;
     yield p;
   }
 }
@@ -95,7 +124,8 @@ export class Outflow {
       w = {
         read: new Map(),
         shingles: new Map(),
-        short: new Set(),
+        pieces: 0,
+        shortLengths: new Map(),
         typedItems: new Set(),
         typedText: "",
         buffer: "",
@@ -109,7 +139,7 @@ export class Outflow {
 
   read(win: string, text: string, source: string): void {
     const w = this.win(win);
-    let added = 0;
+    let [added, addedPieces] = [0, 0];
     for (const found of extract(text)) {
       const known = w.read.get(found.norm);
       if (known) {
@@ -119,28 +149,43 @@ export class Outflow {
         w.read.set(found.norm, known);
         continue;
       }
-      if (added++ >= READ_NEW_MAX) continue;
       const item = { ...found, source };
+      const ps = [...indexed(item)];
+      if (added >= READ_NEW_MAX || addedPieces + ps.length > READ_NEW_PIECES_MAX) continue;
+      added++;
+      addedPieces += ps.length;
+      w.pieces += ps.length;
       w.read.set(item.norm, item);
-      const size = chunkSize(item.norm);
-      if (item.norm.length < size) w.short.add(item);
-      for (const p of indexed(item)) {
-        const set = w.shingles.get(p);
-        if (set) set.add(item);
-        else w.shingles.set(p, new Set([item]));
+      this.countShort(w, item, 1);
+      for (const p of ps) {
+        const at = w.shingles.get(p);
+        if (!at) w.shingles.set(p, item);
+        else if (Array.isArray(at)) at.includes(item) || at.push(item);
+        else if (at !== item) w.shingles.set(p, [at, item]);
       }
-      if (w.read.size > READ_MAX) this.drop(w, w.read.values().next().value!);
+      while (w.read.size > READ_MAX || w.pieces > PIECES_MAX) this.drop(w, w.read.values().next().value!);
     }
   }
 
   private drop(w: Win, item: Item): void {
     w.read.delete(item.norm);
-    w.short.delete(item);
+    this.countShort(w, item, -1);
     for (const p of indexed(item)) {
-      const set = w.shingles.get(p);
-      set?.delete(item);
-      if (set?.size === 0) w.shingles.delete(p);
+      w.pieces--;
+      const at = w.shingles.get(p);
+      const rest = Array.isArray(at) ? at.filter((i) => i !== item) : [];
+      if (rest.length > 1) w.shingles.set(p, rest);
+      else if (rest.length === 1) w.shingles.set(p, rest[0]!);
+      else w.shingles.delete(p);
     }
+  }
+
+  private countShort(w: Win, item: Item, delta: number): void {
+    const n = item.norm.length;
+    if (n >= chunkSize(item.norm)) return;
+    const count = (w.shortLengths.get(n) ?? 0) + delta;
+    if (count) w.shortLengths.set(n, count);
+    else w.shortLengths.delete(n);
   }
 
   typed(win: string, data: string): void {
@@ -183,7 +228,7 @@ export class Outflow {
       w.typedItems.add(item.norm);
     }
     for (const old of w.typedItems) {
-      if (w.typedItems.size <= READ_MAX) break;
+      if (w.typedItems.size <= TYPED_ITEMS_MAX) break;
       w.typedItems.delete(old);
     }
   }
@@ -208,15 +253,26 @@ export class Outflow {
     if (!w?.read.size) return undefined;
 
     const hit = (item: Item): OutflowHit => ({ kind: item.kind, masked: mask(item.value), source: item.source });
-    for (const v of new Set(variants(out).map(norm))) {
-      for (const item of w.short) if (v.includes(item.norm) && !typed(item.norm)) return hit(item);
-      for (const size of [DIGIT_CHUNK, TEXT_CHUNK])
-        for (const p of pieces(v, size)) {
-          const items = w.shingles.get(p);
-          // A piece the user typed is theirs to send, even if a read item contains it.
-          if (!items || typedNow.includes(p)) continue;
-          for (const item of items) if (!typed(item.norm)) return hit(item);
-        }
+    // A piece the user typed is theirs to send, even if a read item contains it.
+    const found = (p: string, keep: (item: Item) => boolean = () => true) => {
+      if (typedNow.includes(p)) return undefined;
+      for (const item of [w.shingles.get(p) ?? []].flat()) if (keep(item) && !typed(item.norm)) return item;
+    };
+    const sizes = new Set([DIGIT_CHUNK, TEXT_CHUNK, ...w.shortLengths.keys()]);
+    for (const soft of new Set(variants(out).map(softNorm))) {
+      for (const segment of new Set(soft.split("/")))
+        for (const size of sizes)
+          for (const p of pieces(segment, size)) {
+            const item = found(p);
+            if (item) return hit(item);
+          }
+      const glued = soft.replaceAll("/", "");
+      if (glued === soft) continue;
+      for (const p of pieces(glued, GLUED_DIGITS)) {
+        if (!/^\d+$/.test(p)) continue;
+        const item = found(p) ?? found(p.slice(0, DIGIT_CHUNK), (i) => i.norm.includes(p));
+        if (item) return hit(item);
+      }
     }
     return undefined;
   }
