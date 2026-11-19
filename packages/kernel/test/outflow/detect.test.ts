@@ -199,3 +199,11 @@ test("1 MB of private key headers without an end stays fast", () => {
   expect(kinds(text)).toEqual(["private-key"]);
   expect(performance.now() - start).toBeLessThan(2000);
 });
+
+test("a readable slug is not a random secret, a secret padded into one still is", () => {
+  expect(kinds("https://www.tripadvisor.fr/Hotels-g189158-Lisbon_Lisbon_District_Central_Portugal-Hotels.html")).toEqual([]);
+  expect(kinds("https://www.fnac.com/Samsung-Galaxy-S25-6-2-5G-Double-nano-SIM-256-Go-Bleu-Marine/a21034567/w-4")).toEqual([]);
+  expect(kinds("https://x.example/Hotel-Zx8Kq2LmN9pRs4TuVw6YzA8bCdEf-Paris-Lyon")).toEqual(["random"]);
+  // Separators inside a random string do not make it a slug.
+  expect(kinds("gen173nr-1FCAEoggI46AdIM1gEaE2IAQGYAQ24ARfIAQzYAQHoAQH4AQuIAgGoAgO4AqKX87kGwAIB0gIkYjQ5")).toEqual(["random"]);
+});

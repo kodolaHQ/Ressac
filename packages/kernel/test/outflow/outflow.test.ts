@@ -317,3 +317,11 @@ test("evicting an item whose piece repeats keeps the other owner of that piece",
   expect(o.check("w", "q=139555")).toBeUndefined();
   expect(o.check("w", "q=482139")).toMatchObject({ source: "kept" });
 });
+
+test("a slug read in a tab's address is not an identifier, a code glued to a word is", () => {
+  const o = new Outflow();
+  o.read("w", "t3 · The Verge · https://www.theverge.com/2026/11/10/apple-macbook-air-m5-announcement-price-specs · Perso", "tes onglets");
+  expect(o.check("w", "MacBook Air M5 autonomie prix France date de sortie")).toBeUndefined();
+  o.read("w", "Votre dossier : order-AB12CD34EF", "mail.google.com");
+  expect(o.check("w", "suivi commande AB12CD34EF")).toMatchObject({ kind: "token", source: "mail.google.com" });
+});

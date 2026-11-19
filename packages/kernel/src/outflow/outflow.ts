@@ -1,4 +1,4 @@
-import { findSecrets, mask, variants, type SecretKind } from "./detect.js";
+import { findSecrets, mask, opaque, variants, type SecretKind } from "./detect.js";
 
 export interface OutflowHit {
   kind: SecretKind | "email" | "phone" | "digits" | "token";
@@ -96,8 +96,11 @@ function extract(text: string): Omit<Item, "source">[] {
     if (run.replace(/\D/g, "").length >= DIGIT_CHUNK && !DATE.test(run))
       others.push({ at: m.index, kind: "digits", value: run.replace(/\D/g, "") });
   }
-  for (const m of text.matchAll(TOKEN))
-    if (/[a-z]/i.test(m[0]) && /\d/.test(m[0])) others.push({ at: m.index, kind: "token", value: m[0] });
+  for (const m of text.matchAll(TOKEN)) {
+    // Judged without its word parts: a slug with a model name in it (air-m5-announcement) is not an identifier.
+    const o = opaque(m[0]);
+    if (o.length >= TEXT_CHUNK && /[a-z]/i.test(o) && /\d/.test(o)) others.push({ at: m.index, kind: "token", value: m[0] });
+  }
   others.sort((a, b) => a.at - b.at);
   const found = [...findSecrets(text), ...others].map(({ kind, value }) => ({ kind, value, norm: norm(value) }));
   const seen = new Set<string>();

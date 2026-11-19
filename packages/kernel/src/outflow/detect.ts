@@ -177,10 +177,21 @@ function specific(text: string): Secret[] {
   return found;
 }
 
+// A part between `-` or `_` that reads as a word (Lisbon, des, SIM): a slug is made of them, a random string is not.
+const WORD = /^(?:[A-Za-z][a-z]+|[A-Z]{2,})$/;
+/**
+ * `token` without its word parts and separators. What is left of a readable slug (Samsung-Galaxy-S25-256-Go) is too
+ * short to be a secret or an identifier; a secret padded with words is left whole.
+ */
+export const opaque = (token: string) => token.split(/[-_]/).filter((p) => !WORD.test(p)).join("");
+
 function random(text: string): string[] {
   return [...text.replace(GOOGLE_DOC_ID, " ").matchAll(TOKEN)]
     .map((m) => m[0])
-    .filter((t) => /[a-z]/.test(t) && /[A-Z]/.test(t) && /\d/.test(t) && entropy(t) >= 4.0)
+    .filter((t) => {
+      const o = opaque(t);
+      return o.length >= 24 && /[a-z]/.test(o) && /[A-Z]/.test(o) && /\d/.test(o) && entropy(o) >= 4.0;
+    })
     // A token that decodes to text is encoding, judged by its decoded variant.
     .filter((t) => printable(Buffer.from(t, "base64")) === undefined);
 }
