@@ -178,12 +178,17 @@ function specific(text: string): Secret[] {
 }
 
 // A part between `-` or `_` that reads as a word (Lisbon, des, SIM): a slug is made of them, a random string is not.
-const WORD = /^(?:[A-Za-z][a-z]+|[A-Z]{2,})$/;
+// Capitals up to 5 (SIM, HTML): a longer all-caps run is a code more often than an acronym.
+const WORD = /^(?:[A-Za-z][a-z]+|[A-Z]{2,5})$/;
 /**
- * `token` without its word parts and separators. What is left of a readable slug (Samsung-Galaxy-S25-256-Go) is too
- * short to be a secret or an identifier; a secret padded with words is left whole.
+ * `token` without its word parts. What is left of a readable slug (Samsung-Galaxy-S25-256-Go) is too short to be a
+ * secret or an identifier; a secret padded with words is left whole, and a token without a word part is unchanged.
  */
-export const opaque = (token: string) => token.split(/[-_]/).filter((p) => !WORD.test(p)).join("");
+export function opaque(token: string): string {
+  const parts = token.split(/[-_]/);
+  const kept = parts.filter((p) => !WORD.test(p));
+  return kept.length === parts.length ? token : kept.join("-");
+}
 
 function random(text: string): string[] {
   return [...text.replace(GOOGLE_DOC_ID, " ").matchAll(TOKEN)]

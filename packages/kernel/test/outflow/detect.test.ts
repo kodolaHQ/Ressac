@@ -207,3 +207,8 @@ test("a readable slug is not a random secret, a secret padded into one still is"
   // Separators inside a random string do not make it a slug.
   expect(kinds("gen173nr-1FCAEoggI46AdIM1gEaE2IAQGYAQ24ARfIAQzYAQHoAQH4AQuIAgGoAgO4AqKX87kGwAIB0gIkYjQ5")).toEqual(["random"]);
 });
+
+test("a separator in a random string does not shorten it", () => {
+  expect(kinds("Zx8Kq2LmN9p-Rs4TuVw6YzA8")).toEqual(["random"]);
+  expect(kinds("Zx8Kq2LmN9p_Rs4TuVw6YzA8")).toEqual(["random"]);
+});

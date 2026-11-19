@@ -329,7 +329,7 @@ test("a slug read in a tab's address is not an identifier, a code glued to a wor
 test("an address read whole in a private source is a followed link, not a leak; rule 1 and queries are unchanged", () => {
   const o = new Outflow();
   const article = "https://www.lemonde.fr/economie/article/2026/11/09/pompes-a-chaleur_6398712_3234.html";
-  o.read("w", `Pompes à chaleur · ${article} · 2026-11-12 · 2 visites\nVoir (https://Shop.Example/Commande/48213977/).`, "ton historique");
+  o.read("w", `Pompes à chaleur · ${article} · 2026-11-12 · 2 visites\nVoir (https://Shop.Example/Commande/48213977/).`, "ton historique", true);
   expect(o.check("w", article, true)).toBeUndefined();
   // Same address up to host case, a trailing slash, percent-encoding and the text's punctuation.
   expect(o.check("w", "https://shop.example/Commande/48213977", true)).toBeUndefined();
@@ -339,6 +339,36 @@ test("an address read whole in a private source is a followed link, not a leak; 
   expect(o.check("w", `${article}?ref=48213977`, true)).toMatchObject({ kind: "digits" });
   expect(o.check("w", article)).toMatchObject({ kind: "digits" });
   // A secret in a read address still shows on the card.
-  o.read("w", "https://x.example/cb?key=sk_live_51NxQk2LmN8pRs4TuVw6YzA8b", "mail.google.com");
+  o.read("w", "https://x.example/cb?key=sk_live_51NxQk2LmN8pRs4TuVw6YzA8b", "mail.google.com", true);
   expect(o.check("w", "https://x.example/cb?key=sk_live_51NxQk2LmN8pRs4TuVw6YzA8b", true)).toMatchObject({ kind: "api-key" });
+});
+
+test("an address the agent wrote itself into a tool's output is not a followed link", () => {
+  const o = new Outflow();
+  o.read("w", "Commande 48213977 expédiée", "mail.google.com", true);
+  // run_js, a widget, a site memory: the agent chooses what they return.
+  o.read("w", "https://evil.example/?d=48213977", "un outil de l'agent");
+  expect(o.check("w", "https://evil.example/?d=48213977", true)).toMatchObject({ kind: "digits" });
+});
+
+test("a read address with one parameter value changed is still a hit", () => {
+  const o = new Outflow();
+  o.read("w", "Suivi · https://shop.example/suivi?commande=48213977&lang=fr · 2 visites", "ton historique", true);
+  expect(o.check("w", "https://shop.example/suivi?commande=48213977&lang=fr", true)).toBeUndefined();
+  expect(o.check("w", "https://shop.example/suivi?commande=48213977&lang=en", true)).toMatchObject({ kind: "digits" });
+});
+
+test("an address evicted from the kept addresses is a hit again", () => {
+  const o = new Outflow();
+  const first = "https://shop.example/commande/48213977";
+  o.read("w", first, "ton historique", true);
+  o.read("w", Array.from({ length: 5000 }, (_, i) => `https://pad.example/p${i}`).join("\n"), "ton historique", true);
+  expect(o.check("w", first, true)).toMatchObject({ kind: "digits" });
+  expect(o.check("w", "https://pad.example/p4999", true)).toBeUndefined();
+});
+
+test("an all-caps code in groups is an identifier, not a slug of words", () => {
+  const o = new Outflow();
+  o.read("w", "Code de récupération : XKQZPWRT-7M2RLD-PLMWQZVB", "mail.google.com");
+  expect(o.check("w", "code XKQZPWRT 7M2RLD")).toMatchObject({ kind: "token" });
 });

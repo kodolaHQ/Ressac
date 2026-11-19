@@ -106,6 +106,8 @@ const OUTFLOW_UNFED = new Set([
   "open_tab", "navigate", "note_lesson", "launch_app", "stop_app", "open_site", "close_site", "show_recap", "open_workflow",
   "read_recap", "app_log",
 ]);
+/** The fed tools that show the user's own links: an address read whole there may be followed without a red line (the tab reads and the tab list say so themselves). */
+const OUTFLOW_LINKS = new Set(["search_history", "read_history", "search_bookmarks", "hand_over"]);
 const DEV_SOURCE = "outils de développement";
 /** Where a tool's text comes from, as the pause names it (French UI text); a tool missing here: « un outil de l'agent ». */
 const OUTFLOW_SOURCES: Record<string, (a: { id?: unknown }) => string> = {
@@ -433,7 +435,7 @@ function createToolsServer(
   const server = new McpServer({ name: "ressac", version: "0.1.0" });
   const key = win ?? MAIN_WINDOW;
   /** The outflow remembers the text a tool returns (rule 2). */
-  const remember = (r: Result, source: string) => outflow?.read(key, r.content.map((c) => (c.type === "text" ? c.text : "")).join("\n"), source);
+  const remember = (r: Result, source: string, links = false) => outflow?.read(key, r.content.map((c) => (c.type === "text" ? c.text : "")).join("\n"), source, links);
   // Any tool but note_lesson closes the window's lesson slot: a lesson follows its hand-over, never a page read after it.
   const registerTool = server.registerTool.bind(server);
   server.registerTool = ((name: string, config: never, cb: (...a: unknown[]) => unknown) => {
@@ -442,7 +444,7 @@ function createToolsServer(
     const fed = source
       ? async (...a: unknown[]) => {
           const r = (await run(...a)) as Result;
-          remember(r, source((a[0] ?? {}) as { id?: unknown }));
+          remember(r, source((a[0] ?? {}) as { id?: unknown }), OUTFLOW_LINKS.has(name));
           return r;
         }
       : run;
@@ -733,7 +735,7 @@ function createToolsServer(
     if (!(await readAccess(o))) return text(DENIAL_TEXT);
     const r = present(o, await working(o.id, () => bridge.readText(o.id, { expect: o.url }), `Lit ${siteOf(o.url)}`), withLinks, [], undefined, full);
     // The result carries the tab's URL.
-    if (!exempt(o)) remember(r, siteOf(o.url));
+    if (!exempt(o)) remember(r, siteOf(o.url), true);
     return r;
   }
 
@@ -779,7 +781,7 @@ function createToolsServer(
           ? `${o.id} · ${o.title} · ${o.url} · ${o.space}`
           : `${o.id} · ${NOT_SHARED_LABEL} ·  · ${o.space}`;
       });
-      remember(text(lines.filter((_, i) => !exempt(tabs[i]!)).join("\n")), "tes onglets");
+      remember(text(lines.filter((_, i) => !exempt(tabs[i]!)).join("\n")), "tes onglets", true);
       return text(lines.join("\n") || "Aucun onglet ouvert.");
     }),
   );

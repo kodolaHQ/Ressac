@@ -186,9 +186,14 @@ export class Outflow {
     return w;
   }
 
-  read(win: string, text: string, source: string): void {
+  /**
+   * `links`: the text shows the user's own links (history, bookmarks, tab list, a tab of theirs), so its addresses may
+   * be followed. Never for a tool whose output the agent writes (run_js, a widget, a site memory): it would write an
+   * address there, then open it unflagged.
+   */
+  read(win: string, text: string, source: string, links = false): void {
     const w = this.win(win);
-    for (const m of text.matchAll(URL_IN_TEXT)) {
+    for (const m of links ? text.matchAll(URL_IN_TEXT) : []) {
       // Punctuation of the sentence around it is not part of the address.
       const url = m[0].length <= URL_LENGTH_MAX + 8 ? sameAddress(m[0].replace(/[).,;:!?»\]]+$/, "")) : undefined;
       if (!url || url.length > URL_LENGTH_MAX) continue;
