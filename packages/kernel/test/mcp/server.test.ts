@@ -2973,6 +2973,32 @@ test("any tool's text is a source (widget_runs); a status the agent caused (navi
   }, { outflow: new Outflow(), widgets, address: true });
 });
 
+test("a recap the agent wrote from the search is not a source", async () => {
+  await withSearch(async ({ call, fake }) => {
+    const plan = { blocks: [{ component: "cards", props: { items: "items", title: "name", link: "url" } }] };
+    const shown = (await call("show_recap", { title: "Vélos", results: { items: [{ name: "Réf 58203917", url: "https://exemple.fr/a" }] }, plan })).text;
+    const id = /Récap ([0-9a-f-]{36}) ouvert/.exec(shown)![1];
+    expect((await call("read_recap", { id })).text).toContain("58203917");
+    await call("search_web", { query: "réf 58203917" });
+    expect(opens(fake)).toEqual([{ query: "réf 58203917" }]);
+  }, { outflow: new Outflow(), recaps: true });
+});
+
+test("what the user browsed during a hand-over is a source, named in French", async () => {
+  await withSearch(async ({ call, search, bands }) => {
+    await call("search_web", { query: "x" });
+    const hand = call("hand_over", { id: "search-1", reason: "r", kind: "verification" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    search.tabNavigated("search-1", "https://exemple.fr/suivi/73519264");
+    search.continue("search-1");
+    expect((await hand).text).toContain("73519264");
+    const pending = call("search_web", { query: "colis 73519264" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("lu dans ta navigation pendant le passage de main"));
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow() });
+});
+
 test("a query both held and strange: the watcher's band shows it masked", async () => {
   const { watcher } = fakeWatcher(() => true);
   await withSearch(async ({ call, search, bands }) => {

@@ -111,14 +111,16 @@ export const OUTFLOW_DANGER = (hit: OutflowHit) => `Contient ${outflowWhat(hit)}
 /**
  * Rule 2 remembers the text every tool returns, except these: public pages read by the search and the engine's results
  * (search_web, read_pages), tools that feed it themselves with their exceptions (read_tab, current_page, list_tabs), an
- * image (capture_screen), and statuses of what the agent did itself (an address it chose, an id).
+ * image (capture_screen), statuses of what the agent did itself (an address it chose, an id), and what the agent wrote
+ * itself: a recap of public search data (read_recap), its own app's log (app_log; rule 1 still catches key shapes).
  */
 const OUTFLOW_UNFED = new Set([
   "search_web", "read_pages", "read_tab", "current_page", "list_tabs", "capture_screen",
   "open_tab", "navigate", "note_lesson", "launch_app", "stop_app", "open_site", "close_site", "show_recap", "open_workflow",
+  "read_recap", "app_log",
 ]);
 const DEV_SOURCE = "outils de développement";
-/** Where a tool's text comes from, as the pause names it; any other tool: `l'outil <name>`. */
+/** Where a tool's text comes from, as the pause names it (French UI text); a tool missing here: « un outil de l'agent ». */
 const OUTFLOW_SOURCES: Record<string, (a: { id?: unknown }) => string> = {
   search_history: () => "ton historique",
   read_history: () => "ton historique",
@@ -131,6 +133,13 @@ const OUTFLOW_SOURCES: Record<string, (a: { id?: unknown }) => string> = {
   widget_runs: (a) => `le widget ${String(a.id)}`,
   launch_action: (a) => `l'action ${String(a.id)}`,
   action_runs: (a) => `l'action ${String(a.id)}`,
+  hand_over: () => "ta navigation pendant le passage de main",
+  list_extensions: () => "tes extensions",
+  request_extension: () => "tes extensions",
+  reload_extension: () => "tes extensions",
+  extension_console: () => "la console d'une extension",
+  unlock_console: () => "la console d'une extension",
+  lock_console: () => "la console d'une extension",
   ...Object.fromEntries(
     ["request_devtools", "read_console", "read_network", "read_request", "profile_performance", "memory_snapshot", "compare_memory", "run_js", "reload"].map((n) => [n, () => DEV_SOURCE]),
   ),
@@ -441,7 +450,7 @@ function createToolsServer(
   // Any tool but note_lesson closes the window's lesson slot: a lesson follows its hand-over, never a page read after it.
   const registerTool = server.registerTool.bind(server);
   server.registerTool = ((name: string, config: never, cb: (...a: unknown[]) => unknown) => {
-    const source = outflow && !OUTFLOW_UNFED.has(name) ? (OUTFLOW_SOURCES[name] ?? (() => `l'outil ${name}`)) : undefined;
+    const source = outflow && !OUTFLOW_UNFED.has(name) ? (OUTFLOW_SOURCES[name] ?? (() => "un outil de l'agent")) : undefined;
     const run = name === "note_lesson" ? cb : (...a: unknown[]) => (searching?.notes?.forget(key), cb(...a));
     const fed = source
       ? async (...a: unknown[]) => {
