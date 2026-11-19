@@ -239,7 +239,9 @@ else
   rm -f $mar
   $objdist/bin/signmar -d $db -n ressac-mar -s $unsigned $mar || fail "signmar could not sign the update archive"
   # Checked against the public certificate the app ships, not the key.
-  $objdist/bin/signmar -D $app_dir/src/toolkit/mozapps/update/updater/dep1.der -v $mar || { rm -f $mar; fail "the update archive's signature does not verify" }
+  # Either cert: the backup key (dep2.der, scripts/mar-key-backup.sh) signs when the main one is gone.
+  certs=$app_dir/src/toolkit/mozapps/update/updater
+  $objdist/bin/signmar -D $certs/dep1.der -v $mar 2>/dev/null || $objdist/bin/signmar -D $certs/dep2.der -v $mar || { rm -f $mar; fail "the update archive's signature does not verify" }
   unset DYLD_LIBRARY_PATH
   # Firefox compares update.xml's buildID with the one compiled into the binary, not application.ini's (scripts/update-xml.mjs).
   build_ids=($(strings -a $app/Contents/MacOS/ressac | grep -xE '20[0-9]{12}' || true))

@@ -17,15 +17,18 @@ trap 'rm -rf $tmp' EXIT
 $ssl req -x509 -newkey rsa:4096 -sha384 -days 36500 -nodes -subj "/CN=Ressac MAR" \
   -keyout $tmp/key.pem -out $tmp/cert.pem 2>/dev/null
 export RESSAC_MAR_PW=$($ssl rand -base64 32)
-security add-generic-password -s ressac-mar-signing -a ressac -w "$RESSAC_MAR_PW"
+# -T "": no application is trusted, so every read of the password asks first.
+security add-generic-password -s ressac-mar-signing -a ressac -w "$RESSAC_MAR_PW" -T ""
 mkdir -p ${p12:h}
 (umask 077; $ssl pkcs12 -export -name ressac-mar -inkey $tmp/key.pem -in $tmp/cert.pem -passout env:RESSAC_MAR_PW -out $p12)
 chmod 600 $p12
 mkdir -p $certs
 $ssl x509 -in $tmp/cert.pem -outform DER -out $certs/dep1.der
+# Same cert in both slots until scripts/mar-key-backup.sh puts the offline backup key in dep2.der.
 cp $certs/dep1.der $certs/dep2.der
 
 print "Key made: $p12 (password in the keychain, service ressac-mar-signing)."
 print "BACK IT UP NOW (without it no installed Ressac will ever update again):"
 print "  - copy $p12 to iCloud Drive and to a USB key;"
-print "  - save the password (security find-generic-password -s ressac-mar-signing -w) in the Passwords app."
+print "  - save the password (security find-generic-password -s ressac-mar-signing -w) in the Passwords app;"
+print "  - then make the offline backup key: scripts/mar-key-backup.sh /Volumes/<usb>/ressac"

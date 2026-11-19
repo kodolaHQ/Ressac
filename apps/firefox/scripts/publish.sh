@@ -34,7 +34,10 @@ if [[ -z ${RESSAC_PUBLISH_SKIP_APPLE:-} ]]; then
   xcrun stapler validate $dmg || fail "the DMG is not notarized (package with RESSAC_SIGN_IDENTITY and RESSAC_NOTARY_PROFILE)"
   spctl -a -t open --context context:primary-signature $dmg || fail "Gatekeeper rejects the DMG"
 fi
-DYLD_LIBRARY_PATH=$objdist/bin $objdist/bin/signmar -D $app_dir/src/toolkit/mozapps/update/updater/dep1.der -v $mar \
+# Either cert: the main key (dep1.der) or the offline backup (dep2.der), as the updater accepts.
+certs=$app_dir/src/toolkit/mozapps/update/updater
+{ DYLD_LIBRARY_PATH=$objdist/bin $objdist/bin/signmar -D $certs/dep1.der -v $mar 2>/dev/null \
+  || DYLD_LIBRARY_PATH=$objdist/bin $objdist/bin/signmar -D $certs/dep2.der -v $mar } \
   || fail "the MAR is not signed by our key"
 # A published version is never rewritten: a 404 goes on, the same MAR already there is a retry after a failed upload
 # (the MAR names the build, so the DMG is not compared), anything else (another MAR, no network) stops.
