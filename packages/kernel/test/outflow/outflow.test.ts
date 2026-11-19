@@ -137,7 +137,7 @@ test("oldest read items are dropped past 5 000", () => {
 test("check stays fast with 5 000 items and a 2 KB URL", () => {
   const o = new Outflow();
   const items = Array.from({ length: 5000 }, (_, i) => `ref${i}x${(i * 7919).toString(36)}Kq${i % 97}zz9`);
-  o.read("w", items.join(" "), "page");
+  for (let i = 0; i < items.length; i += 500) o.read("w", items.slice(i, i + 500).join(" "), "page");
   // Encoded text the decoder expands into many variants, none of them a hit: the worst case scans every piece.
   const text = encodeURIComponent(encodeURIComponent("vélo rouge n° 2024-11 pas cher, Paris 75011 & aGVsbG8gd29ybGQ= "));
   const url = `https://x.example/s?q=${text.repeat(30)}`.slice(0, 2048);
@@ -145,4 +145,57 @@ test("check stays fast with 5 000 items and a 2 KB URL", () => {
   const start = performance.now();
   expect(o.check("w", url)).toBeUndefined();
   expect(performance.now() - start).toBeLessThan(50);
+});
+
+test("read and typed stay linear on long runs", () => {
+  const o = new Outflow();
+  const hex = Array.from({ length: 1 << 20 }, (_, i) => "0123456789abcdef"[(i * 7919) % 16]).join("");
+  for (const blob of ["a".repeat(100_000), `${"a".repeat(100_000)}@`, hex]) {
+    const start = performance.now();
+    o.read("w", blob, "page");
+    o.typed("w", blob);
+    expect(performance.now() - start).toBeLessThan(2000);
+  }
+});
+
+test("a chunk of an e-mail's domain alone does not hit, one of its local part does", () => {
+  const o = new Outflow();
+  o.read("w", "De : jean.dupont@gmail.com", "mail.google.com");
+  expect(o.check("w", "https://www.gmail.com/settings")).toBeUndefined();
+  expect(o.check("w", "https://x.example/?u=jeandupont")).toMatchObject({ kind: "email" });
+});
+
+test("a word glued to a number from a read token does not hit, a mixed chunk does", () => {
+  const o = new Outflow();
+  o.read("w", "branch build_v2_release2024 and ref 51NxQk2LmN8p", "github.com");
+  expect(o.check("w", "https://x.example/?q=release2024")).toBeUndefined();
+  expect(o.check("w", "trials 51NxQk2LmN")).toMatchObject({ kind: "token" });
+});
+
+test("one read cannot flush the memory", () => {
+  const o = new Outflow();
+  o.read("w", "camille.roussel@example.com", "mail.google.com");
+  o.read("w", Array.from({ length: 5000 }, (_, i) => `junk${i}x${i}Qz9pad`).join(" "), "evil.example");
+  expect(o.check("w", "camille.roussel@example.com")).toMatchObject({ source: "mail.google.com" });
+});
+
+test("any separator between digits is ignored", () => {
+  const o = new Outflow();
+  o.read("w", "Commande 48213977, tél. 06 12 34 56 78", "shop.example");
+  for (const out of ["48,21,39,77", "4821_3977", "48/21/39/77"]) expect(o.check("w", out)).toMatchObject({ kind: "digits" });
+  expect(o.check("w", "06_12_34_56_78")).toMatchObject({ kind: "phone" });
+});
+
+test("DCS, APC, PM and SOS payloads are not typed text", () => {
+  const o = new Outflow();
+  o.typed("w", "\x1bP1$r0;1m\x1b\\h\x1b_apc\x07i\x1b^pm\x1b\\\x1bXsos\x1b\\!");
+  expect(o.lastMessage("w")).toBe("hi!");
+});
+
+test("the message being typed is capped to its latest 64 KB", () => {
+  const o = new Outflow();
+  o.typed("w", "x".repeat(200_000) + "fin");
+  const last = o.lastMessage("w")!;
+  expect(last.length).toBe(64 * 1024);
+  expect(last.endsWith("fin")).toBe(true);
 });

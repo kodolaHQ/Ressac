@@ -31,18 +31,21 @@ interface Win {
 }
 
 const READ_MAX = 5000;
+// One page full of junk must not flush what earlier reads retained.
+const READ_NEW_MAX = 500;
 const TYPED_MAX = 64 * 1024;
 const CARRY_MAX = 4096;
 const DIGIT_CHUNK = 6;
 const TEXT_CHUNK = 8;
 
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+// Left boundary and bounded parts: without them a long run of local-part characters is matched from every position.
+const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/g;
 const PHONE = /(?<!\d)0[1-9](?:[ .-]?\d{2}){4}(?!\d)|\+[1-9](?:[ .-]?\d){7,14}(?!\d)/g;
 const DIGITS = /\d+(?:[ .-]\d+)*/g;
 const TOKEN = /[A-Za-z0-9_-]{12,}/g;
 
-/** Lowercase without the separators people re-space numbers with. */
-const norm = (s: string) => s.toLowerCase().replace(/[ .+-]/g, "");
+/** Lowercase letters and digits only (plus `@`, which splits an e-mail): any separator can re-space a number. */
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}@]/gu, "");
 
 /** Distinctive items in `text`, each normalised form once, secrets first. */
 function extract(text: string): Omit<Item, "source">[] {
@@ -60,6 +63,23 @@ const chunkSize = (norm: string) => (/^\d+$/.test(norm) ? DIGIT_CHUNK : TEXT_CHU
 
 function* pieces(norm: string, size: number) {
   for (let i = 0; i + size <= norm.length; i++) yield norm.slice(i, i + size);
+}
+
+const alternations = (piece: string) => piece.match(/\p{L}(?=\p{N})|\p{N}(?=\p{L})/gu)?.length ?? 0;
+
+/** The pieces of a read item that may reveal it on their own. */
+function* indexed(item: Pick<Item, "kind" | "norm">) {
+  const size = chunkSize(item.norm);
+  const at = item.norm.indexOf("@");
+  // A piece made mostly of an e-mail's domain matches every address there, and the domain's own site.
+  const lastStart = item.kind === "email" ? at - Math.min(4, at) : Infinity;
+  let i = 0;
+  for (const p of pieces(item.norm, size)) {
+    if (i++ > lastStart) break;
+    // A word glued to a number (release2024) has one letter/digit switch; a random token's piece has more.
+    if (item.kind === "token" && alternations(p) < 2) continue;
+    yield p;
+  }
 }
 
 /**
@@ -89,6 +109,7 @@ export class Outflow {
 
   read(win: string, text: string, source: string): void {
     const w = this.win(win);
+    let added = 0;
     for (const found of extract(text)) {
       const known = w.read.get(found.norm);
       if (known) {
@@ -98,11 +119,12 @@ export class Outflow {
         w.read.set(found.norm, known);
         continue;
       }
+      if (added++ >= READ_NEW_MAX) continue;
       const item = { ...found, source };
       w.read.set(item.norm, item);
       const size = chunkSize(item.norm);
       if (item.norm.length < size) w.short.add(item);
-      for (const p of pieces(item.norm, size)) {
+      for (const p of indexed(item)) {
         const set = w.shingles.get(p);
         if (set) set.add(item);
         else w.shingles.set(p, new Set([item]));
@@ -114,7 +136,7 @@ export class Outflow {
   private drop(w: Win, item: Item): void {
     w.read.delete(item.norm);
     w.short.delete(item);
-    for (const p of pieces(item.norm, chunkSize(item.norm))) {
+    for (const p of indexed(item)) {
       const set = w.shingles.get(p);
       set?.delete(item);
       if (set?.size === 0) w.shingles.delete(p);
@@ -147,6 +169,7 @@ export class Outflow {
       else if (c === "\x03" || c === "\x15") w.buffer = "";
       else if (c >= " " || c === "\t") w.buffer += c;
     }
+    w.buffer = w.buffer.slice(-TYPED_MAX);
   }
 
   private submit(w: Win): void {
@@ -214,7 +237,8 @@ function escapeEnd(s: string, i: number): number | undefined {
     }
     return undefined;
   }
-  if (kind === "]") {
+  // OSC, DCS, SOS, PM and APC carry a payload up to BEL or ST.
+  if ("]PX^_".includes(kind)) {
     for (let j = i + 2; j < s.length; j++) {
       if (s[j] === "\x07") return j + 1;
       if (s[j] === "\x1b" && s[j + 1] === "\\") return j + 2;
