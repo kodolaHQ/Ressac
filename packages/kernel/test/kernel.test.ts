@@ -689,15 +689,19 @@ describe("openAgentSession with a profile", () => {
     restrict.mockRestore();
   });
 
-  test("outflow: a session's start never clears its window's memory, resumed or not (a switched-back profile resumes it)", async () => {
+  test("outflow: a session's start keeps its window's reads, resumed or not (a switched-back profile resumes it); a new conversation forgets what was typed", async () => {
     await started(async (n) => {
       // Rule 2 only (an e-mail is no secret by itself): a hit means the window still remembers reading it.
       const email = "jeanne.martin@exemple.fr";
-      n.outflow.read("f1", email, "un onglet");
+      const typed = "paul.durand@exemple.fr";
+      n.outflow.read("f1", `${email} ${typed}`, "un onglet");
+      n.outflow.typed("f1", `écris à ${typed}\r`);
       const resumed = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true });
       expect(n.outflow.check("f1", email)?.kind).toBe("email");
+      expect(n.outflow.check("f1", typed)).toBeUndefined();
       const fresh = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude" });
       expect(n.outflow.check("f1", email)?.kind).toBe("email");
+      expect(n.outflow.check("f1", typed)?.kind).toBe("email");
       await resumed.stop();
       await fresh.stop();
     });

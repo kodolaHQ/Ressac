@@ -737,7 +737,9 @@ export async function createKernel(o: {
         // After the card: a refused card leaves the other windows' grants alone, and nothing granted meanwhile leaks into this conversation.
         policy.reset();
         search.reset();
-        // The outflow memory is not cleared here: a profile switched back resumes a conversation with its reads in context (over-retaining only over-blocks); the host forgets it when the window closes.
+        // The outflow's reads are kept: a profile switched back resumes a conversation with its reads in context (over-retaining only over-blocks); the host forgets them when the window closes.
+        // What the user typed is theirs to send for this conversation only: a new one forgets it (a profile switch over-blocks, acceptable).
+        if (win !== undefined && !resume) outflow.forgetTyped(win);
         if (win !== undefined) sessionToken = server.openSession(win, chosen.name);
         let mcpConfig: string;
         let env: Record<string, string> = {};
