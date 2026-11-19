@@ -109,6 +109,8 @@ const OUTFLOW_UNFED = new Set([
 /** The fed tools that show the user's own links: an address read whole there may be followed without a red line (the tab reads and the tab list say so themselves). */
 const OUTFLOW_LINKS = new Set(["search_history", "read_history", "search_bookmarks", "hand_over"]);
 const DEV_SOURCE = "outils de développement";
+/** A search query's length cap: the outflow check scans it piece by piece, and no engine takes more. */
+const SEARCH_QUERY_MAX = 2000;
 /** Where a tool's text comes from, as the pause names it (French UI text); a tool missing here: « un outil de l'agent ». */
 const OUTFLOW_SOURCES: Record<string, (a: { id?: unknown }) => string> = {
   search_history: () => "ton historique",
@@ -502,11 +504,14 @@ function createToolsServer(
     }
   }
 
+  /** A tab whose links the agent may follow: not a local page nor a site app, whose text and links the agent writes. */
+  const linksFollowable = (o: TabInfo) => !isLocal(o.url) && o.site === undefined;
+
   /** `view`: a search read's state line and, unless the whole text is asked, its reduced page. `full`: every link read. */
   const present = (o: TabInfo, r: TabRead, withLinks: boolean, head: string[] = [], view?: { state: string; text?: string; shown?: number; total?: number }, full = false): Result => {
     // Every link read counts as seen, shown or not; never a local page's nor a site app's: the agent writes those (its demos,
     // the app's tweaks).
-    if (!isLocal(o.url) && o.site === undefined) seen.add([o.url, ...(r.links ?? []).map((l) => l.url), ...photos(r.links)]);
+    if (linksFollowable(o)) seen.add([o.url, ...(r.links ?? []).map((l) => l.url), ...photos(r.links)]);
     const ranked = withLinks ? rankLinks(r.links ?? [], o.url) : [];
     const top = full ? ranked : ranked.slice(0, LINKS_SHOWN);
     if (withLinks) {
@@ -580,8 +585,12 @@ function createToolsServer(
       return readSearch(key, now, withLinks, label, [...head, ...back], { ...opts, handed: true });
     }
     const line = stateLine(r, now.url, now.title);
-    if (opts.full) return present(now, r, withLinks, head, { state: line }, true);
-    return present(now, r, withLinks, head, { state: line, ...reducedPage(r, sessions.current(key)?.goal ?? "", SEARCH_PAGE_MAX) });
+    const shown = opts.full
+      ? present(now, r, withLinks, head, { state: line }, true)
+      : present(now, r, withLinks, head, { state: line, ...reducedPage(r, sessions.current(key)?.goal ?? "", SEARCH_PAGE_MAX) });
+    // A page the user signed in to on the search tab (« connexion demandée ») is a private source like their own tab.
+    if (isSensitive(now.url)) remember(shown, siteOf(now.url), true);
+    return shown;
   }
 
   /** Hands the search tab to the user (band « à vous ») and waits for Continuer; a cancelled call hands it back. */
@@ -735,7 +744,7 @@ function createToolsServer(
     if (!(await readAccess(o))) return text(DENIAL_TEXT);
     const r = present(o, await working(o.id, () => bridge.readText(o.id, { expect: o.url }), `Lit ${siteOf(o.url)}`), withLinks, [], undefined, full);
     // The result carries the tab's URL.
-    if (!exempt(o)) remember(r, siteOf(o.url), true);
+    if (!exempt(o)) remember(r, siteOf(o.url), linksFollowable(o));
     return r;
   }
 
@@ -781,7 +790,8 @@ function createToolsServer(
           ? `${o.id} · ${o.title} · ${o.url} · ${o.space}`
           : `${o.id} · ${NOT_SHARED_LABEL} ·  · ${o.space}`;
       });
-      remember(text(lines.filter((_, i) => !exempt(tabs[i]!)).join("\n")), "tes onglets", true);
+      for (const follow of [true, false])
+        remember(text(lines.filter((_, i) => !exempt(tabs[i]!) && linksFollowable(tabs[i]!) === follow).join("\n")), "tes onglets", follow);
       return text(lines.join("\n") || "Aucun onglet ouvert.");
     }),
   );
@@ -986,7 +996,7 @@ function createToolsServer(
         description:
           "Cherche sur le web dans un onglet à toi, visible par l'utilisateur, avec le moteur de l'utilisateur. Renvoie l'id de l'onglet, le texte de la page de résultats et ses liens. " +
           "Pour aller plus loin, utilise navigate sur cet onglet avec un lien lu (read_tab avec links: true relit la page). `goal` (obligatoire) : ce que tu cherches, en une phrase ; un surveillant s'en sert pour juger tes actions.",
-        inputSchema: { query: z.string().min(1), goal: z.string().trim().min(1) },
+        inputSchema: { query: z.string().min(1).max(SEARCH_QUERY_MAX), goal: z.string().trim().min(1) },
       },
       protect(async ({ query, goal }, extra) => {
         const key = win ?? MAIN_WINDOW;

