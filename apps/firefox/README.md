@@ -189,7 +189,7 @@ Limits:
 - **Arc and Zen spaces** (`chrome/store/import/spaces.ts`): spaces, favorites and pinned tabs become Ressac spaces, essentials and pinned tabs. They go through the store actions `createSpace` (with `pinned`) and `addFavorites`. A space with the same name is reused, a URL already present is skipped, and a private space never receives anything.
 - **Source icons:** the screen shows each installed app's own icon. The store reads `moz-icon:` for the bundle in `/Applications` or `~/Applications` and hands the UI a PNG `data:` URL (`appIcon`); an app that is not found has no icon.
 - **Arc and Zen open tabs** (type `tabs`, its own checkbox « Onglets ouverts »): after the spaces, `planTabImport` opens each open tab in its space with `openTab` (`activate: false`, with its `title`), in the first window. No tab loads before it is displayed, and an address already open in the space is skipped. A space with neither pinned nor open tabs is not created.
-  - The Arc sidebar format is assumed, not measured (no Arc on the dev Mac); see the `shortcut:` comment.
+  - Folder, keychain names and sidebar format were checked by a beta tester's real Arc import (2026-11).
   - Zen is read from `zen-sessions.jsonlz4`.
 - **Background run:** one import at a time, in the background. It ends with a macOS notification giving the counts per type, or what failed and why.
   - A locked or unreadable Chromium file is retried once on a copy in `<dataDir>/import-tmp/`.
@@ -201,7 +201,6 @@ Limits:
   - `RESSAC_TEST_IMPORT_CSV` replaces the CSV file picker.
 - **Manual checks:**
   - a real Chrome import, with the keychain prompt;
-  - a real Arc import (folders, keychain names, sidebar format);
   - Safari with Full Disk Access;
   - a Zen import.
 
@@ -262,7 +261,7 @@ Limits:
 - A login profile that becomes private or is deleted does not re-ask at once: the accord is refused at the widget's next scheduled harvest (at the next read; no observer).
 - `display.html` is written by the agent: the CSP and the guard are deterrence, not proof.
 - One home page for every space: widgets, data and accords are not per space.
-- `ai.*` blocks: the writing (`ai.write`; `ressac.gemma(...)` keeps its name for compatibility) goes to the user's agent account in the workshop container: Claude Haiku (`claude -p --model haiku`, tools/MCP/settings off) when a Claude Code account is signed in, else Codex (`codex exec`, `gpt-5.1-codex-mini`, tools disabled), the default profile's agent first. With no account it fails with « Connectez Claude Code ou Codex dans Réglages › Agent pour les résumés » (shown on the widget's home card); each call counts against the subscription limits; Réglages › IA locale has a « Rédaction » row. The Codex path has never run against a real ChatGPT account (model name and inertness unverified). The decisions (`/v1/systemone`, replacing Kev) run on d1-2B (see « Local models »). The host's `settings.pullModel` accepts only Ressac's two models and the page polls `settings.pullProgress` for the percentage (one download at a time; quitting stops it and the next start resumes). `RESSAC_KEV_URL` points the decisions at a Kev-style server instead (the e2e use it for their fake).
+- `ai.*` blocks: the writing (`ai.write`; `ressac.gemma(...)` keeps its name for compatibility) goes to the user's agent account in the workshop container: Claude Haiku (`claude -p --model haiku`, tools/MCP/settings off) when a Claude Code account is signed in, else Codex (`codex exec`, `gpt-5.1-codex-mini`, tools disabled), the default profile's agent first. With no account it fails with « Connectez Claude Code ou Codex dans Réglages › Agent pour les résumés » (shown on the widget's home card); each call counts against the subscription limits; Réglages › IA locale has a « Rédaction » row. The Codex path was tried with a real ChatGPT account during the beta. The decisions (`/v1/systemone`, replacing Kev) run on d1-2B (see « Local models »). The host's `settings.pullModel` accepts only Ressac's two models and the page polls `settings.pullProgress` for the percentage (one download at a time; quitting stops it and the next start resumes). `RESSAC_KEV_URL` points the decisions at a Kev-style server instead (the e2e use it for their fake).
 
 ## Actions
 
@@ -450,7 +449,7 @@ A tab that uses the camera or the microphone when it is left (`TabSelect`, `chro
 
 - Buttons: on a site of `shared/call-sites.ts` (Meet, Teams, Zoom) the actor dispatches the site's own macOS shortcut in the page (a chrome-made key event is trusted), so the site and the other participants see the change; the state shown is the site's buttons when it has `buttons` (`data-is-muted`), else what the window captures (`mediaCaptureWindowState`). On any other site Firefox mutes what the window sends (`getUserMedia:muteAudio` / `muteVideo`): the site's own UI does not show it. More sites without a build: pref `ressac.call.sites`, a JSON array of `CallSite` (read in the parent: a web process does not get a user string pref).
 - Video: Firefox's automatic picture-in-picture on a tab switch is on (`media.videocontrols.picture-in-picture.enable-when-switching-tabs.enabled`), kept for calls only: `chrome/store/call-player.ts` wraps `PictureInPictureToggleParent.receiveMessage` and, instead of Firefox's own choice (which refuses a live stream without a sound track), asks the call actor, which hands the largest playing video of a capturing page to `PictureInPictureLauncher`. Firefox closes the player when the tab is shown again.
-- Tests: `e2e/calls.e2e.ts`, on fake devices (`media.navigator.streams.fake`; they count as a capture only with `media.navigator.permission.fake`). Not measured on the real Meet, Teams or Zoom.
+- Tests: `e2e/calls.e2e.ts`, on fake devices (`media.navigator.streams.fake`; they count as a capture only with `media.navigator.permission.fake`). Tried in real calls during the beta.
 - Build facts: as the vim actor, a new checkout needs the `call-actor.sys.mjs` link in the engine (`pnpm engine:import`).
 
 ## Sound and playback in tabs

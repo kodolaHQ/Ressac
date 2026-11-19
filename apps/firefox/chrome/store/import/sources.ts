@@ -25,7 +25,7 @@ const CHROMIUM: ImportType[] = ["bookmarks", "history", "passwords"];
 const NO_PASSWORDS: ImportType[] = ["bookmarks", "history"];
 
 export const SOURCES: SourceDef[] = [
-  // shortcut: Arc is not installed on the Mac this was built on; folder and keychain names are Chromium's usual pattern, measure them on a real Arc install.
+  // Folder and keychain names follow Chromium's usual pattern, checked on a real Arc import.
   { id: "arc", app: "Arc", name: "Arc", kind: "chromium", dir: [...SUPPORT, "Arc", "User Data"], types: [...CHROMIUM, "spaces", "tabs"], passwordsByCsv: false, engineClass: "ChromeProfileMigrator", keychain: { service: "Arc Safe Storage", account: "Arc" } },
   { id: "chrome", app: "Google Chrome", name: "Google Chrome", kind: "chromium", dir: [...SUPPORT, "Google", "Chrome"], types: CHROMIUM, passwordsByCsv: false, engineClass: "ChromeProfileMigrator" },
   { id: "brave", app: "Brave Browser", name: "Brave", kind: "chromium", dir: [...SUPPORT, "BraveSoftware", "Brave-Browser"], types: CHROMIUM, passwordsByCsv: false, engineClass: "BraveProfileMigrator" },

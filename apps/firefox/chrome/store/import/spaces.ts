@@ -32,10 +32,10 @@ function after(list: unknown, key: (v: unknown) => boolean): unknown {
 
 /**
  * Arc's `StorableSidebar.json`.
- * shortcut: the shape comes from public exporters (Arc is not installed where this was written): `sidebar.containers[]`,
+ * The shape, taken from public exporters and checked on a real Arc import: `sidebar.containers[]`,
  * the one holding `spaces` and `items` (each `[id, object…]`); a space's `containerIDs` has `"pinned"` then the pinned
  * container's id, and `"unpinned"` then its open tabs' container's id; `topAppsContainerIDs` has `{ default: true }` then the favorites container's id; an item is
- * `{ id, title, childrenIds, data.tab.savedURL/savedTitle }`, a folder has children. Measure it on a real Arc install.
+ * `{ id, title, childrenIds, data.tab.savedURL/savedTitle }`, a folder has children.
  */
 export function parseArcSidebar(json: unknown): ImportedSpaces | null {
   const containers = (json as { sidebar?: { containers?: unknown } })?.sidebar?.containers;
