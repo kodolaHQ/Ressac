@@ -4,7 +4,7 @@
 // exists; an http-on-opening-request observer cancels the rest (the only layer of the system documents, which Firefox
 // exempts from content policies); a PeerConnection:request observer denies their WebRTC. Measured: spikes S1–S3.
 
-import { framesOrigin } from "../window/frames-root";
+import { FRAMES_GROUP, framesOrigin } from "../window/frames-root";
 
 export const UI_PREFIXES: readonly string[] = ["chrome://browser/content/ressac/", framesOrigin()];
 const BLOCKED = /^(https?|wss?):/i;
@@ -44,6 +44,9 @@ export function isUiFrame(el: Element | null | undefined): boolean {
   }
 }
 
+/** A remote frame <browser> of the agent-written frames. */
+const isFrameBrowser = (el: Element | null | undefined): boolean => el?.getAttribute("messagemanagergroup") === FRAMES_GROUP;
+
 const hasUiAddress = (p: any): boolean => UI_PREFIXES.some((x) => String((p.precursorPrincipal ?? p).spec).startsWith(x));
 
 /**
@@ -62,7 +65,9 @@ export function isUiLoad(li: { loadingDocument: Document | null; browsingContext
       const p = li.loadingPrincipal;
       return !!p && (hasUiAddress(p) || (p.isSystemPrincipal && li.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_WEB_TRANSPORT));
     }
-    if (bc.isContent) return false;
+    // A remote frame's load (chrome/window/remote-frame.ts) runs in a web process: its context is content, judged by
+    // its top <browser>'s group, or by its principal at a frames address.
+    if (bc.isContent) return isFrameBrowser(bc.top?.embedderElement) || (!!li.loadingPrincipal && hasUiAddress(li.loadingPrincipal));
     const e = bc.embedderElement;
     return !!e && (isUiFrame(e) || isUiDocument(e.ownerDocument));
   } catch {
@@ -106,6 +111,14 @@ const webrtcObserver = {
   },
 };
 
+/** A remote frame's WebRTC asks the parent through Firefox's WebRTC actor (rtcpeer:Request), not this process's observers. */
+export function frameRtcBlocker(params: { innerWindowID?: number }): "deny" | "allow" {
+  const wg = WindowGlobalParent.getByInnerWindowId(params.innerWindowID ?? 0);
+  if (!isFrameBrowser(wg?.browsingContext?.top?.embedderElement)) return "allow";
+  console.warn("[ui-network] refused webrtc from a frame");
+  return "deny";
+}
+
 export interface UiNetworkState {
   policy: boolean;
   observer: boolean;
@@ -130,6 +143,9 @@ export function installUiNetwork(fail?: string | null): UiNetworkState {
       Services.catMan.addCategoryEntry("content-policy", POLICY_CONTRACT, POLICY_CONTRACT, false, true);
     }),
     observer: step("observer", () => Services.obs.addObserver(openingObserver, "http-on-opening-request")),
-    webrtc: step("webrtc", () => Services.obs.addObserver(webrtcObserver, "PeerConnection:request")),
+    webrtc: step("webrtc", () => {
+      Services.obs.addObserver(webrtcObserver, "PeerConnection:request");
+      ChromeUtils.importESModule("resource:///modules/webrtcUI.sys.mjs").webrtcUI.addPeerConnectionBlocker(frameRtcBlocker);
+    }),
   };
 }

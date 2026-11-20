@@ -9,11 +9,14 @@ const MAIL = 1;
 const observers: [unknown, string][] = [];
 const categories: string[] = [];
 let registerFactory = vi.fn();
+const blockers: unknown[] = [];
+const windowGlobals = new Map<number, unknown>();
 Object.assign(globalThis as any, {
   Ci: { nsIContentPolicy: { ACCEPT, REJECT_REQUEST: REJECT, TYPE_WEB_TRANSPORT: 59 }, nsIDocShell: { APP_TYPE_MAIL: MAIL }, nsIComponentRegistrar: "registrar", nsIChannel: "channel", nsICachingChannel: { LOAD_NO_NETWORK_IO: 1 << 26 } },
   Cr: { NS_BINDING_ABORTED: 0x804b0002 },
   Components: { ID: (s: string) => s, manager: { QueryInterface: () => ({ registerFactory: (...a: unknown[]) => registerFactory(...a) }) } },
-  ChromeUtils: { generateQI: () => () => ({}) },
+  ChromeUtils: { generateQI: () => () => ({}), importESModule: () => ({ webrtcUI: { addPeerConnectionBlocker: (b: unknown) => blockers.push(b) } }) },
+  WindowGlobalParent: { getByInnerWindowId: (id: number) => windowGlobals.get(id) ?? null },
   Services: {
     obs: { addObserver: (o: unknown, topic: string) => observers.push([o, topic]), notifyObservers: vi.fn() },
     catMan: { addCategoryEntry: (c: string) => categories.push(c) },
@@ -107,6 +110,36 @@ describe("ui-network", () => {
     expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: "https://a.example/", precursorPrincipal: null })), "a tab").toBe(false);
     expect(N.isUiLoad(wt(opaque("https://a.example/"))), "a sandboxed tab frame").toBe(false);
     expect(N.isUiLoad({ ...wt({ isSystemPrincipal: true, spec: "" }), externalContentPolicyType: 3 }), "a system image without context (an action image)").toBe(false);
+  });
+
+  it("a remote frame's load (content context) is the UI's by its top embedder's group or by a frames principal; a tab's is not", () => {
+    const browser = (group: string | null) => ({ getAttribute: (n: string) => (n === "messagemanagergroup" ? group : null) });
+    const content = (group: string | null, nested = false): any => {
+      const top = { isContent: true, embedderElement: browser(group) };
+      return nested ? { isContent: true, top, embedderElement: null } : { ...top, top };
+    };
+    const load = (bc: unknown, loadingPrincipal: unknown = null): any => ({ loadingDocument: null, browsingContext: bc, targetBrowsingContext: null, loadingPrincipal, externalContentPolicyType: 11 });
+    expect(N.isUiLoad(load(content("ressac-frames"))), "a frame's fetch").toBe(true);
+    expect(N.isUiLoad(load(content("ressac-frames", true))), "a frame's nested frame").toBe(true);
+    expect(N.isUiLoad(frameNav(content("ressac-frames"), content("ressac-frames", true))), "a nested frame's navigation").toBe(true);
+    const opaque = { isSystemPrincipal: false, spec: "moz-nullprincipal:{1}", precursorPrincipal: { isSystemPrincipal: false, spec: `${O}/widgets/a/display-1.html` } };
+    expect(N.isUiLoad(load(content("browsers"), opaque)), "a frames principal, whatever the embedder").toBe(true);
+    expect(N.isUiLoad(load(content("browsers"), { isSystemPrincipal: false, spec: "https://a.example/", precursorPrincipal: null })), "a tab").toBe(false);
+    expect(N.isUiLoad(load(content(null))), "a tab without a principal").toBe(false);
+    expect(N.isUiLoad(load({ isContent: true, top: { isContent: true, embedderElement: null }, embedderElement: null })), "a top context without embedder").toBe(false);
+  });
+
+  it("a remote frame's WebRTC is denied through Firefox's peer connection blockers; a tab's is left alone", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    blockers.length = 0;
+    N.installUiNetwork();
+    expect(blockers).toEqual([N.frameRtcBlocker]);
+    const wg = (group: string) => ({ browsingContext: { top: { embedderElement: { getAttribute: () => group } } } });
+    windowGlobals.set(1, wg("ressac-frames"));
+    windowGlobals.set(2, wg("browsers"));
+    expect(N.frameRtcBlocker({ innerWindowID: 1 })).toBe("deny");
+    expect(N.frameRtcBlocker({ innerWindowID: 2 })).toBe("allow");
+    expect(N.frameRtcBlocker({ innerWindowID: 3 })).toBe("allow");
   });
 
   it("a chain of UI-less chrome documents deeper than the walk's bound counts as the UI's (fails closed)", () => {

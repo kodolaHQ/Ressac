@@ -30,6 +30,22 @@ export function inUi<T = unknown>(m: Marionette, body: string, args: unknown[] =
   );
 }
 
+/**
+ * Evaluates `expr` (awaited, JSON-serializable) in the page of the frame <browser> matched by `selector` in the UI,
+ * through the RessacFrame actor's test hook (RESSAC_TEST_FRAMES, set by launchRessac).
+ */
+export async function inFrame<T = unknown>(m: Marionette, selector: string, expr: string, frame: Frame = "sidebar"): Promise<T> {
+  const json = await inUi<string>(
+    m,
+    `const b = doc.querySelector(arguments[0]);
+     if (!b) throw new Error("no frame browser " + arguments[0]);
+     return b.browsingContext.currentWindowGlobal.getActor("RessacFrame").sendQuery("test", { expr: arguments[1] });`,
+    [selector, expr],
+    frame,
+  );
+  return (json === undefined ? undefined : JSON.parse(json)) as T;
+}
+
 /** Polls `body` (see inUi) until it returns a truthy value; returns it. */
 export async function waitUi<T = unknown>(m: Marionette, body: string, args: unknown[] = [], ms = 10_000, frame: Frame = "sidebar"): Promise<T> {
   const deadline = Date.now() + ms;

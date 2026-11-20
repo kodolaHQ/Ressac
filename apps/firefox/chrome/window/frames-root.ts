@@ -8,7 +8,11 @@ export const FRAMES_TEST_KEY = "ressac-frames-test";
 let token: string | undefined;
 /** 16 hex chars, drawn once per process. */
 export function framesToken(): string {
-  token ??= Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
+  // This module is bundled in the store and in each window's UI: a UI copy (it has a `window`) takes the store's token.
+  token ??=
+    typeof window === "undefined"
+      ? Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("")
+      : (ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").framesToken() as string);
   return token;
 }
 

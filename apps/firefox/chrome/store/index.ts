@@ -18,6 +18,7 @@ import { createAgentExtensions, type AgentExtensions } from "./agent-extensions"
 import { createDesign, type DesignService } from "./design";
 import { createOverlays } from "../window/design-overlays";
 import { FRAMES_GROUP, FRAMES_TEST_KEY, framesKindDir, wipeFrames } from "../window/frames-root";
+import * as remoteFrames from "../window/remote-frame";
 import { neutralizeFirefoxWindow } from "../window/firefox-items";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
@@ -115,6 +116,7 @@ export interface RessacStore extends Store {
 }
 
 const PAGE_ACTOR = "chrome://browser/content/ressac/page-actor.sys.mjs";
+
 
 /**
  * An actor's module (`extension-actor`, `site-actor`). Tests only: RESSAC_TEST_EXTENSION_ACTOR names a folder holding
@@ -373,6 +375,7 @@ async function start(): Promise<RessacStore> {
   // The agent-written frames (frame-actor.ts): the top document of each remote frame <browser> only (no allFrames, no
   // matches). The child forwards a few bounded messages; the parent only looks up the frame owner's callback.
   const frameActor = actorModule("frame-actor");
+  remoteFrames.setFrameActor(frameActor);
   ChromeUtils.registerWindowActor("RessacFrame", {
     parent: { esModuleURI: frameActor },
     child: { esModuleURI: frameActor, events: { DOMWindowCreated: {}, DOMContentLoaded: { capture: true } } },
@@ -654,6 +657,10 @@ export { apps } from "./apps";
 export const uiNetwork: { state(): UiNetworkState; isUiDocument(doc: Document | null | undefined): boolean } = { state: () => uiNetState, isUiDocument };
 // For the e2e: the action images' channel, measured directly (plan 33 spike S2).
 export { containerRequests, loadImage } from "./site-home";
+// The UI's copy of frames-root.ts reads the store's token (one per launch).
+export { framesToken } from "../window/frames-root";
+// One copy for every window: the frames' group id and the actor's registry are per launch (ui/RemoteFrame.svelte).
+export { remoteFrames };
 export { actionImagesContainer } from "./action-media";
 // For the e2e: test mode writes notifications to a file, so no alert is ever shown to click.
 export { alertObserver } from "./notifications";

@@ -131,6 +131,8 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
         RESSAC_EMBED_URL: "http://127.0.0.1:9",
         // A new session follows the Mac's language: the tests read French whatever this machine's language is.
         RESSAC_TEST_MAC_LANGUAGES: "fr-FR",
+        // The frames' test hook (e2e/ui.ts inFrame): evaluates in an agent-written frame's page.
+        RESSAC_TEST_FRAMES: "1",
         ...o.env,
         // realTools: the machine's own docker, claude… (README captures with the real agent), never in a test.
         PATH: o.realTools ? (process.env.PATH ?? "") : `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
