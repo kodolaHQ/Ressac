@@ -371,6 +371,13 @@ async function start(): Promise<RessacStore> {
     messageManagerGroups: ["browsers"],
     safeForUntrustedWebProcess: true,
   });
+  // The same viewfinder on a site app's home (a remote frame): its top document only, armed on the copy the parent names.
+  ChromeUtils.registerWindowActor("RessacDesignFrames", {
+    parent: { esModuleURI: designActor },
+    child: { esModuleURI: designActor },
+    messageManagerGroups: [FRAMES_GROUP],
+    safeForUntrustedWebProcess: true,
+  });
   // The agent-written frames (frame-actor.ts): the top document of each remote frame <browser> only (no allFrames, no
   // matches). The child forwards a few bounded messages; the parent only looks up the frame owner's callback.
   const frameActor = actorModule("frame-actor");
@@ -663,5 +670,3 @@ export { remoteFrames };
 export { actionImagesContainer } from "./action-media";
 // For the e2e: test mode writes notifications to a file, so no alert is ever shown to click.
 export { alertObserver } from "./notifications";
-// For the e2e: the home viewfinder's own sandbox, probed with the code it evaluates (plan 36, S6's reach list).
-export { homeViewfinder } from "./design-home";

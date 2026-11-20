@@ -1,9 +1,5 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { cleanCapture, cleanSource, targetKey, firefoxViewfinderScript, bubbleSlot, sourceExpression, SITE_BUBBLE_SIZE } from "../chrome/store/design-copies";
-
-const line = (text: string, start: string) => text.split("\n").find((l) => l.startsWith(start)) ?? `missing ${start}`;
 
 describe("design copies", () => {
   it("the Firefox viewfinder script: no click listener of its own, the guard hands it the element", () => {
@@ -47,12 +43,6 @@ describe("design copies", () => {
     expect(targetKey({ type: "window", windowId: "f1" })).toBe("window:f1");
     expect(targetKey({ type: "app", folder: "essai" })).toBe("app:essai");
     expect(targetKey({ type: "site", id: "tuning" })).toBe("site:tuning");
-  });
-
-  it("drift: the home's MOUSE (design-home.ts) is the actor's (design-actor.ts), word for word", () => {
-    const mouse = (file: string) => line(readFileSync(path.resolve(import.meta.dirname, file), "utf8").split("\n").map((l) => l.replace(/^export /, "")).join("\n"), "const MOUSE = ");
-    expect(mouse("../chrome/store/design-home.ts")).toBe(mouse("../chrome/agent/design-actor.ts"));
-    expect(mouse("../chrome/agent/design-actor.ts")).toContain('"pointerdown"');
   });
 
   it("bubbleSlot: under the element, bounded to the window", () => {

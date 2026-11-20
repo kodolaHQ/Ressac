@@ -100,8 +100,8 @@ export interface SiteDesignView {
   viewState: SiteWindowState["viewState"];
   /** The app view's <browser>. */
   browser: any;
-  /** The home's frame (data-testid site-home-frame in the bar) when the home is shown and shows this app's served copy (homePage), else null. */
-  home: HTMLIFrameElement | null;
+  /** The home's remote <browser> (in data-testid site-home-frame of the bar) when the home is shown and shows this app's served copy (homePage), else null. */
+  home: Element | null;
   /** Where to aim, in the site window's coordinates: the home frame's (bar rect + frame rect), else the view's. */
   bounds: { x: number; y: number; width: number; height: number };
   /** Whether the design mode can aim at the view. */
@@ -1087,12 +1087,12 @@ export const sites = {
       const r = e.getBoundingClientRect();
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     };
-    let home: HTMLIFrameElement | null = null;
+    let home: Element | null = null;
     let bounds = rect(s.view);
     if (s.viewState === "home") {
       const bar = win.document.getElementById("ressac-site-bar") as HTMLIFrameElement | null;
-      const f = bar?.contentDocument?.querySelector('[data-testid="site-home-frame"]') as HTMLIFrameElement | null;
-      const spec = f?.contentDocument?.documentURI;
+      const f = bar?.contentDocument?.querySelector('[data-testid="site-home-frame"] browser') as any;
+      const spec: string | undefined = f?.currentURI?.spec;
       if (bar && f && spec && spec !== "about:blank" && homePage(id, { spec })) {
         home = f;
         const [b, h] = [rect(bar), rect(f)];

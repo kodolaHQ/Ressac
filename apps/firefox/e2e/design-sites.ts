@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect } from "vitest";
 import { HOOKS_PAGE } from "./design";
 import type { Marionette } from "./marionette";
-import { inSiteBar, inSiteView, siteWindowExpr } from "./sites";
+import { HOME_COPY, homePoint as framePoint, inHomeFrame, inSiteBar, inSiteView, siteHomeBrowser, siteWindowExpr } from "./sites";
 
 // The design mode in site apps' windows (plan 36): e2e helpers and pages. Chrome context.
 
@@ -91,8 +91,8 @@ export async function toHome(m: Marionette, id: string): Promise<void> {
   await openSite(m, id);
   if ((await viewOf(m, id)) !== "home") await inStore(m, `store.sites.controller(arguments[0]).home();`, [id]);
   await expect
-    .poll(() => inSiteBar<string | null>(m, id, `const h = doc.querySelector('[data-testid="site-home-frame"]'); const d = h?.contentDocument; return d?.readyState === "complete" ? String(d.documentURI) : null;`), { timeout: 15_000 })
-    .toMatch(/^resource:\/\/ressac-site-/);
+    .poll(() => inHomeFrame<string | null>(m, siteHomeBrowser(id), `return document.readyState === "complete" ? document.documentURI : null;`).catch(() => null), { timeout: 15_000 })
+    .toMatch(HOME_COPY);
 }
 
 /** A trusted gesture sent by the site window (as a person's mouse): a move, then a click of `button` unless `move`. */
@@ -135,15 +135,10 @@ export async function viewPoint(m: Marionette, id: string, sel: string): Promise
 }
 
 /** The centre of `sel` in the home's frame, in the site window's coordinates. */
-export const homePoint = (m: Marionette, id: string, sel: string) =>
-  inSiteBar<{ x: number; y: number }>(
-    m,
-    id,
-    `const b = win.document.getElementById("ressac-site-bar").getBoundingClientRect(), f = doc.querySelector('[data-testid="site-home-frame"]');
-     const h = f.getBoundingClientRect(), e = f.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
-     return { x: b.left + h.left + f.clientLeft + e.left + e.width / 2, y: b.top + h.top + f.clientTop + e.top + e.height / 2 };`,
-    [sel],
-  );
+export async function homePoint(m: Marionette, id: string, sel: string): Promise<{ x: number; y: number }> {
+  const [x, y] = await framePoint(m, siteHomeBrowser(id), sel);
+  return { x, y };
+}
 
 /** `body` with `f` the site window's overlay frame (#ressac-design-calque) and `doc` its document; null while it is absent or hidden. */
 export const overlayOf = <T = unknown>(m: Marionette, id: string, body: string, args: unknown[] = []) =>

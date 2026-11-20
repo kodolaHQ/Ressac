@@ -31,7 +31,7 @@ import {
   SITE_BUBBLE_SIZE,
   type ViewfinderCapture,
 } from "./design-copies";
-import { homeViewfinder } from "./design-home";
+import { framesOrigin } from "../window/frames-root";
 import type { SiteApps } from "./sites";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
@@ -74,6 +74,8 @@ export interface DesignService {
 }
 
 const ACTOR = "RessacDesign";
+/** The same actor on a site app's home, a remote frame of the frames group. */
+const HOME_ACTOR = "RessacDesignFrames";
 /** Mine: a stop the actor does not answer within this is given up, then the top window is unguarded. */
 export const STOP_TIMEOUT_MS = 1000;
 /** The actor keeps the top's guard 500 ms after a capture (the rest of a double click): the frames' too. */
@@ -99,7 +101,7 @@ interface Session {
   armed: boolean;
   pending: { context: DesignContext; capture: string | null } | null;
   destination: { destination: string | null; noDestination: string | null };
-  /** The page's viewfinder: the actor of `wgp`, or the chrome's own on a site app's home frame (spike S6). */
+  /** The page's viewfinder: the actor of `wgp` (RessacDesignFrames on a site app's home). */
   query(name: "arm" | "stop" | "source" | "unguard", data?: { code?: string }): Promise<unknown>;
   /** A site app's home: `browser` is its frame. */
   home: boolean;
@@ -110,9 +112,9 @@ interface Session {
 }
 
 /** A query to the actor of `wgp`; a missing actor (destroyed, not an http(s) page) rejects. */
-function ask(wgp: any, name: string, data?: unknown): Promise<unknown> {
+function ask(wgp: any, name: string, data?: unknown, actor = ACTOR): Promise<unknown> {
   try {
-    return Promise.resolve(wgp.getActor(ACTOR).sendQuery(name, data));
+    return Promise.resolve(wgp.getActor(actor).sendQuery(name, data));
   } catch (e) {
     return Promise.reject(e);
   }
@@ -132,7 +134,6 @@ const sourceText = (s: DesignContext["source"]): string | null => (s ? (s.line !
 export async function capturePng(browser: any, rect: ViewfinderCapture["rect"], view: ViewfinderCapture["view"], wgp: any = browser.browsingContext?.currentWindowGlobal): Promise<string | null> {
   try {
     const win = browser.ownerDocument.defaultView;
-    // The home's frame (an <iframe>) has no fullZoom.
     const zoom: number = browser.fullZoom ?? 1;
     const dpr: number = win.devicePixelRatio;
     const r = rectCapture(rect, view, zoom);
@@ -276,7 +277,7 @@ export function createDesign(o: {
     clearTimeout(s.unguardTimer);
     // An arm on a home that is removed never answers: left pending, the session is gone by then (stopped on onState).
     const answer = s.query("arm", { code: firefoxViewfinderScript() }).catch(() => null);
-    // The home's frames are in the parent process, behind the home frame's guard.
+    // The home's subframes share its process, behind its top's guard (and have no RessacDesignFrames actor).
     if (!s.home) for (const bc of s.browser.browsingContext.getAllBrowsingContextsInSubtree()) guardFrame(s, bc.currentWindowGlobal);
     const r = await answer;
     // A stale answer: whoever made it stale (stop, forget) has unguarded the frames.
@@ -299,7 +300,7 @@ export function createDesign(o: {
     if (!current(s, g)) return;
     const { rect, ...context } = capture;
     // The home's address as the kernel knows it (no served copy's token): it tags such remarks [accueil] (pty/context.ts).
-    if (s.home && s.target.type === "site") context.url = `ressac-site://${s.target.id}${new URL(context.url).pathname}`;
+    if (s.home && s.target.type === "site") context.url = `ressac-site://${s.target.id}${new URL(context.url).pathname.replace(/^\/sites\/[^/]+/, "")}`;
     s.pending = { context: { ...context, source }, capture: png };
     const v = view(s.target);
     if (v?.browser !== s.browser || pageOf(s.browser) !== s.wgp || s.win.closed) return service.stop(s.target);
@@ -400,7 +401,7 @@ export function createDesign(o: {
       win.addEventListener("unload", onUnload);
       const home = t.type === "site" && browser === site?.home;
       const s: Session = {
-        query: home ? homeViewfinder(browser).query : (name, data) => ask(wgp, name, data), home,
+        query: home ? (name, data) => ask(wgp, name, { ...data, home: `${framesOrigin()}/sites/` }, HOME_ACTOR) : (name, data) => ask(wgp, name, data), home,
         target: t, key, project: r.project, browser, win, wgp, generation: 0, sameDocument: false, armed: false, pending: null,
         destination: { destination: r.destination, noDestination: r.noDestination }, guarded: new Set(), unguardTimer: undefined,
         cleanup: () => {

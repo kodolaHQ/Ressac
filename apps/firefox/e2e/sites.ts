@@ -166,16 +166,16 @@ export const HOME_COPY = /^resource:\/\/ressac-frames-[0-9a-f]{16}\/sites\/[^/]+
 
 /**
  * Runs `body` (an async function body) in the page of the home frame <browser> the chrome expression `browser` gives,
- * through the RessacFrame actor's test hook: `fw` = the page's window (Xrays waived), `args` = `args`. Null until it
+ * through the RessacFrame actor's test hook: `fw` = the page's window (Xrays waived), `args` = `args`; `chrome`: a system sandbox. Null until it
  * shows a page of a home copy; the result goes through JSON.
  */
-export async function inHomeFrame<T = unknown>(m: Marionette, browser: string, body: string, args: unknown[] = []): Promise<T | null> {
+export async function inHomeFrame<T = unknown>(m: Marionette, browser: string, body: string, args: unknown[] = [], chrome = false): Promise<T | null> {
   const expr = `(async () => { const fw = window.wrappedJSObject; const args = ${JSON.stringify(args)}; ${body} })()`;
   const json = await m.execute<string | null | undefined>(
     `const g = (${browser})?.browsingContext?.currentWindowGlobal;
      if (!g || !${HOME_COPY}.test(g.documentURI?.spec ?? "")) return null;
-     return g.getActor("RessacFrame").sendQuery("test", { expr: arguments[0] });`,
-    [expr],
+     return g.getActor("RessacFrame").sendQuery("test", { expr: arguments[0], chrome: arguments[1] });`,
+    [expr, chrome],
   );
   return json == null ? null : (JSON.parse(json) as T);
 }

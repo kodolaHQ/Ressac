@@ -15,7 +15,6 @@ import {
   siteExpr,
   siteKey,
   siteMouse,
-  STORE,
   toHome,
   toSite,
   TUNING_PAGE,
@@ -26,10 +25,10 @@ import {
 import { waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, startSitesServer, writeSite } from "./sites";
+import { grantSite, HOME_COPY, inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, siteHomeBrowser, startSitesServer, writeSite } from "./sites";
 
-// Plan 36 Task 3: the design mode on a site app's home (spike S6), done by the chrome on the home's frame
-// (chrome/store/design-home.ts). Apps avec-accueil and sonde (spike S6's home, for the
+// Plan 36 Task 3: the design mode on a site app's home (spike S6), a remote frame of the bar aimed by the
+// RessacDesignFrames actor (chrome/agent/design-actor.ts). Apps avec-accueil and sonde (spike S6's home, for the
 // measures), tuning for the view at density 2. Block 15355-15359: sites on 15355.
 
 const PORT = 15355;
@@ -103,17 +102,20 @@ const toggle = (id: string) => inStore(m, "await store.design.toggle(arguments[0
 const add = (id: string, text: string) => inStore<{ ok: boolean }>(m, "return await store.design.add(arguments[0], arguments[1]);", [T(id), text]);
 const bubble = (id: string) => inStore<{ label: string; source: string | null; warning: string | null } | null>(m, 'return store.design.overlayContext(arguments[0], ["bubble"]);', [T(id)]);
 const view = (id: string) => inStore<string | null>(m, "return store.sites.viewOf(arguments[0]);", [id]);
-/** `body` with `f` the home's frame, `hdoc` its document and `hwin` its window (chrome access). */
-const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
-  inSiteBar<T>(m, id, `const f = doc.querySelector('${FRAME}'), hdoc = f?.contentDocument, hwin = hdoc?.defaultView; ${body}`, args);
-const homeHosts = (id: string) => inHome<number>(id, `return hdoc ? hdoc.getElementsByTagName("ressac-viewfinder").length : -1;`).catch(() => -1);
+/** `body` in the home's page (test hook): `document`/`window` through Xrays, `fw` the page's window, `args`. */
+const inHome = <T = unknown>(id: string, body: string, args: unknown[] = [], chrome = false) => inHomeFrame<T>(m, siteHomeBrowser(id), body, args, chrome) as Promise<T>;
+const homeHosts = (id: string) => inHome<number | null>(id, `return document.getElementsByTagName("ressac-viewfinder").length;`).then((n) => n ?? -1, () => -1);
+/** A query to the home's RessacDesignFrames actor, as the service sends it; `home` defaults to the served copies' prefix. */
+const askHome = <T = unknown>(id: string, name: string, code: string, home?: string) =>
+  m.execute<T>(
+    `const g = ${siteHomeBrowser(id)}.browsingContext.currentWindowGlobal;
+     const home = arguments[2] ?? g.documentURI.spec.match(/^resource:\\/\\/[^/]+/)[0] + "/sites/";
+     return g.getActor("RessacDesignFrames").sendQuery(arguments[0], { code: arguments[1], home });`,
+    [name, code, home ?? null],
+  );
 const viewHosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("ressac-viewfinder").length;`).catch(() => 0);
-const homeLog = (id: string) => inHome<{ early: string[]; reactions: string[]; keys: string[] }>(id, "return JSON.parse(JSON.stringify(hwin.wrappedJSObject.log));");
-const homeKeys = (id: string) => inHome<string[]>(id, "return Object.keys(hwin.wrappedJSObject);");
-/** Code run in the home's own world (its principal, Xrays waived): what the agent's home could do itself. */
-const asHome = (id: string, code: string) =>
-  inHome(id, `const sb = Components.utils.Sandbox(hdoc.nodePrincipal, { sandboxPrototype: hwin, wantXrays: false, wantComponents: false, sameZoneAs: hwin });
-    Components.utils.evalInSandbox(arguments[0], sb, "latest", "chrome://browser/content/ressac/e2e-home.js", 1); return 1;`, [code]);
+const homeLog = (id: string) => inHome<{ early: string[]; reactions: string[]; keys: string[] }>(id, "return JSON.parse(JSON.stringify(fw.log));");
+const homeKeys = (id: string) => inHome<string[]>(id, "return Object.keys(fw);");
 const bar = (id: string) =>
   inSiteBar<{ pressed: string | null; count: string | null }>(
     m,
@@ -133,7 +135,7 @@ const bubbleText = (id: string) => overlayOf<string | null>(m, id, `return doc.q
 const homeRect = (id: string, sel: string) =>
   inHome<{ x: number; y: number; width: number; height: number; view: { width: number; height: number } }>(
     id,
-    `const r = hdoc.querySelector(arguments[0]).getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, view: { width: hwin.innerWidth, height: hwin.innerHeight } };`,
+    `const r = document.querySelector(args[0]).getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, view: { width: window.innerWidth, height: window.innerHeight } };`,
     [sel],
   );
 const projectFiles = (id: string) =>
@@ -201,84 +203,75 @@ describe("design mode on a site app's home", () => {
 
   it("the home viewfinder's sandbox reaches nothing of the chrome nor the home's globals", async () => {
     await toHome(m, "sonde");
-    // The service's own sandbox (homeViewfinder's arm), with S6's reach list as its code.
-    const reach = await inHome<Record<string, string>>(
+    // The actor's own sandbox (its arm), with S6's reach list as its code.
+    const reach = await askHome<Record<string, string>>(
       "sonde",
-      `const { homeViewfinder } = ChromeUtils.importESModule("${STORE}");
-       return await homeViewfinder(f).query("arm", { code: arguments[0] });`,
-      [
+      "arm",
         `(() => {
          const t = (f) => { try { const v = f(); return v === null || v === undefined ? String(v) : typeof v === "object" || typeof v === "function" ? typeof v + ":" + Object.prototype.toString.call(v) : String(v); } catch (e) { return "throws:" + String(e).slice(0, 90); } };
          return { Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services, Cu: typeof Cu, docShell: typeof docShell, gBrowser: typeof gBrowser,
-           ressacSiteWindow: typeof ressacSiteWindow, windowRoot: typeof windowRoot, homeSecret: typeof homeSecret, origin: location.origin,
-           frameElement: t(() => frameElement), parentDocument: t(() => parent.document), topDocument: t(() => top.document), parentHref: t(() => parent.location.href), topHref: t(() => top.location.href),
-           parentSiteWindow: t(() => parent.ressacSiteWindow), topGBrowser: t(() => top.gBrowser), topSiteWindow: t(() => top.ressacSiteWindow), parentFrames: t(() => parent.frames.length),
-           opener: t(() => opener), ownerGlobal: t(() => document.ownerGlobal), defaultViewParent: t(() => document.defaultView.parent.document) };
+           ressacSiteWindow: typeof ressacSiteWindow, windowRoot: typeof windowRoot, homeSecret: typeof homeSecret, origin: location.origin, href: location.href,
+           frameElement: t(() => frameElement), topIsSelf: t(() => top.document === document && parent.document === document),
+           parentSiteWindow: t(() => parent.ressacSiteWindow), topGBrowser: t(() => top.gBrowser), topSiteWindow: t(() => top.ressacSiteWindow),
+           opener: t(() => opener), ownerGlobal: t(() => document.ownerGlobal) };
        })()`,
-      ],
     );
     expect(reach).toMatchObject({ Components: "undefined", ChromeUtils: "undefined", Services: "undefined", Cu: "undefined", docShell: "undefined", gBrowser: "undefined", ressacSiteWindow: "undefined", windowRoot: "undefined", homeSecret: "undefined" });
-    for (const k of ["parentDocument", "topDocument", "parentHref", "topHref", "parentSiteWindow", "topGBrowser", "topSiteWindow", "defaultViewParent"]) expect(String(reach[k])).toMatch(/^throws:|^undefined$/);
+    for (const k of ["parentSiteWindow", "topGBrowser", "topSiteWindow"]) expect(String(reach[k])).toMatch(/^throws:|^undefined$/);
+    // The home is the top of its own remote frame: no parent to reach, the bar is in another process.
+    expect(reach.topIsSelf).toBe("true");
     expect(reach.frameElement).toBe("null");
     expect(reach.opener).toBe("null");
-    // The home's own principal: the served copy's origin.
-    expect(reach.origin).toMatch(/^resource:\/\/ressac-site-sonde-/);
+    // The served copy (a null principal from the sandbox flags; location keeps the copy's address).
+    expect(reach.href).toMatch(HOME_COPY);
   });
 
-  it("the home viewfinder arms only on the served home: a system about:blank frame or a sandboxed about:blank gives null, nothing set", async () => {
+  it("the home viewfinder arms only on the served home: no prefix, another token's or the widgets' gives null, nothing set", async () => {
     await toHome(m, "sonde");
-    // Two frames of the bar's document, each its own chrome event handler: a system-principal about:blank, and a
-    // sandboxed (null principal) about:blank, as the home frame's own initial document.
-    const r = await inHome<{ answers: unknown[]; marks: (string | null)[] }>(
-      "sonde",
-      `const { homeViewfinder } = ChromeUtils.importESModule("${STORE}");
-       const frames = [false, true].map((sandboxed) => { const x = doc.createElement("iframe"); if (sandboxed) x.setAttribute("sandbox", "allow-scripts"); doc.body.append(x); return x; });
-       try {
-         await new Promise((ok) => win.setTimeout(ok, 200));
-         const answers = [];
-         for (const x of frames) answers.push(await homeViewfinder(x).query("arm", { code: arguments[0] }));
-         return { answers, marks: frames.map((x) => x.contentDocument?.documentElement?.getAttribute("data-armed") ?? null), system: frames.map((x) => x.contentDocument.nodePrincipal.isSystemPrincipal) };
-       } finally { for (const x of frames) x.remove(); }`,
-      [`(document.documentElement.setAttribute("data-armed", "1"), { ok: 1 })`],
-    );
-    expect(r.answers).toEqual([null, null]);
-    expect(r.marks).toEqual([null, null]);
-    expect((r as any).system).toEqual([true, false]);
+    const code = `(document.documentElement.setAttribute("data-armed", "1"), { ok: 1 })`;
+    const origin = (await inHome<string>("sonde", "return document.documentURI;"))!.match(/^resource:\/\/[^/]+/)![0];
+    const answers = [];
+    for (const home of ["", "resource://ressac-frames-0000000000000000/sites/", `${origin}/widgets/`, `${origin}/sites/x`]) answers.push(await askHome("sonde", "arm", code, home));
+    answers.push(await askHome("sonde", "source", "document.title", ""));
+    expect(answers).toEqual([null, null, null, null, null]);
+    expect(await inHome("sonde", `return document.documentElement.getAttribute("data-armed");`)).toBeNull();
+    // The served prefix arms (the code ran, its answer comes back).
+    expect(await askHome("sonde", "source", "document.title")).toBe("Accueil");
   });
 
   // Review Focus 4.
   it("the home viewfinder's sandbox cannot navigate the bar or the window", async () => {
     await toHome(m, "sonde");
-    const before = await inHome<{ bar: string; win: string; home: string }>("sonde", "return { bar: doc.documentURI, win: win.document.documentURI, home: hdoc.documentURI };");
-    const sorted = await inHome<Record<string, string>>(
+    const uris = () => inSiteBar<{ bar: string; win: string }>(m, "sonde", "return { bar: doc.documentURI, win: win.document.documentURI };");
+    const before = await uris();
+    const sorted = await askHome<Record<string, string>>(
       "sonde",
-      `const { homeViewfinder } = ChromeUtils.importESModule("${STORE}");
-       return await homeViewfinder(f).query("arm", { code: arguments[0] });`,
-      [
+      "arm",
         `(() => {
          const t = (f) => { try { f(); return "ran"; } catch (e) { return "throws:" + String(e).slice(0, 90); } };
          return { parentLocation: t(() => { parent.location = "about:blank"; }), topHref: t(() => { top.location.href = "about:blank"; }), parentHref: t(() => { parent.location.href = "about:blank"; }),
            topReplace: t(() => top.location.replace("about:blank")), postMessage: t(() => parent.postMessage({ type: "open", url: "about:blank" }, "*")) };
        })()`,
-      ],
     );
+    expect(sorted).toBeTruthy();
     await sleep(1000);
-    for (const k of ["parentLocation", "topHref", "parentHref", "topReplace"]) expect(sorted[k]).toMatch(/^throws:/);
-    expect(await inHome("sonde", "return { bar: doc.documentURI, win: win.document.documentURI, home: hdoc.documentURI };")).toEqual(before);
+    // parent and top are the home itself: at most the home leaves its copy, and is sent back to it.
+    expect(await uris()).toEqual(before);
     expect(await view("sonde")).toBe("home");
+    await expect.poll(() => inHome<string | null>("sonde", `return document.readyState === "complete" ? document.documentURI : null;`), { timeout: 15_000 }).toMatch(HOME_COPY);
   });
 
   it("hover frames p#nue; middle and right clicks pick nothing; the primary click captures #cible; the home saw nothing, no global added", async () => {
     await toHome(m, "sonde");
-    await inHome("sonde", "hwin.wrappedJSObject.log.early.length = 0; hwin.wrappedJSObject.log.reactions.length = 0; return 1;");
+    await inHome("sonde", "fw.log.early.length = 0; fw.log.reactions.length = 0; return 1;");
     const keys0 = await homeKeys("sonde");
     await toggle("sonde");
     await expect.poll(() => homeHosts("sonde"), { timeout: 10_000 }).toBe(1);
     await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { move: true });
     await expect
-      .poll(() => inHome<string | null>("sonde", `const sh = hdoc.querySelector("ressac-viewfinder")?.openOrClosedShadowRoot; return sh?.children[1]?.textContent ?? null;`), { timeout: 10_000 })
+      .poll(() => inHome<string | null>("sonde", `const sh = document.querySelector("ressac-viewfinder")?.openOrClosedShadowRoot; return sh?.children[1]?.textContent ?? null;`, [], true), { timeout: 10_000 })
       .toBe("p#nue");
-    expect(await inHome("sonde", `return String(hdoc.querySelector("ressac-viewfinder").wrappedJSObject.shadowRoot);`)).toBe("null");
+    expect(await inHome("sonde", `return String(fw.document.querySelector("ressac-viewfinder").shadowRoot);`)).toBe("null");
     await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { button: 1 });
     await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { button: 2 });
     await sleep(500);
@@ -306,7 +299,7 @@ describe("design mode on a site app's home", () => {
     const r = await homeRect("sonde", "#cible");
     const rc = rectCapture({ x: r.x, y: r.y, width: r.width, height: r.height }, r.view, 1);
     // A magenta cover in the bar's document over #cible: the window shows it, the capture must not.
-    await inHome("sonde", `const h = f.getBoundingClientRect(), rc = arguments[0], cover = doc.createElement("div"); cover.id = "e2e-cover";
+    await inSiteBar(m, "sonde", `const h = doc.querySelector('${FRAME} browser').getBoundingClientRect(), rc = arguments[0], cover = doc.createElement("div"); cover.id = "e2e-cover";
       cover.style.cssText = "position:fixed;z-index:10;pointer-events:none;background:rgb(255,0,255);left:" + (h.left + rc.x) + "px;top:" + (h.top + rc.y) + "px;width:" + rc.width + "px;height:" + rc.height + "px";
       doc.body.append(cover); return 1;`, [rc]);
     try {
@@ -321,15 +314,16 @@ describe("design mode on a site app's home", () => {
       expect(png.at[1]).toEqual([255, 255, 255]);
       expect(png.colours).not.toContain("255,0,255");
     } finally {
-      await inHome("sonde", `doc.getElementById("e2e-cover")?.remove(); return 1;`);
+      await inSiteBar(m, "sonde", `doc.getElementById("e2e-cover")?.remove(); return 1;`);
     }
   });
 
   // Review Focus 1.
   it("Escape in the home stops the mode; a click and an Escape made by the home do nothing", async () => {
     await homeOn("sonde");
-    await inHome("sonde", "hwin.wrappedJSObject.log.keys.length = 0; return 1;");
-    await asHome("sonde", "fabricate()");
+    await inHome("sonde", "fw.log.keys.length = 0; return 1;");
+    // The home's own untrusted click and Escape.
+    await inHome("sonde", "fw.fabricate(); return 1;");
     await sleep(500);
     expect(await bubble("sonde")).toBeNull();
     expect((await state("sonde")).active).toBe(true);
@@ -337,7 +331,7 @@ describe("design mode on a site app's home", () => {
     // The home's own events reached it (untrusted): the guard let them through, untouched.
     expect((await homeLog("sonde")).keys).toEqual(["Escape:false"]);
     // A real Escape, the keyboard in the home's frame.
-    await expect.poll(() => inHome("sonde", "return Services.focus.focusedWindow === hwin;"), { timeout: 10_000 }).toBe(true);
+    await expect.poll(() => inHome("sonde", "return document.hasFocus();"), { timeout: 10_000 }).toBe(true);
     await siteKey(m, "sonde", "Escape");
     await expect.poll(async () => (await bar("sonde")).pressed, { timeout: 10_000 }).toBe("false");
     await expect.poll(() => homeHosts("sonde"), { timeout: 10_000 }).toBe(0);
@@ -351,7 +345,7 @@ describe("design mode on a site app's home", () => {
     writeFileSync(path.join(w.dataDir, "workspace", "sites", "sonde", "home", "index.html"), HOME.replace("<title>Accueil</title>", "<title>Accueil 2</title>"));
     await expect.poll(async () => (await bar("sonde")).pressed, { timeout: 10_000 }).toBe("false");
     await expect.poll(async () => (await state("sonde")).active, { timeout: 10_000 }).toBe(false);
-    await expect.poll(() => inHome("sonde", "return hdoc?.readyState === 'complete' ? hdoc.title : null;"), { timeout: 15_000 }).toBe("Accueil 2");
+    await expect.poll(() => inHome("sonde", "return document.readyState === 'complete' ? document.title : null;"), { timeout: 15_000 }).toBe("Accueil 2");
     expect(await m.execute<number>(`return Services.console.getMessageArray().filter((x) => /dead object/.test(String(x.message ?? x))).length;`)).toBe(errors0);
     // A new arm works on the new document.
     await toggle("sonde");

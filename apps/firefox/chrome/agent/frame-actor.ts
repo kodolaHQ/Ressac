@@ -129,7 +129,9 @@ export class RessacFrameChild extends JSWindowActorChild {
     if (msg.name === "test") {
       if (!Services.cpmm.sharedData.get(FRAMES_TEST_KEY)) throw new Error("test hook off");
       const win = this.contentWindow;
-      const sandbox = Cu.Sandbox((this.document as any).nodePrincipal, { sandboxPrototype: win, wantXrays: true, sameZoneAs: win });
+      // `chrome`: a system sandbox, for what only the chrome sees (a closed shadow root).
+      const principal = msg.data?.chrome ? Services.scriptSecurityManager.getSystemPrincipal() : (this.document as any).nodePrincipal;
+      const sandbox = Cu.Sandbox(principal, { sandboxPrototype: win, wantXrays: true, sameZoneAs: win });
       return JSON.stringify(await Cu.evalInSandbox(String(msg.data?.expr), sandbox));
     }
     return undefined;
