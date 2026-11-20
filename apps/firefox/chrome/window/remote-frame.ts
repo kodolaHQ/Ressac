@@ -25,7 +25,8 @@ export function setFrameActor(uri: string): void {
 export function createFrameBrowser(doc: Document): Element {
   const b = (doc as any).createXULElement("browser") as Element;
   // No maychangeremoteness: the frame stays in its webIsolated process whatever it navigates to.
-  const attrs = { type: "content", remote: "true", remoteType: `webIsolated=${framesOrigin()}`, messagemanagergroup: FRAMES_GROUP };
+  // `transparent`: else the remote page paints an opaque canvas over what is behind it (BrowserParent reads it once).
+  const attrs = { type: "content", remote: "true", remoteType: `webIsolated=${framesOrigin()}`, messagemanagergroup: FRAMES_GROUP, transparent: "true" };
   for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v);
   if (groupId !== null) b.setAttribute("initialBrowsingContextGroupId", String(groupId));
   return b;

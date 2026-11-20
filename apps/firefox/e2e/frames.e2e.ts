@@ -82,6 +82,24 @@ describe("remote frames", () => {
     expect(r.uris[0]).toMatch(/\/widgets\/frames-test\/display\.html$/);
   });
 
+  it("are transparent: a page with no background shows what is behind its frame", async () => {
+    const r = await inUi<{ attr: string | null; pixel: number[] }>(
+      w.marionette,
+      `const host = doc.getElementById("frames-a"), b = host.querySelector("browser");
+       host.style.background = "rgb(255, 0, 0)";
+       await new Promise((ok) => ui.requestAnimationFrame(() => ui.requestAnimationFrame(ok)));
+       const r = b.getBoundingClientRect();
+       // The bottom right corner: below the page's text.
+       const shot = await ui.browsingContext.currentWindowGlobal.drawSnapshot(new ui.DOMRect(r.right - 4, r.bottom - 4, 1, 1), 1, "rgb(0, 255, 0)");
+       const c = doc.createElement("canvas"); c.width = c.height = 1;
+       const g = c.getContext("2d"); g.drawImage(shot, 0, 0);
+       host.style.background = "";
+       return { attr: b.getAttribute("transparent"), pixel: [...g.getImageData(0, 0, 1, 1).data.slice(0, 3)] };`,
+    );
+    expect(r.pixel, "the host's red, not a white canvas").toEqual([255, 0, 0]);
+    expect(r.attr).toBe("true");
+  });
+
   it("send reaches the page, inFrame reads it", async () => {
     expect(await inFrame(w.marionette, "#frames-a browser", `document.getElementById("t").textContent`)).toBe("cadre");
     await inUi(w.marionette, `await ChromeUtils.importESModule(${JSON.stringify(STORE)}).remoteFrames.sendFrame(doc.querySelector("#frames-a browser"), { type: "widget", n: 1 });`);
