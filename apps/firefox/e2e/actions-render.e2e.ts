@@ -10,7 +10,7 @@ import { BARS, EXECUTION, openActionPage, probe, startActionServers, tid, uiQuer
 import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inFrame, inUi, missingApi, waitUi } from "./ui";
 
 // An action's page and its built-in components: served from a result the
 // test writes, with no container and no Gemma. Reopening a page launches nothing. Result images go through the test hook
@@ -64,7 +64,21 @@ const sized = (px: number) => `<!doctype html><meta charset="utf-8"><script>
     parent.postMessage({ type: "height", px: ${px} }, "*");
   });
 </script>`;
-const FRAME = tid("component-frame");
+// The component's remote frame <browser> (its document is read through inFrame).
+const FRAME = `${tid("component-frame")} browser`;
+/** Evaluates `expr` in the component's document; null while it has none yet. */
+const inComponent = <T>(expr: string): Promise<T | null> => inFrame<T>(m, FRAME, expr).catch(() => null);
+const COPY = (name: string) => new RegExp(`^resource://ressac-frames-[0-9a-f]{16}/components/${name}/component-\\d+-\\d+\\.html$`);
+/** The frame's shown height. */
+const height = () => inUi<number>(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height);", [FRAME]);
+/** Polls the component's document until `expr` is truthy. */
+async function waitComponent<T>(expr: string, ms = 15_000): Promise<T> {
+  for (const deadline = Date.now() + ms; ; await sleep(100)) {
+    const v = await inComponent<T>(expr);
+    if (v) return v;
+    if (Date.now() > deadline) throw new Error(`timed out waiting in the component on: ${expr}`);
+  }
+}
 const closeTabs = async () => {
   for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "closeTab", id } as Action);
 };
@@ -290,39 +304,40 @@ describe("action page rendering", () => {
     await m.execute("Services.prefs.setIntPref('ui.systemUsesDarkTheme', 1);");
     try {
       await openActionPage(m, "graphe", "Graphe");
-      expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('sandbox');", [FRAME])).toBe("allow-scripts");
-      await waitUi(m, "return doc.querySelector(arguments[0])?.contentDocument?.querySelectorAll('rect').length === 8;", [FRAME], 15_000);
-      const frame = await inUi<{ src: string; uri: string; title: string; body: string; texts: string[] }>(
+      await waitComponent("document.querySelectorAll('rect').length === 8");
+      // Out of the parent, in the frames' process, sandboxed with a null principal.
+      const proc = await inUi<{ pid: number; parent: number; type: string; isNull: boolean; flags: number }>(
         m,
-        "const f = doc.querySelector(arguments[0]); const d = f.contentDocument; return { src: f.src, uri: d.documentURI, title: d.getElementById('titre').textContent, body: d.body.className, texts: [...d.querySelectorAll('text')].map((t) => t.textContent) };",
+        "const b = doc.querySelector(arguments[0]); const g = b.browsingContext.currentWindowGlobal; return { pid: g.osPid, parent: Services.appinfo.processID, type: b.remoteType, isNull: g.documentPrincipal.isNullPrincipal, flags: b.browsingContext.sandboxFlags };",
         [FRAME],
       );
-      expect(frame.src).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+-\d+\.html$/);
-      expect(frame.uri).toBe(frame.src);
+      expect(proc.pid).not.toBe(proc.parent);
+      expect(proc.type).toMatch(/^webIsolated=resource:\/\/ressac-frames-/);
+      expect(proc).toMatchObject({ isNull: true, flags: 1048191 });
+      const frame = (await inComponent<{ uri: string; title: string; body: string; texts: string[] }>(
+        "({ uri: document.documentURI, title: document.getElementById('titre').textContent, body: document.body.className, texts: [...document.querySelectorAll('text')].map((t) => t.textContent) })",
+      ))!;
+      expect(frame.uri).toMatch(COPY("barres"));
       expect(frame).toMatchObject({ title: "Ventes", body: "sombre" });
       expect(frame.texts.slice(0, 4)).toEqual(["Lundi", "1", "Mardi", "2"]);
       // The Aura tokens of the page, as CSS variables on the component's root.
-      const tokens = await inUi<{ host: string[]; frame: string[] }>(
-        m,
-        `const names = ["--accent", "--text", "--font-ui", "--radius-card"];
-         const host = ui.getComputedStyle(doc.documentElement), d = doc.querySelector(arguments[0]).contentDocument;
-         const own = d.defaultView.getComputedStyle(d.documentElement);
-         return { host: names.map((n) => host.getPropertyValue(n).trim()), frame: names.map((n) => own.getPropertyValue(n).trim()) };`,
-        [FRAME],
-      );
-      expect(tokens.frame).toEqual([...tokens.host.slice(0, 3), "16px"]);
-      expect(tokens.frame[0]).not.toBe("");
+      const names = ["--accent", "--text", "--font-ui", "--radius-card"];
+      const host = await inUi<string[]>(m, "const s = ui.getComputedStyle(doc.documentElement); return arguments[0].map((n) => s.getPropertyValue(n).trim());", [names]);
+      const own = await inComponent<string[]>(`(() => { const s = getComputedStyle(document.documentElement); return ${JSON.stringify(names)}.map((n) => s.getPropertyValue(n).trim()); })()`);
+      expect(own).toEqual([...host.slice(0, 3), "16px"]);
+      expect(own![0]).not.toBe("");
       // The browser fonts, inlined in the copy, load under the families the tokens name.
-      await waitUi(
-        m,
-        `const d = doc.querySelector(arguments[0]).contentDocument;
+      await waitComponent(
+        `(() => { const d = document;
          const loaded = (family) => (d.fonts.load('16px "' + family + '"'), [...d.fonts].some((f) => f.family.replaceAll('"', '') === family && f.status === 'loaded'));
-         return ["Geist", "Funnel Display", "Geist Mono"].every(loaded) && d.fonts.check('16px Geist');`,
-        [FRAME],
-        15_000,
+         return ["Geist", "Funnel Display", "Geist Mono"].every(loaded) && d.fonts.check('16px Geist'); })()`,
       );
       // The height the component asked for: its document's own height, not the 150 it started with.
-      await waitUi(m, "const f = doc.querySelector(arguments[0]); const h = f.contentDocument.documentElement.scrollHeight; return h !== 150 && Math.round(f.getBoundingClientRect().height) === h;", [FRAME]);
+      for (const deadline = Date.now() + 10_000; ; await sleep(100)) {
+        const h = await inComponent<number>("document.documentElement.scrollHeight");
+        if (h && h !== 150 && (await height()) === h) break;
+        if (Date.now() > deadline) throw new Error("the frame never took the component's height");
+      }
       expect(await q.text(tid("block-error"))).toBe("Composant indisponible : absent");
       expect(await q.text(tid("page-render"))).toContain("Après le composant.");
       expect(await q.text(tid("block-title"))).toBe("Priorités");
@@ -332,27 +347,25 @@ describe("action page rendering", () => {
   });
 
   // Review Focus 4
-  it("a component rewritten while shown reloads; closing its last page removes its substitution", async () => {
+  it("a component rewritten while shown reloads; navigated away it goes back to its copy; closing its last page removes its copies", async () => {
     await closeTabs();
     await openActionPage(m, "ecrit", "Ecrit");
-    const height = () => inUi<number>(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height);", [FRAME]);
-    await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 300;", [FRAME], 15_000);
-    const first = await inUi<string>(m, "return doc.querySelector(arguments[0]).contentDocument.documentURI;", [FRAME]);
+    await waitUi(m, "return Math.round(doc.querySelector(arguments[0])?.getBoundingClientRect().height) === 300;", [FRAME], 15_000);
+    const first = await waitComponent<string>("document.documentURI");
     // The agent rewrites it: a new mtime, a new copy.
     const html = path.join(w.dataDir, "workspace", "components", "ecrit", "component.html");
     await writeComponent(w.dataDir, "ecrit", { description: "Hauteur fixe", properties: {}, html: sized(400) });
     const later = new Date(Date.now() + 5000);
     await utimes(html, later, later);
-    await waitUi(m, "const f = doc.querySelector(arguments[0]); return f.contentDocument?.documentURI !== arguments[1] && Math.round(f.getBoundingClientRect().height) === 400;", [FRAME, first], 15_000);
-    const second = await inUi<string>(m, "return doc.querySelector(arguments[0]).contentDocument.documentURI;", [FRAME]);
-    expect(second).toMatch(/^resource:\/\/ressac-component-ecrit\/component-\d+-\d+\.html$/);
-    const copies = path.join(w.dataDir, "ressac-components", "ecrit");
+    const second = await waitComponent<string>(`document.documentURI !== ${JSON.stringify(first)} && document.documentURI`);
+    await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 400;", [FRAME], 15_000);
+    expect(second).toMatch(COPY("ecrit"));
+    const copies = path.join(await m.execute<string>("return PathUtils.profileDir;"), "chrome", "ressac-frames", "components", "ecrit");
     expect(readdirSync(copies)).toEqual([path.basename(second)]);
     // Its link was not opened: components open none.
     expect(Object.values((await state(m)).tabs).some((o) => o.url.includes("from-component"))).toBe(false);
     /** Dispatches a bridge event on the frame's window, as a component's own code could, with any detail. */
-    const send = (detail: unknown) =>
-      inUi(m, "const w = doc.querySelector(arguments[0]).contentDocument.defaultView; w.dispatchEvent(new w.CustomEvent('ressac-component', { detail: arguments[1] }));", [FRAME, detail]);
+    const send = (detail: unknown) => inFrame(m, FRAME, `window.dispatchEvent(new CustomEvent('ressac-component', { detail: ${JSON.stringify(detail)} }))`);
     await send(JSON.stringify({ type: "autre", px: 900 }));
     await send({ type: "height", px: 700 });
     await send(JSON.stringify({ type: "height", px: "800" }));
@@ -364,24 +377,15 @@ describe("action page rendering", () => {
     await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 2000;", [FRAME]);
     await send(JSON.stringify({ type: "height", px: 1 }));
     await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 20;", [FRAME]);
-    // A document that is not the current copy (as the old one) does not count.
-    await inUi(m, "doc.querySelector(arguments[0]).setAttribute('src', 'about:blank');", [FRAME]);
-    await waitUi(m, "return doc.querySelector(arguments[0]).contentDocument?.documentURI === 'about:blank';", [FRAME]);
-    await send(JSON.stringify({ type: "height", px: 600 }));
-    await new Promise((r) => setTimeout(r, 300));
-    expect(await height()).toBe(20);
+    // Navigated away by its own code: sent back to its copy, which gets its props again and asks for its height.
+    await inFrame(m, FRAME, "location.href = 'about:blank'");
+    await waitComponent(`document.documentURI === ${JSON.stringify(second)}`);
+    await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 400;", [FRAME]);
     await closeTabs();
     await waitUi(m, "return !doc.querySelector(arguments[0]);", [FRAME]);
     for (const deadline = Date.now() + 10_000; existsSync(copies); await sleep(100)) if (Date.now() > deadline) throw new Error("copies left");
-    const after = await m.execute<{ substitution: boolean; load: string }>(
-      `return (async () => {
-        const h = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
-        const load = await fetch(arguments[0]).then((r) => "status " + r.status, (e) => e.name);
-        return { substitution: h.hasSubstitution("ressac-component-ecrit"), load };
-      })();`,
-      [second],
-    );
-    expect(after).toEqual({ substitution: false, load: "TypeError" });
+    const load = await m.execute<string>("return fetch(arguments[0]).then((r) => 'status ' + r.status, (e) => e.name);", [second]);
+    expect(load).toBe("TypeError");
   }, 60_000);
 
   // Plan 33 spike S1, kept without RESSAC_SPIKE
@@ -389,7 +393,7 @@ describe("action page rendering", () => {
     reached.requests.length = 0;
     reached.connections = 0;
     await openActionPage(m, "sonde", "Sonde");
-    await waitUi(m, "return doc.querySelector(arguments[0])?.contentDocument?.documentURI?.startsWith('resource://ressac-component-sonde/');", [FRAME], 15_000);
+    expect(await waitComponent<string>("document.documentURI.includes('/components/sonde/') && document.documentURI")).toMatch(COPY("sonde"));
     // The probe tries at once, then navigates itself to the server after 1.5 s.
     await sleep(3000);
     expect(reached).toEqual({ requests: [], connections: 0 });

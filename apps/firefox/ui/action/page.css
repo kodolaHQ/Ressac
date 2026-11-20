@@ -127,5 +127,5 @@
 }
 
 .pa-error { padding: 10px 14px; border-radius: 12px; background: var(--glass); border: 1px solid var(--in-error); color: var(--in-error); overflow-wrap: anywhere; }
-.pa-component { display: block; width: 100%; border: none; background: transparent; }
+.pa-component { display: flex; width: 100%; }
 .pa-component-preview { padding: 10px 14px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-muted); font-size: 12px; }

@@ -1,17 +1,19 @@
 <script lang="ts">
+  import RemoteFrame, { type RemoteFrameHandle } from "./RemoteFrame.svelte";
+
   /**
-   * An agent component in a sandboxed opaque frame (`sandbox="allow-scripts"`),
+   * An agent component in its isolated frame (RemoteFrame: out of the parent process, sandboxed, opaque origin),
    * served from its sanitized resource:// copy (chrome/store/action-media.ts), served again on each actions.change (the
    * agent may have rewritten it: a new mtime, a new URL). It gets its props, the theme, the Aura tokens and its width by message; its
-   * `parent.postMessage` reaches the chrome as a `ressac-component` event (the copy's bridge), listened on the window
-   * root. It can only ask for its height; anything else, a `ressacOpen` link included, is ignored.
+   * `parent.postMessage` becomes a `ressac-component` event (the copy's bridge) the frames' actor forwards as `component`.
+   * It can only ask for its height; anything else, a `ressacOpen` link included, is ignored.
    */
   let { name, props }: { name: string; props: Record<string, unknown> } = $props();
 
   const MIN_HEIGHT = 20;
   const MAX_HEIGHT = 2000;
   const actions = window.ressac.actions;
-  let iframe = $state<HTMLIFrameElement>();
+  let frame = $state<RemoteFrameHandle>();
   let src = $state<string | null>(null);
   let width = $state(0);
   let height = $state(150);
@@ -32,13 +34,13 @@
   }
 
   /** The frame shows the current copy: never an older copy, nor a page it navigated to. */
-  const ours = () => !!src && iframe?.contentDocument?.documentURI === src;
+  // Without the fragment: a component that sets its own #hash stays on its copy.
+  const ours = () => !!src && frame?.uri()?.split("#")[0] === src;
 
   function send() {
-    // Opaque origin: « * » is the only possible target; only the current copy receives.
-    if (ours()) iframe?.contentWindow?.postMessage({ type: "component", props: $state.snapshot(props), theme, width: width, tokens: tokens() }, "*");
+    if (frame && ours()) void frame.send({ type: "component", props: $state.snapshot(props), theme, width: width, tokens: tokens() });
   }
-  // On each change (the load goes through DOMFrameContentLoaded).
+  // On each change (loading goes through onLoad).
   $effect(() => {
     void [props, theme, width];
     send();
@@ -73,44 +75,33 @@
     };
   });
 
-  $effect(() => {
-    const onMessage = (e: Event) => {
-      if (!iframe || e.target !== iframe.contentWindow || !ours()) return;
-      // The component can dispatch this event itself, with any detail.
-      const detail: unknown = (e as CustomEvent).detail;
-      if (typeof detail !== "string") return;
-      let d: unknown;
-      try {
-        d = JSON.parse(detail);
-      } catch {
-        return;
-      }
-      if (typeof d !== "object" || d === null) return;
-      const { type, px } = d as { type?: unknown; px?: unknown };
-      if (type !== "height" || typeof px !== "number" || !Number.isFinite(px)) return;
-      height = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, px)));
-    };
-    // The window root sees the events of the window's in-process frames (SiteHomeFrame.svelte); untrusted ones too.
-    const root = (window as unknown as { windowRoot: EventTarget }).windowRoot;
-    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("ressac-component", onMessage, true, true);
-    // An iframe of this chrome page never gets `load`: DOMFrameContentLoaded comes once the component's scripts have run.
-    const onLoaded = (e: Event) => iframe && e.target === iframe && send();
-    document.addEventListener("DOMFrameContentLoaded", onLoaded, true);
-    return () => {
-      root.removeEventListener("ressac-component", onMessage, true);
-      document.removeEventListener("DOMFrameContentLoaded", onLoaded, true);
-    };
-  });
+  function onLoad() {
+    // Navigated away from its copy: sent back to it, with nothing given to the other page.
+    if (!ours()) {
+      if (frame && src) frame.load(src);
+      return;
+    }
+    send();
+  }
+
+  function onMessage(kind: string, data: { detail?: string }) {
+    // The component can dispatch this event itself, with any string detail.
+    if (kind !== "component" || typeof data.detail !== "string" || !ours()) return;
+    let d: unknown;
+    try {
+      d = JSON.parse(data.detail);
+    } catch {
+      return;
+    }
+    if (typeof d !== "object" || d === null) return;
+    const { type, px } = d as { type?: unknown; px?: unknown };
+    if (type !== "height" || typeof px !== "number" || !Number.isFinite(px)) return;
+    height = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, px)));
+  }
 </script>
 
 <div data-testid="block-{name}" bind:clientWidth={width}>
-  <iframe
-    bind:this={iframe}
-    class="pa-component"
-    data-testid="component-frame"
-    title={name}
-    src={src ?? "about:blank"}
-    sandbox="allow-scripts"
-    style:height="{height}px"
-  ></iframe>
+  <div class="pa-component" style:height="{height}px">
+    <RemoteFrame {src} title={name} testid="component-frame" bind:frame onload={onLoad} onmessage={onMessage} />
+  </div>
 </div>
