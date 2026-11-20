@@ -60,7 +60,7 @@ describe("remote frames", () => {
        }`,
       [PAGE],
     );
-    await waitUi(w.marionette, `return ["frames-a", "frames-b"].every((id) => ui.__framesLog.some(([i, n]) => i === id && n === "loaded"));`);
+    await waitUi(w.marionette, `return ["frames-a", "frames-b"].every((id) => ui.__framesLog.some(([i, n, d]) => i === id && n === "loaded" && String(d.uri).endsWith("/display.html")));`);
   }, 60_000);
   afterAll(async () => {
     await w?.close();
