@@ -67,8 +67,8 @@ export function isUiLoad(li: { loadingDocument: Document | null; browsingContext
       return !!p && (hasUiAddress(p) || (p.isSystemPrincipal && li.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_WEB_TRANSPORT));
     }
     // A remote frame's load (chrome/window/remote-frame.ts) runs in a web process: its context is content, judged by
-    // its top <browser>'s group, or by its principal at a frames address. No Ressac chrome:// page loads in a content
-    // process, so the chrome prefix of UI_PREFIXES never widens this in practice.
+    // its top <browser>'s group, or by its principal at a frames address. Ressac chrome:// pages in tabs
+    // (sidebar.html?tabhome, the builder) are content contexts too: fine today because they hold no iframes.
     if (bc.isContent) return isFrameBrowser(bc.top?.embedderElement) || (!!li.loadingPrincipal && hasUiAddress(li.loadingPrincipal));
     const e = bc.embedderElement;
     return !!e && (isUiFrame(e) || isUiDocument(e.ownerDocument));

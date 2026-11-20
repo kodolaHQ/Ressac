@@ -30,6 +30,36 @@ const PAGE = `<!doctype html><meta charset="utf-8"><body style="margin:0">
   const l = document.createElement("link"); l.rel = "dns-prefetch"; l.href = "//fr-dns-script.${SFX}"; document.head.append(l);
 </script>`;
 
+/** A frame whose owner sends it back to `file` on every load that is not it (as ui/RemoteFrame.svelte's owners); its loads in 3 s. */
+async function loadsIn3s(m: LaunchedRessac["marionette"], file: string, html: string | null): Promise<number> {
+  return inUi<number>(
+    m,
+    `const store = ChromeUtils.importESModule(${JSON.stringify(STORE)});
+     const [file, html] = arguments;
+     const dir = PathUtils.join(PathUtils.profileDir, "chrome", "ressac-frames", "widgets", "frames-test");
+     if (html !== null) await IOUtils.writeUTF8(PathUtils.join(dir, file), html);
+     const src = "resource://ressac-frames-" + store.framesToken() + "/widgets/frames-test/" + file;
+     const host = doc.body.appendChild(doc.createElement("div"));
+     host.style.cssText = "position: fixed; left: 0; top: 240px; width: 200px; height: 100px; display: flex";
+     const b = store.remoteFrames.createFrameBrowser(doc);
+     b.style.flex = "1";
+     host.append(b);
+     const r = store.remoteFrames.frameReverter(b);
+     let n = 0;
+     const off = store.remoteFrames.onFrameMessage(b, (name, data) => {
+       if (name !== "loaded") return;
+       n++;
+       r.loaded(() => String(data.uri).split("#")[0] !== src && r.revert(src));
+     });
+     store.remoteFrames.loadFrame(b, src);
+     await new Promise((ok) => ui.setTimeout(ok, 3000));
+     off();
+     host.remove();
+     return n;`,
+    [file, html],
+  );
+}
+
 describe("remote frames", () => {
   let w: LaunchedRessac;
   let net: Awaited<ReturnType<typeof startNetWitness>>;
@@ -126,6 +156,27 @@ describe("remote frames", () => {
     expect(net.hits.filter((h) => h.label.startsWith("fr-") && h.label !== "fr-temoin").map((h) => `${h.label} ${h.path}`)).toEqual([]);
     expect({ names: (await resolvedNames(logDir)).filter((n) => n.startsWith("fr-")), tcp: net.tcp.length }).toEqual({ names: ["fr-temoin"], tcp: 0 });
     // The frames' process refuses them before their channel (frame-actor.ts policeProcess); the parent's observer behind it is unit-tested (test/ui-network.test.ts).
+  });
+
+  // Measured before the bound (3 s): 64 loads for a missing copy, 104 for a page that leaves at once; after: 2 and 7.
+  it("an owner's revert to its copy is bounded: a missing copy, a page that keeps leaving", async () => {
+    expect(await loadsIn3s(w.marionette, "gone.html", null), "about:blank, then the neterror page: no more").toBeLessThanOrEqual(3);
+    const leaves = await loadsIn3s(w.marionette, "leaves.html", `<!doctype html><script>setTimeout(() => (location = "about:blank"), 50)</script>`);
+    expect(leaves, "at most one revert a second").toBeLessThanOrEqual(10);
+    expect(leaves, "it still comes back").toBeGreaterThanOrEqual(4);
+  }, 30_000);
+
+  it("SANDBOX_ALLOW_SCRIPTS is a real <iframe sandbox=allow-scripts>'s flags", async () => {
+    const r = await inUi<number[]>(
+      w.marionette,
+      `const f = doc.createElement("iframe");
+       f.setAttribute("sandbox", "allow-scripts");
+       doc.body.append(f);
+       const flags = f.browsingContext.sandboxFlags;
+       f.remove();
+       return [flags, ChromeUtils.importESModule(${JSON.stringify(STORE)}).remoteFrames.SANDBOX_ALLOW_SCRIPTS];`,
+    );
+    expect(r[1]).toBe(r[0]);
   });
 
   it("the page's WebRTC is denied", async () => {

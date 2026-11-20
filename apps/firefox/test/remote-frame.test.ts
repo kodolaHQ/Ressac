@@ -9,7 +9,7 @@ vi.stubGlobal("ChromeUtils", {
     },
   }),
 });
-const { loadFrame, onFrameMessage, setFrameActor } = await import("../chrome/window/remote-frame");
+const { frameReverter, loadFrame, onFrameMessage, setFrameActor } = await import("../chrome/window/remote-frame");
 
 test("a frame subscribed before the store set the actor gets its messages once it does; a stopped one does not; a stop after the flush unsubscribes", () => {
   const early = {} as Element;
@@ -27,10 +27,10 @@ test("a frame subscribed before the store set the actor gets its messages once i
   expect(registry.size).toBe(0);
 });
 
-test("a frame browser inserted before its window's DOMContentLoaded waits for it; removed by then, it does not load", () => {
+test.each(["loading", "interactive"])("a frame browser inserted before its window's DOMContentLoaded (%s) waits for it; removed by then, it does not load", (readyState) => {
   const listeners: (() => void)[] = [];
   const win = { addEventListener: (type: string, fn: () => void, o: { once?: boolean }) => type === "DOMContentLoaded" && o.once && listeners.push(fn) };
-  const browser = { browsingContext: {}, isConnected: false, ownerDocument: { defaultView: win, readyState: "loading" }, loadURI: vi.fn() } as unknown as Element;
+  const browser = { browsingContext: {}, isConnected: false, ownerDocument: { defaultView: win, readyState }, loadURI: vi.fn() } as unknown as Element;
   // No webNavigation yet: the <browser> is not constructed (delayConnectedCallback).
   expect(loadFrame(browser, "resource://x/index.html")).toBe(true);
   expect(listeners).toHaveLength(1);
@@ -46,4 +46,33 @@ test("a frame browser without web navigation in a loaded document loads nothing 
   expect(win.addEventListener).not.toHaveBeenCalled();
   expect(err).toHaveBeenCalled();
   err.mockRestore();
+});
+
+test("frameReverter: one revert per address until a kept load, at least a second apart", () => {
+  vi.useFakeTimers();
+  let loads = 0;
+  // loadFrame reads browsingContext first: each read is one load asked.
+  const browser = {
+    isConnected: true,
+    get browsingContext() {
+      loads++;
+      return null;
+    },
+  } as unknown as Element;
+  const r = frameReverter(browser);
+  const notOurs = () => r.loaded(() => r.revert("a"));
+  notOurs(); // the initial about:blank: loads at once
+  expect(loads).toBe(1);
+  notOurs(); // a missing copy's neterror: no more
+  vi.advanceTimersByTime(5000);
+  expect(loads).toBe(1);
+  r.loaded(() => {}); // kept
+  notOurs(); // left again 5 s later: at once
+  expect(loads).toBe(2);
+  r.loaded(() => {});
+  notOurs(); // left again at once: after the floor
+  expect(loads).toBe(2);
+  vi.advanceTimersByTime(1000);
+  expect(loads).toBe(3);
+  vi.useRealTimers();
 });

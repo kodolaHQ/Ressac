@@ -5,7 +5,7 @@
     send(data: unknown): Promise<void>;
     /** The page's current document address. */
     uri(): string | null;
-    /** Loads `src` again (a frame that navigated away goes back to its copy). */
+    /** Loads `src` again (a frame that navigated away goes back to its copy), bounded: frameReverter in remote-frame.ts. */
     load(src: string): void;
     element: Element;
   }
@@ -55,13 +55,14 @@
       b.setAttribute("aria-label", untrack(() => title));
       host.append(b);
       browser = b;
+      const reverter = frames.frameReverter(b);
       off = frames.onFrameMessage(b, (name, data) => {
-        if (name === "loaded") onload?.(String(data.uri));
+        if (name === "loaded") reverter.loaded(() => onload?.(String(data.uri)));
         else if (name === "press") onpress?.();
         else if (name === "focus") onfocus?.();
         else onmessage?.(name, data);
       });
-      frame = { send: (d) => frames.sendFrame(b, d), uri: () => frames.frameUri(b), load: (u) => void frames.loadFrame(b, u), element: b };
+      frame = { send: (d) => frames.sendFrame(b, d), uri: () => frames.frameUri(b), load: reverter.revert, element: b };
     }
     frames.loadFrame(browser, s);
   });

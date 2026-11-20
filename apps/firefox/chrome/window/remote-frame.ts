@@ -40,9 +40,9 @@ export function loadFrame(browser: Element, src: string): boolean {
   const bc = (browser as any).browsingContext;
   if (!bc) return false;
   if (!(browser as any).webNavigation) {
-    // Inserted before its document's DOMContentLoaded (a window still loading): the <browser> constructs then
-    // (delayConnectedCallback), after this later listener's turn comes. Any other state never constructs it: no wait.
-    if (browser.ownerDocument.readyState !== "loading") {
+    // Inserted before its document's DOMContentLoaded has been dispatched (customElements.js connects the delayed
+    // <browser>s during that dispatch, so "interactive" still waits): it constructs before this later listener runs.
+    if (browser.ownerDocument.readyState === "complete") {
       console.error("[frames] the frame browser has no web navigation in a loaded document: nothing loads");
       return false;
     }
@@ -58,6 +58,44 @@ export function loadFrame(browser: Element, src: string): boolean {
   ensureFramesSubstitution();
   (browser as any).loadURI(Services.io.newURI(src), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
   return true;
+}
+
+const REVERT_FLOOR_MS = 1000;
+
+/**
+ * An owner's « left its copy → load it again », bounded: a copy that never comes (a missing file gives a neterror
+ * page) or a page that keeps leaving would else reload in a loop in the process every frame shares. One revert per
+ * address until a load the owner keeps, at least REVERT_FLOOR_MS apart. The first one is what really loads a new
+ * frame (its initial about:blank report, README).
+ */
+export function frameReverter(browser: Element): { loaded(run: () => void): void; revert(src: string): void } {
+  let tried: string | null = null;
+  let asked = false;
+  let last = -Infinity;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return {
+    /** Runs the owner's `loaded` handler: a load during which it asked no revert is kept. */
+    loaded(run) {
+      asked = false;
+      run();
+      if (asked) return;
+      tried = null;
+      clearTimeout(timer);
+    },
+    revert(src) {
+      asked = true;
+      if (tried === src) return;
+      tried = src;
+      clearTimeout(timer);
+      const go = () => {
+        last = Date.now();
+        if (browser.isConnected) loadFrame(browser, src);
+      };
+      const wait = last + REVERT_FLOOR_MS - Date.now();
+      if (wait > 0) timer = setTimeout(go, wait);
+      else go();
+    },
+  };
 }
 
 /** The frame's messages (frame-actor.ts: loaded, press, focus, open, home, component); returns how to stop. */
