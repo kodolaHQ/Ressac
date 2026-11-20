@@ -542,7 +542,7 @@ describe("one agent session per window", () => {
       await new Promise((r) => setTimeout(r, 100));
     }
     const log = join(w!.dataDir, "workspace", "fake-docker-stops.log");
-    for (const end = Date.now() + 10_000; !/ressac-session-[0-9a-f]+\.pid[\s\S]*signaler KILL/.test(read(log)); await new Promise((r) => setTimeout(r, 100)))
+    for (const end = Date.now() + 10_000; !/ressac-session-[0-9a-f]+\.pid[\s\S]*signal_all KILL/.test(read(log)); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > end) throw new Error(`no kill logged: ${read(log)}`);
   };
 

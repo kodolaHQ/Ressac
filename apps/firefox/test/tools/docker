@@ -23,7 +23,7 @@ if [ -n "$FAKE_DOCKER_SLOW_APP_STOP" ]; then
 fi
 # FAKE_DOCKER_SLOW_SESSION_STOP=<s>: a session's stop (not the orphan sweep's RESSAC_SESSION=.*) answers that late.
 if [ -n "$FAKE_DOCKER_SLOW_SESSION_STOP" ]; then
-  case "$*" in *"RESSAC_SESSION=.*"*) ;; *RESSAC_SESSION=*signaler*) sleep "$FAKE_DOCKER_SLOW_SESSION_STOP" ;; esac
+  case "$*" in *"RESSAC_SESSION=.*"*) ;; *RESSAC_SESSION=*signal_all*) sleep "$FAKE_DOCKER_SLOW_SESSION_STOP" ;; esac
 fi
 for a; do
   shift
