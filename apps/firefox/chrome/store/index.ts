@@ -17,7 +17,7 @@ import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDesign, type DesignService } from "./design";
 import { createOverlays } from "../window/design-overlays";
-import { framesKindDir, wipeFrames } from "../window/frames-root";
+import { FRAMES_GROUP, framesKindDir, wipeFrames } from "../window/frames-root";
 import { neutralizeFirefoxWindow } from "../window/firefox-items";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
@@ -370,6 +370,20 @@ async function start(): Promise<RessacStore> {
     messageManagerGroups: ["browsers"],
     safeForUntrustedWebProcess: true,
   });
+  // The agent-written frames (frame-actor.ts): the top document of each remote frame <browser> only (no allFrames, no
+  // matches). The child forwards a few bounded messages; the parent only looks up the frame owner's callback.
+  const frameActor = actorModule("frame-actor");
+  ChromeUtils.registerWindowActor("RessacFrame", {
+    parent: { esModuleURI: frameActor },
+    child: { esModuleURI: frameActor, events: { DOMWindowCreated: {}, DOMContentLoaded: { capture: true } } },
+    messageManagerGroups: [FRAMES_GROUP],
+    safeForUntrustedWebProcess: true,
+  });
+  // The frames' test hook is on only in a dev build with RESSAC_TEST_FRAMES: a flag the web process reads, a page cannot set.
+  if (testEnv("RESSAC_TEST_FRAMES")) {
+    Services.ppmm.sharedData.set("ressac-frames-test", true);
+    Services.ppmm.sharedData.flush();
+  }
   // Calls (call-actor.ts): every http(s) frame, a call's video may sit in one. The child acts on the parent's demand;
   // the parent only relays a call's state (two booleans) to the window of its own tab.
   const callActor = actorModule("call-actor");
