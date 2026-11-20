@@ -17,7 +17,7 @@ test.skipIf(!active)("the real container starts, runs claude and shares /workspa
   const c = spacePaths(await tempFolder());
   const workshop = new Workshop({ paths: c, engine: () => engine! });
   expect(await workshop.state(), "un atelier existe déjà : test annulé").toBe("absent");
-  expect(await workshop.ensureStarted()).toBe("demarre");
+  expect(await workshop.ensureStarted()).toBe("started");
   const [cmd, ...args] = workshop.execCommand(["claude", "--version"], { interactive: false });
   expect((await defaultRunner(cmd!, args)).code).toBe(0);
   const [cmd2, ...args2] = workshop.execCommand(["sh", "-c", "echo ok > /workspace/sonde"], { interactive: false });
@@ -26,11 +26,11 @@ test.skipIf(!active)("the real container starts, runs claude and shares /workspa
   // A second start does not recreate an up-to-date container (same root, same Dockerfile).
   const id = async () => (await defaultRunner(...engineCli(engine!, ["inspect", "-f", "{{.Id}}", CONTAINER_NAME]))).stdout.trim();
   const before = await id();
-  expect(await workshop.ensureStarted()).toBe("demarre");
+  expect(await workshop.ensureStarted()).toBe("started");
   expect(await id()).toBe(before);
   // The same container seen from another root is recreated.
   const other = new Workshop({ paths: spacePaths(await tempFolder()), engine: () => engine! });
-  expect(await other.ensureStarted()).toBe("demarre");
+  expect(await other.ensureStarted()).toBe("started");
   expect(await id()).not.toBe(before);
 }, 600_000);
 

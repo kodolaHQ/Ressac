@@ -329,7 +329,7 @@ test("a machine still stopped after its wake: its own message, never Docker's", 
 test("container stopped: preparation then launch", async () => {
   const c = await space();
   const { g, workshop, states } = prepare({ paths: c, inspect: { code: 0, stdout: "false\n" } });
-  const ensure = vi.spyOn(workshop, "ensureStarted").mockResolvedValue("demarre");
+  const ensure = vi.spyOn(workshop, "ensureStarted").mockResolvedValue("started");
   expect(await g.launch("todo")).toMatchObject({ state: "running" });
   expect(ensure).toHaveBeenCalledOnce();
   expect(states).toEqual(["preparing", "launching", "running"]);

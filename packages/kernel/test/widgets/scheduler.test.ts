@@ -69,7 +69,7 @@ async function prepare(o: { workshop?: WorkshopState; status?: WidgetState["stat
   let now = START;
   const clock = () => now;
   const harvests: string[] = [];
-  let workshopState: WorkshopState = o.workshop ?? "demarre";
+  let workshopState: WorkshopState = o.workshop ?? "started";
   const changes = vi.fn();
   const harvest = vi.fn(async (r: HarvestOptions) => {
     harvests.push(r.id);
@@ -91,7 +91,7 @@ async function prepare(o: { workshop?: WorkshopState; status?: WidgetState["stat
     return { ok: true, run: attemptId(clock().toISOString()), status: "succeeded" };
   });
   const directs: DirectState[] = [];
-  const workshop = { harvestReady: async () => workshopState === "demarre", stageHarvest: async (_p: unknown, d: string) => d, harvestCommand: () => ["docker"], deleteHarvest: async (_id: string) => {} };
+  const workshop = { harvestReady: async () => workshopState === "started", stageHarvest: async (_p: unknown, d: string) => d, harvestCommand: () => ["docker"], deleteHarvest: async (_id: string) => {} };
   const options = (): SchedulerOptions => ({
     paths: c,
     locale: () => "fr",
@@ -194,7 +194,7 @@ test("accord-requis is never retried on its own", async () => {
 });
 
 test("workshop stopped: status atelier-arrete, data kept", async () => {
-  const { p, harvests, widgetsFolder, changes, setWorkshop } = await prepare({ workshop: "arrete" });
+  const { p, harvests, widgetsFolder, changes, setWorkshop } = await prepare({ workshop: "stopped" });
   await writeData(widgetsFolder, "actus", { old: true });
   await writeWidgetState(widgetsFolder, "actus", { status: "ok", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: "2026-10-27T08:00:00.000Z" });
   expect(await p.check({ onLaunch: true })).toEqual([]);
@@ -213,7 +213,7 @@ test("workshop stopped: status atelier-arrete, data kept", async () => {
   expect((await p.harvestNow("actus")).status).toBe("workshop-stopped");
   expect(harvests).toEqual([]);
   // The workshop comes back: the harvest resumes at the next check.
-  setWorkshop("demarre");
+  setWorkshop("started");
   expect(await p.check({ onLaunch: false })).toEqual(["actus"]);
 });
 
@@ -375,8 +375,8 @@ test("arreter: a harvest that exceeds the wait sees its container removed once m
 test("the first check waits for the workshop to be ready: no « atelier arrêté » at launch", async () => {
   const { widgetsFolder, harvest, workshop, c, harvests } = await prepare();
   await p!.stop();
-  let state: WorkshopState = "arrete";
-  workshop.harvestReady = async () => state === "demarre";
+  let state: WorkshopState = "stopped";
+  workshop.harvestReady = async () => state === "started";
   let ready!: () => void;
   const changes = vi.fn();
   p = new WidgetsScheduler({
@@ -395,7 +395,7 @@ test("the first check waits for the workshop to be ready: no « atelier arrêté
   await new Promise((r) => setTimeout(r, 50));
   expect((await readWidgetState(widgetsFolder, "actus")).status).not.toBe("workshop-stopped");
   expect(changes).not.toHaveBeenCalled();
-  state = "demarre";
+  state = "started";
   ready();
   await vi.waitFor(() => expect(harvests).toEqual(["actus"]));
 });
@@ -657,7 +657,7 @@ test("waiting lists a widget requested while another runs", async () => {
 });
 
 test("workshop stopped: rejouer refuses without changing the state", async () => {
-  const { p, harvestAttempt, widgetsFolder, changes } = await prepare({ workshop: "arrete" });
+  const { p, harvestAttempt, widgetsFolder, changes } = await prepare({ workshop: "stopped" });
   const state: WidgetState = { status: "ok", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: "2026-10-27T08:00:00.000Z" };
   await writeWidgetState(widgetsFolder, "actus", state);
   expect(await p.replay("actus", "o", "liste")).toEqual({ ok: false, error: WORKSHOP_STOPPED_ERROR("fr") });

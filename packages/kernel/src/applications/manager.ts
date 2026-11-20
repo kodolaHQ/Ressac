@@ -130,7 +130,7 @@ export class ApplicationManager {
     this.watchEnd ??= watchProjects(this.paths, () => this.onChange());
     // Noted right away: a launch requested during this cleanup waits for it.
     this.paced = (async () => {
-      if ((await this.workshop.state()) === "demarre") await this.workshop.stopOrphanApps();
+      if ((await this.workshop.state()) === "started") await this.workshop.stopOrphanApps();
     })();
     await this.paced;
   }
@@ -199,7 +199,7 @@ export class ApplicationManager {
     try {
       let state = await this.workshop.state();
       if (l.stop) return this.view(project);
-      if (state !== "docker-absent" && state !== "demarre") {
+      if (state !== "docker-absent" && state !== "started") {
         this.change(folder, { state: "preparing", launch: l });
         state = await this.workshop.ensureStarted();
         if (l.stop) return this.view(project);

@@ -15,7 +15,7 @@ const FORBIDDEN = new Set(
     "serveur noeud stockage minuteur actif actifs appel cadre cible copie copier descripteur enveloppe envelopper essai essais " +
     "garde gardes natif onglet permis permise refusee reseau valeur valeurs verifier suivant suivante tous toutes premier regles " +
     "reperes requete reponse vide titre contenu accueil carte cartes poignee pastille bandeau volet voile fond bord saisie " +
-    "relecture sortie bloc blocs demande demandes erreur lancer rejouer historique telechargement telechargements epingles").split(" "),
+    "relecture sortie bloc blocs demande demandes erreur lancer rejouer historique telechargement telechargements epingles arrete demarre cibles vivant signaler reinitialiser").split(" "),
 );
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");

@@ -536,7 +536,7 @@ export async function createKernel(o: {
   // Before any session, the agents left by a previous app are stopped.
   // A stopped machine is left so (its memory is the Mac's): the first session, app or harvest boots it.
   const workshopReady = workshop.state().catch(() => null).then((s) => (s === "machine-stopped" ? s : workshop.ensureStarted())).then(async (state) => {
-    if (state === "demarre") await workshop.stopOrphanSessions();
+    if (state === "started") await workshop.stopOrphanSessions();
     return state;
   });
   workshopReady.catch(() => {});
@@ -699,13 +699,13 @@ export async function createKernel(o: {
       } finally {
         unsubscribe?.();
       }
-      if (state !== "demarre") throw new WorkshopError(state, state === "machine-stopped" ? say(loc(), "kernel-err-machine-stopped") : say(loc(), "kernel-err-workshop-unavailable", { state }));
+      if (state !== "started") throw new WorkshopError(state, state === "machine-stopped" ? say(loc(), "kernel-err-machine-stopped") : say(loc(), "kernel-err-workshop-unavailable", { state }));
       // New conversation: no authorization any more. The sessions share the MCP server and therefore the policy:
       // a session of another window also loses its accesses (it will ask again), rather than inheriting them.
       try {
         await workshop.secureNetwork();
       } catch (e) {
-        throw new WorkshopError("demarre", (e as Error).message);
+        throw new WorkshopError("started", (e as Error).message);
       }
       // No session running: nothing the agent left behind keeps running into this conversation (stopAgentProcesses).
       if (openSessions.size === 0 && opening === 0) sweep = o.aroundSweep ? o.aroundSweep(() => workshop.stopAgentProcesses()) : workshop.stopAgentProcesses();

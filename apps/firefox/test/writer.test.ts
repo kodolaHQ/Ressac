@@ -10,8 +10,8 @@ const setup = (state: string, loggedIn: Record<string, boolean>, preferred: "cla
       harvestReady: async () => harvestReady,
       ensureStarted: async () => {
         calls.push("ensureStarted");
-        state = "demarre";
-        return "demarre";
+        state = "started";
+        return "started";
       },
       exec: async (argv) => {
         calls.push(argv[0]!);
@@ -29,21 +29,21 @@ const setup = (state: string, loggedIn: Record<string, boolean>, preferred: "cla
 
 describe("writer choice", () => {
   it("takes the preferred agent when signed in", async () => {
-    expect(await setup("demarre", { claude: true, codex: true }).choice.agent()).toBe("claude");
+    expect(await setup("started", { claude: true, codex: true }).choice.agent()).toBe("claude");
   });
   it("falls back to the other agent", async () => {
-    expect(await setup("demarre", { claude: false, codex: true }).choice.agent()).toBe("codex");
+    expect(await setup("started", { claude: false, codex: true }).choice.agent()).toBe("codex");
   });
   it("skips the excluded agents even when their status says signed in (a dead token)", async () => {
-    const s = setup("demarre", { claude: true, codex: true });
+    const s = setup("started", { claude: true, codex: true });
     expect(await s.choice.agent(new Set(["claude"]))).toBe("codex");
     expect(await s.choice.agent(new Set(["claude", "codex"]))).toBeNull();
   });
   it("is null when both are signed out", async () => {
-    expect(await setup("demarre", {}).choice.agent()).toBeNull();
+    expect(await setup("started", {}).choice.agent()).toBeNull();
   });
   it("says the workshop is stopped, without exec, when it is not running", async () => {
-    const s = setup("arrete", { claude: true });
+    const s = setup("stopped", { claude: true });
     expect(await s.choice.agent()).toBe("workshop-stopped");
     expect(s.calls).toEqual([]);
   });
@@ -74,14 +74,14 @@ describe("writer choice", () => {
     }
   });
   it("a write on a stopped Docker workshop does not start it", async () => {
-    const s = setup("arrete", { claude: true });
+    const s = setup("stopped", { claude: true });
     expect(await s.choice.wakeAgent()).toBe("workshop-stopped");
     expect(s.calls).toEqual([]);
   });
   it("does not keep a failed check, and shares one exec between parallel calls", async () => {
     let n = 0;
     const choice = createWriterChoice({
-      workshop: { state: async () => "demarre" as never, harvestReady: async () => true, ensureStarted: async () => "demarre", exec: async (argv) => { if (argv[0] === "codex") return { code: 0, stdout: "Not logged in", stderr: "" }; n++; if (n === 1) throw new Error("boom"); return { code: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }; } },
+      workshop: { state: async () => "started" as never, harvestReady: async () => true, ensureStarted: async () => "started", exec: async (argv) => { if (argv[0] === "codex") return { code: 0, stdout: "Not logged in", stderr: "" }; n++; if (n === 1) throw new Error("boom"); return { code: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }; } },
       preferred: () => "claude",
     });
     expect(await choice.agent()).toBeNull();
@@ -90,7 +90,7 @@ describe("writer choice", () => {
     expect(n).toBe(2);
   });
   it("caches 5 minutes, then reset or signedOut check again", async () => {
-    const s = setup("demarre", { claude: true });
+    const s = setup("started", { claude: true });
     await s.choice.agent();
     await s.choice.agent();
     expect(s.calls).toEqual(["claude"]);

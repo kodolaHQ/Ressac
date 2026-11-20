@@ -152,7 +152,7 @@ export interface AgentNetwork {
 }
 
 /** `machine-stopped`: the engine is Ressac's machine and it is not running (startable); `docker-absent`: the same for Docker. */
-export type WorkshopState = "docker-absent" | "machine-stopped" | "absent" | "arrete" | "demarre";
+export type WorkshopState = "docker-absent" | "machine-stopped" | "absent" | "stopped" | "started";
 
 function sessionFile(id: string): string {
   if (!/^[a-z0-9]+$/.test(id)) throw new Error(`id de session invalide : ${id}`);
@@ -163,17 +163,17 @@ function sessionFile(id: string): string {
 export const VARIABLE_SESSION = "RESSAC_SESSION";
 
 /**
- * Sends HUP, then TERM, then KILL to the processes listed by the shell function `cibles` (pid, or -pgid for a group).
+ * Sends HUP, then TERM, then KILL to the processes listed by the shell function `targets` (pid, or -pgid for a group).
  * claude intercepts HUP and TERM without necessarily quitting: each signal has 2 s to act.
  */
 function escalate(targets: string): string[] {
   return [
-    `cibles() { ${targets}; }`,
+    `targets() { ${targets}; }`,
     // No « -- »: the kill of dash (the container's sh) refuses it, and the group would never be targeted.
-    `signaler() { for c in $(cibles); do kill -$1 "$c" 2>/dev/null; done; }`,
-    `vivant() { for c in $(cibles); do kill -0 "$c" 2>/dev/null && return 0; done; return 1; }`,
-    `for s in HUP TERM; do signaler $s; i=0; while [ $i -lt 20 ] && vivant; do sleep 0.1; i=$((i + 1)); done; vivant || exit 0; done`,
-    `signaler KILL`,
+    `signal_all() { for c in $(targets); do kill -$1 "$c" 2>/dev/null; done; }`,
+    `alive() { for c in $(targets); do kill -0 "$c" 2>/dev/null && return 0; done; return 1; }`,
+    `for s in HUP TERM; do signal_all $s; i=0; while [ $i -lt 20 ] && alive; do sleep 0.1; i=$((i + 1)); done; alive || exit 0; done`,
+    `signal_all KILL`,
   ];
 }
 
@@ -292,7 +292,7 @@ export class Workshop {
     if (down) return down;
     const r = await this.launch(["inspect", "-f", "{{.State.Running}}", containerName()], PROBE_DELAY_MS);
     if (r.code !== 0) return "absent";
-    return r.stdout.trim() === "true" ? "demarre" : "arrete";
+    return r.stdout.trim() === "true" ? "started" : "stopped";
   }
 
   /**
@@ -302,9 +302,9 @@ export class Workshop {
    */
   async harvestReady(): Promise<boolean> {
     const s = await this.state().catch(() => null);
-    if (s === "demarre") return true;
+    if (s === "started") return true;
     const e = this.engine();
-    return e.kind === "machine" && (s === "machine-stopped" || s === "arrete" || s === "absent") && (await e.harvestable?.().catch(() => false)) !== false;
+    return e.kind === "machine" && (s === "machine-stopped" || s === "stopped" || s === "absent") && (await e.harvestable?.().catch(() => false)) !== false;
   }
 
   /** Is the existing container mounted on the right root and built from the current Dockerfile? */
@@ -467,7 +467,7 @@ export class Workshop {
     this.secured = false;
     const state = await this.startContainer(o);
     // A failed apply leaves `secured` false: exec retries it and refuses to run until it succeeds.
-    if (state === "demarre") await this.secureNetwork().catch(() => {});
+    if (state === "started") await this.secureNetwork().catch(() => {});
     return state;
   }
 
@@ -481,8 +481,8 @@ export class Workshop {
       await this.launch(["rm", "-f", containerName()], PROBE_DELAY_MS);
       state = "absent";
     }
-    if (state === "demarre") return state;
-    if (state === "arrete") {
+    if (state === "started") return state;
+    if (state === "stopped") {
       await this.launch(["start", containerName()], PROBE_DELAY_MS);
       return this.state();
     }

@@ -49,8 +49,8 @@ test("findDocker prefers the PATH, and returns null if nothing", () => {
 
 test("etat selon docker inspect", async () => {
   const cas: [ReturnType<typeof fakeRunner>, string][] = [
-    [fakeRunner([[/ inspect /, { code: 0, stdout: "true\n" }]]), "demarre"],
-    [fakeRunner([[/ inspect /, { code: 0, stdout: "false\n" }]]), "arrete"],
+    [fakeRunner([[/ inspect /, { code: 0, stdout: "true\n" }]]), "started"],
+    [fakeRunner([[/ inspect /, { code: 0, stdout: "false\n" }]]), "stopped"],
     [fakeRunner([[/ inspect /, { code: 1, stderr: "No such object" }]]), "absent"],
   ];
   for (const [{ run: runCall }, expected] of cas) {
@@ -65,7 +65,7 @@ test("ensureStarted on absent: build if the image is missing then run with the r
     [/ inspect /, () => ({ code: launched ? 0 : 1, stdout: "true\n" })],
     [/ run /, () => ((launched = true), { code: 0 })],
   ]);
-  expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
+  expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("started");
   const build = calls.find((a) => a.args[0] === "build")!;
   expect(build.args.slice(0, 4)).toEqual(["build", "-t", "ressac-workshop:1", "--label"]);
   expect(build.args).toContain("-f");
@@ -96,7 +96,7 @@ test("ensureStarted on arrete → docker start", async () => {
     [/ inspect -f/, () => ({ code: 0, stdout: started ? "true\n" : "false\n" })],
     [/ start /, () => ((started = true), { code: 0 })],
   ]);
-  expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
+  expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("started");
   expect(calls.some((a) => a.args.join(" ") === "start ressac-workshop")).toBe(true);
   expect(calls.some((a) => a.args[0] === "run")).toBe(false);
 });
@@ -152,7 +152,7 @@ function fakeDocker(o: { source: string; containerHash: string; imageHash: strin
 test("existing container on the right folder and the right image → kept", async () => {
   const e = dockerfileHash();
   const { run: runCall, calls } = fakeDocker({ source: paths.root, containerHash: e, imageHash: e });
-  expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
+  expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("started");
   expect(calls.some((a) => a.args[0] === "rm")).toBe(false);
 });
 
@@ -220,7 +220,7 @@ test("two starts at the same time: a single image build and a single container",
   const b = workshop.ensureStarted();
   await new Promise((r) => setTimeout(r, 10));
   finishBuild();
-  expect(await Promise.all([a, b])).toEqual(["demarre", "demarre"]);
+  expect(await Promise.all([a, b])).toEqual(["started", "started"]);
   expect(calls.filter((x) => x.args[0] === "build")).toHaveLength(1);
   expect(calls.filter((x) => x.args[0] === "run")).toHaveLength(1);
 });
@@ -307,7 +307,7 @@ test("stopApp only targets its own mark", async () => {
   expect(call.args.slice(0, 4)).toEqual(["exec", "ressac-workshop", "sh", "-c"]);
   expect(call.args[4]).toContain("RESSAC_APP=todo");
   expect(call.args[4]).not.toContain("RESSAC_SESSION");
-  expect(call.args[4]).toContain("signaler KILL");
+  expect(call.args[4]).toContain("signal_all KILL");
   await expect(new Workshop({ paths: paths, docker: "docker", run: runCall }).stopApp("x'y")).rejects.toThrow();
 });
 
@@ -490,7 +490,7 @@ describe("restart, rebuild, exec", () => {
       [/ inspect -f/, () => ({ code: 0, stdout: started ? "true\n" : "false\n" })],
       [/ start /, () => ((started = true), { code: 0 })],
     ]);
-    expect(await new Workshop({ paths, docker: "docker", run: runCall }).restart()).toBe("demarre");
+    expect(await new Workshop({ paths, docker: "docker", run: runCall }).restart()).toBe("started");
     const lines = calls.map((c) => c.args.join(" "));
     expect(lines.indexOf("stop -t 2 ressac-workshop")).toBeGreaterThan(-1);
     expect(lines.findIndex((l) => l.startsWith("inspect"))).toBeGreaterThan(lines.indexOf("stop -t 2 ressac-workshop"));
@@ -508,7 +508,7 @@ describe("restart, rebuild, exec", () => {
 
   test("rebuild keeps the volumes", async () => {
     const { run: runCall, calls } = rebuildRules();
-    expect(await new Workshop({ paths, docker: "docker", run: runCall }).rebuild()).toBe("demarre");
+    expect(await new Workshop({ paths, docker: "docker", run: runCall }).rebuild()).toBe("started");
     const names = calls.map((c) => c.args[0]);
     expect(names.indexOf("rm")).toBeLessThan(names.indexOf("build"));
     expect(names.indexOf("build")).toBeLessThan(names.indexOf("run"));
@@ -600,7 +600,7 @@ describe("first build progress", () => {
     const late: number[] = [];
     w.onBuildProgress((p) => early.push(p.step));
     const lateJoin = async () => void w.onBuildProgress((p) => late.push(p.step));
-    expect(await w.ensureStarted()).toBe("demarre");
+    expect(await w.ensureStarted()).toBe("started");
     expect(early).toEqual([1, 2, 3]);
     expect(late).toEqual([2, 3]);
   });
@@ -618,7 +618,7 @@ describe("the container from before the rename to Ressac", () => {
         [/ run /, () => ((launched = true), { code: 0 })],
         [/ rm -f webaios-/, { code: 1, stderr: "Error: No such container" }],
       ]);
-      expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("demarre");
+      expect(await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted()).toBe("started");
       return calls.map((c) => c.args.join(" "));
     } finally {
       vi.unstubAllEnvs();
@@ -638,7 +638,7 @@ describe("the container from before the rename to Ressac", () => {
     expect(await new Workshop({ paths: paths, docker: "docker", run: off }).ensureStarted()).toBe("docker-absent");
     expect(offCalls.some((c) => c.args[0] === "rm")).toBe(false);
     const { run: on, calls } = fakeRunner([[/ inspect -f \{\{\.State/, { code: 0, stdout: "true\n" }], [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}|2684354560\n` }]]);
-    expect(await new Workshop({ paths: paths, docker: "docker", run: on }).ensureStarted()).toBe("demarre");
+    expect(await new Workshop({ paths: paths, docker: "docker", run: on }).ensureStarted()).toBe("started");
     expect(calls.some((c) => c.args[0] === "rm")).toBe(false);
   });
 });
@@ -890,7 +890,7 @@ describe("container engine", () => {
 
   test("machine engine: every command is the podman binary with --url first", async () => {
     const { run, calls } = started();
-    expect(await new Workshop({ paths, run, engine: () => machine() }).ensureStarted()).toBe("demarre");
+    expect(await new Workshop({ paths, run, engine: () => machine() }).ensureStarted()).toBe("started");
     expect(calls.length).toBeGreaterThan(0);
     for (const c of calls) {
       expect(c.command).toBe("/b/podman");

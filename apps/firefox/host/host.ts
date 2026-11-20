@@ -632,7 +632,7 @@ const rpc = createRpc({
       // Not applied: the running sessions start again, so each one applies the list or shows why it cannot.
       void workshop
         .state()
-        .then((s) => (s === "demarre" ? workshop.secureNetwork() : undefined))
+        .then((s) => (s === "started" ? workshop.secureNetwork() : undefined))
         .catch((e) => {
           console.error("[ressac] agent domains not applied:", e);
           return sessions.relaunchActive();

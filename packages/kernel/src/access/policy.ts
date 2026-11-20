@@ -103,7 +103,7 @@ export class AccessPolicy {
     this.uses.delete(id);
   }
 
-  /** Number of the current conversation: changes on every `reinitialiser()`. A reply from a past conversation is worth nothing. */
+  /** Number of the current conversation: changes on every `reset()`. A reply from a past conversation is worth nothing. */
   get conversation(): number {
     return this.conversationNumber;
   }

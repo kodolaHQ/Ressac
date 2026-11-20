@@ -88,7 +88,7 @@ try {
   network.ports = [portOf(relay)];
   t = Date.now();
   const state = await workshop.ensureStarted();
-  line(state === "demarre", "workshop started with its network rules (secureNetwork)", `${state} in ${((Date.now() - t) / 1000).toFixed(1)} s`);
+  line(state === "started", "workshop started with its network rules (secureNetwork)", `${state} in ${((Date.now() - t) / 1000).toFixed(1)} s`);
   // exec applies the rules again if the start's apply failed, and throws when they cannot be applied: a check fails loudly.
   const x = (cmd: string) => workshop.exec(["sh", "-c", cmd]);
   measure("after workshop start (usage() RSS)", `${await mb()} MB RSS, ${footprint()}`);

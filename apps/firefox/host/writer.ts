@@ -24,7 +24,7 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
   const choice = {
     /** `exclude`: agents whose call answered "not signed in" while their status still says signed in (a dead token). */
     async agent(exclude?: ReadonlySet<WriterAgent>): Promise<WriterAgent | "workshop-stopped" | null> {
-      if ((await o.workshop.state()) !== "demarre") return "workshop-stopped";
+      if ((await o.workshop.state()) !== "started") return "workshop-stopped";
       const first = o.preferred();
       for (const a of [first, first === "claude" ? "codex" : "claude"] as const) if (!exclude?.has(a) && (await signedIn(a))) return a;
       return null;

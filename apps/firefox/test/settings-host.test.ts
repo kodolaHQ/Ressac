@@ -18,12 +18,12 @@ function setup(over: { state?: string; started?: string; exec?: (argv: string[])
   const exec = vi.fn(over.exec ?? (async () => ({ code: 0, stdout: '{"loggedIn":true,"email":"ami@example.com"}', stderr: "" })));
   const o = {
     workshop: {
-      state: async () => (over.state ?? "demarre") as any,
+      state: async () => (over.state ?? "started") as any,
       exec: exec as any,
-      restart: vi.fn(async () => (calls.push("restart"), "demarre" as const)),
-      rebuild: vi.fn(async () => (calls.push("rebuild"), "demarre" as const)),
+      restart: vi.fn(async () => (calls.push("restart"), "started" as const)),
+      rebuild: vi.fn(async () => (calls.push("rebuild"), "started" as const)),
       secureNetwork: vi.fn(async () => void calls.push("secureNetwork")),
-      ensureStarted: vi.fn(async () => (calls.push("ensureStarted"), (over.started ?? "demarre") as any)),
+      ensureStarted: vi.fn(async () => (calls.push("ensureStarted"), (over.started ?? "started") as any)),
     },
     ai: {
       state: () => ({ state: "stopped" as const }),
@@ -109,7 +109,7 @@ describe("settings host", () => {
   });
 
   it("container stopped", async () => {
-    const { h } = setup({ state: "arrete" });
+    const { h } = setup({ state: "stopped" });
     expect(await h["settings.agents"]!({})).toEqual([
       { id: "claude", name: "Claude Code", state: "no-container", login: "panel" },
       { id: "codex", name: "Codex", state: "no-container", login: "device" },
@@ -224,7 +224,7 @@ describe("settings host", () => {
   });
 
   it("login needs a running workshop", async () => {
-    const { h, o } = setup({ state: "arrete" });
+    const { h, o } = setup({ state: "stopped" });
     expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "error", error: "L'atelier de l'agent n'est pas démarré : voir Atelier." });
     expect(o.deviceCommand).not.toHaveBeenCalled();
   });
@@ -322,7 +322,7 @@ describe("settings host", () => {
   it("one workshop operation at a time", async () => {
     const { h, calls, o } = setup();
     let finish!: () => void;
-    o.workshop.rebuild.mockImplementationOnce(() => new Promise((r) => (finish = () => r((calls.push("rebuild"), "demarre")))));
+    o.workshop.rebuild.mockImplementationOnce(() => new Promise((r) => (finish = () => r((calls.push("rebuild"), "started")))));
     const first = h["settings.restartWorkshop"]!({ fresh: true }) as Promise<unknown>;
     await vi.waitFor(() => expect(o.workshop.rebuild).toHaveBeenCalled());
     expect(await h["settings.workshopOperation"]!({})).toBe("rebuild");

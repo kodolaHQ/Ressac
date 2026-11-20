@@ -74,13 +74,13 @@
     return () => clearInterval(t);
   });
   const WORKSHOP: Record<WorkshopState, string> = {
-    demarre: "settings-workshop-started",
-    arrete: "settings-workshop-stopped",
+    started: "settings-workshop-started",
+    stopped: "settings-workshop-stopped",
     absent: "settings-workshop-absent",
     "docker-absent": "settings-workshop-docker-absent",
     "machine-stopped": "settings-workshop-stopped",
   };
-  const WORKSHOP_TONE: Record<WorkshopState, string> = { demarre: "ok", arrete: "off", absent: "off", "docker-absent": "warn", "machine-stopped": "off" };
+  const WORKSHOP_TONE: Record<WorkshopState, string> = { started: "ok", stopped: "off", absent: "off", "docker-absent": "warn", "machine-stopped": "off" };
   const CONFIRM = { restart: "settings-workshop-confirm-restart", rebuild: "settings-workshop-confirm-rebuild" };
   async function operate(kind: "restart" | "rebuild") {
     asking = null;

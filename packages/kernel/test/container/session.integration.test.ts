@@ -15,7 +15,7 @@ const inWorkshop = (pattern: string) =>
 
 test.skipIf(!active)("stopping a session kills in the container an agent deaf to HUP and TERM, and what it launched", async () => {
   const a = new Workshop({ paths: spacePaths(), engine: () => engine! });
-  expect(await a.state()).toBe("demarre");
+  expect(await a.state()).toBe("started");
   const s = SessionAgent.start(a.sessionCommand("integration1", ["sh", "-c", "trap '' HUP TERM; sleep 302 & wait"]), {
     cols: 80, rows: 24, stopRemote: () => a.stopSession("integration1"),
   });
@@ -27,7 +27,7 @@ test.skipIf(!active)("stopping a session kills in the container an agent deaf to
 
 test.skipIf(!active)("stopping a session also kills the servers the agent detached from its group (nohup, setsid)", async () => {
   const a = new Workshop({ paths: spacePaths(), engine: () => engine! });
-  expect(await a.state()).toBe("demarre");
+  expect(await a.state()).toBe("started");
   const s = SessionAgent.start(a.sessionCommand("integration2", ["sh", "-c", "setsid nohup sleep 303 >/dev/null 2>&1 & sleep 304"]), {
     cols: 80, rows: 24, stopRemote: () => a.stopSession("integration2"),
   });
