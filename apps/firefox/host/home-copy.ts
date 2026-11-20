@@ -1,8 +1,8 @@
 // A site app's home screen and an agent component's page copied out of the workspace, which the agent writes and can
 // swap links into at any time.
 import { writeFile } from "node:fs/promises";
-import { realpathSync } from "node:fs";
-import { isAbsolute, join, normalize } from "node:path";
+import { lstatSync } from "node:fs";
+import { dirname, isAbsolute, join, normalize } from "node:path";
 import { ID_SITE } from "../../../packages/kernel/src/sites/schemas.ts";
 import { HOME_ENTRIES_MAX, HOME_FILE_MAX, HOME_TYPES } from "../shared/sites.ts";
 import { COMPONENT_HTML_MAX, inChild, inFolder, readFiles, type ReadFiles } from "../../../packages/kernel/src/index.ts";
@@ -80,11 +80,12 @@ export async function copyHome(sites: string, id: string, target: string): Promi
 }
 
 /** The only folders the chrome may ask the host to write copies into: `<profile>/chrome/ressac-frames/<kind>`. */
-// shortcut: the host does not know the profile dir, so the root is checked by shape only (normalized, no link in any parent, an existing folder the chrome made); pass the profile dir to the host to match it exactly.
+// shortcut: the host does not know the profile dir, so the root is checked by shape only (normalized, `chrome`, `ressac-frames` and the kind are real folders the chrome made; links above the profile, such as /var on macOS, are allowed); pass the profile dir to the host to match it exactly.
 const framesKind = (root: unknown, kind: string): root is string => {
   if (typeof root !== "string" || !isAbsolute(root) || normalize(root) !== root || !root.endsWith(`/chrome/ressac-frames/${kind}`)) return false;
   try {
-    return realpathSync(root) === root;
+    for (let d = root, i = 0; i < 3; d = dirname(d), i++) if (!lstatSync(d).isDirectory()) return false; // lstat: a link is not a directory
+    return true;
   } catch {
     return false;
   }
