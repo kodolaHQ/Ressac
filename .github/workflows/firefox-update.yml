@@ -1,7 +1,8 @@
 name: Firefox update
 # Each day: when Mozilla ships a newer Firefox than surfer.json's, pushes a branch firefox-<version> with the bump,
-# opens an issue, then applies our patches and builds the engine on that branch and reports in the issue.
-# No signing, no publishing: the DMG, the VM trial and the release stay on the maintainer's Mac.
+# opens an issue, then runs the unit tests and applies our patches on that branch and reports in the issue.
+# No engine build: the free macOS runner (3 cores, 7 GB) does not finish one within the 6 h job limit.
+# The build, the DMG, the VM trial and the release stay on the maintainer's Mac.
 on:
   schedule:
     - cron: "23 6 * * *"
@@ -47,15 +48,15 @@ jobs:
           git switch -c "$branch"
           git commit -am "chore(engine): Firefox $version"
           git push origin "$branch"
-          url=$(gh issue create --title "Firefox $version est sortie" --body "La branche \`$branch\` monte le moteur en Firefox $version. La compilation tourne : son résultat arrive ici. Notes de Mozilla : https://www.mozilla.org/firefox/$version/releasenotes/")
+          url=$(gh issue create --title "Firefox $version est sortie" --body "La branche \`$branch\` monte le moteur en Firefox $version. Les tests et nos patchs tournent : le résultat arrive ici. Notes de Mozilla : https://www.mozilla.org/firefox/$version/releasenotes/")
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "issue=$url" >> "$GITHUB_OUTPUT"
 
-  build:
+  patches:
     needs: check
     if: needs.check.outputs.branch != ''
     runs-on: macos-latest
-    timeout-minutes: 360
+    timeout-minutes: 60
     permissions:
       contents: read
       issues: write
@@ -68,11 +69,6 @@ jobs:
         run: |
           brew install gnu-tar
           corepack enable
-      # The local scripts pin the Command Line Tools SDK 26.5; the runner has Xcode's.
-      - name: SDK path
-        run: |
-          sdk="$(xcrun --show-sdk-path)"
-          sed -i '' "s|/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk|$sdk|" apps/firefox/scripts/env.sh apps/firefox/configs/macos/mozconfig
       - name: Install
         run: corepack pnpm install --frozen-lockfile
       - name: Unit tests
@@ -84,12 +80,6 @@ jobs:
         name: Import patches
         working-directory: apps/firefox
         run: echo N | corepack pnpm run engine:import
-      - name: Bootstrap
-        working-directory: apps/firefox
-        run: corepack pnpm run engine:bootstrap
-      - name: Build
-        working-directory: apps/firefox
-        run: echo N | corepack pnpm run build
       - name: Report
         if: always() && needs.check.outputs.issue != ''
         env:
@@ -99,7 +89,7 @@ jobs:
           IMPORT: ${{ steps.import.outcome }}
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [[ $RESULT == success ]]; then text="✅ Patchs appliqués, tests unitaires et compilation OK. Reste : suite e2e, DMG, essai VM, publication."
+          if [[ $RESULT == success ]]; then text="✅ Tests unitaires OK et nos patchs s'appliquent. Reste, sur le Mac : compilation, suite e2e, DMG, essai VM, publication."
           elif [[ $IMPORT == failure ]]; then text="❌ Un de nos patchs ne s'applique plus sur cette version."
-          else text="❌ Échec (tests unitaires, téléchargement ou compilation)."; fi
+          else text="❌ Échec (tests unitaires ou téléchargement de Firefox)."; fi
           gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "$text Détails : $RUN"
