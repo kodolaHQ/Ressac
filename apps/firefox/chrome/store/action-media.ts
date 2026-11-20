@@ -3,6 +3,7 @@
 // the site home's parent.postMessage bridge (plan 31). Probed by e2e/actions-spike.e2e.ts.
 import { openableUrl } from "../../ui/home-profiles";
 import { CSP_WIDGET, displayServed } from "../window/widget-frame";
+import { ensureFramesSubstitution, framesKindDir, framesOrigin } from "../window/frames-root";
 import { containerFor } from "./containers";
 import { containerRequests, isLink, loadImage, realPath, toDataUrl } from "./site-home";
 import THEME from "../../ui/theme.css?raw";
@@ -83,15 +84,7 @@ export function componentFonts(): Promise<string> {
 }
 
 const NAME = /^[a-z0-9-]{1,40}$/;
-const substitution = (name: string) => `ressac-component-${name}`;
-const copiesOf = (dataDir: string, name: string) => PathUtils.join(dataDir, "ressac-components", name);
-
-function substitute(name: string, dir: string | null): void {
-  const handler = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
-  if (!dir) return handler.setSubstitution(substitution(name), null);
-  const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-  handler.setSubstitution(substitution(name), Services.io.newFileURI(new FileUtils.File(dir)));
-}
+const copiesOf = (name: string) => PathUtils.join(framesKindDir("components"), name);
 
 /** The pages showing each component, in every window. */
 const refs = new Map<string, number>();
@@ -111,7 +104,7 @@ export type ComponentCopy = (name: string, token: string) => Promise<number | nu
 
 /**
  * One more page shows component `nom`: the host copies `<dataDir>/workspace/components/<nom>/component.html` (never
- * through a link, COMPONENT_HTML_MAX at most) into `<dataDir>/ressac-components/<nom>/`, served from there as
+ * through a link, COMPONENT_HTML_MAX at most) into `<framesDir>/components/<nom>/`, served from there as
  * `component-<mtime>.html` through displayServed (the widgets' CSP and guard, then the bridge and the browser fonts;
  * displayDenied() on a network hint), and returns its resource:// URL, or null. Each call is paired with a
  * releaseComponent, null or not.
@@ -124,10 +117,10 @@ export function serveComponent(dataDir: string, name: string, copy: ComponentCop
       const components = PathUtils.join(dataDir, "workspace", "components");
       // An exact name: a case-insensitive disk would find « Barres » for « barres ». A quick refusal; the host's copy is swap-proof.
       if (!realPath(components) || isLink(components) || !(await IOUtils.getChildren(components)).some((c) => c.endsWith(`/${name}`))) return null;
-      const copies = copiesOf(dataDir, name);
+      const copies = copiesOf(name);
       await IOUtils.makeDirectory(copies, { createAncestors: true, ignoreExisting: true });
-      // The copies stay inside <dataDir>/ressac-components: a copies folder that is a link is refused.
-      const root = realPath(PathUtils.join(dataDir, "ressac-components"));
+      // The copies stay inside <framesDir>/components: a copies folder that is a link is refused.
+      const root = realPath(framesKindDir("components"));
       if (!root || realPath(copies) !== PathUtils.join(root, name)) return null;
       const token = crypto.randomUUID().replace(/-/g, "");
       const mtime = await copy(name, token);
@@ -144,8 +137,8 @@ export function serveComponent(dataDir: string, name: string, copy: ComponentCop
       }
       // One copy per name (the source copy goes too): a frame still showing an older one has it loaded already.
       for (const old of await IOUtils.getChildren(copies)) if (old !== target) await IOUtils.remove(old, { ignoreAbsent: true });
-      substitute(name, copies);
-      return `resource://${substitution(name)}/${file}`;
+      ensureFramesSubstitution();
+      return `${framesOrigin()}/components/${name}/${file}`;
     } catch (e) {
       console.error(`[actions] component ${name} not served:`, e);
       return null;
@@ -154,7 +147,7 @@ export function serveComponent(dataDir: string, name: string, copy: ComponentCop
 }
 
 /** One page less shows component `nom`: at zero, its substitution and its copies go. */
-export function releaseComponent(dataDir: string, name: string): Promise<void> {
+export function releaseComponent(_dataDir: string, name: string): Promise<void> {
   const n = refs.get(name);
   if (!n) return Promise.resolve();
   if (n > 1) {
@@ -165,7 +158,6 @@ export function releaseComponent(dataDir: string, name: string): Promise<void> {
   return queued(name, async () => {
     // A serve queued meanwhile counted again: it keeps its copy.
     if (refs.has(name)) return;
-    substitute(name, null);
-    await IOUtils.remove(copiesOf(dataDir, name), { recursive: true, ignoreAbsent: true });
+    await IOUtils.remove(copiesOf(name), { recursive: true, ignoreAbsent: true });
   });
 }

@@ -2,6 +2,8 @@
 // parent process, so no actor reaches it; the chrome does the actor's work (chrome/agent/design-actor.ts) itself, with
 // the same queries and answers. The frame dies when the home is left (Svelte removes it): every access is in a try.
 
+import { framesOrigin } from "../window/frames-root";
+
 /** The mouse events the guard swallows (while armed, and 500 ms after a capture: the rest of a double click). */
 export const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "dblclick", "contextmenu"];
 
@@ -125,7 +127,7 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
       // Only where the home's events reach the frame first (S6); else nothing is set.
       if ((hwin as any).docShell.chromeEventHandler !== frame) return null;
       // Only the app's served home (never a system-principal document, nor the frame's initial about:blank).
-      if ((hdoc as any).nodePrincipal.isSystemPrincipal || !hdoc.documentURI.startsWith("resource://ressac-site-")) return null;
+      if ((hdoc as any).nodePrincipal.isSystemPrincipal || !hdoc.documentURI.startsWith(`${framesOrigin()}/sites/`)) return null;
       const sb = viewfinder(hdoc, hwin);
       g = guard(sb, hdoc, () => hidden(null));
       pending = Promise.resolve(Cu.evalInSandbox(code, sb, "latest", FILE + "ressac-viewfinder.js", 1));

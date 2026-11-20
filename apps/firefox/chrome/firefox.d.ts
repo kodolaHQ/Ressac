@@ -14,7 +14,7 @@ declare const IOUtils: {
   write(path: string, data: Uint8Array): Promise<number>;
   getChildren(path: string): Promise<string[]>;
 };
-declare const PathUtils: { join(...parts: string[]): string; filename(path: string): string; readonly tempDir: string };
+declare const PathUtils: { join(...parts: string[]): string; filename(path: string): string; readonly tempDir: string; readonly profileDir: string };
 declare const Services: any;
 declare const Ci: any;
 declare const Cr: any;

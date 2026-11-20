@@ -29,8 +29,8 @@
     } catch {
       return false;
     }
-    // The host is the current copy's (random at each serve): never another app's home, nor an older copy.
-    return !!src && u.protocol === "resource:" && u.host === new URL(src).host && u.pathname.endsWith(".html");
+    // The folder is the current copy's (random key at each serve): never another app's home, nor an older copy.
+    return !!src && u.protocol === "resource:" && u.host === new URL(src).host && u.pathname.startsWith(new URL(src).pathname.replace(/[^/]*$/, "")) && u.pathname.endsWith(".html");
   }
 
   /** Opaque origin: the target can only be « * »; only this frame's document receives. */

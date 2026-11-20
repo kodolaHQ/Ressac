@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { COMPONENT_HTML_MAX as KERNEL_COMPONENT_HTML_MAX } from "../../../packages/kernel/src/pages/agent-components";
 import { COMPONENT_HTML_MAX, actionImage, actionImageTestUrl, releaseComponent, serveComponent as serveWith } from "../chrome/store/action-media";
 import { copyComponentRequest } from "../host/home-copy";
+import { framesKindDir, framesOrigin } from "../chrome/window/frames-root";
 
 vi.mock("../chrome/store/containers", () => ({ containerFor: (p: string) => (p === "action-images" ? 7 : -1) }));
 /** The URLs the action images' opener was asked for, and the options it was built with. */
@@ -36,7 +37,7 @@ beforeAll(() => {
   Object.assign(globalThis as any, {
     // The bundled fonts, read from chrome:// (componentFonts): their file name as the body.
     fetch: async (url: string) => ({ arrayBuffer: async () => new TextEncoder().encode(url.split("/").pop()).buffer }),
-    PathUtils: { join: (...parts: string[]) => join(...parts) },
+    PathUtils: { join: (...parts: string[]) => join(...parts), get profileDir() { return join(root, "data"); } },
     IOUtils: {
       stat: log("stat", async (p: string) => {
         const s = statSync(p);
@@ -50,7 +51,7 @@ beforeAll(() => {
       getChildren: log("getChildren", async (p: string) => readdirSync(p).map((n) => join(p, n))),
       remove: log("remove", async (p: string) => rmSync(p, { recursive: true, force: true })),
     },
-    Ci: { nsIFile: "nsIFile", nsIResProtocolHandler: "nsIResProtocolHandler" },
+    Ci: { nsIFile: "nsIFile", nsIResProtocolHandler: "nsIResProtocolHandler", nsISubstitutingProtocolHandler: { ALLOW_CONTENT_ACCESS: 1 } },
     Cc: {
       "@mozilla.org/file/local;1": {
         createInstance: () => {
@@ -72,7 +73,7 @@ beforeAll(() => {
     Services: {
       env: { get: (k: string) => (k === "RESSAC_TEST_ACTION_IMAGES" ? env : "") },
       io: {
-        getProtocolHandler: () => ({ QueryInterface: () => ({ setSubstitution: (n: string, uri: { spec: string } | null) => substitutions.set(n, uri && uri.spec) }) }),
+        getProtocolHandler: () => ({ QueryInterface: () => ({ setSubstitutionWithFlags: (n: string, uri: { spec: string }) => substitutions.set(n, uri.spec) }) }),
         newFileURI: (f: { path: string }) => ({ spec: `file://${f.path}` }),
       },
     },
@@ -109,7 +110,7 @@ describe("action result images", () => {
 
 describe("agent components", () => {
   const data = () => join(root, "data");
-  const serveComponent = (dataDir: string, name: string) => serveWith(dataDir, name, (name, token) => copyComponentRequest(dataDir, join(dataDir, "workspace", "components"), { name, token }));
+  const serveComponent = (dataDir: string, name: string) => serveWith(dataDir, name, (name, token) => copyComponentRequest(framesKindDir("components"), join(dataDir, "workspace", "components"), { name, token }));
   const write = (name: string, html: string) => {
     mkdirSync(join(data(), "workspace", "components", name), { recursive: true });
     writeFileSync(join(data(), "workspace", "components", name, "component.html"), html);
@@ -127,9 +128,9 @@ describe("agent components", () => {
   it("serves one sanitized copy per name, kept until its last page lets it go", async () => {
     write("barres", "<!doctype html><p>barres</p>");
     const url = await serveComponent(data(), "barres");
-    expect(url).toMatch(/^resource:\/\/ressac-component-barres\/component-\d+-\d+\.html$/);
-    const copies = join(data(), "ressac-components", "barres");
-    const served = readFileSync(join(copies, new URL(url!).pathname.slice(1)), "utf8");
+    expect(url).toMatch(new RegExp(`^${framesOrigin()}/components/barres/component-\\d+-\\d+\\.html$`));
+    const copies = join(framesKindDir("components"), "barres");
+    const served = readFileSync(join(copies, new URL(url!).pathname.split("/").pop()!), "utf8");
     expect(served).toContain('http-equiv="Content-Security-Policy"');
     expect(served).toContain("ressac-component");
     expect(served).toContain('defineProperty(w, "Components"');
@@ -138,13 +139,11 @@ describe("agent components", () => {
     for (const family of ["Funnel Display", "Geist Mono"]) expect(served).toContain(`font-family: "${family}"`);
     expect(served).not.toContain("chrome://");
     expect(served.indexOf("@font-face")).toBeGreaterThan(served.indexOf("Content-Security-Policy"));
-    expect(substitutions.get("ressac-component-barres")).toBe(`file://${copies}`);
     expect(await serveComponent(data(), "barres")).toBe(url);
     expect(readdirSync(copies)).toHaveLength(1);
     await releaseComponent(data(), "barres");
-    expect(substitutions.get("ressac-component-barres")).toBe(`file://${copies}`);
+    expect(existsSync(copies)).toBe(true);
     await releaseComponent(data(), "barres");
-    expect(substitutions.get("ressac-component-barres")).toBeNull();
     expect(existsSync(copies)).toBe(false);
   });
 
@@ -163,7 +162,7 @@ describe("agent components", () => {
     symlinkSync(join(root, "mac"), join(data(), "workspace", "components", "dossier"));
     for (const name of ["lien", "dossier"]) {
       expect(await serveComponent(data(), name)).toBeNull();
-      expect(readdirSync(join(data(), "ressac-components", name))).toEqual([]);
+      expect(readdirSync(join(framesKindDir("components"), name))).toEqual([]);
     }
   });
 });

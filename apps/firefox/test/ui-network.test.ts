@@ -21,15 +21,17 @@ Object.assign(globalThis as any, {
   },
 });
 const N = await import("../chrome/store/ui-network");
+const { framesOrigin } = await import("../chrome/window/frames-root");
+const O = framesOrigin();
 
 /** A document at `uri` in a chrome (or content) context embedded by `embedder` (null: a window's top). */
 const doc = (uri: string, embedder: object | null = null, isContent = false): any => ({ documentURI: uri, defaultView: { browsingContext: { isContent, embedderElement: embedder } } });
 const frameIn = (owner: unknown, appType = 0): any => ({ ownerDocument: owner, frameLoader: { docShell: { appType } } });
 const browserXhtml = doc("chrome://browser/content/browser.xhtml");
 const sidebar = doc("chrome://browser/content/ressac/sidebar.html", frameIn(browserXhtml));
-const widget = doc("resource://ressac-widget-a/display-1.html", frameIn(sidebar));
+const widget = doc(`${O}/widgets/a/display-1.html`, frameIn(sidebar));
 const widgetBlank = doc("about:blank", frameIn(widget));
-const tab = doc("resource://ressac-site-x/index.html", null, true);
+const tab = doc(`${O}/sites/x/index.html`, null, true);
 const li = (loadingDocument: unknown, browsingContext: unknown = null): any => ({ loadingDocument, browsingContext, targetBrowsingContext: browsingContext, externalContentPolicyType: 3 });
 /** A frame's navigation as DocumentLoadListener builds it (LoadInfo::CreateForFrame): browsingContext is the parent's, targetBrowsingContext the frame's. */
 const frameNav = (parent: unknown, frame: unknown): any => ({ loadingDocument: null, browsingContext: parent, targetBrowsingContext: frame, externalContentPolicyType: 7 });
@@ -41,6 +43,11 @@ afterEach(() => {
 });
 
 describe("ui-network", () => {
+  it("UI_PREFIXES holds the frames origin and none of the old per-frame prefixes", () => {
+    expect(N.UI_PREFIXES).toContain(O);
+    expect(N.UI_PREFIXES.some((p) => /ressac-(widget|site|component)-/.test(p))).toBe(false);
+  });
+
   it("the UI's loads: http, https, ws and wss are refused whatever the host, 127.0.0.1 and localhost included; nothing escapes the net", () => {
     for (const u of ["http://127.0.0.1:1/x", "https://localhost/", "ws://a.example/", "wss://b.example/", "HTTP://X.EXAMPLE/"]) expect(N.isBlockedAddress(u), u).toBe(true);
   });
@@ -48,7 +55,7 @@ describe("ui-network", () => {
   it("chrome:, resource:, moz-extension:, data:, blob:, page-icon:, moz-remote-image: pass; a nested view-source: is judged by its inner URI", () => {
     for (const u of [
       "chrome://browser/content/ressac/sidebar.html",
-      "resource://ressac-widget-a/display-1.html",
+      `${O}/widgets/a/display-1.html`,
       "moz-extension://u/i.png",
       "data:image/png;base64,AA",
       "blob:null/1",
@@ -60,7 +67,7 @@ describe("ui-network", () => {
     for (const u of ["view-source:http://a.example/", "view-source:view-source:https://a.example/"]) expect(N.isBlockedAddress(u), u).toBe(true);
   });
 
-  it("a document is the UI's by its own address or an in-process ancestor's; browser.xhtml, a tab (even on a resource://ressac-site- address) and a document-less chrome channel are not", () => {
+  it("a document is the UI's by its own address or an in-process ancestor's; browser.xhtml, a tab (even on a frames address) and a document-less chrome channel are not", () => {
     expect(N.isUiDocument(sidebar)).toBe(true);
     expect(N.isUiDocument(widget)).toBe(true);
     expect(N.isUiDocument(widgetBlank)).toBe(true);
@@ -89,14 +96,14 @@ describe("ui-network", () => {
     expect(N.isUiLoad(worker({ isContent: false, embedderElement: frameIn(browserXhtml, MAIL) })), "a worker of the sidebar").toBe(true);
     expect(N.isUiLoad(worker({ isContent: true, embedderElement: null })), "a tab's worker").toBe(false);
     const bare = (spec: string, isSystemPrincipal = false): any => ({ ...worker(null), loadingPrincipal: { isSystemPrincipal, spec, precursorPrincipal: null } });
-    expect(N.isUiLoad(bare("resource://ressac-widget-a/w.js")), "a parent-process worker's fetch, no context: a UI principal").toBe(true);
+    expect(N.isUiLoad(bare(`${O}/widgets/a/w.js`)), "a parent-process worker's fetch, no context: a UI principal").toBe(true);
     expect(N.isUiLoad(bare("resource://ressac-test-net/w.js")), "no context, a principal outside the prefixes").toBe(false);
     expect(N.isUiLoad(bare("", true)), "no context, system (an add-on install)").toBe(false);
     const wt = (loadingPrincipal: unknown): any => ({ loadingDocument: null, browsingContext: null, targetBrowsingContext: null, associatedBrowsingContext: null, loadingPrincipal, externalContentPolicyType: 59 });
     const opaque = (precursor: string) => ({ isSystemPrincipal: false, spec: "moz-nullprincipal:{1}", precursorPrincipal: { isSystemPrincipal: false, spec: precursor } });
     expect(N.isUiLoad(wt({ isSystemPrincipal: true, spec: "" })), "a system document").toBe(true);
-    expect(N.isUiLoad(wt(opaque("resource://ressac-widget-a/display-1.html"))), "a served widget").toBe(true);
-    expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: "resource://ressac-component-c/component-1.html", precursorPrincipal: null })), "a component").toBe(true);
+    expect(N.isUiLoad(wt(opaque(`${O}/widgets/a/display-1.html`))), "a served widget").toBe(true);
+    expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: `${O}/components/c/component-1.html`, precursorPrincipal: null })), "a component").toBe(true);
     expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: "https://a.example/", precursorPrincipal: null })), "a tab").toBe(false);
     expect(N.isUiLoad(wt(opaque("https://a.example/"))), "a sandboxed tab frame").toBe(false);
     expect(N.isUiLoad({ ...wt({ isSystemPrincipal: true, spec: "" }), externalContentPolicyType: 3 }), "a system image without context (an action image)").toBe(false);

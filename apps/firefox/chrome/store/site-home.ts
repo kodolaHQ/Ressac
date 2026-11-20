@@ -7,6 +7,7 @@ import { localUrl } from "../../../../packages/kernel/src/workflows/access";
 import { hostInSite } from "../../../../packages/kernel/src/sites/urls";
 import { ID_SITE } from "../../../../packages/kernel/src/sites/schemas";
 import { CSP_WIDGET, displayServed } from "../window/widget-frame";
+import { ensureFramesSubstitution, framesKindDir, framesOrigin } from "../window/frames-root";
 
 /** The most redirects an image load follows. */
 export const REDIRECTIONS_IMAGE = 3;
@@ -17,15 +18,16 @@ const IMAGES_AT_ONCE = 4;
 const IMAGES_WAITING_MAX = 200;
 
 const FILE_DIRECTIVES = new Set(["script-src", "style-src", "img-src", "font-src"]);
-const substitution = (key: string) => `ressac-site-${key}`;
+/** `<id>-<32 hex token>`: the folder a serve is copied to, a path segment of its URL. */
+const keyDir = (key: string) => PathUtils.join(framesKindDir("sites"), key);
 
 /**
- * The home's CSP, with the served copy's files at `resource://ressac-site-<key>` (`key`: see serveHome) in
+ * The home's CSP, with the served copy's files at `${framesOrigin()}/sites/<key>/` (`key`: see serveHome) in
  * place of `ressac-site://<id>`.
  */
 export function cspFirefoxHome(key: string): string {
   return CSP_WIDGET.split("; ")
-    .map((d) => (FILE_DIRECTIVES.has(d.split(" ")[0]!) ? `${d} resource://${substitution(key)}` : d))
+    .map((d) => (FILE_DIRECTIVES.has(d.split(" ")[0]!) ? `${d} ${framesOrigin()}/sites/${key}/` : d))
     .join("; ");
 }
 
@@ -70,24 +72,23 @@ export function isLink(p: string): boolean {
 
 const name = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
-/** The substitution each app's home is served under now (one per app; the previous one is removed). */
+/** The key each app's home is served under now (one per app). */
 const current = new Map<string, string>();
 
-function substitute(name: string, dir: string | null): void {
-  const handler = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
-  if (!dir) return handler.setSubstitution(name, null);
-  const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-  handler.setSubstitutionWithFlags(name, Services.io.newFileURI(new FileUtils.File(dir)), Ci.nsISubstitutingProtocolHandler.ALLOW_CONTENT_ACCESS);
+/** The copy folders of app `id` (`<id>-<token>`): an id may itself hold a hyphen, hence the token's exact shape. */
+async function copiesOf(id: string): Promise<string[]> {
+  const mine = new RegExp(`^${id}-[0-9a-f]{32}$`);
+  return (await IOUtils.getChildren(framesKindDir("sites")).catch(() => [] as string[])).filter((p) => mine.test(name(p)));
 }
 
 /**
  * Has `copy` (the host's walk, host/home-copy.ts) copy `<dataDir>/workspace/sites/<id>/home/` into
- * `<dataDir>/ressac-sites/<id>/<token>/` with these rules: the app folder named exactly `id`, no symbolic link
+ * `<framesDir>/sites/<id>-<token>/` with these rules: the app folder named exactly `id`, no symbolic link
  * anywhere on a path (even one swapped in during the copy), no hidden segment, HOME_FILE_MAX at most per file,
- * HOME_ENTRIES_MAX entries at most, only the served types (HOME_TYPES); the `.html` pages then go through homeServed. Points
- * `resource://ressac-site-<id>-<token>/` straight at that folder (the previous serve's substitution and folder go) and returns its `index.html`, or null (no home page, or a refused folder).
- * The token is random at each serve: the substitution is content-accessible (ALLOW_CONTENT_ACCESS, below), so neither
- * its host nor any root above it may be guessable by a web page.
+ * HOME_ENTRIES_MAX entries at most, only the served types (HOME_TYPES); the `.html` pages then go through homeServed. Returns
+ * `<framesOrigin>/sites/<id>-<token>/index.html` (the previous serve's folder goes), or null (no home page, or a refused folder).
+ * The token is random at each serve, on top of the per-launch host: the substitution is content-accessible, so a page
+ * must not guess a home's path.
  * The copy is the host's: chrome code has no O_NOFOLLOW nor any file identity (IOUtils follows links).
  */
 export function serveHome(dataDir: string, id: string, copy: HomeCopy): Promise<string | null> {
@@ -117,12 +118,10 @@ async function serveNow(dataDir: string, id: string, copy: HomeCopy): Promise<st
     if (realPath(source) !== PathUtils.join(sitesReal, id, "home")) return null;
     const token = Services.uuid.generateUUID().toString().replace(/[{}-]/g, "");
     const key = `${id}-${token}`;
-    const copies = PathUtils.join(dataDir, "ressac-sites", id);
-    const target = PathUtils.join(copies, token);
-    await IOUtils.makeDirectory(copies, { createAncestors: true, ignoreExisting: true });
-    // The copies stay inside <dataDir>/ressac-sites: a copies folder that is a link is refused.
-    const root = realPath(PathUtils.join(dataDir, "ressac-sites"));
-    if (!root || realPath(copies) !== PathUtils.join(root, id)) return null;
+    const target = keyDir(key);
+    await IOUtils.makeDirectory(framesKindDir("sites"), { createAncestors: true, ignoreExisting: true });
+    // The copies stay inside <framesDir>/sites: a sites folder that is a link is refused.
+    if (isLink(framesKindDir("sites"))) return null;
     await IOUtils.makeDirectory(target, { ignoreExisting: true });
     const files = (await copy(id, token)) ?? [];
     // The copy is out of the agent's reach: its pages are read back by path.
@@ -132,35 +131,30 @@ async function serveNow(dataDir: string, id: string, copy: HomeCopy): Promise<st
     }
     const index = files.includes("index.html");
     // One copy per app: the previous ones go.
-    for (const old of await IOUtils.getChildren(copies)) if (old !== target) await IOUtils.remove(old, { recursive: true, ignoreAbsent: true });
-    const previous = current.get(id);
-    if (previous) substitute(previous, null);
+    for (const old of await copiesOf(id)) if (old !== target) await IOUtils.remove(old, { recursive: true, ignoreAbsent: true });
     current.delete(id);
     if (!index) return null;
-    // Content access: without it the home's opaque frame cannot load its own images, scripts or styles (measured). Any
-    // content principal may then load these URLs as <script>, stylesheet or <img>: hence the random host. The CSP keeps
-    // each home to its own copy's files.
-    substitute(substitution(key), target);
-    current.set(id, substitution(key));
-    return `resource://${substitution(key)}/index.html`;
+    // Content access (ensureFramesSubstitution): any content principal may load these URLs as <script>, stylesheet or
+    // <img>, hence the random host and key. The CSP keeps each home to its own copy's files.
+    ensureFramesSubstitution();
+    current.set(id, key);
+    return `${framesOrigin()}/sites/${key}/index.html`;
   } catch (e) {
     console.error(`[sites] home of ${id} not served:`, e);
     return null;
   }
 }
 
-/** The host of the copy app `id`'s home is served under now (`ressac-site-<id>-<token>`), or undefined. */
-export const servedHost = (id: string): string | undefined => current.get(id);
+/** The key (`<id>-<token>`) app `id`'s home is served under now, or undefined. */
+export const servedKey = (id: string): string | undefined => current.get(id);
 
 /** « Supprimer »: the app's served home goes, its substitution and its copies. */
 export async function forgetHome(dataDir: string, id: string): Promise<void> {
   if (typeof id !== "string" || !ID_SITE.test(id)) return;
   // A serve still running would publish again after this.
   await serving.get(id);
-  const name = current.get(id);
   current.delete(id);
-  if (name) substitute(name, null);
-  await IOUtils.remove(PathUtils.join(dataDir, "ressac-sites", id), { recursive: true, ignoreAbsent: true });
+  for (const old of await copiesOf(id)) await IOUtils.remove(old, { recursive: true, ignoreAbsent: true });
 }
 
 // --- Images: loaded through a channel, on Uint8Array.

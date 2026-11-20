@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { displayDenied } from "../chrome/window/widget-frame";
 import { HOME_ENTRIES_MAX, HOME_FILE_MAX, HOME_BRIDGE, cspFirefoxHome, forgetHome, homeServed, loadImage, serveHome as serve, type OpenRequest } from "../chrome/store/site-home";
 import { copyHomeRequest } from "../host/home-copy";
+import { framesKindDir, framesOrigin } from "../chrome/window/frames-root";
 
 let root: string;
 let data: string;
@@ -17,7 +18,7 @@ beforeAll(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "ressac-site-home-")));
   writeFileSync(join(root, "secret.txt"), "secret du Mac");
   Object.assign(globalThis as any, {
-    PathUtils: { join: (...parts: string[]) => join(...parts) },
+    PathUtils: { join: (...parts: string[]) => join(...parts), get profileDir() { return data; } },
     IOUtils: {
       stat: async (p: string) => {
         const s = statSync(p);
@@ -64,7 +65,7 @@ beforeAll(() => {
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 /** serveHome with the host's real copy, as host.ts wires it. */
-const serveHome = (dataDir: string, id: string) => serve(dataDir, id, (id, token) => copyHomeRequest(dataDir, join(dataDir, "workspace", "sites"), { id, token }));
+const serveHome = (dataDir: string, id: string) => serve(dataDir, id, (id, token) => copyHomeRequest(framesKindDir("sites"), join(dataDir, "workspace", "sites"), { id, token }));
 
 let n = 0;
 /** A fresh data dir with app `id`'s home files (path → content). */
@@ -78,11 +79,11 @@ function app(files: Record<string, string | Buffer>, id = "vidola", folder = id)
   }
   return home;
 }
-/** The token of a served URL (`resource://ressac-site-<id>-<token>/index.html`): its copy's folder. */
-const tokenOf = (url: string, id = "vidola") => new URL(url).host.slice(`ressac-site-${id}-`.length);
-/** The files of the served copy, relative to its `<token>/` folder. */
-function served(url: string, id = "vidola"): string[] {
-  const dir = join(data, "ressac-sites", id, tokenOf(url, id));
+/** The key of a served URL (`<framesOrigin>/sites/<id>-<token>/index.html`): its copy's folder name. */
+const keyOf = (url: string) => new URL(url).pathname.split("/")[2]!;
+/** The files of the served copy, relative to its key folder. */
+function served(url: string): string[] {
+  const dir = join(framesKindDir("sites"), keyOf(url));
   const out: string[] = [];
   const walk = (d: string, rel: string) => {
     for (const e of readdirSync(d, { withFileTypes: true })) e.isDirectory() ? walk(join(d, e.name), `${rel}${e.name}/`) : out.push(`${rel}${e.name}`);
@@ -90,7 +91,7 @@ function served(url: string, id = "vidola"): string[] {
   walk(dir, "");
   return out.sort();
 }
-const copied = (url: string, p: string, id = "vidola") => readFileSync(join(data, "ressac-sites", id, tokenOf(url, id), p), "utf8");
+const copied = (url: string, p: string) => readFileSync(join(framesKindDir("sites"), keyOf(url), p), "utf8");
 
 describe("homeServed", () => {
   it("puts the CSP meta, the widgets' guard, then the bridge, after the doctype", () => {
@@ -111,7 +112,9 @@ describe("homeServed", () => {
 
 describe("site home resources", () => {
   it("cspFirefoxHome allows images from the site's resource:// origin only", () => {
-    expect(cspFirefoxHome("vidola")).toContain("img-src data: resource://ressac-site-vidola;");
+    const csp = cspFirefoxHome("vidola-abc");
+    for (const d of ["script-src", "style-src", "img-src", "font-src"]) expect(csp).toContain(`${d} ${d === "script-src" || d === "style-src" ? "'unsafe-inline'" : "data:"} ${framesOrigin()}/sites/vidola-abc/`);
+    expect(csp).not.toContain("ressac-site-");
   });
 
   it("loadImage follows permitted redirects and keeps only small images", async () => {
@@ -166,38 +169,32 @@ describe("site home resources", () => {
 describe("serveHome: a hostile home folder (Review Focus 3)", () => {
   beforeEach(() => substitutions.clear());
 
-  it("copies the home, its .html through homeServed, and points resource://ressac-site-<id>/ at the copies", async () => {
+  it("copies the home, its .html through homeServed, and serves them under the shared frames origin", async () => {
     app({ "index.html": "<!doctype html><p>accueil</p>", "img/logo.png": Buffer.from([1, 2, 3]), "app.js": "let x;" });
     const url = await serveHome(data, "vidola");
-    // A random token in the host, the substitution straight at its folder: nothing above it to guess.
-    expect(url).toMatch(/^resource:\/\/ressac-site-vidola-[0-9a-f]{32}\/index\.html$/);
-    const host = new URL(url!).host;
+    // A random token in the path, under the shared per-launch host.
+    expect(url).toMatch(new RegExp(`^${framesOrigin()}/sites/vidola-[0-9a-f]{32}/index\\.html$`));
+    const key = keyOf(url!);
     expect(served(url!)).toEqual(["app.js", "img/logo.png", "index.html"]);
-    expect(copied(url!, "index.html")).toBe(homeServed("<!doctype html><p>accueil</p>", host.slice("ressac-site-".length)));
-    expect(copied(url!, "index.html")).toContain(`img-src data: resource://${host};`);
+    expect(copied(url!, "index.html")).toBe(homeServed("<!doctype html><p>accueil</p>", key));
+    expect(copied(url!, "index.html")).toContain(`img-src data: ${framesOrigin()}/sites/${key}/;`);
     expect(copied(url!, "app.js")).toBe("let x;");
-    expect(substitutions.get(host)).toEqual([`file://${join(data, "ressac-sites", "vidola", tokenOf(url!))}`, 1]);
-    expect(substitutions.has("ressac-site-vidola")).toBe(false);
-    // Served again: a new token; the previous substitution and folder are gone.
+    // Served again: a new key; the previous folder is gone.
     const again = await serveHome(data, "vidola");
-    expect(new URL(again!).host).not.toBe(host);
-    expect(substitutions.get(host)).toBeNull();
-    expect(readdirSync(join(data, "ressac-sites", "vidola"))).toEqual([tokenOf(again!)]);
-    // « Supprimer »: the substitution and the copies go.
+    expect(keyOf(again!)).not.toBe(key);
+    expect(readdirSync(framesKindDir("sites"))).toEqual([keyOf(again!)]);
+    // « Supprimer »: the copies go.
     await forgetHome(data, "vidola");
-    expect(substitutions.get(new URL(again!).host)).toBeNull();
-    expect(existsSync(join(data, "ressac-sites", "vidola"))).toBe(false);
+    expect(readdirSync(framesKindDir("sites"))).toEqual([]);
   });
 
   it("two serves started back to back (the agent writing several files): the last one works, nothing stale is left", async () => {
     app({ "index.html": "<p>accueil</p>", "img/logo.png": Buffer.from([1]), "a/b/c.js": "1" });
     const [first, second] = await Promise.all([serveHome(data, "vidola"), serveHome(data, "vidola")]);
-    expect(second).toMatch(/^resource:\/\/ressac-site-vidola-[0-9a-f]{32}\/index\.html$/);
+    expect(second).toMatch(new RegExp(`^${framesOrigin()}/sites/vidola-[0-9a-f]{32}/index\\.html$`));
     expect(served(second!)).toEqual(["a/b/c.js", "img/logo.png", "index.html"]);
-    expect(readdirSync(join(data, "ressac-sites", "vidola"))).toEqual([tokenOf(second!)]);
-    const live = [...substitutions].filter(([name, v]) => name.startsWith("ressac-site-vidola-") && v !== null).map(([name]) => name);
-    expect(live).toEqual([new URL(second!).host]);
-    if (first) expect(substitutions.get(new URL(first).host)).toBeNull();
+    expect(readdirSync(framesKindDir("sites"))).toEqual([keyOf(second!)]);
+    expect(first).toBeTruthy();
   });
 
   it("never serves a symbolic link to a file of the Mac", async () => {
@@ -217,7 +214,7 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
     rmSync(join(data, "workspace", "sites", "vidola", "home"), { recursive: true });
     symlinkSync(elsewhere, join(data, "workspace", "sites", "vidola", "home"));
     expect(await serveHome(data, "vidola")).toBeNull();
-    expect(existsSync(join(data, "ressac-sites"))).toBe(false);
+    expect(existsSync(join(data, "chrome"))).toBe(false);
   });
 
   it("refuses a file of 2 MB + 1 and a hidden segment (.cache/x.js, .x)", async () => {
@@ -245,12 +242,12 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
     for (const id of ["Vidola", "../vidola", ""]) expect(await serveHome(data, id)).toBeNull();
   });
 
-  it("keeps the copies inside <dataDir>/ressac-sites: a copies folder that is a link is refused", async () => {
+  it("keeps the copies inside <framesDir>/sites: a sites folder that is a link is refused", async () => {
     app({ "index.html": "<p>accueil</p>" });
     const out = join(root, `copies-dehors-${n}`);
     mkdirSync(out);
-    mkdirSync(join(data, "ressac-sites"));
-    symlinkSync(out, join(data, "ressac-sites", "vidola"));
+    mkdirSync(join(data, "chrome", "ressac-frames"), { recursive: true });
+    symlinkSync(out, framesKindDir("sites"));
     expect(await serveHome(data, "vidola")).toBeNull();
     expect(readdirSync(out)).toEqual([]);
   });

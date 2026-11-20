@@ -1,7 +1,7 @@
 // A site app's home screen and an agent component's page copied out of the workspace, which the agent writes and can
 // swap links into at any time.
 import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { ID_SITE } from "../../../packages/kernel/src/sites/schemas.ts";
 import { HOME_ENTRIES_MAX, HOME_FILE_MAX, HOME_TYPES } from "../shared/sites.ts";
 import { COMPONENT_HTML_MAX, inChild, inFolder, readFiles, type ReadFiles } from "../../../packages/kernel/src/index.ts";
@@ -78,20 +78,23 @@ export async function copyHome(sites: string, id: string, target: string): Promi
   return Array.isArray(files) && files.every((f) => typeof f === "string") ? files : null;
 }
 
-/** The host's `sites.copyHome`: app `id`'s home into its copy `<dataDir>/ressac-sites/<id>/<token>/`, made by the chrome. */
-export function copyHomeRequest(dataDir: string, sites: string, p: { id?: unknown; token?: unknown }): Promise<string[] | null> {
-  if (typeof p?.id !== "string" || !ID_SITE.test(p.id) || typeof p.token !== "string" || !/^[0-9a-f]{32}$/.test(p.token)) return Promise.resolve(null);
-  return copyHome(sites, p.id, join(dataDir, "ressac-sites", p.id, p.token));
+/** The only folders the chrome may ask the host to write copies into: `<profile>/chrome/ressac-frames/<kind>`. */
+const framesKind = (root: unknown, kind: string): root is string => typeof root === "string" && isAbsolute(root) && root.endsWith(`/chrome/ressac-frames/${kind}`);
+
+/** The host's `sites.copyHome`: app `id`'s home into its copy `<root>/<id>-<token>/` (root: the chrome's sites copies folder), made by the chrome. */
+export function copyHomeRequest(root: unknown, sites: string, p: { id?: unknown; token?: unknown }): Promise<string[] | null> {
+  if (!framesKind(root, "sites") || typeof p?.id !== "string" || !ID_SITE.test(p.id) || typeof p.token !== "string" || !/^[0-9a-f]{32}$/.test(p.token)) return Promise.resolve(null);
+  return copyHome(sites, p.id, join(root, `${p.id}-${p.token}`));
 }
 
 /**
  * The host's `actions.copyComponent`: `<components>/<name>/component.html` (COMPONENT_HTML_MAX at most), read by the
- * confined child, into `<dataDir>/ressac-components/<name>/source-<token>.html`, a folder the chrome made; its mtime, or null.
+ * confined child, into `<root>/<name>/source-<token>.html` (root: the chrome's components copies folder), a folder the chrome made; its mtime, or null.
  */
-export async function copyComponentRequest(dataDir: string, components: string, p: { name?: unknown; token?: unknown }): Promise<number | null> {
-  if (typeof p?.name !== "string" || !/^[a-z0-9-]{1,40}$/.test(p.name) || typeof p.token !== "string" || !/^[0-9a-f]{32}$/.test(p.token)) return null;
+export async function copyComponentRequest(root: unknown, components: string, p: { name?: unknown; token?: unknown }): Promise<number | null> {
+  if (!framesKind(root, "components") || typeof p?.name !== "string" || !/^[a-z0-9-]{1,40}$/.test(p.name) || typeof p.token !== "string" || !/^[0-9a-f]{32}$/.test(p.token)) return null;
   const r = await inFolder<ReadFiles>(components, [p.name], readFiles, [["component.html"], COMPONENT_HTML_MAX, COMPONENT_HTML_MAX]);
   if (!r || !("files" in r)) return null;
-  await writeFile(join(dataDir, "ressac-components", p.name, `source-${p.token}.html`), r.files[0]!.text, { flag: "wx" });
+  await writeFile(join(root, p.name, `source-${p.token}.html`), r.files[0]!.text, { flag: "wx" });
   return r.files[0]!.mtime;
 }

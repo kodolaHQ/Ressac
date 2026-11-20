@@ -6,6 +6,7 @@ import type { ShownWidget } from "../shared/api";
 import { displayDenied, CSP_WIDGET, displayServed, copyPath, forgetWidget, prepareWidget, displayUrl } from "../chrome/window/widget-frame";
 import { NETWORK_HINTS_PATTERN } from "../shared/network-hints";
 import { serveDisplays } from "../ui/api";
+import { framesKindDir, framesOrigin } from "../chrome/window/frames-root";
 
 let root: string;
 let widgets: string;
@@ -23,7 +24,7 @@ beforeAll(() => {
   // A Mac file, outside the widgets folder.
   writeFileSync(join(root, "secret.html"), "<title>secret</title>");
   Object.assign(globalThis as any, {
-    PathUtils: { join: (...parts: string[]) => join(...parts) },
+    PathUtils: { join: (...parts: string[]) => join(...parts), get profileDir() { return root; } },
     IOUtils: {
       stat: async (p: string) => ({ lastModified: statSync(p).mtimeMs, size: statSync(p).size }),
       exists: async (p: string) => existsSync(p),
@@ -34,7 +35,7 @@ beforeAll(() => {
       getChildren: async (p: string) => readdirSync(p).map((name) => join(p, name)),
       remove: async (p: string) => rmSync(p, { recursive: true, force: true }),
     },
-    Ci: { nsIFile: "nsIFile", nsIResProtocolHandler: "nsIResProtocolHandler" },
+    Ci: { nsIFile: "nsIFile", nsIResProtocolHandler: "nsIResProtocolHandler", nsISubstitutingProtocolHandler: { ALLOW_CONTENT_ACCESS: 1 } },
     Cc: {
       "@mozilla.org/file/local;1": {
         createInstance: () => {
@@ -56,7 +57,7 @@ beforeAll(() => {
     ChromeUtils: { importESModule: () => ({ FileUtils: { File: class { constructor(public path: string) {} } } }) },
     Services: {
       io: {
-        getProtocolHandler: () => ({ QueryInterface: () => ({ setSubstitution: (name: string, uri: { spec: string } | null) => substitutions.set(name, uri?.spec ?? null) }) }),
+        getProtocolHandler: () => ({ QueryInterface: () => ({ setSubstitutionWithFlags: (name: string, uri: { spec: string }) => substitutions.set(name, uri.spec) }) }),
         newFileURI: (file: { path: string }) => ({ spec: `file://${file.path}` }),
       },
     },
@@ -67,8 +68,9 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("served paths", () => {
   it("names the copy and its resource:// URL by the source's mtime", () => {
-    expect(displayUrl("demo", 1730000000123)).toBe("resource://ressac-widget-demo/display-1730000000123.html");
-    expect(copyPath("/data", "demo", 42)).toBe("/data/ressac-widgets/demo/display-42.html");
+    expect(displayUrl("demo", 1730000000123)).toBe(`${framesOrigin()}/widgets/demo/display-1730000000123.html`);
+    expect(displayUrl("alpha", "1-2").startsWith(`${framesOrigin()}/widgets/alpha/`)).toBe(true);
+    expect(copyPath("demo", 42)).toBe(join(framesKindDir("widgets"), "demo", "display-42.html"));
   });
 });
 
@@ -78,10 +80,10 @@ describe("prepareWidget", () => {
     const mtime = keyOf(source);
     const url = await prepareWidget(root, "demo");
     expect(url).toBe(displayUrl("demo", mtime));
-    const copy = readFileSync(copyPath(root, "demo", mtime), "utf8");
+    const copy = readFileSync(copyPath("demo", mtime), "utf8");
     expect(copy).toContain(`<meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}">`);
     expect(copy).toContain("<title>démo</title>");
-    expect(substitutions.get("ressac-widget-demo")).toBe(`file://${join(root, "ressac-widgets", "demo")}`);
+    expect(substitutions.get(framesOrigin().slice("resource://".length))).toBe(`file://${join(root, "chrome", "ressac-frames")}`);
   });
 
   it("injects DISPLAY_DENIED into the copy of a display with a network hint", async () => {
@@ -90,13 +92,13 @@ describe("prepareWidget", () => {
     writeFileSync(source, '<!doctype html><link rel="preload" href="https://exemple.test/x"><p>jamais</p>');
     const mtime = keyOf(source);
     expect(await prepareWidget(root, "refus")).toBe(displayUrl("refus", mtime));
-    expect(readFileSync(copyPath(root, "refus", mtime), "utf8")).toBe(displayDenied());
+    expect(readFileSync(copyPath("refus", mtime), "utf8")).toBe(displayDenied());
   });
 
   it("does not rewrite the copy when the source's mtime and size do not change", async () => {
     const source = join(widgets, "demo", "display.html");
     const key = keyOf(source);
-    const copy = copyPath(root, "demo", key);
+    const copy = copyPath("demo", key);
     const written = statSync(copy).mtimeMs;
     expect(await prepareWidget(root, "demo")).toBe(displayUrl("demo", key));
     expect(statSync(copy).mtimeMs).toBe(written);
@@ -110,7 +112,7 @@ describe("prepareWidget", () => {
     utimesSync(source, mtime, mtime);
     const after = await prepareWidget(root, "demo");
     expect(after).not.toBe(before);
-    expect(readFileSync(copyPath(root, "demo", keyOf(source)), "utf8")).toContain("même date");
+    expect(readFileSync(copyPath("demo", keyOf(source)), "utf8")).toContain("même date");
   });
 
   it("removes the old copy when the source changes", async () => {
@@ -121,10 +123,10 @@ describe("prepareWidget", () => {
     utimesSync(source, new Date(later), new Date(later));
     const fresh = keyOf(source);
     expect(await prepareWidget(root, "demo")).toBe(displayUrl("demo", fresh));
-    expect(existsSync(copyPath(root, "demo", old))).toBe(false);
-    expect(readFileSync(copyPath(root, "demo", fresh), "utf8")).toContain("<title>nouveau</title>");
+    expect(existsSync(copyPath("demo", old))).toBe(false);
+    expect(readFileSync(copyPath("demo", fresh), "utf8")).toContain("<title>nouveau</title>");
     // The write is atomic: no temporary file remains.
-    expect(readdirSync(join(root, "ressac-widgets", "demo")).some((n) => n.endsWith(".tmp"))).toBe(false);
+    expect(readdirSync(join(framesKindDir("widgets"), "demo")).some((n) => n.endsWith(".tmp"))).toBe(false);
   });
 
   it("refuses a copies folder that is an outgoing link", async () => {
@@ -132,7 +134,7 @@ describe("prepareWidget", () => {
     mkdirSync(outside);
     mkdirSync(join(widgets, "copie-lien"), { recursive: true });
     writeFileSync(join(widgets, "copie-lien", "display.html"), "<title>lien</title>");
-    symlinkSync(outside, join(root, "ressac-widgets", "copie-lien"));
+    symlinkSync(outside, join(framesKindDir("widgets"), "copie-lien"));
     expect(await prepareWidget(root, "copie-lien")).toBeNull();
     expect(readdirSync(outside)).toEqual([]);
   });
@@ -154,14 +156,12 @@ describe("prepareWidget", () => {
 });
 
 describe("forgetWidget", () => {
-  it("removes the substitution and the copies folder", async () => {
+  it("removes the copies folder", async () => {
     mkdirSync(join(widgets, "oublie"), { recursive: true });
     writeFileSync(join(widgets, "oublie", "display.html"), "<title>oublie</title>");
     await prepareWidget(root, "oublie");
-    expect(substitutions.get("ressac-widget-oublie")).toBeTruthy();
     await forgetWidget(root, "oublie");
-    expect(substitutions.get("ressac-widget-oublie")).toBeNull();
-    expect(existsSync(join(root, "ressac-widgets", "oublie"))).toBe(false);
+    expect(existsSync(join(framesKindDir("widgets"), "oublie"))).toBe(false);
   });
 });
 
@@ -170,10 +170,10 @@ describe("serveDisplays", () => {
     const prepares = new Set<string>();
     const forgotten: string[] = [];
     const tool = {
-      prepare: async (_d: string, id: string) => `resource://ressac-widget-${id}/display-1.html`,
+      prepare: async (_d: string, id: string) => `resource://ressac-frames-0123456789abcdef/widgets/${id}/display-1.html`,
       forget: async (_d: string, id: string) => void forgotten.push(id),
     };
-    const w = (id: string) => ({ id, src: `resource://ressac-widget-${id}/display-1.html` }) as unknown as ShownWidget;
+    const w = (id: string) => ({ id, src: `resource://ressac-frames-0123456789abcdef/widgets/${id}/display-1.html` }) as unknown as ShownWidget;
     await serveDisplays([w("a"), w("b")], "/data", prepares, tool);
     expect(prepares).toEqual(new Set(["a", "b"]));
     expect(forgotten).toEqual([]);

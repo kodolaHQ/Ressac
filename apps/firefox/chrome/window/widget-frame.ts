@@ -1,5 +1,6 @@
 import { format } from "../../shared/i18n";
 import { NETWORK_HINTS_PATTERN, containsNetworkHint } from "../../shared/network-hints";
+import { ensureFramesSubstitution, framesKindDir, framesOrigin } from "./frames-root";
 
 /**
  * The widgets' CSP: a resource:// file cannot carry a response header, so the CSP is
@@ -12,38 +13,32 @@ export const displayDenied = (): string =>
   `<!doctype html><meta charset="utf-8"><p style="font: 13px system-ui; color-scheme: light dark; color: light-dark(#c9473e, #e5736b)">${format((typeof Services === "undefined" ? undefined : Services.locale?.requestedLocales[0]) ?? "en", "chrome-display-denied")}</p>`;
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
-const PREFIX = "ressac-widget-";
-
-/** The name of a widget's resource:// substitution: `ressac-widget-<id>`. */
-function substitutionName(id: string): string {
-  return `${PREFIX}${id}`;
-}
 
 /** The frame's URL: the sanitized copy, dated with the source's mtime (a new mtime reloads the frame). */
 export function displayUrl(id: string, mtime: number | string): string {
-  return `resource://${PREFIX}${id}/display-${mtime}.html`;
+  return `${framesOrigin()}/widgets/${id}/display-${mtime}.html`;
 }
 
-/** The folder of a widget's copies: `<dataDir>/ressac-widgets/<id>/`. */
-function copiesFolder(dataDir: string, id: string): string {
-  return PathUtils.join(dataDir, "ressac-widgets", id);
+/** The folder of a widget's copies: `<framesDir>/widgets/<id>/`. */
+function copiesFolder(id: string): string {
+  return PathUtils.join(framesKindDir("widgets"), id);
 }
 
 /**
- * The copies folder, created then confined to `<dataDir>/ressac-widgets`: a copies folder that is a symbolic
+ * The copies folder, created then confined to `<framesDir>/widgets`: a copies folder that is a symbolic
  * link is refused. Returns its real path, where the copies are written.
  */
-async function confinedCopiesFolder(dataDir: string, id: string): Promise<string | null> {
-  const folder = copiesFolder(dataDir, id);
+async function confinedCopiesFolder(id: string): Promise<string | null> {
+  const folder = copiesFolder(id);
   await IOUtils.makeDirectory(folder, { createAncestors: true, ignoreExisting: true });
-  const root = realPath(PathUtils.join(dataDir, "ressac-widgets"));
+  const root = realPath(framesKindDir("widgets"));
   const real = realPath(folder);
   return root && real && real.startsWith(root + "/") ? real : null;
 }
 
 /** The sanitized copy of a display: `<copiesFolder>/display-<mtime>.html`. */
-export function copyPath(dataDir: string, id: string, mtime: number | string): string {
-  return PathUtils.join(copiesFolder(dataDir, id), `display-${mtime}.html`);
+export function copyPath(id: string, mtime: number | string): string {
+  return PathUtils.join(copiesFolder(id), `display-${mtime}.html`);
 }
 
 /**
@@ -239,18 +234,9 @@ export function displayServed(html: string, csp = CSP_WIDGET, extra = ""): strin
   return `${prefix}${meta}${GUARD_SCRIPT}${extra}${html.slice(prefix.length)}`;
 }
 
-/** The widget's resource:// substitution, or `null` to remove it. */
-function substitute(id: string, folder: string | null): void {
-  const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-  Services.io
-    .getProtocolHandler("resource")
-    .QueryInterface(Ci.nsIResProtocolHandler)
-    .setSubstitution(substitutionName(id), folder ? Services.io.newFileURI(new FileUtils.File(folder)) : null);
-}
-
 /**
  * Prepares a widget's display: writes its sanitized copy if the source's mtime changed, then sets the
- * `resource://ressac-widget-<id>/` substitution. Returns the frame's URL, or null if the display is absent or leaves its
+ * shared frames substitution. Returns the frame's URL, or null if the display is absent or leaves its
  * folder.
  */
 export async function prepareWidget(dataDir: string, id: string): Promise<string | null> {
@@ -264,11 +250,10 @@ export async function prepareWidget(dataDir: string, id: string): Promise<string
   } catch {
     return null;
   }
-  const folder = copiesFolder(dataDir, id);
   try {
-    const real = await confinedCopiesFolder(dataDir, id);
+    const real = await confinedCopiesFolder(id);
     if (!real) {
-      console.warn(`[widget] copies folder of ${id} outside <dataDir>/ressac-widgets: refused`);
+      console.warn(`[widget] copies folder of ${id} outside the widgets copies folder: refused`);
       return null;
     }
     const copy = PathUtils.join(real, `display-${mtime}.html`);
@@ -286,7 +271,7 @@ export async function prepareWidget(dataDir: string, id: string): Promise<string
         if (old !== copy && /display-.*\.html$/.test(old)) await IOUtils.remove(old, { ignoreAbsent: true });
       }
     }
-    substitute(id, folder);
+    ensureFramesSubstitution();
   } catch (e) {
     console.error(`[widget] copy of ${id} failed:`, e);
     return null;
@@ -294,13 +279,8 @@ export async function prepareWidget(dataDir: string, id: string): Promise<string
   return displayUrl(id, mtime);
 }
 
-/** The widget no longer exists: removes its substitution and its copies folder (best effort). */
-export async function forgetWidget(dataDir: string, id: string): Promise<void> {
+/** The widget no longer exists: removes its copies folder (best effort). */
+export async function forgetWidget(_dataDir: string, id: string): Promise<void> {
   if (!ID_WIDGET.test(id)) return;
-  try {
-    substitute(id, null);
-  } catch {
-    // nothing to remove
-  }
-  await IOUtils.remove(copiesFolder(dataDir, id), { recursive: true, ignoreAbsent: true }).catch(() => {});
+  await IOUtils.remove(copiesFolder(id), { recursive: true, ignoreAbsent: true }).catch(() => {});
 }

@@ -17,6 +17,7 @@ import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDesign, type DesignService } from "./design";
 import { createOverlays } from "../window/design-overlays";
+import { framesKindDir, wipeFrames } from "../window/frames-root";
 import { neutralizeFirefoxWindow } from "../window/firefox-items";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
@@ -224,13 +225,11 @@ async function start(): Promise<RessacStore> {
   // and refuse to load: sites get the exact Firefox user agent of this engine.
   const http = Cc["@mozilla.org/network/protocol;1?name=http"].getService(Ci.nsIHttpProtocolHandler);
   Services.prefs.getDefaultBranch("").setCharPref("general.useragent.override", http.userAgent.replace(/ Ressac\/\S+/, ""));
-  // The widget displays' copies are a disposable cache: clearing them at startup never serves a copy made by an older
-  // sanitizer (CSP_WIDGET, containsNetworkHint).
-  await IOUtils.remove(PathUtils.join(dataDir, "ressac-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies not erasedes :", e));
-  // The site apps' served home copies too (the same sanitizer).
-  await IOUtils.remove(PathUtils.join(dataDir, "ressac-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies not erased :", e));
-  // The agent components' copies too.
-  await IOUtils.remove(PathUtils.join(dataDir, "ressac-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies not erfacées :", e));
+  // The frames' copies (widgets, site homes, components) are a disposable cache: wiped at startup, so none made by an
+  // older sanitizer (CSP_WIDGET, containsNetworkHint) is served. Before any copy is served.
+  await wipeFrames().catch((e) => console.warn("[frames] copies not erased:", e));
+  // Where older versions kept them.
+  for (const old of ["ressac-widgets", "ressac-sites", "ressac-components"]) await IOUtils.remove(PathUtils.join(dataDir, old), { recursive: true, ignoreAbsent: true }).catch(() => {});
   let setAside: string | null = null;
   const smallMac = isSmallMac(Services.sysinfo.getProperty("memsize"), testEnv("RESSAC_TEST_SMALL_MAC"));
   const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => {
@@ -628,7 +627,7 @@ async function start(): Promise<RessacStore> {
     widgetGestures: widgetGestures,
     readPage: (url, o, signal) => readPage(store, url, o, signal),
     readHtml: (url, o, signal) => readHtml(store, url, o, signal),
-    actionMedia: { image: actionImage, serve: (name) => serveComponent(dataDir, name, (name, token) => agent.request<number | null>("actions.copyComponent", { name, token })), release: (name) => releaseComponent(dataDir, name) },
+    actionMedia: { image: actionImage, serve: (name) => serveComponent(dataDir, name, (name, token) => agent.request<number | null>("actions.copyComponent", { root: framesKindDir("components"), name, token })), release: (name) => releaseComponent(dataDir, name) },
   };
 }
 

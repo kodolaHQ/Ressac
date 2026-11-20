@@ -18,7 +18,8 @@ import { apps } from "./apps";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
 import { frameError, frameInjection, frameMemory, framePosition, frameResume, inheritedProfile, openedFromTab, siteOfFrame, type FrameSite } from "./site-frames";
-import { forgetHome, serveHome, servedHost, siteImage } from "./site-home";
+import { forgetHome, serveHome, servedKey, siteImage } from "./site-home";
+import { framesHost, framesKindDir } from "../window/frames-root";
 import { cutFrameNetwork } from "../window/frame-network";
 import { testEnv } from "../test-env";
 
@@ -170,7 +171,7 @@ const served = new Map<string, Promise<string | null>>();
 const servedHome = (id: string): Promise<string | null> => {
   let p = served.get(id);
   if (p) return p;
-  const serving = serveHome(dataDir, id, (id, token) => (host ? host.request<string[] | null>("sites.copyHome", { id, token }) : Promise.resolve(null)));
+  const serving = serveHome(dataDir, id, (id, token) => (host ? host.request<string[] | null>("sites.copyHome", { root: framesKindDir("sites"), id, token }) : Promise.resolve(null)));
   served.set(id, serving);
   // A refusal (host restarting, home half written) is not kept: the next homeUrl tries again.
   void serving.then((u) => u === null && served.get(id) === serving && served.delete(id));
@@ -370,7 +371,8 @@ function homePage(id: string, uri: { spec: string } | null): boolean {
   if (uri?.spec === "about:blank") return true;
   try {
     const u = new URL(uri?.spec ?? "");
-    return u.protocol === "resource:" && u.host === servedHost(id) && /\.html$/i.test(u.pathname);
+    const key = servedKey(id);
+    return u.protocol === "resource:" && u.host === framesHost() && !!key && u.pathname.startsWith(`/sites/${key}/`) && /\.html$/i.test(u.pathname);
   } catch {
     return false;
   }

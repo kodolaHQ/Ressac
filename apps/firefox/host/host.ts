@@ -844,7 +844,7 @@ const rpc = createRpc({
     "actions.prepare": (p: { id?: unknown; input?: unknown }) =>
       idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success ? actions.prepare(p.id, (p.input ?? null) as string | null) : { ok: false, error: ACTION_UNKNOWN(hostLocale()) },
     "actions.name": (p: { id?: unknown }) => (idAction(p?.id) ? actions.name(p.id) : null),
-    "actions.copyComponent": (p: { name?: unknown; token?: unknown }) => copyComponentRequest(dataDir, paths.components, p),
+    "actions.copyComponent": (p: { root?: unknown; name?: unknown; token?: unknown }) => copyComponentRequest(p?.root, paths.components, p),
     "actions.launch": (p: { id?: unknown; input?: unknown }) =>
       idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success
         ? actions.launch(p.id, (p.input ?? null) as string | null)
@@ -893,7 +893,7 @@ const rpc = createRpc({
     },
     "sites.position": (p: unknown) => sites.position(p),
     "sites.resume": (p: unknown) => sites.resume(p),
-    "sites.copyHome": (p: { id?: unknown; token?: unknown }) => copyHomeRequest(dataDir, paths.sites, p),
+    "sites.copyHome": (p: { root?: unknown; id?: unknown; token?: unknown }) => copyHomeRequest(p?.root, paths.sites, p),
     "sites.lookup": (p: { id?: unknown; url?: unknown }) => {
       if (typeof p?.id === "string" && (p.url === null || typeof p.url === "string")) return sites.lookupAddress(p.id, p.url);
     },
