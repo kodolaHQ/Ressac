@@ -7,7 +7,7 @@ import { testActor } from "./agent-extensions";
 import { waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, siteHomeBrowser, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
 // Plan 32 Task 2: the « Autoriser les retouches » grant card. No no-drag buttons:
@@ -317,20 +317,11 @@ describe("home frame", () => {
     // The home is not mounted while the card shows.
     expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-home-frame"]') ? 1 : 0;`)).toBe(0);
     await click("refuse-site");
-    const home = (body: string) =>
-      inSiteBar<unknown>(
-        m,
-        "vidola",
-        `const home = doc.querySelector('[data-testid="site-home-frame"]');
-         const fw = home?.contentDocument?.defaultView?.wrappedJSObject;
-         if (!fw || !String(home.contentDocument.documentURI).startsWith("resource://ressac-site-")) return null;
-         ${body}`,
-        [hash],
-      );
+    const home = (body: string) => inHomeFrame<unknown>(m, siteHomeBrowser("vidola"), body, [hash]);
     await expect.poll(() => home("return 1;"), { timeout: 15_000 }).toBe(1);
     // Posted until the home's listener is there.
     await expect
-      .poll(async () => (await home(`home.contentWindow.postMessage({ essai: "attaque", empreinte: arguments[0] }, "*"); return fw.attaque ? JSON.parse(JSON.stringify(fw.attaque)) : null;`)) ?? null, { timeout: 15_000 })
+      .poll(async () => (await home(`window.postMessage({ essai: "attaque", empreinte: args[0] }, "*"); return fw.attaque ? JSON.parse(JSON.stringify(fw.attaque)) : null;`)) ?? null, { timeout: 15_000 })
       .not.toBeNull();
     const r = (await home("return JSON.parse(JSON.stringify(fw.attaque));")) as string[];
     expect(r.every((x) => x === "undefined" || x === "blocked")).toBe(true);

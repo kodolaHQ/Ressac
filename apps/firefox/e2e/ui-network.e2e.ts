@@ -8,7 +8,7 @@ import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
-import { grantSite, inSiteView, siteWindowExpr, writeSite } from "./sites";
+import { grantSite, inHomeFrame, inSiteView, siteHomeBrowser, siteWindowExpr, writeSite } from "./sites";
 import { click, inFrame } from "./ui";
 import { consoleWith, DATA_PNG, NET_PREFS, netEnv, resolvedNames, rtcPage, SFX, startNetWitness, testPages, uiRefusals, widgetFiles } from "./ui-network";
 
@@ -526,17 +526,17 @@ describe("the UI's network", () => {
     await waitFor(m, `const b = ${appWindowExpr("essai")}?.gBrowser.selectedBrowser; return b && !b.webProgress.isLoadingDocument ? b.currentURI.spec : "";`, (v: string) => v.includes(`localhost:${port}`), 20_000);
     expect(await inAppView<number>(m, "essai", "return fetch('/').then((r) => r.status)")).toBe(200);
     // The opaque home of netsite-accueil is the UI's: its image is refused.
-    const home = `${siteWindowExpr("netsite-accueil")}?.document.getElementById("ressac-site-bar")?.contentDocument?.querySelector('[data-testid="site-home-frame"]')?.contentDocument`;
-    await expect.poll(() => m.execute(`return ${home}?.getElementById("h")?.textContent ?? null;`), { timeout: 15_000 }).toBe("accueil");
-    await m.execute(`const d = ${home}; const i = d.createElement("img"); i.src = arguments[0]; d.body.append(i);`, [`http://${host("netsite-img")}/x.png`]);
+    const home = siteHomeBrowser("netsite-accueil");
+    await expect.poll(() => inHomeFrame(m, home, `return document.getElementById("h")?.textContent ?? null;`), { timeout: 15_000 }).toBe("accueil");
+    await inHomeFrame(m, home, `const i = document.createElement("img"); i.src = args[0]; document.body.append(i); return 1;`, [`http://${host("netsite-img")}/x.png`]);
     await sleep(3000);
     expect(net.hits.filter((h) => h.label === "netsite-img")).toEqual([]);
     expect((await names()).filter((n) => n === "netsite-img")).toEqual([]);
     const refused = (await uiRefusals(m)).slice(refused0);
-    // Measured: the home's own CSP (img-src data: resource://ressac-site-…) refuses it before the content policy is asked.
-    expect((await consoleWith(m, "netsite-img.")).join("\n")).toMatch(/Content-Security-Policy.*netsite-img\..*img-src data: resource:\/\/ressac-site-netsite-accueil-/);
-    // Behind the CSP, the net would refuse it too: the predicate judges the home the UI's.
-    expect(await m.execute(`return ChromeUtils.importESModule("${STORE}").uiNetwork.isUiDocument(${home});`)).toBe(true);
+    // Measured: the home's own CSP (img-src data: <frames origin>/sites/<copy>/) refuses it before the content policy is asked.
+    expect((await consoleWith(m, "netsite-img.")).join("\n")).toMatch(/Content-Security-Policy.*netsite-img\..*img-src data: resource:\/\/ressac-frames-[0-9a-f]{16}\/sites\/netsite-accueil-/);
+    // Behind the CSP, the frames' process and the parent's observer refuse it too (Task 3): the home is a frame browser.
+    expect(await m.execute(`return (${home}).remoteType;`)).toMatch(/^webIsolated=resource:\/\/ressac-frames-/);
     expect(refused.filter((r) => /netsite(-accueil)?\.localhost|\/page|localhost:/.test(r) || r.includes(`:${port}`))).toEqual([]);
     await callTool(dataDir, "stop_app", { folder: "essai" }).catch(() => {});
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; for (const id of store.sites.openIds()) await store.sites.close(id); })();`);

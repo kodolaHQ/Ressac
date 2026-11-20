@@ -7,7 +7,7 @@ import { testActor } from "./agent-extensions";
 import { waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { SITE_HOME, acceptHomeCard, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { HOME_COPY, SITE_HOME, acceptHomeCard, homePoint, inBrowser, inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, siteHomeBrowser, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
 // Plan 31 Task 5: the site app's home screen and its messages. The home is the test
@@ -81,23 +81,23 @@ const viewState = (id: string) =>
      return { url: spec === "about:blank" ? "" : spec, visible: !win.document.documentElement.hasAttribute("ressac-site-home") };`,
   );
 
-/** Chrome body with `home` = the home's iframe in the bar, `fw` = its page window (Xrays waived): `null` until it shows its home. */
-const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
-  inSiteBar<T>(
-    m,
-    id,
-    `const home = doc.querySelector('[data-testid="site-home-frame"]');
-     const fw = home?.contentDocument?.defaultView?.wrappedJSObject;
-     if (!fw || !String(home.contentDocument.documentURI).startsWith("resource://ressac-site-")) return null;
-     ${body}`,
-    args,
-  );
+/** Async body run in the home page of app `id` (`fw` = its window, Xrays waived; `args`): `null` until it shows its home. */
+const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) => inHomeFrame<T>(m, siteHomeBrowser(id), body, args);
+/** The home frame's document address (chrome side), or null. */
+const homeUri = (id: string) => m.execute<string | null>(`return (${siteHomeBrowser(id)})?.browsingContext?.currentWindowGlobal?.documentURI?.spec ?? null;`);
 /** What the home received (its `recus`), once it has received something. */
 const received = (id: string) => inHome<{ type: string; n?: number; data?: string | null; domain?: string }[]>(id, "return fw.recus ? JSON.parse(JSON.stringify(fw.recus)) : null;");
 /** Posts a command to the home's probe, from the chrome (as the bar's own messages go). */
-const probe = (id: string, cmd: object) => inHome(id, `home.contentWindow.postMessage(arguments[0], "*"); return true;`, [cmd]);
+const probe = (id: string, cmd: object) => inHome(id, `window.postMessage(args[0], "*"); return true;`, [cmd]);
 /** The home sends `m` to the bar (as the agent's code would). */
 const ask = (id: string, msg: object) => probe(id, { attempt: "demander", m: msg });
+
+/** The served home copy of app « autre » (opened for it): another app's home, for navigations that must be refused. */
+async function otherHome(): Promise<string> {
+  await openSite("autre");
+  await expect.poll(() => homeUri("autre"), { timeout: 15_000 }).toMatch(HOME_COPY);
+  return (await homeUri("autre"))!;
+}
 
 /** Waits for the home to be loaded and to have received something; returns once so. */
 async function homeReady(id: string): Promise<void> {
@@ -109,7 +109,7 @@ async function homeReady(id: string): Promise<void> {
  * waits on the « Ouvrir l'appli ? » card over the home: with `accept` (default), « Ouvrir » once it shows (`wait` ms at most).
  */
 async function clickOpen(id: string, address: string, o: { accept?: boolean; wait?: number } = {}): Promise<void> {
-  await inHome(id, "fw.adresse = arguments[0]; return true;", [address]);
+  await inHome(id, "fw.adresse = args[0]; return true;", [address]);
   await realClick(id, "#ouvrir");
   if (o.accept !== false) await acceptHomeCard(m, id, o.wait ?? 3000);
 }
@@ -127,13 +127,7 @@ async function realClick(id: string, selector: string): Promise<void> {
       if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("ressac-site");`)) === id)) break;
     }
     if (!found) throw new Error(`no window for ${id}`);
-    const [x, y] = await m.execute<[number, number]>(
-      `const bar = document.getElementById("ressac-site-bar");
-       const home = bar.contentDocument.querySelector('[data-testid="site-home-frame"]');
-       const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
-       return [Math.round(b.left + h.left + e.left + e.width / 2), Math.round(b.top + h.top + e.top + e.height / 2)];`,
-      [selector],
-    );
+    const [x, y] = await homePoint(m, siteHomeBrowser(id), selector);
     await m.command("WebDriver:PerformActions", {
       actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", origin: "viewport", x, y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }] }],
     });
@@ -239,11 +233,18 @@ describe("site app home screen", () => {
 
   it("the home gets the memory written by the test (encours.the-bear) and shows it; it has the widgets' guard", async () => {
     await openHome();
-    const frame = await inHome<{ sandbox: string; src: string }>("vidola", `return { sandbox: home.getAttribute("sandbox"), src: home.src };`);
-    expect(frame.sandbox).toBe("allow-scripts");
-    expect(frame.src).toMatch(/^resource:\/\/ressac-site-vidola-[0-9a-f]{32}\/index\.html$/);
-    await expect.poll(() => inHome("vidola", `return home.contentDocument.getElementById("series").textContent;`)).toBe("encours.the-bear : The Bear /serie/the-bear?e=4");
-    expect(await inHome("vidola", `return home.contentDocument.getElementById("domaine").textContent;`)).toBe("vidola-a.localhost");
+    // Out of the parent process, in the frames' process, sandboxed like <iframe sandbox="allow-scripts">.
+    const frame = await m.execute<{ pid: number; parent: number; type: string; isNull: boolean; flags: number; uri: string }>(
+      `const b = ${siteHomeBrowser("vidola")}, g = b.browsingContext.currentWindowGlobal;
+       return { pid: g.osPid, parent: Services.appinfo.processID, type: b.remoteType, isNull: g.documentPrincipal.isNullPrincipal, flags: b.browsingContext.sandboxFlags, uri: g.documentURI.spec };`,
+    );
+    expect(frame.pid).not.toBe(frame.parent);
+    expect(frame.type).toMatch(/^webIsolated=resource:\/\/ressac-frames-[0-9a-f]{16}$/);
+    expect(frame.isNull).toBe(true);
+    expect(frame.flags).toBe(1048191);
+    expect(frame.uri).toMatch(/^resource:\/\/ressac-frames-[0-9a-f]{16}\/sites\/vidola-[0-9a-f]+\/index\.html$/);
+    await expect.poll(() => inHome("vidola", `return document.getElementById("series").textContent;`)).toBe("encours.the-bear : The Bear /serie/the-bear?e=4");
+    expect(await inHome("vidola", `return document.getElementById("domaine").textContent;`)).toBe("vidola-a.localhost");
     // Opaque origin, the guard in place (no WebRTC, WebTransport nor XSLT), no Ressac API.
     expect(await inHome("vidola", `return [fw.origin, typeof fw.RTCPeerConnection, typeof fw.WebTransport, typeof fw.XSLTProcessor, typeof fw.ressac];`)).toEqual(["null", "undefined", "undefined", "undefined", "undefined"]);
     expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-enter"]').textContent;`)).toBe("Entrer dans le site");
@@ -312,12 +313,11 @@ describe("site app home screen", () => {
     // The frame navigating to the web, then to another app's home: refused.
     await probe("vidola", { attempt: "aller", url: spy("nav") });
     await sleep(500);
-    await probe("vidola", { attempt: "aller", url: "resource://ressac-site-autre/1/index.html" }).catch(() => {});
+    await probe("vidola", { attempt: "aller", url: await otherHome() }).catch(() => {});
     await sleep(800);
     expect(server.requests).toEqual([]);
-    const urls = await inSiteBar<string[]>(m, "vidola", `return [...doc.querySelectorAll("iframe")].map((f) => String(f.contentDocument?.documentURI ?? ""));`);
-    const own = `resource://${new URL(await inHome<string>("vidola", "return home.src;")).host}`;
-    expect(urls.every((u) => u.startsWith(`${own}/`)), urls.join(" ")).toBe(true);
+    expect(await homeUri("vidola")).toMatch(HOME_COPY);
+    expect(await homeUri("vidola")).toContain("/sites/vidola-");
   });
 
   it("a script-bearing SVG or XHTML file, or any page that is not one of its .html, never loads in the home's frame: no request", async () => {
@@ -330,7 +330,7 @@ describe("site app home screen", () => {
     };
     // The home's own code: Firefox refuses its navigations to resource: (« Access … from script denied »), a real
     // click on a link and a <meta refresh> do nothing (measured).
-    for (const target of ["x.svg", "x.xhtml", "img/logo.png", "resource://ressac-site-autre/1/index.html"]) {
+    for (const target of ["x.svg", "x.xhtml", "img/logo.png", await otherHome()]) {
       await probe("vidola", { attempt: "aller", url: target });
       await same(`aller ${target}`);
     }
@@ -340,11 +340,14 @@ describe("site app home screen", () => {
     await sleep(200);
     await realClick("vidola", "#lien");
     await same("lien");
-    // Any other load of the frame (here put there by the chrome) is cancelled before it starts.
+    // Any other load of the frame (here put there by the chrome) is stopped as it starts (guardHome): the same document.
     for (const target of ["x.svg", "img/logo.png"]) {
-      await inSiteBar(m, "vidola", `const h = doc.querySelector('[data-testid="site-home-frame"]'); h.contentWindow.location.href = new URL(arguments[0], h.src).href; return 1;`, [target]);
+      await m.execute(`const b = ${siteHomeBrowser("vidola")}; b.loadURI(Services.io.newURI(new URL(arguments[0], b.currentURI.spec).href), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() }); return 1;`, [target]);
       await same(`chrome ${target}`);
     }
+    // about:blank, the one other page it lets load: sent back to its own page (a new document), which gets its memory again.
+    await probe("vidola", { attempt: "aller", url: "about:blank" });
+    await expect.poll(() => inHome("vidola", "return fw.marque === undefined && fw.recus.some((x) => x.type === 'memory');"), { timeout: 10_000 }).toBe(true);
     expect(server.requests).toEqual([]);
   });
 
@@ -377,7 +380,7 @@ describe("site app home screen", () => {
     await barClick("vidola", "site-home");
     await expect.poll(async () => (await viewState("vidola"))?.visible).toBe(false);
     // The home comes back (a new frame) and reads the memory again.
-    await expect.poll(() => inHome("vidola", `return home.contentDocument.getElementById("series").textContent;`)).toContain("The Bear");
+    await expect.poll(() => inHome("vidola", `return document.getElementById("series").textContent;`)).toContain("The Bear");
     const before = server.requests.length;
     await barClick("vidola", "site-enter");
     await expect.poll(async () => (await viewState("vidola"))?.visible).toBe(true);
@@ -390,7 +393,7 @@ describe("site app home screen", () => {
     await openHome("auto");
     // Without a gesture, even asked again by the home's code (a click it simulates included): nothing opens.
     await ask("auto", { type: "open", url: "/serie/the-bear?e=9" });
-    await inHome("auto", `home.contentDocument.getElementById("ouvrir").click(); return true;`);
+    await inHome("auto", `document.getElementById("ouvrir").click(); return true;`);
     await sleep(1500);
     expect(await viewState("auto")).toEqual({ url: "", visible: false });
     expect(server.requests).toEqual([]);
@@ -403,16 +406,19 @@ describe("site app home screen", () => {
     expect(await viewState("auto")).toEqual({ visible: false, url: url("/serie/the-bear?e=4") });
   });
 
-  it("a web page in a tab loads no home file: neither the guessable forms nor the served URL", async () => {
+  it("a web page in a tab loads no home file: neither the guessable forms nor the served copy under another token", async () => {
     await openHome();
-    const real = `resource://${new URL(await inHome<string>("vidola", "return home.src;")).host}`;
+    // The frames' substitution is open to content (remote frames need it): only its launch token hides it (spec constraint 3).
+    const real = (await homeUri("vidola"))!.replace(/\/index\.html$/, "");
+    const token = real.match(/ressac-frames-([0-9a-f]{16})/)![1]!;
+    const other = real.replace(token, token.replace(/^./, (c) => (c === "0" ? "1" : "0")));
     server.define("pub.localhost", "/sonde", "<title>sonde</title><p>sonde</p>");
     const probeFn = url("/sonde", "pub.localhost");
     await inStore(`store.dispatch({ type: "openTab", windowId: store.state.windows[0].id, url: arguments[0], activate: true });`, [probeFn]);
     await expect.poll(() => m.execute<boolean>(`const b = gBrowser.selectedBrowser; return b.currentURI.spec === arguments[0] && !b.webProgress.isLoadingDocument;`, [probeFn]), { timeout: 15_000 }).toBe(true);
     // The former forms (the id as host, a counter), the substitution root, and the copy actually served.
-    const guessable = ["resource://ressac-site-vidola", "resource://ressac-site-vidola/1", "resource://ressac-site-vidola/2"];
-    const urls = [...guessable, real].flatMap((b) => [`${b}/`, `${b}/index.html`, `${b}/app.js`, `${b}/style.css`, `${b}/img/logo.png`]);
+    const guessable = ["resource://ressac-site-vidola", "resource://ressac-frames", "resource://ressac-frames/sites"];
+    const urls = [...guessable, other].flatMap((b) => [`${b}/`, `${b}/index.html`, `${b}/app.js`, `${b}/style.css`, `${b}/img/logo.png`]);
     const results = await inBrowser<Record<string, string>>(
       m,
       "gBrowser.selectedBrowser",

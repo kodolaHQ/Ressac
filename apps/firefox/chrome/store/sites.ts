@@ -19,7 +19,8 @@ import { isSiteContainer, removeSiteContainer, siteContainer } from "./container
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
 import { frameError, frameInjection, frameMemory, framePosition, frameResume, inheritedProfile, openedFromTab, siteOfFrame, type FrameSite } from "./site-frames";
 import { forgetHome, serveHome, servedKey, siteImage } from "./site-home";
-import { framesHost, framesKindDir } from "../window/frames-root";
+import { framesHost, framesKindDir, framesOrigin } from "../window/frames-root";
+import { loadFrame } from "../window/remote-frame";
 import { cutFrameNetwork } from "../window/frame-network";
 import { testEnv } from "../test-env";
 
@@ -71,8 +72,8 @@ export interface SiteWindowController {
   homeUrl(): Promise<string | null>;
   /** A real (isTrusted) press in the home's frame. */
   homeGesture(): void;
-  /** Watches the home's frame: any document load in it other than a page of the served copy is cancelled before it starts. */
-  guardHome(frame: HTMLIFrameElement): void;
+  /** Watches the home's frame <browser>: any document load in it other than a page of the served copy is stopped as it starts. */
+  guardHome(browser: Element): void;
   /** An address the home asked for that is not the accepted start: shown on the « Ouvrir l'appli ? » card over the home, or null. */
   homeAsk(): SiteStartRequest | null;
   /** The card's choice: « Ouvrir » loads the address it showed (`hash`), « Ne pas ouvrir » stays on the home. */
@@ -510,20 +511,42 @@ function listenMemory(id: string, cb: (m: MessageToHome & { type: "memory" }) =>
   return () => void set.delete(cb);
 }
 
-/** Watches a home's frame: any document load in it other than a page of app `id`'s served copy is cancelled before it starts. */
-function guardHome(id: string, frame: HTMLIFrameElement): void {
-  const progress = (frame as any).browsingContext?.docShell?.QueryInterface(Ci.nsIWebProgress);
+/**
+ * Watches a home's remote frame <browser>: any document load in it other than a page of app `id`'s served copy is
+ * stopped as it starts. A load the page starts reaches the parent as a RemoteWebProgressRequest, whose cancel is not
+ * implemented: stopping the browsing context cancels its DocumentLoadListener instead (measured: the document stays).
+ * Should the stop land after another document committed (a stopped document never sends `loaded`), the copy loads
+ * again. about:blank is sent back by the frame itself (ui/SiteHomeFrame.svelte).
+ */
+function guardHome(id: string, browser: Element): void {
+  const bc = (browser as any).browsingContext;
+  const progress = bc?.webProgress;
   if (!progress) return;
   const L = Ci.nsIWebProgressListener;
+  const back = () => {
+    bc.stop(Ci.nsIWebNavigation.STOP_ALL);
+    const key = servedKey(id);
+    if (key && browser.isConnected) loadFrame(browser, `${framesOrigin()}/sites/${key}/index.html`);
+  };
   const listener = {
     QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
     onStateChange(_progress: unknown, request: any, flags: number) {
-      if (flags & L.STATE_START && flags & L.STATE_IS_DOCUMENT && !homePage(id, request.QueryInterface(Ci.nsIChannel).originalURI)) request.cancel(Cr.NS_BINDING_ABORTED);
+      if (!(flags & L.STATE_START && flags & L.STATE_IS_DOCUMENT)) return;
+      let uri: { spec: string } | null = null;
+      try {
+        uri = request.QueryInterface(Ci.nsIChannel).originalURI;
+      } catch {
+        // Not a channel: unknown, so stopped.
+      }
+      if (!homePage(id, uri)) bc.stop(Ci.nsIWebNavigation.STOP_ALL);
+    },
+    onLocationChange(_progress: unknown, _request: unknown, location: { spec: string }) {
+      if (!homePage(id, location)) back();
     },
   };
-  progress.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
-  // Kept on the frame, and gone with it (with its docShell): the docShell holds its progress listeners weakly.
-  (frame as any).ressacHomeGuard = listener;
+  progress.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT | Ci.nsIWebProgress.NOTIFY_LOCATION);
+  // Kept on the browser, and gone with it: the web progress holds its listeners weakly.
+  (browser as any).ressacHomeGuard = listener;
 }
 
 const TAB_HOME_SRC = "chrome://browser/content/ressac/sidebar.html?tabhome";
@@ -606,7 +629,7 @@ function tabHomeController(browser: any, t: TabSite): TabHomeController {
     homeGesture() {
       if (shown()) tabGestures.gesture(browser.browserId, t.id);
     },
-    guardHome: (frame) => guardHome(t.id, frame),
+    guardHome: (browser) => guardHome(t.id, browser),
     homeAsk: () => (shown() ? (t.homeAsked ?? null) : null),
     answerHomeAsk(yes, hash) {
       const a = t.homeAsked;
@@ -688,7 +711,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
       broadcast(s);
       return true;
     },
-    guardHome: (frame) => guardHome(id, frame),
+    guardHome: (browser) => guardHome(id, browser),
     homeAsk: () => (open.get(id) === s && s.viewState === "home" ? (s.homeAsked ?? null) : null),
     answerHomeAsk(yes, hash) {
       const a = s.homeAsked;

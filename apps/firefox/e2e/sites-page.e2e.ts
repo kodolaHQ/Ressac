@@ -9,7 +9,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
-import { SITE_HOME, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite, type SiteTest } from "./sites";
+import { SITE_HOME, inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, siteHomeBrowser, siteWindowCount, startSitesServer, writeSite, type SiteTest } from "./sites";
 import { click, inUi, missingApi, waitUi, agentPanelReady } from "./ui";
 
 // Plan 31 Task 6: the Applications page's « Sites » section and the agent's site
@@ -91,14 +91,7 @@ const cookies = (id: string) =>
   );
 
 /** The home's `#series` text, or null while it is not shown. */
-const series = (id: string) =>
-  inSiteBar<string | null>(
-    m,
-    id,
-    `const home = doc.querySelector('[data-testid="site-home-frame"]');
-     if (!String(home?.contentDocument?.documentURI).startsWith("resource://ressac-site-")) return null;
-     return home.contentDocument.getElementById("series").textContent;`,
-  );
+const series = (id: string) => inHomeFrame<string>(m, siteHomeBrowser(id), `return document.getElementById("series").textContent;`);
 /** A trusted click on a bar button. */
 const barClick = (id: string, testid: string) =>
   inSiteBar(

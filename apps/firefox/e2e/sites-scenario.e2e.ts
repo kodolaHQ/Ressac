@@ -7,7 +7,7 @@ import { testActor } from "./agent-extensions";
 import { state, waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { acceptHomeCard, grantSite, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { acceptHomeCard, grantSite, homePoint, inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteHomeBrowser, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
 // Plan 32 Task 7: the success scenario, end to end, with the examples of the site apps guide written as they are (only the
@@ -108,16 +108,8 @@ const barClick = (id: string, testid: string) =>
      return true;`,
     [testid],
   );
-/** In the home's document (`hd`), once the home shows: null before. */
-const inHome = <T = unknown>(body: string) =>
-  inSiteBar<T>(
-    m,
-    "vidola",
-    `const home = doc.querySelector('[data-testid="site-home-frame"]');
-     const hd = home?.contentDocument;
-     if (!hd || !String(hd.documentURI).startsWith("resource://ressac-site-")) return null;
-     ${body}`,
-  );
+/** In the home's document (`hd`, in its remote frame), once the home shows: null before. */
+const inHome = <T = unknown>(body: string) => inHomeFrame<T>(m, siteHomeBrowser("vidola"), `const hd = document; ${body}`);
 const homeList = () => inHome<string | null>(`return hd.getElementById("list")?.textContent ?? null;`);
 const seriesCards = () => inHome<{ text: string; src: string | null }[] | null>(`return [...hd.querySelectorAll("#list button")].map((b) => ({ text: b.textContent, src: b.querySelector("img")?.getAttribute("src") ?? null }));`);
 /** The home's series card, once there: its text and its image's src (once its data came back). */
@@ -135,12 +127,7 @@ async function clickSeriesCard(): Promise<void> {
       if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("ressac-site");`)) === "vidola")) break;
     }
     if (!found) throw new Error("no window for vidola");
-    const [x, y] = await m.execute<[number, number]>(
-      `const bar = document.getElementById("ressac-site-bar");
-       const home = bar.contentDocument.querySelector('[data-testid="site-home-frame"]');
-       const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector("#list button").getBoundingClientRect();
-       return [Math.round(b.left + h.left + e.left + e.width / 2), Math.round(b.top + h.top + e.top + e.height / 2)];`,
-    );
+    const [x, y] = await homePoint(m, siteHomeBrowser("vidola"), "#list button");
     await m.command("WebDriver:PerformActions", {
       actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", origin: "viewport", x, y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }] }],
     });

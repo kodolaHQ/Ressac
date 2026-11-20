@@ -157,6 +157,40 @@ export function inSiteBar<T = unknown>(m: Marionette, id: string, body: string, 
   );
 }
 
+/** Chrome expression: the home's remote frame <browser> in the bar of app `id`'s window, or undefined. */
+export const siteHomeBrowser = (id: string) =>
+  `${siteWindowExpr(id)}?.document.getElementById("ressac-site-bar")?.contentDocument?.querySelector('[data-testid="site-home-frame"] browser')`;
+
+/** A document address of a served home copy (chrome/store/site-home.ts). */
+export const HOME_COPY = /^resource:\/\/ressac-frames-[0-9a-f]{16}\/sites\/[^/]+\/[^/]*\.html$/;
+
+/**
+ * Runs `body` (an async function body) in the page of the home frame <browser> the chrome expression `browser` gives,
+ * through the RessacFrame actor's test hook: `fw` = the page's window (Xrays waived), `args` = `args`. Null until it
+ * shows a page of a home copy; the result goes through JSON.
+ */
+export async function inHomeFrame<T = unknown>(m: Marionette, browser: string, body: string, args: unknown[] = []): Promise<T | null> {
+  const expr = `(async () => { const fw = window.wrappedJSObject; const args = ${JSON.stringify(args)}; ${body} })()`;
+  const json = await m.execute<string | null | undefined>(
+    `const g = (${browser})?.browsingContext?.currentWindowGlobal;
+     if (!g || !${HOME_COPY}.test(g.documentURI?.spec ?? "")) return null;
+     return g.getActor("RessacFrame").sendQuery("test", { expr: arguments[0] });`,
+    [expr],
+  );
+  return json == null ? null : (JSON.parse(json) as T);
+}
+
+/** The centre of `selector` in that home page, in CSS px of its top chrome window's viewport (for WebDriver actions). */
+export async function homePoint(m: Marionette, browser: string, selector: string): Promise<[number, number]> {
+  const p = await inHomeFrame<[number, number]>(m, browser, `const r = document.querySelector(args[0]).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2];`, [selector]);
+  if (!p) throw new Error(`no home page to click ${selector} in`);
+  return m.execute<[number, number]>(
+    `const b = ${browser}, w = b.ownerDocument.defaultView, r = b.getBoundingClientRect();
+     return [Math.round(w.mozInnerScreenX - w.top.mozInnerScreenX + r.left + arguments[0]), Math.round(w.mozInnerScreenY - w.top.mozInnerScreenY + r.top + arguments[1])];`,
+    p,
+  );
+}
+
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 
 /**

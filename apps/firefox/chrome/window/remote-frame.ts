@@ -39,6 +39,12 @@ export function createFrameBrowser(doc: Document): Element {
 export function loadFrame(browser: Element, src: string): boolean {
   const bc = (browser as any).browsingContext;
   if (!bc) return false;
+  if (!(browser as any).webNavigation) {
+    // Inserted before its document's DOMContentLoaded (a window still loading): the <browser> constructs then
+    // (delayConnectedCallback), after this later listener's turn comes.
+    (browser.ownerDocument as any).defaultView.addEventListener("DOMContentLoaded", () => browser.isConnected && loadFrame(browser, src), { once: true });
+    return true;
+  }
   if (!ChromeUtils.importESModule(STORE).uiNetwork.state()?.observer) {
     console.error("[ui-network] the UI's network guard is missing: frames stay empty");
     return false;

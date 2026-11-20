@@ -2,21 +2,21 @@
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { ts } from "./site/locale.svelte";
+  import RemoteFrame, { type RemoteFrameHandle } from "./RemoteFrame.svelte";
   import SiteGrantCard from "./site/SiteGrantCard.svelte";
   import { HomeMessage, type MessageToHome, type SiteStartRequest } from "../shared/sites";
   import type { HomeChrome } from "../chrome/store/sites";
   import type { HomeApi } from "./site-api";
 
   /**
-   * The app's home screen, written by the agent, in a sandboxed opaque frame
-   * (`sandbox="allow-scripts"`) served from its sanitized copy (chrome/store/site-home.ts). Its `parent.postMessage`
-   * reaches the chrome as a `ressac-home` event (the copy's bridge), listened above the frame on the window root,
-   * before it loads. A message counts only from this frame showing this app's home; real presses are seen on the
-   * frame's window (isTrusted), as for the widgets (WidgetFrame.svelte). `controller`: the app window's, or the
+   * The app's home screen, written by the agent, in a remote frame (RemoteFrame: out of the parent process, sandboxed,
+   * opaque origin) served from its sanitized copy (chrome/store/site-home.ts). Its `parent.postMessage` becomes a
+   * `ressac-home` event (the copy's bridge) the frames' actor forwards as `home`. A message counts only from this frame
+   * showing this app's home; presses come from the actor, as for the widgets. `controller`: the app window's, or the
    * essential tab's (sidebar.html?tabhome).
    */
   let { api, controller }: { api: HomeApi; controller: HomeChrome } = $props();
-  let frame = $state<HTMLIFrameElement>();
+  let frame = $state<RemoteFrameHandle>();
   let src = $state<string | null>(null);
   /** An address the home asked for that waits on « Ouvrir » (not the accepted start). */
   let asked = $state<SiteStartRequest | null>(null);
@@ -25,7 +25,7 @@
   function ours(): boolean {
     let u: URL;
     try {
-      u = new URL(frame?.contentDocument?.documentURI ?? "");
+      u = new URL(frame?.uri() ?? "");
     } catch {
       return false;
     }
@@ -33,9 +33,8 @@
     return !!src && u.protocol === "resource:" && u.host === new URL(src).host && u.pathname.startsWith(new URL(src).pathname.replace(/[^/]*$/, "")) && u.pathname.endsWith(".html");
   }
 
-  /** Opaque origin: the target can only be « * »; only this frame's document receives. */
   const send = (m: MessageToHome) => {
-    if (ours()) frame?.contentWindow?.postMessage(m, "*");
+    if (ours()) void frame?.send(m);
   };
 
   const refresh = () => {
@@ -49,50 +48,42 @@
     );
   };
 
-  let gestureWindow: Window | null = null;
-  const gesture = (e: Event) => e.isTrusted && ours() && controller.homeGesture();
+  function onMessage(name: string, d: { detail?: string }) {
+    if (name !== "home" || typeof d.detail !== "string" || !ours()) return;
+    let data: unknown;
+    try {
+      data = JSON.parse(d.detail);
+    } catch {
+      return;
+    }
+    const r = HomeMessage.safeParse(data);
+    if (!r.success) return;
+    const m = r.data;
+    if (m.type === "ready") void api.memory().then(send, () => {});
+    else if (m.type === "open") void api.open(m.url).then(refresh, () => {});
+    else
+      void api.image(m.url).then(
+        (data) => send({ type: "image", n: m.n, data }),
+        () => send({ type: "image", n: m.n, data: null }),
+      );
+  }
+
+  // Left its copy (about:blank, or a load done before guardHome's stop landed): back to its own page, sent nothing.
+  function onLoad() {
+    if (src && !ours()) frame?.load(src);
+  }
+
+  // The frame's <browser> is made on the first src: guarded once it exists.
+  let guarded: Element | null = null;
+  $effect(() => {
+    if (frame && frame.element !== guarded) controller.guardHome((guarded = frame.element));
+  });
 
   onMount(() => {
-    const onMessage = (e: Event) => {
-      if (!frame || e.target !== frame.contentWindow || !ours()) return;
-      let data: unknown;
-      try {
-        data = JSON.parse(String((e as CustomEvent).detail));
-      } catch {
-        return;
-      }
-      const r = HomeMessage.safeParse(data);
-      if (!r.success) return;
-      const m = r.data;
-      if (m.type === "ready") void api.memory().then(send, () => {});
-      else if (m.type === "open") void api.open(m.url).then(refresh, () => {});
-      else
-        void api.image(m.url).then(
-          (data) => send({ type: "image", n: m.n, data }),
-          () => send({ type: "image", n: m.n, data: null }),
-        );
-    };
-    // The window root sees the events of the window's in-process frames, the `ready` sent while the home is parsed too.
-    const root = (window as unknown as { windowRoot: EventTarget }).windowRoot;
-    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("ressac-home", onMessage, true, true);
-    // An iframe of this chrome page never gets `load`: DOMFrameContentLoaded comes once the home's scripts have run.
-    const onLoaded = (e: Event) => {
-      if (!frame || e.target !== frame) return;
-      // about:blank (the only other page guardHome lets load): back to its own page.
-      if (src && !ours()) return void (frame.src = src);
-      gestureWindow?.removeEventListener("pointerdown", gesture, true);
-      gestureWindow = (frame.contentDocument?.defaultView as Window | null) ?? null;
-      gestureWindow?.addEventListener("pointerdown", gesture, true);
-    };
-    document.addEventListener("DOMFrameContentLoaded", onLoaded, true);
-    controller.guardHome(frame!);
     refresh();
     const endState = api.onState(refresh);
     const end = api.onMemory(send);
     return () => {
-      root.removeEventListener("ressac-home", onMessage, true);
-      document.removeEventListener("DOMFrameContentLoaded", onLoaded, true);
-      gestureWindow?.removeEventListener("pointerdown", gesture, true);
       endState();
       end();
     };
@@ -100,7 +91,7 @@
 </script>
 
 <section class="home" data-testid="site-home-zone">
-  <iframe bind:this={frame} data-testid="site-home-frame" title={ts("chrome-site-home")} sandbox="allow-scripts" src={src ?? "about:blank"}></iframe>
+  <RemoteFrame {src} title={ts("chrome-site-home")} testid="site-home-frame" bind:frame onload={onLoad} onmessage={onMessage} onpress={() => ours() && controller.homeGesture()} />
   {#if asked}
     <div class="ask" out:fade={{ duration: 150 }}>
       <SiteGrantCard grant={null} start={asked} onGrant={async (yes, hash) => controller.answerHomeAsk(yes, hash)} />
@@ -112,9 +103,8 @@
 </section>
 
 <style>
-  .home { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
+  .home { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; background: var(--bg); }
   .ask { position: absolute; inset: 0; display: flex; background: color-mix(in oklab, var(--bg) 60%, transparent); }
-  iframe { flex: 1; width: 100%; border: 0; min-height: 0; background: var(--bg); }
   footer { display: flex; justify-content: center; padding: 10px 16px; border-top: 1px solid var(--border); }
   button { all: unset; padding: 8px 16px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: default; -webkit-app-region: no-drag; }
   button:hover { filter: brightness(1.1); }

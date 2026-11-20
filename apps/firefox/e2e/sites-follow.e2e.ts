@@ -7,7 +7,7 @@ import { testActor } from "./agent-extensions";
 import { waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { SITE_HOME, acceptHomeCard, grantSite, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { SITE_HOME, acceptHomeCard, grantSite, homePoint, inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, siteHomeBrowser, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
 // Plan 32 Task 4: the address follow.
@@ -73,13 +73,7 @@ async function realClickInHome(id: string, selector: string): Promise<void> {
       if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("ressac-site");`)) === id)) break;
     }
     if (!found) throw new Error(`no window for ${id}`);
-    const [x, y] = await m.execute<[number, number]>(
-      `const bar = document.getElementById("ressac-site-bar");
-       const home = bar.contentDocument.querySelector('[data-testid="site-home-frame"]');
-       const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
-       return [Math.round(b.left + h.left + e.left + e.width / 2), Math.round(b.top + h.top + e.top + e.height / 2)];`,
-      [selector],
-    );
+    const [x, y] = await homePoint(m, siteHomeBrowser(id), selector);
     await m.command("WebDriver:PerformActions", {
       actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", origin: "viewport", x, y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }] }],
     });
@@ -88,8 +82,8 @@ async function realClickInHome(id: string, selector: string): Promise<void> {
     await m.command("WebDriver:SwitchToWindow", { handle: main, focus: false });
   }
 }
-const homeFrame = <T>(id: string, body: string) =>
-  inSiteBar<T>(m, id, `const home = doc.querySelector('[data-testid="site-home-frame"]'); if (!home?.contentDocument?.getElementById("domaine")) return null; ${body}`);
+/** Async body run in app `id`'s home page (`fw` = its window, Xrays waived), once it shows: null before. */
+const homeFrame = <T>(id: string, body: string) => inHomeFrame<T>(m, siteHomeBrowser(id), `if (!document.getElementById("domaine")) return null; ${body}`);
 
 /** Writes (and grants) app `id`, opens it. `open: false` leaves it closed. */
 async function setup(id: string, decl: object, files: Record<string, string> = {}, o: { grant?: boolean } = {}): Promise<void> {
@@ -174,7 +168,7 @@ describe("site app address follow", () => {
     );
     server.cut("vidola-a.localhost");
     await openSite("t59");
-    await expect.poll(() => homeFrame("t59", `return home.contentDocument.getElementById("series").textContent;`), { timeout: 15_000 }).toContain("The Bear");
+    await expect.poll(() => homeFrame("t59", `return document.getElementById("series").textContent;`), { timeout: 15_000 }).toContain("The Bear");
     await barClick("t59", "site-enter");
     // vidola-b was never approved: the grant card names it, and the view goes there only on « Autoriser ».
     await expect.poll(() => inSiteBar(m, "t59", `return doc.querySelector('[data-testid="site-grant-tracking"]')?.textContent ?? null;`), { timeout: 20_000 }).toBe("vidola-b.localhost");
@@ -184,8 +178,8 @@ describe("site app address follow", () => {
     await expectText("t59", "site-notice", NOTICE_CHANGED);
     await expect.poll(() => inSiteView(m, "t59", 'return getComputedStyle(document.getElementById("shorts")).display;').catch(() => null), { timeout: 15_000 }).toBe("none");
     await barClick("t59", "site-home");
-    await expect.poll(() => homeFrame("t59", `return home.contentDocument.getElementById("domaine").textContent;`), { timeout: 15_000 }).toBe("vidola-b.localhost");
-    await homeFrame("t59", `home.contentWindow.wrappedJSObject.adresse = "/serie/the-bear?e=4"; return true;`);
+    await expect.poll(() => homeFrame("t59", `return document.getElementById("domaine").textContent;`), { timeout: 15_000 }).toBe("vidola-b.localhost");
+    await homeFrame("t59", `fw.adresse = "/serie/the-bear?e=4"; return true;`);
     await realClickInHome("t59", "#ouvrir");
     expect(await acceptHomeCard(m, "t59")).toBe(true);
     await viewAt("t59", b("/serie/the-bear?e=4"));

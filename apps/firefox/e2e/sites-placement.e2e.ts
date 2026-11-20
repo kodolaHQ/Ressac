@@ -6,7 +6,7 @@ import { testActor } from "./agent-extensions";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { SITE_HOME, grantSite, inBrowser, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
+import { SITE_HOME, grantSite, homePoint, inBrowser, inHomeFrame, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
 import { click, missingApi, pressKeys, waitUi } from "./ui";
 
 // Plan 76 Task 3: where a site app lives — an essential (its own container), the sidebar bar, or nowhere.
@@ -171,25 +171,14 @@ describe("an app essential's home", () => {
   /** Chrome expression: the home's frame over the tab's page (store/sites.ts renderTab), if shown and not leaving. */
   const homeOver = (tab: string) => `${xulTab(tab)}?.linkedBrowser.parentNode.querySelector(".ressac-tab-home:not([leaving])")`;
   /** The home page's window (Xrays waived) once it shows the app's served copy, else null. */
-  const homePage = (tab: string, body: string, args: unknown[] = []) =>
-    m.execute(
-      `const f = ${homeOver(tab)}?.contentDocument?.querySelector('[data-testid="site-home-frame"]');
-       const fw = f?.contentDocument?.defaultView?.wrappedJSObject;
-       if (!fw || !String(f.contentDocument.documentURI).startsWith("resource://ressac-site-")) return null;
-       ${body}`,
-      args,
-    );
+  const homeBrowser = (tab: string) => `${homeOver(tab)}?.contentDocument?.querySelector('[data-testid="site-home-frame"] browser')`;
+  const homePage = (tab: string, body: string, args: unknown[] = []) => inHomeFrame(m, homeBrowser(tab), body, args);
   const homeShown = (tab: string) => homePage(tab, "return (fw.recus ?? []).length > 0;").then((x) => x === true, () => false);
   const tabUrl = (tab: string) => m.execute<string>(`return ${xulTab(tab)}?.linkedBrowser.currentURI?.spec ?? "";`);
 
   /** A real click on `selector` in the tab's home (WebDriver actions in the main window, through both frames). */
   async function realClick(tab: string, selector: string): Promise<void> {
-    const [x, y] = await m.execute<[number, number]>(
-      `const o = ${homeOver(tab)}, f = o.contentDocument.querySelector('[data-testid="site-home-frame"]');
-       const a = o.getBoundingClientRect(), b = f.getBoundingClientRect(), e = f.contentDocument.querySelector(arguments[0]).getBoundingClientRect();
-       return [Math.round(a.left + b.left + e.left + e.width / 2), Math.round(a.top + b.top + e.top + e.height / 2)];`,
-      [selector],
-    );
+    const [x, y] = await homePoint(m, homeBrowser(tab), selector);
     await m.command("WebDriver:PerformActions", {
       actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", origin: "viewport", x, y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }] }],
     });
@@ -206,7 +195,7 @@ describe("an app essential's home", () => {
     await expect.poll(() => tabUrl(tab), { timeout: 15_000 }).toBe(url("/", "maison-a.localhost"));
 
     // An open the home posts without a real press (a scripted click) is refused: the tab stays where it is.
-    await homePage(tab, 'fw.adresse = "/serie"; fw.document.getElementById("ouvrir").click(); return true;');
+    await homePage(tab, 'fw.adresse = "/serie"; document.getElementById("ouvrir").click(); return true;');
     await new Promise((r) => setTimeout(r, 1500));
     expect(await tabUrl(tab)).toBe(url("/", "maison-a.localhost"));
     expect(await homeShown(tab)).toBe(true);
