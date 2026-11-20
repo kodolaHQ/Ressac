@@ -80,4 +80,15 @@ describe("rpc", () => {
     expect(sent).toHaveLength(1);
     expect(JSON.parse(sent[0]!)).not.toHaveProperty("id");
   });
+
+  it("messages are handled in the order they arrive, notifications and requests alike", async () => {
+    const order: string[] = [];
+    const b = createRpc({ send: () => {}, handlers: { close: () => void order.push("close"), start: () => void order.push("start"), boom: () => { throw new Error("x"); } } });
+    // One chunk off the pipe: a notification, a throwing one, then a request.
+    b.receive(JSON.stringify({ jsonrpc: "2.0", method: "close" }));
+    b.receive(JSON.stringify({ jsonrpc: "2.0", method: "boom" }));
+    b.receive(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "start" }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(order).toEqual(["close", "start"]);
+  });
 });

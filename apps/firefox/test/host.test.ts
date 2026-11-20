@@ -58,6 +58,9 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       PATH: `${tools}:${process.env.PATH}`,
       // A free port: never the real 5279.
       RESSAC_PORT_MCP_EXTERNAL: "0",
+      // AI on downloads Ressac's models: never from the real web here (a closed local port fails at once).
+      RESSAC_D1_URL: "http://127.0.0.1:9/d1.gguf",
+      RESSAC_EMBED_URL: "http://127.0.0.1:9/embed.gguf",
       ...env,
     },
   });

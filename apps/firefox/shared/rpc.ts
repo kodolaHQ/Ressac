@@ -62,7 +62,14 @@ export function createRpc(o: { send(line: string): void; handlers: Record<string
       if (m.method === CANCEL) return void running.get((m.params as { id?: number } | undefined)?.id ?? -1)?.abort();
       if (m.method !== undefined) {
         if (m.id !== undefined) void answer(m.id, m.method, m.params);
-        else if (Object.hasOwn(o.handlers, m.method)) void Promise.resolve().then(() => o.handlers[m.method!]!(m.params, new AbortController().signal)).catch(() => {});
+        // Synchronously, like a request's handler: a notification sent before a request runs before it.
+        else if (Object.hasOwn(o.handlers, m.method)) {
+          try {
+            void Promise.resolve(o.handlers[m.method]!(m.params, new AbortController().signal)).catch(() => {});
+          } catch {
+            // A notification's failure has no one to reach.
+          }
+        }
         return;
       }
       const p = m.id === undefined ? undefined : pending.get(m.id);
