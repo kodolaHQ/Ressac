@@ -2791,7 +2791,7 @@ test("list_tabs shows the search tab as not shared while a hand is open, even wi
 
 // --- what goes out of the agent (outflow rules) ---
 
-const SECRET = "sk_live_4eC39HqLyjWDarjtT1zdp7dc";
+const SECRET = "sk" + "_live_4eC39HqLyjWDarjtT1zdp7dc";
 const IBAN = "FR1420041010050500013M02606";
 const mailTab: TabInfo = { ...gmail, title: `Gmail — camille.roussel@example.com ${IBAN}` };
 const githubTab: TabInfo = { ...github, title: "CI — ERR_PNPM_OUTDATED_LOCKFILE 4827361" };

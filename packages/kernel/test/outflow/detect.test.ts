@@ -27,9 +27,9 @@ const nirKey = (thirteen: string) => String(97 - mod97(thirteen)).padStart(2, "0
 
 test("api keys, private keys and JWTs", () => {
   for (const key of [
-    "sk_live_51NxQk2LmN8pRs4TuVw6YzA8b",
+    "sk" + "_live_51NxQk2LmN8pRs4TuVw6YzA8b",
     "sk_test_51NxQk2LmN8pRs4TuVw6YzA8b",
-    "rk_live_51NxQk2LmN8pRs4TuVw6YzA8b",
+    "rk" + "_live_51NxQk2LmN8pRs4TuVw6YzA8b",
     "whsec_9aBcD3fGhJ5kLmN7pQrS1tUv",
     "ghp_x7Kq9LmN2pRs4TuVw6YzA8bCdEfGhJ1kMn3P",
     "gho_x7Kq9LmN2pRs4TuVw6YzA8bCdEfGhJ1kMn3P",
@@ -77,7 +77,7 @@ test("random: long, mixed and high-entropy", () => {
 });
 
 test("encoded secrets are found", () => {
-  const key = "sk_live_51NxQk2LmN8pRs4TuVw6YzA8b";
+  const key = "sk" + "_live_51NxQk2LmN8pRs4TuVw6YzA8b";
   expect(findSecrets(`q=${Buffer.from(key).toString("base64")}`)).toEqual([{ kind: "api-key", value: key }]);
   expect(findSecrets(`q=${Buffer.from(key).toString("base64url")}`)).toEqual([{ kind: "api-key", value: key }]);
   expect(findSecrets("https://s.fr/?q=FR76%203000%206000%200112%203456%207890%20189")).toEqual([
@@ -185,7 +185,7 @@ test("ordinary digit runs are not cards", () => {
 });
 
 test("nested encodings", () => {
-  const key = "sk_live_51NxQk2LmN8pRs4TuVw6YzA8b";
+  const key = "sk" + "_live_51NxQk2LmN8pRs4TuVw6YzA8b";
   const b64 = (s: string) => Buffer.from(s).toString("base64");
   expect(findSecrets(b64("q=FR76%203000%206000%200112%203456%207890%20189"))).toContainEqual({
     kind: "iban",

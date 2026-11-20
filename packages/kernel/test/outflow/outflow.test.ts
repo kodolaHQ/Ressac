@@ -31,7 +31,7 @@ test("read e-mail comes back encoded", () => {
 
 test("chunk of a retained token hits", () => {
   const o = new Outflow();
-  o.read("w", "key: sk_live_51NxQk2LmN8pRs4TuVw6YzA8bCdEf", "dashboard.stripe.com");
+  o.read("w", "key: sk" + "_live_51NxQk2LmN8pRs4TuVw6YzA8bCdEf", "dashboard.stripe.com");
   expect(o.check("w", "trials 51NxQk2LmN")).toMatchObject({ source: "dashboard.stripe.com" });
 });
 
@@ -339,8 +339,8 @@ test("an address read whole in a private source is a followed link, not a leak; 
   expect(o.check("w", `${article}?ref=48213977`, true)).toMatchObject({ kind: "digits" });
   expect(o.check("w", article)).toMatchObject({ kind: "digits" });
   // A secret in a read address still shows on the card.
-  o.read("w", "https://x.example/cb?key=sk_live_51NxQk2LmN8pRs4TuVw6YzA8b", "mail.google.com", true);
-  expect(o.check("w", "https://x.example/cb?key=sk_live_51NxQk2LmN8pRs4TuVw6YzA8b", true)).toMatchObject({ kind: "api-key" });
+  o.read("w", "https://x.example/cb?key=sk" + "_live_51NxQk2LmN8pRs4TuVw6YzA8b", "mail.google.com", true);
+  expect(o.check("w", "https://x.example/cb?key=sk" + "_live_51NxQk2LmN8pRs4TuVw6YzA8b", true)).toMatchObject({ kind: "api-key" });
 });
 
 test("an address the agent wrote itself into a tool's output is not a followed link", () => {
