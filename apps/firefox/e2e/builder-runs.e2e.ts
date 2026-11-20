@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inFrame, inUi, missingApi, waitUi } from "./ui";
 import { openBuilder, readWorkflow, widgetDir, writeWidget } from "./workflows";
 
 // The workflow builder's runs, replays, implicit workflows, a 30-block workflow and web widgets,
@@ -304,8 +304,8 @@ const waitPressed = (css: string) => waitTrue(`${el(css)}?.getAttribute("aria-pr
 const waitDisabled = (css: string, disabled: boolean, ms?: number) => waitTrue(`${el(css)}?.disabled === ${disabled}`, ms);
 const saved = () => waitText(tid("save-status"), "Enregistré");
 const textOf = (css: string) => inUi<string | null>(m, `return ${el(css)}?.textContent ?? null`);
-/** The text of the `#donnees` of an iframe in `css` (a home widget's or the preview's display). */
-const shown = (css: string) => inUi<string>(m, `return ${el(`${css} iframe`)}?.contentDocument?.getElementById("donnees")?.textContent ?? ""`);
+/** The text of the `#donnees` of the frame in `css` (a home widget's or the preview's display). */
+const shown = (css: string) => inFrame<string>(m, `${css} browser`, `document.getElementById("donnees")?.textContent ?? ""`).catch(() => "");
 const preview = () => shown(tid("widget-preview"));
 const homeData = (id: string) => shown(tid(`widget-${id}`));
 const harvest = (id: string) => inUi(m, "ui.ressac.home.harvest(arguments[0])", [id]);

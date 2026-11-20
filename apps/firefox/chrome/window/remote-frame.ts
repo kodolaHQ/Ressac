@@ -11,9 +11,14 @@ let actor = "";
 /** The group every frame browser joins; Firefox makes it again under the same id if its last browser went. */
 let groupId: number | null = null;
 
+/** Frames mounted before setFrameActor (the home's widgets at startup): subscribed once it runs. */
+const waiting = new Set<() => void>();
+
 /** The store registers the RessacFrame actor and says where its module is: the onFrameMessage registry lives there. */
 export function setFrameActor(uri: string): void {
   actor = uri;
+  for (const start of [...waiting]) start();
+  waiting.clear();
 }
 
 /** A frame <browser> for `doc`, not inserted yet: the caller appends it, then calls loadFrame. */
@@ -46,9 +51,16 @@ export function loadFrame(browser: Element, src: string): boolean {
 
 /** The frame's messages (frame-actor.ts: loaded, press, focus, open, home, component); returns how to stop. */
 export function onFrameMessage(browser: Element, cb: (name: string, data: any) => void): () => void {
-  // Before the store registered the actor (it does so after awaits): nothing can arrive yet, nothing to stop.
-  if (!actor) return () => {};
-  return ChromeUtils.importESModule(actor).onFrameMessage(browser, cb);
+  const subscribe = () => ChromeUtils.importESModule(actor).onFrameMessage(browser, cb) as () => void;
+  if (actor) return subscribe();
+  // Before the store registered the actor (it does so after awaits): nothing can arrive yet, subscribed when it does.
+  let off: (() => void) | null = null;
+  const start = () => (off = subscribe());
+  waiting.add(start);
+  return () => {
+    waiting.delete(start);
+    off?.();
+  };
 }
 
 /** Posts `data` into the frame's page; a frame gone or between documents drops it. */

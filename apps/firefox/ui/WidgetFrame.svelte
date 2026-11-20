@@ -1,12 +1,11 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import RemoteFrame, { type RemoteFrameHandle } from "./RemoteFrame.svelte";
   import { api } from "./state.svelte";
   import { t } from "./i18n.svelte";
 
   /**
-   * A widget shown in its isolated frame: without allow-same-origin, the code written by the agent runs in an opaque
-   * origin, with no access to the interface. It receives its data through postMessage; its links go through
-   * api.home.open.
+   * A widget shown in its isolated frame (RemoteFrame: out of the parent process, sandboxed, opaque origin), with no
+   * access to the interface. It receives its data through postMessage; its links go through api.home.open.
    */
   let {
     widget,
@@ -20,125 +19,82 @@
     state: { status: string; lastUpdate: string | null };
   } = $props();
 
-  let iframe = $state<HTMLIFrameElement>();
+  let frame = $state<RemoteFrameHandle>();
   let width = $state(0);
   let height = $state(0);
 
-  /** The frame shows the served copy (CSP, guard): never a page it navigated to (a data: URL has neither). */
+  /** The frame shows the served copy (CSP, guard): never a page it navigated to. */
   // Without the fragment: a widget that sets its own #hash stays on its copy.
-  const ours = () => !!widget.src && iframe?.contentDocument?.documentURI.split("#")[0] === widget.src;
+  const ours = () => !!widget.src && frame?.uri()?.split("#")[0] === widget.src;
 
   function send() {
-    attachGesture();
-    if (!ours()) return;
-    // The frame has an opaque origin (sandbox without allow-same-origin): « * » is the only possible target.
-    iframe?.contentWindow?.postMessage(
-      {
-        type: "widget",
-        data: $state.snapshot(data),
-        size: { w: size.w, h: size.h },
-        px: { width: width, height: height },
-        state: { status: appState.status, lastUpdate: appState.lastUpdate },
-      },
-      "*",
-    );
+    if (!frame || !ours()) return;
+    void frame.send({
+      type: "widget",
+      data: $state.snapshot(data),
+      size: { w: size.w, h: size.h },
+      px: { width: width, height: height },
+      state: { status: appState.status, lastUpdate: appState.lastUpdate },
+    });
   }
-  // On each change of data, state or size (loading goes through DOMFrameContentLoaded).
+  // On each change of data, state or size (loading goes through onLoad).
   $effect(() => {
     void [data, appState.status, appState.lastUpdate, size.w, size.h, width, height];
     send();
   });
 
+  function onLoad() {
+    // Navigated away from its copy: sent back to it, with nothing given to the other page.
+    if (!ours()) {
+      if (frame && widget.src) frame.load(widget.src);
+      return;
+    }
+    send();
+  }
+
+  // The widget's link: `ressacOpen` (provided by the guard in the page's world) emits an event the frames' actor
+  // forwards. The main process only opens it if a real press by the user just landed in this widget.
+  function onMessage(name: string, d: { url?: string }) {
+    if (name === "open" && typeof d.url === "string" && ours()) api.home.open(d.url, widget.id);
+  }
+
   // The widget only takes the keyboard under the pointer (a click by the user): a focus() from its code is handed back
   // to the interface element that had it.
   let before = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
   function onFocusin(e: FocusEvent) {
-    if (e.target instanceof HTMLElement && e.target !== iframe) before = e.target;
+    if (e.target === frame?.element) guardFocus();
+    else if (e.target instanceof HTMLElement) before = e.target;
   }
-  function onBlur() {
+  function guardFocus() {
     setTimeout(() => {
-      if (!iframe || !document.hasFocus() || document.activeElement !== iframe || iframe.matches(":hover")) return;
+      const b = frame?.element as HTMLElement | undefined;
+      if (!b || !document.hasFocus() || document.activeElement !== b || b.matches(":hover")) return;
       if (before?.isConnected) before.focus();
-      else iframe.blur();
+      else b.blur();
     });
   }
-
-  function onMessage(e: MessageEvent) {
-    // The origin of a sandboxed frame is opaque (« null »): the source, never the origin, identifies it.
-    if (!iframe || e.source !== iframe.contentWindow || !ours()) return;
-    const d: unknown = e.data;
-    if (typeof d !== "object" || d === null) return;
-    const { type, url } = d as { type?: unknown; url?: unknown };
-    if (type !== "open" || typeof url !== "string") return;
-    // The main process only opens the link if a real click by the user just landed in this widget (one link per click).
-    api.home.open(url, widget.id);
-  }
-
-  // The guard is a script at the top of the served copy; it removes WebRTC last, so while RTCPeerConnection is still
-  // there it could not fully install: no press is recorded then (fail closed). This listener is set by the chrome,
-  // which the widget can neither remove nor imitate (isTrusted).
-  let gestureWindow: Window | null = null;
-  function gesture(e: PointerEvent) {
-    if (e.isTrusted) api.home.gesture(widget.id);
-  }
-  // The widget's link: `ressacOpen` (provided by the guard in the page's world) emits this event, which the
-  // parent chrome listens to (an opaque origin cannot post it a message). The request stays subject to the gesture.
-  function link(e: Event) {
-    if (!ours()) return;
-    api.home.open(String((e as CustomEvent).detail), widget.id);
-  }
-  function detachGesture() {
-    gestureWindow?.removeEventListener("pointerdown", gesture, true);
-    gestureWindow?.removeEventListener("ressac-open", link, true);
-    gestureWindow = null;
-  }
-  function attachGesture() {
-    detachGesture();
-    // The document's window (defaultView) rather than the frame proxy: it is the one that receives the events.
-    const frame = iframe?.contentDocument?.defaultView ?? iframe?.contentWindow;
-    if (!frame) return;
-    // No condition on the guard: the gesture is an `isTrusted` press seen by the chrome, which the page cannot
-    // forge; the guard's state does not change that. It protects data output, not this link.
-    gestureWindow = frame as unknown as Window;
-    frame.addEventListener("pointerdown", gesture as EventListener, true);
-    frame.addEventListener("ressac-open", link, true);
-  }
-  onMount(attachGesture);
-  onDestroy(detachGesture);
-
-  function onLoad() {
-    // Navigated away from its copy: sent back to it, with nothing given to the other page.
-    if (!ours()) {
-      if (iframe && widget.src) iframe.src = widget.src;
-      return;
-    }
-    send();
-    attachGesture();
-  }
-  // An iframe of this chrome page never gets `load` (measured: neither the element nor its `onload`), so the data would
-  // never reach a display loaded after its last change. DOMFrameContentLoaded (chrome only, seen from the document) comes
-  // once the display's scripts have run.
-  $effect(() => {
-    const onLoaded = (e: Event) => iframe && e.target === iframe && onLoad();
-    document.addEventListener("DOMFrameContentLoaded", onLoaded, true);
-    return () => document.removeEventListener("DOMFrameContentLoaded", onLoaded, true);
-  });
 </script>
 
-<svelte:window onmessage={onMessage} onfocusin={onFocusin} onblur={onBlur} />
+<svelte:window onfocusin={onFocusin} />
 
 <div class="content" bind:clientWidth={width} bind:clientHeight={height}>
   {#if widget.src}
-    <!-- Without allow-same-origin: the code written by the agent runs in an opaque origin, with no access to the interface. -->
-    <iframe bind:this={iframe} src={widget.src} title={widget.name} sandbox="allow-scripts"></iframe>
+    <RemoteFrame
+      src={widget.src}
+      title={widget.name}
+      bind:frame
+      onload={onLoad}
+      onmessage={onMessage}
+      onpress={() => api.home.gesture(widget.id)}
+      onfocus={guardFocus}
+    />
   {:else}
     <p class="empty">{t("home-widget-no-display")}</p>
   {/if}
 </div>
 
 <style>
-  .content { flex: 1; min-height: 0; display: flex; }
   /* The card background while loading: no white flash in dark mode. */
-  iframe { flex: 1; width: 100%; height: 100%; border: none; background: var(--home-card); }
+  .content { flex: 1; min-height: 0; display: flex; background: var(--home-card); }
   .empty { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--home-text-muted); }
 </style>

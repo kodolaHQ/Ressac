@@ -6,6 +6,7 @@ import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { grantSite, siteWindowExpr, writeSite } from "./sites";
+import { inFrame } from "./ui";
 import { consoleWith, NET_PREFS, SFX, startNetWitness, widgetFiles } from "./ui-network";
 
 // The UI's network failing to install (RESSAC_TEST_UI_NETWORK_FAIL, spec addendum 3): without the observer (the only
@@ -92,7 +93,7 @@ try { f.contentWindow.location.href = "http://${host("fail-nav")}/fail/nav"; } c
     const { m } = l;
     await waitReady(m);
     await expect
-      .poll(() => m.execute(`return !!document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-cadres"] iframe')?.contentDocument?.getElementById("t");`), {
+      .poll(() => inFrame(m, '[data-testid="widget-cadres"] browser', `!!document.getElementById("t")`).catch(() => false), {
         timeout: 20_000,
       })
       .toBe(true);

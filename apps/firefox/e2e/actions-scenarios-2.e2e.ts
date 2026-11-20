@@ -7,7 +7,7 @@ import { actionsDataDir, EXECUTION, openAction, runsOnDisk, runStatuses, startAc
 import { waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inFrame, inUi, missingApi, waitUi } from "./ui";
 import { writeWidget } from "./workflows";
 
 // Action scenarios across launches, or beside widgets: each test has its
@@ -103,9 +103,9 @@ const WIDGET_DISPLAY = `<!doctype html><meta charset="utf-8">
   });
 </script>`;
 const widgetsDir = (id: string) => path.join(dirs.dataDir, "widgets", id);
-/** The `#donnees` text of the widget's display (opaque origin: read from the chrome context). */
+/** The `#donnees` text of the widget's display (a remote frame: read through its actor, inFrame). */
 const shown = (m: Marionette, id: string) =>
-  inUi<string>(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"] iframe')?.contentDocument?.getElementById("donnees")?.textContent ?? "";`, [id]);
+  inFrame<string>(m, `[data-testid="widget-${id}"] browser`, `document.getElementById("donnees")?.textContent ?? ""`).catch(() => "");
 /** « Mettre à jour maintenant » from the widget's menu. */
 async function harvest(m: Marionette, id: string): Promise<void> {
   await click(m, `[data-testid="widget-${id}"] button[aria-label="Options du widget"]`);

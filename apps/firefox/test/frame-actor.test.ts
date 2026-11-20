@@ -1,9 +1,12 @@
 import { afterEach, expect, test, vi } from "vitest";
 
+// frame-actor.ts imports ui-network.ts, whose content policy object is built at load.
+vi.stubGlobal("Components", { ID: () => ({}) });
+vi.stubGlobal("ChromeUtils", { generateQI: () => () => ({}) });
 vi.stubGlobal("JSWindowActorParent", class {});
 vi.stubGlobal("JSWindowActorChild", class {});
 let testFlag = false;
-vi.stubGlobal("Services", { cpmm: { sharedData: { get: () => testFlag } } });
+vi.stubGlobal("Services", { cpmm: { sharedData: { get: () => testFlag } }, appinfo: { remoteType: "web" } });
 vi.stubGlobal("Cu", {
   cloneInto: (v: unknown) => ({ cloned: v }),
   Sandbox: () => ({}),

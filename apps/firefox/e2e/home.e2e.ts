@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inUi, waitUi } from "./ui";
+import { click, inFrame, inUi, waitUi } from "./ui";
 
 // The home page in the sidebar: folder widgets, free placement, the agent's theme, isolated frame and links,
 // then grants, harvests (manual, failed, workshop stopped), notifications, removal and host stopped.
@@ -109,24 +109,22 @@ async function drag(m: Marionette, selection: string, dx: number, dy: number): P
   );
 }
 
-/** The text displayed in a widget's frame (opaque origin: the document is read from the chrome context). */
-function frameText(m: Marionette, id: string): Promise<string> {
-  return inUi(
-    m,
-    `const f = doc.querySelector('[data-testid="widget-' + arguments[0] + '"] iframe');
-     return f?.contentDocument?.body?.textContent ?? "";`,
-    [id],
-  );
+/** Widget `id`'s frame <browser> (a remote frame: its document is read through the actor's test hook, inFrame). */
+const FRAME = (id: string) => `[data-testid="widget-${id}"] browser`;
+
+/** Evaluates `expr` in widget `id`'s document; null while it has none yet. */
+function inWidget<T>(m: Marionette, id: string, expr: string): Promise<T | null> {
+  return inFrame<T>(m, FRAME(id), expr).catch(() => null);
+}
+
+/** The text displayed in a widget's frame. */
+async function frameText(m: Marionette, id: string): Promise<string> {
+  return (await inWidget<string>(m, id, "document.body?.textContent ?? ''")) ?? "";
 }
 
 /** The data received by the display (the `<pre id="donnees">` of AFFICHAGE_DONNEES), not the whole frame body. */
-function dataText(m: Marionette, id: string): Promise<string> {
-  return inUi(
-    m,
-    `const f = doc.querySelector('[data-testid="widget-' + arguments[0] + '"] iframe');
-     return f?.contentDocument?.getElementById("donnees")?.textContent ?? "";`,
-    [id],
-  );
+async function dataText(m: Marionette, id: string): Promise<string> {
+  return (await inWidget<string>(m, id, `document.getElementById("donnees")?.textContent ?? ""`)) ?? "";
 }
 
 /** The text of a widget card: header, grant banner and warnings included. */
@@ -257,7 +255,7 @@ describe("the home page", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it("the screen without a tab shows the folder's widgets, served by resource://ressac-widget-", async () => {
+  it("the screen without a tab shows the folder's widgets, served by resource://ressac-frames-", async () => {
     const titles = await wait(
       () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`),
       (ts) => ts.length === 10,
@@ -265,16 +263,55 @@ describe("the home page", () => {
       15_000,
     );
     expect(titles).toEqual(["Alpha", "Beta", "Refus", "Lien", "Compte", "Sans accord", "Lent", "Échec", "Veille", "Retrait"]);
-    const src = await inUi(m, `return doc.querySelector('[data-testid="widget-alpha"] iframe')?.getAttribute("src") ?? "";`);
-    expect(src).toMatch(/^resource:\/\/ressac-widget-alpha\/display-\d+-\d+\.html$/);
-    // The frame is isolated: the widget's document does not have the sidebar's system principal (opaque origin, sandbox).
-    const system = await waitUi<string>(
+    const src = await wait(() => inWidget<string>(m, "alpha", "document.documentURI"), (u) => !!u?.startsWith("resource:"), "alpha's document", 15_000);
+    expect(src).toMatch(/^resource:\/\/ressac-frames-[0-9a-f]{16}\/widgets\/alpha\/display-\d+-\d+\.html$/);
+    // Data sent on the first render after launch: the frame's messages are heard even when it mounts before the store
+    // registered the frames' actor.
+    expect(await wait(() => dataText(m, "retrait"), (t) => t !== "", "retrait's data at launch", 15_000)).toBe('{"old":"compte"}');
+  });
+
+  it("widgets run in one content process, not the parent", async () => {
+    const r = await waitUi<{ pids: number[]; parent: number; nulls: boolean[]; types: string[] } | null>(
       m,
-      `const d = doc.querySelector('[data-testid="widget-alpha"] iframe')?.contentDocument; return d ? String(d.nodePrincipal.isSystemPrincipal) : null;`,
+      `const bs = [...doc.querySelectorAll('[data-testid^="widget-"] browser')];
+       const wgs = bs.map((b) => b.browsingContext?.currentWindowGlobal);
+       if (bs.length < 10 || wgs.some((g) => !g)) return null;
+       return { pids: wgs.map((g) => g.osPid), parent: Services.appinfo.processID, nulls: wgs.map((g) => g.documentPrincipal.isNullPrincipal), types: bs.map((b) => b.remoteType) };`,
       [],
       15_000,
     );
-    expect(system).toBe("false");
+    expect(r!.pids.length).toBeGreaterThanOrEqual(10);
+    expect(new Set(r!.pids).size, "one process for every widget").toBe(1);
+    expect(r!.pids[0]).not.toBe(r!.parent);
+    expect(r!.nulls.every(Boolean), "null principals").toBe(true);
+    for (const t of r!.types) expect(t).toMatch(/^webIsolated=resource:\/\/ressac-frames-/);
+  });
+
+  it("a focus() from a widget's code leaves the keyboard to the interface; a real click gives it to the widget", async () => {
+    await wait(() => inWidget<string>(m, "alpha", "document.documentURI"), (u) => !!u?.startsWith("resource:"), "alpha's document", 15_000);
+    const active = () => inUi<string>(m, `const a = doc.activeElement; return a?.getAttribute("aria-label") ?? a?.localName ?? "none";`);
+    // The keyboard in the interface first (a window focus with nothing focused would move it to the home's field).
+    await inUi(m, `ui.focus();`);
+    await waitUi(m, `return Services.focus.focusedWindow === ui;`, [], 5000);
+    await new Promise((r) => setTimeout(r, 300));
+    await inUi(m, `doc.querySelector('[data-testid="widget-alpha"] button[aria-label="Options du widget"]').focus();`);
+    expect(await active()).toBe("Options du widget");
+    await inFrame(m, FRAME("alpha"), `(() => { document.body.tabIndex = 0; document.body.focus(); })()`);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await active()).toBe("Options du widget");
+    expect(await inWidget<boolean>(m, "alpha", "document.hasFocus()")).toBe(false);
+    // A click by the user: the widget is under the pointer, it keeps the keyboard.
+    await inUi(
+      m,
+      `const r = doc.querySelector(arguments[0]).getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+       ui.synthesizeMouseEvent("mousemove", x, y, {});
+       ui.synthesizeMouseEvent("mousedown", x, y, { button: 0, clickCount: 1 });
+       ui.synthesizeMouseEvent("mouseup", x, y, { button: 0, clickCount: 1 });`,
+      [FRAME("alpha")],
+    );
+    await waitUi(m, `return doc.activeElement === doc.querySelector(arguments[0]);`, [FRAME("alpha")], 5000);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await active(), "the frame browser, labelled by the widget name").toBe("Alpha");
   });
 
   it("a widget added by the agent appears without restarting", async () => {
@@ -337,7 +374,7 @@ describe("the home page", () => {
   });
 
   it("a <link> in the display is replaced by DISPLAY_DENIED", async () => {
-    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-refus"] iframe');`, [], 15_000);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-refus"] browser');`, [], 15_000);
     const text = await wait(() => frameText(m, "refus"), (t) => t.includes("Affichage refusé"), "le refus de l'affichage");
     expect(text).toContain("Affichage refusé");
     expect(text).not.toContain("jamais");
@@ -353,27 +390,26 @@ describe("the home page", () => {
   });
 
   it("a widget link only opens after a real press, never at load nor by a simulated click", async () => {
-    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-lien"] iframe')?.contentDocument?.getElementById("go");`, [], 15_000);
+    await wait(() => inWidget<boolean>(m, "lien", `!!document.getElementById("go")`), Boolean, "the link's button", 15_000);
     // Opened tabs only: an essential keeps its own loaded.
     const urls = async () => Object.values((await state(m)).tabs).filter((o) => !o.link).map((o) => o.url);
     // The load's send: no gesture, no tab.
     await new Promise((r) => setTimeout(r, 2000));
     expect((await urls()).filter((u) => u.includes("exemple.invalid"))).toEqual([]);
     // A click simulated by the script: isTrusted false, no gesture, no tab.
-    await inUi(m, `doc.querySelector('[data-testid="widget-lien"] iframe').contentDocument.getElementById("go").click();`);
+    await inFrame(m, FRAME("lien"), `document.getElementById("go").click()`);
     await new Promise((r) => setTimeout(r, 2000));
     expect((await urls()).filter((u) => u.includes("exemple.invalid"))).toEqual([]);
     // A real press in the frame: the actor signals the gesture, the link opens.
+    await inUi(m, `doc.querySelector(arguments[0]).scrollIntoView({ block: "center" }); await new Promise((r) => requestAnimationFrame(r));`, [FRAME("lien")]);
+    const q = (await inFrame<{ left: number; top: number; width: number; height: number }>(m, FRAME("lien"), `document.getElementById("go").getBoundingClientRect().toJSON()`))!;
     await inUi(
       m,
-      `const f = doc.querySelector('[data-testid="widget-lien"] iframe');
-       f.scrollIntoView({ block: "center" });
-       await new Promise((r) => requestAnimationFrame(r));
-       const b = f.contentDocument.getElementById("go");
-       const r = f.getBoundingClientRect(), q = b.getBoundingClientRect();
+      `const r = doc.querySelector(arguments[0]).getBoundingClientRect(), q = arguments[1];
        const x = r.left + q.left + q.width / 2, y = r.top + q.top + q.height / 2;
        ui.synthesizeMouseEvent("mousedown", x, y, { button: 0, clickCount: 1 });
        ui.synthesizeMouseEvent("mouseup", x, y, { button: 0, clickCount: 1 });`,
+      [FRAME("lien"), q],
     );
     await wait(urls, (us) => us.includes("https://exemple.invalid/clic"), "l'ouverture du lien");
     expect((await urls()).filter((u) => u.includes("/auto"))).toEqual([]);
@@ -385,12 +421,12 @@ describe("the home page", () => {
   });
 
   it("a widget display opens no Firefox window", async () => {
-    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-alpha"] iframe')?.contentDocument;`, [], 15_000);
+    await wait(() => inWidget<string>(m, "alpha", "document.documentURI"), (u) => !!u?.startsWith("resource:"), "alpha's document", 15_000);
     await waitWindowCount(m, 1);
     await new Promise((r) => setTimeout(r, 500));
     expect(await waitWindowCount(m, 1)).toHaveLength(1);
-    // No top-level <browser> loads the resource:// substitution: it is a frame of the sidebar.
-    const top = await waitFor<number>(m, `return [...gBrowser.browsers].filter((b) => b.currentURI?.spec?.startsWith("resource://ressac-widget-")).length;`, (n) => n === 0);
+    // No tab <browser> loads the frames' substitution: widgets are frame browsers of the sidebar.
+    const top = await waitFor<number>(m, `return [...gBrowser.browsers].filter((b) => b.currentURI?.spec?.startsWith("resource://ressac-frames-")).length;`, (n) => n === 0);
     expect(top).toBe(0);
   });
 
@@ -560,7 +596,7 @@ describe("the home page", () => {
     expect(text).toContain("le service des widgets ne répond pas");
     // The widgets stay displayed, frames included.
     expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`)).toContain("Veille");
-    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-veille"] iframe');`);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-veille"] browser');`);
   });
 
 });

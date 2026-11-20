@@ -5,6 +5,8 @@
     send(data: unknown): Promise<void>;
     /** The page's current document address. */
     uri(): string | null;
+    /** Loads `src` again (a frame that navigated away goes back to its copy). */
+    load(src: string): void;
     element: Element;
   }
 </script>
@@ -59,7 +61,7 @@
         else if (name === "focus") onfocus?.();
         else onmessage?.(name, data);
       });
-      frame = { send: (d) => frames.sendFrame(b, d), uri: () => frames.frameUri(b), element: b };
+      frame = { send: (d) => frames.sendFrame(b, d), uri: () => frames.frameUri(b), load: (u) => void frames.loadFrame(b, u), element: b };
     }
     frames.loadFrame(browser, s);
   });

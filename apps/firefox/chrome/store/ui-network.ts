@@ -119,7 +119,10 @@ const webrtcObserver = {
  */
 export function frameRtcBlocker(params: { innerWindowID?: number }): "deny" | "allow" {
   const wg = WindowGlobalParent.getByInnerWindowId(params.innerWindowID ?? 0);
-  if (!isFrameBrowser(wg?.browsingContext?.top?.embedderElement)) return "allow";
+  // By the process too: a frame whose <browser> was just removed (the home unmounted) has no embedder any more. A page
+  // already gone has nothing to serve.
+  const frame = !wg || isFrameBrowser(wg.browsingContext?.top?.embedderElement) || String(wg.domProcess?.remoteType).startsWith(`webIsolated=resource://${FRAMES_GROUP}-`);
+  if (!frame) return "allow";
   console.warn("[ui-network] refused webrtc from a frame");
   return "deny";
 }

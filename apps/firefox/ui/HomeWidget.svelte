@@ -178,7 +178,7 @@
   .banner button:first-of-type { background: var(--home-accent); border-color: var(--home-accent); color: var(--accent-ink); }
   .warning { margin: 0; padding: 4px 12px; font-size: 12px; }
   /* During a drag, the frame (in WidgetFrame) does not capture the mouse. */
-  .gesture :global(iframe) { pointer-events: none; }
+  .gesture :global(browser) { pointer-events: none; }
   /* The handle only shows on card hover (the most sober look). */
   .resize-handle { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 2; opacity: 0;
     background: linear-gradient(135deg, transparent 50%, var(--home-text-muted) 50%, var(--home-text-muted) 60%, transparent 60%, transparent 75%, var(--home-text-muted) 75%, var(--home-text-muted) 85%, transparent 85%); }

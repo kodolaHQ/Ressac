@@ -9,7 +9,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { grantSite, inSiteView, siteWindowExpr, writeSite } from "./sites";
-import { click } from "./ui";
+import { click, inFrame } from "./ui";
 import { consoleWith, DATA_PNG, NET_PREFS, netEnv, resolvedNames, rtcPage, SFX, startNetWitness, testPages, uiRefusals, widgetFiles } from "./ui-network";
 
 // The UI's network (spec 2026-11-08-ressac-firefox-reseau-interfaces-design.md): nothing the UI shows reaches a server
@@ -209,8 +209,14 @@ describe("the UI's network", () => {
        return f.contentDocument?.documentURI; })();`,
       [id, src, sandbox],
     );
-  const widgetDoc = (id: string) => `document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe')?.contentDocument`;
-  const widgetFrame = (id: string) => `document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe')`;
+  /** Widget `id`'s remote frame <browser>, in the sidebar. */
+  const FRAME = (id: string) => `[data-testid="widget-${id}"] browser`;
+  const widgetFrame = (id: string) => `document.getElementById("ressac-sidebar").contentDocument.querySelector('${FRAME(id)}')`;
+  /** Evaluates `expr` in widget `id`'s document (the frames actor's test hook); null while it has none. */
+  const inWidget = <T = unknown>(id: string, expr: string) => inFrame<T>(m, FRAME(id), expr).catch(() => null);
+  /** The page rectangle of `sel` in widget `id`'s document. */
+  const rectIn = (id: string, sel: string) =>
+    inFrame<{ left: number; top: number; width: number; height: number }>(m, FRAME(id), `document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect().toJSON()`);
   /** A frame's cut, read on its docShell: { dns: allowDNSPrefetch, mail: appType is APP_TYPE_MAIL, uri: its document }. */
   const CUT = `const cut = (el) => { const ds = el?.frameLoader?.docShell; return ds ? { dns: ds.allowDNSPrefetch, mail: ds.appType === Ci.nsIDocShell.APP_TYPE_MAIL, uri: el.contentDocument?.documentURI } : null; };`;
   const tcpSince = (n: number) => net.tcp.length - n;
@@ -218,28 +224,27 @@ describe("the UI's network", () => {
    * A trusted press (synthesizeMouseEvent from the sidebar, as a person's) on `sel` in widget `id`'s display, released on
    * the same point (a click) or away from it (no click). Returns the sidebar's element under the point.
    */
-  const press = (id: string, sel: string, click: boolean) =>
-    m.execute<string | null>(
+  const press = async (id: string, sel: string, click: boolean) => {
+    await m.execute(`return (async () => { ${widgetFrame(id)}.scrollIntoView({ block: "center" }); await new Promise((r) => document.getElementById("ressac-sidebar").contentWindow.requestAnimationFrame(r)); })();`);
+    return m.execute<string | null>(
       `return (async () => { const sb = document.getElementById("ressac-sidebar"), ui = sb.contentWindow, f = ${widgetFrame(id)};
-       f.scrollIntoView({ block: "center" });
-       await new Promise((r) => ui.requestAnimationFrame(r));
-       const el = f.contentDocument.querySelector(arguments[0]);
-       const r = f.getBoundingClientRect(), q = el.getBoundingClientRect();
+       const r = f.getBoundingClientRect(), q = arguments[2];
        const x = r.left + q.left + Math.min(10, q.width / 2), y = r.top + q.top + q.height / 2;
        const hit = sb.contentDocument.elementFromPoint(x, y)?.localName ?? null;
        ui.synthesizeMouseEvent("mousedown", x, y, { button: 0, clickCount: 1 });
        if (arguments[1]) ui.synthesizeMouseEvent("mouseup", x, y, { button: 0, clickCount: 1 });
        else ui.synthesizeMouseEvent("mouseup", 2, 2, { button: 0, clickCount: 1 });
        return hit; })();`,
-      [sel, click],
+      [sel, click, await rectIn(id, sel)],
     );
+  };
   const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
   /** Closes the tab whose address contains `part` (its opening hid the home), then waits for widget `id` again. */
   async function closeTab(part: string, id: string): Promise<void> {
     const tab = Object.entries((await state(m)).tabs).find(([, o]) => o.url.includes(part))?.[0];
     expect(tab, part).toBeDefined();
     await dispatch(m, { type: "closeTab", id: tab! });
-    await expect.poll(() => m.execute(`return !!${widgetDoc(id)}?.body?.firstChild;`), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => inWidget(id, "!!document.body?.firstChild"), { timeout: 15_000 }).toBe(true);
   }
 
   beforeAll(async () => {
@@ -291,24 +296,25 @@ describe("the UI's network", () => {
   // accueil.spec.ts:718
   it("a widget display can reach no server (neither WebRTC TURN/TCP or STUN/UDP, nested frames included)", { timeout: 120_000 }, async () => {
     const spy = () =>
-      m.execute<Record<string, string | null>>(
-        `const d = ${widgetDoc("espion")}; if (!d) return {};
-         const t = (id) => d.getElementById(id)?.textContent ?? null;
-         return { rtc: t("rtc"), imbrique: t("imbrique"), js: t("js"), vide: t("vide"), srcdoc: d.querySelector("iframe[srcdoc]")?.contentDocument?.documentURI ?? null };`,
-      );
+      inWidget<Record<string, string | null>>(
+        "espion",
+        `(() => { const t = (id) => document.getElementById(id)?.textContent ?? null;
+         return { rtc: t("rtc"), imbrique: t("imbrique"), js: t("js"), vide: t("vide") }; })()`,
+      ).then((r) => r ?? {});
     await expect.poll(async () => (await spy()).vide, { timeout: 20_000 }).toBe("erreur SecurityError");
-    const data = (id: string) => m.execute<string | null>(`return ${widgetDoc(id)}?.getElementById("donnees")?.textContent ?? null;`);
+    const data = (id: string) => inWidget<string | null>(id, `document.getElementById("donnees")?.textContent ?? null`);
     await expect.poll(() => data("fuite"), { timeout: 20_000 }).toBe('"reste"');
     await expect.poll(() => data("fuite-data"), { timeout: 10_000 }).toBe('"reste"');
-    await expect.poll(() => m.execute(`return ${widgetDoc("fuite-cadres")}?.getElementById("t") ? true : false;`), { timeout: 10_000 }).toBe(true);
+    await expect.poll(() => inWidget("fuite-cadres", `!!document.getElementById("t")`), { timeout: 10_000 }).toBe(true);
     await sleep(3000);
-    expect(await spy()).toEqual({ rtc: "erreur TypeError", imbrique: "…", js: "posé", vide: "erreur SecurityError", srcdoc: "about:blank" });
+    // The nested srcdoc frame has no guard: it makes its offer, which the parent's blocker refuses (ui-network.ts
+    // frameRtcBlocker). The counters below are the acceptance.
+    expect(await spy()).toEqual({ rtc: "erreur TypeError", imbrique: "lancé", js: "posé", vide: "erreur SecurityError" });
+    expect((await consoleWith(m, "[ui-network] refused webrtc from a frame")).length).toBeGreaterThan(0);
     expect(await data("fuite")).toBe('"reste"');
     expect(await data("fuite-data")).toBe('"reste"');
-    const uris = await m.execute<string[]>(
-      `return ["espion", "fuite", "fuite-data", "fuite-cadres"].map((id) => document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-' + id + '"] iframe')?.contentDocument?.documentURI ?? "none");`,
-    );
-    for (const u of uris) expect(u, "each widget frame stays on its copy").toMatch(/^resource:\/\/ressac-widget-/);
+    for (const id of ["espion", "fuite", "fuite-data", "fuite-cadres"])
+      expect(await inWidget(id, "document.documentURI"), `${id} stays on its copy`).toMatch(new RegExp(`^resource://ressac-frames-[0-9a-f]{16}/widgets/${id}/`));
     expect(net.hits.filter((h) => /espion|fuite/.test(h.label + h.path)).map((h) => `${h.label} ${h.method} ${h.path}`)).toEqual([]);
     expect((await names()).filter((n) => /espion|fuite/.test(n)), "no name resolved").toEqual([]);
     expect(net.tcp.length, "TCP connections to the fake TURN").toBe(0);
@@ -363,9 +369,16 @@ describe("the UI's network", () => {
     expect(await sidebarFrame("loads-net", "resource://ressac-test-net/loads.html")).toBe("resource://ressac-test-net/loads.html");
     // WebTransport and, in the parent process, a worker's fetch have no context: they are judged by their principal, so
     // their pages are served under a UI prefix (still unguarded, no CSP).
-    await testPages(m, pages, "ressac-widget-test-net");
-    expect(await sidebarFrame("wt-net", "resource://ressac-widget-test-net/wt.html")).toBe("resource://ressac-widget-test-net/wt.html");
-    expect(await sidebarFrame("worker-net", "resource://ressac-widget-test-net/worker.html", null)).toBe("resource://ressac-widget-test-net/worker.html");
+    const origin = await m.execute<string>(
+      `return (async () => { const store = ChromeUtils.importESModule("${STORE}");
+       const dir = PathUtils.join(PathUtils.profileDir, "chrome", "ressac-frames", "test-net");
+       await IOUtils.makeDirectory(dir);
+       for (const f of ["wt.html", "worker.html", "worker.js"]) await IOUtils.copy(PathUtils.join(arguments[0], f), PathUtils.join(dir, f));
+       return "resource://ressac-frames-" + store.framesToken() + "/test-net/"; })();`,
+      [pages],
+    );
+    expect(await sidebarFrame("wt-net", `${origin}wt.html`)).toBe(`${origin}wt.html`);
+    expect(await sidebarFrame("worker-net", `${origin}worker.html`, null)).toBe(`${origin}worker.html`);
     const title = (id: string) => m.execute<string>(`return document.getElementById("ressac-sidebar").contentDocument.getElementById(arguments[0]).contentDocument.title;`, [id]);
     await expect.poll(() => title("worker-net"), { timeout: 10_000 }).toBe("worker ran");
     expect(await title("wt-net")).toBe("function");
@@ -380,22 +393,25 @@ describe("the UI's network", () => {
   // accueil.spec.ts:810
   it("a widget display resolves no name (dns-prefetch, preconnect, x-dns-prefetch-control, image), nor does the sidebar through a link; a tab's navigation does", { timeout: 120_000 }, async () => {
     const tcp0 = net.tcp.length;
-    const body = (id: string) => m.execute<string>(`return ${widgetDoc(id)}?.body?.textContent ?? "";`);
+    const body = async (id: string) => (await inWidget<string>(id, `document.body?.textContent ?? ""`)) ?? "";
     for (const id of ["dns-statique", "dns-meta", "dns-entites", "dns-entites-hex"]) await expect.poll(() => body(id), { timeout: 20_000 }).toContain("Affichage refusé");
-    await expect.poll(() => m.execute(`return ${widgetDoc("dns-script")}?.getElementById("r")?.textContent ?? "";`), { timeout: 10_000 }).toBe(DNS_SCRIPT);
-    await expect.poll(() => m.execute(`return ${widgetDoc("actus-tech")}?.querySelector("#list li")?.textContent ?? "";`), { timeout: 10_000 }).toContain("Un modèle de langage");
-    // A link and a preconnect, inserted by the chrome, in a widget, its about:blank child and the sidebar.
-    await m.execute(
-      `return (async () => { const sb = document.getElementById("ressac-sidebar").contentDocument, wd = ${widgetDoc("sonde")};
-       const blank = wd.createElement("iframe"); wd.body.append(blank);
-       for (let i = 0; i < 40 && blank.contentDocument?.readyState !== "complete"; i++) await new Promise((r) => setTimeout(r, 50));
-       const add = (doc, tag) => {
-         const a = doc.createElement("a"); a.href = "http://preco-" + tag + "-a." + arguments[0] + ":15366/"; a.textContent = "a"; doc.body.append(a);
-         const l = doc.createElement("link"); l.rel = "preconnect"; l.href = "http://preco-" + tag + "-l." + arguments[0] + ":15366"; (doc.head ?? doc.body).append(l);
-       };
-       add(wd, "wd"); add(blank.contentDocument, "wb"); add(sb, "sb"); })();`,
-      [SFX],
+    await expect.poll(() => inWidget("dns-script", `document.getElementById("r")?.textContent ?? ""`), { timeout: 10_000 }).toBe(DNS_SCRIPT);
+    await expect.poll(() => inWidget("actus-tech", `document.querySelector("#list li")?.textContent ?? ""`), { timeout: 10_000 }).toContain("Un modèle de langage");
+    // A link and a preconnect, inserted in a widget (in its process) and the sidebar; a link in the widget's child frame.
+    const add = `const add = (doc, tag) => {
+         const a = doc.createElement("a"); a.href = "http://preco-" + tag + "-a.${SFX}:15366/"; a.textContent = "a"; doc.body.append(a);
+         const l = doc.createElement("link"); l.rel = "preconnect"; l.href = "http://preco-" + tag + "-l.${SFX}:15366"; (doc.head ?? doc.body).append(l);
+       };`;
+    await inFrame(
+      m,
+      FRAME("sonde"),
+      `(async () => { ${add}
+       add(document, "wd");
+       // A child frame has its own opaque origin, out of the sandbox's reach: its link comes in its markup.
+       const child = document.createElement("iframe"); child.srcdoc = '<a href="http://preco-wb-a.${SFX}:15366/">a</a>'; document.body.append(child);
+       for (let i = 0; i < 40 && !child.contentWindow?.length && i < 10; i++) await new Promise((r) => setTimeout(r, 50)); })()`,
     );
+    await m.execute(`${add} add(document.getElementById("ressac-sidebar").contentDocument, "sb");`);
     // The witness: a tab's navigation resolves its name.
     await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `http://temoin.${SFX}:${HTTP}/`, activate: true });
     await expect.poll(() => net.hits.some((h) => h.label === "temoin"), { timeout: 15_000 }).toBe(true);
@@ -539,91 +555,92 @@ describe("the UI's network", () => {
 
   it("a widget re-rendered or added after the sidebar loaded inherits the cut", { timeout: 120_000 }, async () => {
     const tcp0 = net.tcp.length;
-    const src0 = await m.execute<string>(`return ${widgetFrame("sonde")}?.getAttribute("src");`);
+    const src0 = await inWidget<string>("sonde", "document.documentURI");
     widgetFiles(dataDir, "sonde", DISPLAY.replace("<pre", '<p id="v2">v2</p><pre'));
-    await expect.poll(() => m.execute(`return !!${widgetDoc("sonde")}?.getElementById("v2");`), { timeout: 20_000 }).toBe(true);
-    expect(await m.execute(`return ${widgetFrame("sonde")}?.getAttribute("src");`)).not.toBe(src0);
+    await expect.poll(() => inWidget("sonde", `!!document.getElementById("v2")`), { timeout: 20_000 }).toBe(true);
+    expect(await inWidget("sonde", "document.documentURI")).not.toBe(src0);
     widgetFiles(dataDir, "tard", DISPLAY);
-    await expect.poll(() => m.execute(`return !!${widgetDoc("tard")}?.getElementById("donnees");`), { timeout: 20_000 }).toBe(true);
-    const dns = await m.execute(
-      `const out = {};
-       for (const id of ["sonde", "tard"]) {
-         const f = document.getElementById("ressac-sidebar").contentDocument.querySelector('[data-testid="widget-' + id + '"] iframe'), d = f.contentDocument;
-         const a = d.createElement("a"); a.href = "http://rr-" + id + "." + arguments[0] + ":15366/"; a.textContent = "rr"; d.body.append(a);
-         out[id] = f.frameLoader.docShell.allowDNSPrefetch;
-       }
-       return out;`,
-      [SFX],
-    );
-    expect(dns).toEqual({ sonde: false, tard: false });
+    await expect.poll(() => inWidget("tard", `!!document.getElementById("donnees")`), { timeout: 20_000 }).toBe(true);
+    // Both in the frames' process, whose policy refuses before any name lookup (frame-actor.ts).
+    for (const id of ["sonde", "tard"])
+      await inFrame(m, FRAME(id), `(() => { const a = document.createElement("a"); a.href = "http://rr-${id}.${SFX}:15366/"; a.textContent = "rr"; document.body.append(a); })()`);
+    expect(await m.execute(`return [${widgetFrame("sonde")}, ${widgetFrame("tard")}].map((b) => b.remoteType.startsWith("webIsolated=resource://ressac-frames-"));`)).toEqual([true, true]);
     await sleep(3000);
     expect({ names: (await names()).filter((n) => n.startsWith("rr-")), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
   });
 
   it("a real press on a widget's link resolves no name and opens no connection; its click still opens the link in a tab", { timeout: 120_000 }, async () => {
     const tcp0 = net.tcp.length;
-    await expect.poll(() => m.execute(`return !!${widgetDoc("lien")}?.getElementById("l");`), { timeout: 15_000 }).toBe(true);
-    expect(await press("lien", "#l", true)).toBe("iframe");
+    await expect.poll(() => inWidget("lien", `!!document.getElementById("l")`), { timeout: 15_000 }).toBe(true);
+    expect(await press("lien", "#l", true)).toBe("browser");
     await expect.poll(() => net.hits.some((h) => h.label === "ouvert" && h.path === "/ouvert"), { timeout: 15_000 }).toBe(true);
     const opened = await tabUrls();
     await closeTab("/ouvert", "lien");
     expect(opened).toContain(`http://${host("ouvert")}/ouvert`);
     // An SVG link, pressed and released away from it.
-    expect(await press("lien", "#s", false)).toBe("iframe");
+    expect(await press("lien", "#s", false)).toBe("browser");
     await sleep(3000);
     expect({ names: (await names()).filter((n) => n === "md" || n === "md-svg"), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
   });
 
   it("a press on shadow content inside a widget's link (open, closed, nested, slotted, very deep) resolves no name and opens no connection", { timeout: 60_000 }, async () => {
     const tcp0 = net.tcp.length;
-    await expect.poll(() => m.execute(`return !!${widgetDoc("ombre")}?.getElementById("h-nested");`), { timeout: 15_000 }).toBe(true);
-    for (const id of ["#h-open", "#h-closed", "#h-nested", "#h-slot b", "#h-deep-in"]) expect(await press("ombre", id, false), id).toBe("iframe");
+    await expect.poll(() => inWidget("ombre", `!!document.getElementById("h-nested")`), { timeout: 15_000 }).toBe(true);
+    for (const id of ["#h-open", "#h-closed", "#h-nested", "#h-slot b", "#h-deep-in"]) expect(await press("ombre", id, false), id).toBe("browser");
     await sleep(3000);
     expect({ names: (await names()).filter((n) => n.startsWith("sh-")), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
   });
 
   it("hovering a widget's link resolves no name and opens no connection", { timeout: 60_000 }, async () => {
     const tcp0 = net.tcp.length;
+    await m.execute(`return (async () => { ${widgetFrame("ombre")}.scrollIntoView({ block: "center" }); await new Promise((r) => document.getElementById("ressac-sidebar").contentWindow.requestAnimationFrame(r)); })();`);
     await m.execute(
       `return (async () => { const sb = document.getElementById("ressac-sidebar"), ui = sb.contentWindow, f = ${widgetFrame("ombre")};
-       f.scrollIntoView({ block: "center" });
-       await new Promise((r) => ui.requestAnimationFrame(r));
-       const r = f.getBoundingClientRect(), q = f.contentDocument.getElementById("hv").getBoundingClientRect();
+       const r = f.getBoundingClientRect(), q = arguments[0];
        for (let i = 0; i < 10; i++) { ui.synthesizeMouseEvent("mousemove", r.left + q.left + 2 + i * 4, r.top + q.top + q.height / 2, {}); await new Promise((ok) => setTimeout(ok, 100)); }
        ui.synthesizeMouseEvent("mousemove", 2, 2, {}); })();`,
+      [await rectIn("ombre", "#hv")],
     );
     await sleep(3000);
     expect({ names: (await names()).filter((n) => n === "hover"), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
   });
 
   it("a plain link in a widget, clicked, leaves the frame on its copy", { timeout: 60_000 }, async () => {
-    expect(await press("lien", "#p", true)).toBe("iframe");
+    expect(await press("lien", "#p", true)).toBe("browser");
     await sleep(3000);
     expect(net.hits.filter((h) => h.label === "plain")).toEqual([]);
-    expect(await m.execute(`return ${widgetDoc("lien")}?.documentURI;`)).toMatch(/^resource:\/\/ressac-widget-lien\//);
-    // Measured: the sidebar's CSP (frame-src resource:) refuses it before the content policy is asked.
-    expect((await consoleWith(m, "plain.")).join("\n")).toMatch(/Content-Security-Policy.*plain\..*frame-src resource:/);
+    expect(await inWidget("lien", "document.documentURI")).toMatch(/^resource:\/\/ressac-frames-[0-9a-f]{16}\/widgets\/lien\//);
   });
 
   it("Enter on a focused widget link resolves no name, opens no connection, and opens a tab only by today's gesture rule", { timeout: 60_000 }, async () => {
     const tcp0 = net.tcp.length;
-    // The last press is older than a gesture's 1.5 s.
+    // The keyboard reaches a widget only through a click (its code cannot focus it): a press on an empty corner (the resize handle is at the right), then
+    // the last press is older than a gesture's 1.5 s.
+    await m.execute(`document.getElementById("ressac-sidebar").contentWindow.focus();`);
+    await sleep(300);
+    await m.execute(
+      `return (async () => { const sb = document.getElementById("ressac-sidebar"), ui = sb.contentWindow, f = ${widgetFrame("lien")};
+       f.scrollIntoView({ block: "center" });
+       await new Promise((r) => ui.requestAnimationFrame(r));
+       const r = f.getBoundingClientRect();
+       for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, r.left + 6, r.bottom - 6, { button: 0, clickCount: 1 }); })();`,
+    );
+    await expect.poll(() => m.execute(`return document.getElementById("ressac-sidebar").contentDocument.activeElement === ${widgetFrame("lien")};`), { timeout: 5000 }).toBe(true);
     await sleep(2000);
-    const enterOn = (sel: string) =>
-      m.execute<string | null>(
-        `const sb = document.getElementById("ressac-sidebar"), d = ${widgetDoc("lien")}, el = d.querySelector(arguments[0]);
-         window.focus(); el.focus();
-         const focused = d.activeElement?.id ?? null;
+    const enterOn = async (sel: string) => {
+      const focused = await inFrame<string | null>(m, FRAME("lien"), `(() => { document.querySelector(${JSON.stringify(sel)}).focus(); return document.activeElement?.id ?? null; })()`);
+      await m.execute(
+        `const sb = document.getElementById("ressac-sidebar");
          const tip = Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
          tip.beginInputTransactionForTests(sb.contentWindow);
          const ev = new sb.contentWindow.KeyboardEvent("", { key: "Enter", code: "Enter" });
          tip.keydown(ev);
-         tip.keyup(ev);
-         return focused;`,
-        [sel],
+         tip.keyup(ev);`,
       );
+      return focused;
+    };
     expect(await enterOn("#l")).toBe("l");
-    await expect.poll(() => m.execute(`return ${widgetDoc("lien")}?.getElementById("l")?.dataset.clicks ?? "0";`), { timeout: 10_000 }).toBe("1");
+    await expect.poll(() => inWidget("lien", `document.getElementById("l")?.dataset.clicks ?? "0"`), { timeout: 10_000 }).toBe("1");
     await expect.poll(async () => (await consoleWith(m, "widget link ignored")).length, { timeout: 10_000 }).toBeGreaterThan(0);
     expect(await enterOn("#p")).toBe("p");
     await sleep(3000);

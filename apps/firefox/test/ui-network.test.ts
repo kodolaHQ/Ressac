@@ -134,12 +134,17 @@ describe("ui-network", () => {
     blockers.length = 0;
     N.installUiNetwork();
     expect(blockers).toEqual([N.frameRtcBlocker]);
-    const wg = (group: string) => ({ browsingContext: { top: { embedderElement: { getAttribute: () => group } } } });
+    const wg = (group: string, remoteType = "webIsolated=http://example.com") => ({
+      browsingContext: { top: { embedderElement: group ? { getAttribute: () => group } : null } },
+      domProcess: { remoteType },
+    });
     windowGlobals.set(1, wg("ressac-frames"));
     windowGlobals.set(2, wg("browsers"));
+    windowGlobals.set(4, wg("", "webIsolated=resource://ressac-frames-0123456789abcdef"));
     expect(N.frameRtcBlocker({ innerWindowID: 1 })).toBe("deny");
     expect(N.frameRtcBlocker({ innerWindowID: 2 })).toBe("allow");
-    expect(N.frameRtcBlocker({ innerWindowID: 3 })).toBe("allow");
+    expect(N.frameRtcBlocker({ innerWindowID: 3 }), "a page already gone").toBe("deny");
+    expect(N.frameRtcBlocker({ innerWindowID: 4 }), "a frame whose browser was just removed").toBe("deny");
   });
 
   it("a chain of UI-less chrome documents deeper than the walk's bound counts as the UI's (fails closed)", () => {

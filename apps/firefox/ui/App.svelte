@@ -285,8 +285,9 @@
 </script>
 
 <!-- A tab switch to the parking tab blurs the field the empty page had just focused; the controller then focuses this
-     iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
-<svelte:window onfocus={() => document.activeElement === document.body && focusEmptyPage.n++} />
+     iframe again (TabSwitchDone), and the empty page takes the keyboard back. A click on a widget's remote frame also
+     focuses this window first, with the body active: read after the click's own focus, not before. -->
+<svelte:window onfocus={() => setTimeout(() => document.activeElement === document.body && focusEmptyPage.n++)} />
 
 <div class="window" inert={welcome || !!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:covered={overlay} class:right={sidebarRight} style:--bar-w="{barWidth}px">
   <div class="column" class:folded-up={!barVisible} class:resume={unfinished && welcomeStep.aside} inert={!barVisible}>

@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { newWindow, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inUi } from "./ui";
+import { click, inFrame, inUi } from "./ui";
 import { writeWidget } from "./workflows";
 
 // The watch end to end: all local. An ad site, a fake DuckDuckGo (the kernel tests'
@@ -244,9 +244,9 @@ async function until<T>(read: () => T | Promise<T>, ok: (v: T) => boolean, ms = 
 }
 const untilEqual = <T>(read: () => T | Promise<T>, expected: T, ms?: number) => until(read, (v) => JSON.stringify(v) === JSON.stringify(expected), ms);
 
-/** The `#donnees` text of the widget's display (opaque origin: read from the chrome context). */
+/** The `#donnees` text of the widget's display (a remote frame: read through its actor, inFrame). */
 const shown = (m: Marionette, id: string) =>
-  inUi<string>(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"] iframe')?.contentDocument?.getElementById("donnees")?.textContent ?? "";`, [id]);
+  inFrame<string>(m, `[data-testid="widget-${id}"] browser`, `document.getElementById("donnees")?.textContent ?? ""`).catch(() => "");
 /** The widget's « mise à jour… n / t » badge, or null. */
 const progress = (m: Marionette, id: string) =>
   inUi<string | null>(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"] [data-testid="progress"]')?.textContent ?? null;`, [id]);

@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inUi, keyDown, keyUp, missingApi, pressKeys, typeText, waitUi } from "./ui";
+import { click, inFrame, inUi, keyDown, keyUp, missingApi, pressKeys, typeText, waitUi } from "./ui";
 import { nodes, openBuilder, readWorkflow, widgetDir, writeWidget } from "./workflows";
 
 // The workflow builder on ressac://workflow/<widget>, opened from the home page's widget menu.
@@ -265,7 +265,7 @@ const thresholdOf = async (id: string) => (await readWorkflow(dataDir, id)).bloc
 
 describe("the workflow builder", () => {
   it("opening the builder of a shipped workflow without positions lays it out in columns and writes nothing", async () => {
-    await waitUi(m, "return !!doc.querySelector('[data-testid=\"widget-veille\"] iframe')");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"widget-veille\"] browser')");
     const before = await snapshot(widgetDir(dataDir, "veille"));
     await openBuilder(m, "veille");
     await waitUi(m, "return doc.querySelector('[data-testid=\"builder\"] h1')?.textContent === 'Veille'");
@@ -388,7 +388,7 @@ describe("the workflow builder", () => {
 
   it("a workflow widget's builder shows its blocks and, per block, the items of the last run; ▶ Lancer adds one", async () => {
     await home();
-    const data = () => inUi<string>(m, `return doc.querySelector('[data-testid="widget-run"] iframe')?.contentDocument?.getElementById("donnees")?.textContent ?? ""`);
+    const data = () => inFrame<string>(m, '[data-testid="widget-run"] browser', `document.getElementById("donnees")?.textContent ?? ""`).catch(() => "");
     await poll(data, '{"liens":["Nouveau modèle IA"]}', 20_000);
     const executions = path.join(dataOf("run"), "runs");
     expect(await readdir(executions)).toHaveLength(1);
