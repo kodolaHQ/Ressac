@@ -229,7 +229,7 @@ async function start(): Promise<RessacStore> {
   // older sanitizer (CSP_WIDGET, containsNetworkHint) is served. Before any copy is served.
   await wipeFrames().catch((e) => console.warn("[frames] copies not erased:", e));
   // Where older versions kept them.
-  for (const old of ["ressac-widgets", "ressac-sites", "ressac-components"]) await IOUtils.remove(PathUtils.join(dataDir, old), { recursive: true, ignoreAbsent: true }).catch(() => {});
+  for (const old of ["ressac-widgets", "ressac-sites", "ressac-components"]) await IOUtils.remove(PathUtils.join(dataDir, old), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[frames] old copies not erased:", e));
   let setAside: string | null = null;
   const smallMac = isSmallMac(Services.sysinfo.getProperty("memsize"), testEnv("RESSAC_TEST_SMALL_MAC"));
   const store = createStore(await loadSession(dataDir, (p) => (setAside = p)).then((s) => {
