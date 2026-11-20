@@ -66,7 +66,8 @@ export function isUiLoad(li: { loadingDocument: Document | null; browsingContext
       return !!p && (hasUiAddress(p) || (p.isSystemPrincipal && li.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_WEB_TRANSPORT));
     }
     // A remote frame's load (chrome/window/remote-frame.ts) runs in a web process: its context is content, judged by
-    // its top <browser>'s group, or by its principal at a frames address.
+    // its top <browser>'s group, or by its principal at a frames address. No Ressac chrome:// page loads in a content
+    // process, so the chrome prefix of UI_PREFIXES never widens this in practice.
     if (bc.isContent) return isFrameBrowser(bc.top?.embedderElement) || (!!li.loadingPrincipal && hasUiAddress(li.loadingPrincipal));
     const e = bc.embedderElement;
     return !!e && (isUiFrame(e) || isUiDocument(e.ownerDocument));
@@ -111,7 +112,11 @@ const webrtcObserver = {
   },
 };
 
-/** A remote frame's WebRTC asks the parent through Firefox's WebRTC actor (rtcpeer:Request), not this process's observers. */
+/**
+ * A remote frame's WebRTC asks the parent through Firefox's WebRTC actor (rtcpeer:Request), not this process's observers.
+ * It relies on the innerWindowID the child sends; a compromised process could skip the request anyway (CSP and the
+ * parent's observer remain).
+ */
 export function frameRtcBlocker(params: { innerWindowID?: number }): "deny" | "allow" {
   const wg = WindowGlobalParent.getByInnerWindowId(params.innerWindowID ?? 0);
   if (!isFrameBrowser(wg?.browsingContext?.top?.embedderElement)) return "allow";

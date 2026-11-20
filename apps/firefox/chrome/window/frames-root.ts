@@ -6,7 +6,7 @@ export const FRAMES_GROUP = "ressac-frames";
 export const FRAMES_TEST_KEY = "ressac-frames-test";
 
 let token: string | undefined;
-/** 16 hex chars, drawn once per process. */
+/** 16 hex chars, drawn once per launch. */
 export function framesToken(): string {
   // This module is bundled in the store and in each window's UI: a UI copy (it has a `window`) takes the store's token.
   token ??=

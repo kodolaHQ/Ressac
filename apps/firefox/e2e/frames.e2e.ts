@@ -1,37 +1,45 @@
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { waitReady } from "./firefox";
+import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import { inFrame, inUi, waitUi } from "./ui";
-import { consoleWith, uiRefusals } from "./ui-network";
+import { consoleWith, NET_PREFS, netEnv, resolvedNames, SFX, startNetWitness } from "./ui-network";
 
 // The remote frame <browser>s (chrome/window/remote-frame.ts, chrome/agent/frame-actor.ts) on their own, before any
-// caller uses them: two frames in the sidebar on a copy under the frames folder.
+// caller uses them: two frames in the sidebar on a copy under the frames folder. Ports: 15380 (HTTP/WS witness),
+// 15381 (TCP counter: preconnects and a pressed link's speculative connect).
 
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
-const PAGE = (port: number) => `<!doctype html><meta charset="utf-8"><p id="t">cadre</p><p id="got">…</p><p id="net">…</p><p id="rtc">…</p>
+const HTTP = 15380;
+const RAW = 15381;
+const host = (name: string) => `${name}.${SFX}:${HTTP}`;
+/** Every kind of load the UI's net refuses (as ui-network.e2e.ts), under fr-<kind>; a page-wide link to the TCP counter. */
+const PAGE = `<!doctype html><meta charset="utf-8"><body style="margin:0">
+<link rel="dns-prefetch" href="//fr-dns.${SFX}"><link rel="preconnect" href="http://fr-preco.${SFX}:${RAW}">
+<a id="lien" href="http://fr-press.${SFX}:${RAW}/" style="position:fixed;inset:0;display:block">lien</a>
+<p id="t">cadre</p><p id="got">…</p><p id="net">…</p><p id="rtc">…</p>
+<img src="http://${host("fr-img")}/fr/img">
 <script>
   const note = (id, t) => (document.getElementById(id).textContent = t);
   try { new RTCPeerConnection().createOffer().then(() => note("rtc", "ok"), (e) => note("rtc", "err " + e.name)); } catch (e) { note("rtc", "throw " + e.name); }
-  addEventListener("message", (e) => { document.getElementById("got").textContent = JSON.stringify(e.data); });
-  fetch("http://127.0.0.1:${port}/frame-fetch").then(() => (document.getElementById("net").textContent = "ok"), (e) => (document.getElementById("net").textContent = "err " + e.name));
+  addEventListener("message", (e) => note("got", JSON.stringify(e.data)));
+  fetch("http://${host("fr-fetch")}/fr/fetch").then(() => note("net", "ok"), (e) => note("net", "err " + e.name));
+  try { new WebSocket("ws://${host("fr-ws")}/fr/ws"); } catch (e) {}
+  const l = document.createElement("link"); l.rel = "dns-prefetch"; l.href = "//fr-dns-script.${SFX}"; document.head.append(l);
 </script>`;
 
 describe("remote frames", () => {
   let w: LaunchedRessac;
-  let server: Server;
-  const hits: string[] = [];
+  let net: Awaited<ReturnType<typeof startNetWitness>>;
+  let logDir: string;
   beforeAll(async () => {
-    server = createServer((req, res) => {
-      hits.push(String(req.url));
-      res.end("x");
-    });
-    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-    w = await launchRessac();
+    net = await startNetWitness({ http: HTTP, raw: RAW });
+    logDir = await mkdtemp(path.join(os.tmpdir(), "ressac-frames-log-"));
+    w = await launchRessac({ prefs: NET_PREFS, env: netEnv(logDir) });
     await w.marionette.setContext("chrome");
     await waitReady(w.marionette);
-    const port = (server.address() as AddressInfo).port;
     await inUi(
       w.marionette,
       `const store = ChromeUtils.importESModule(${JSON.stringify(STORE)});
@@ -50,13 +58,14 @@ describe("remote frames", () => {
          store.remoteFrames.onFrameMessage(b, (name, data) => ui.__framesLog.push([id, name, data]));
          if (!store.remoteFrames.loadFrame(b, src)) throw new Error("not loaded");
        }`,
-      [PAGE(port)],
+      [PAGE],
     );
     await waitUi(w.marionette, `return ["frames-a", "frames-b"].every((id) => ui.__framesLog.some(([i, n]) => i === id && n === "loaded"));`);
   }, 60_000);
   afterAll(async () => {
     await w?.close();
-    server?.close();
+    net?.close();
+    if (logDir) await rm(logDir, { recursive: true, force: true });
   });
 
   it("run out of the parent, both in one process, with a null principal", async () => {
@@ -90,12 +99,15 @@ describe("remote frames", () => {
     expect(await inUi(w.marionette, `return ui.__framesLog.some(([i, n]) => i === "frames-a" && n === "press");`)).toBe(false);
   });
 
-  it("the page's fetch to the web is refused by the parent: nothing reaches the server", async () => {
+  it("the page reaches no server and resolves no name: fetch, WebSocket, img, dns-prefetch, preconnect, a pressed link", async () => {
     await expect.poll(() => inFrame<string>(w.marionette, "#frames-a browser", `document.getElementById("net").textContent`), { timeout: 5000 }).toMatch(/^err /);
-    expect(await inFrame(w.marionette, "#frames-b browser", `document.getElementById("net").textContent`)).toMatch(/^err /);
-    expect(hits).toEqual([]);
-    // Cut by the parent's observer, not only by something in the web process (both frames' lines are the same, deduped).
-    expect((await uiRefusals(w.marionette)).filter((t) => t.includes("/frame-fetch"))).toHaveLength(1);
+    // The witness: a tab's navigation resolves its name and reaches the server (the log and the counters work).
+    await dispatch(w.marionette, { type: "openTab", windowId: (await state(w.marionette)).windows[0]!.id, url: `http://${host("fr-temoin")}/`, activate: true });
+    await expect.poll(() => net.hits.some((h) => h.label === "fr-temoin"), { timeout: 15_000 }).toBe(true);
+    await new Promise((r) => setTimeout(r, 3000));
+    expect(net.hits.filter((h) => h.label.startsWith("fr-") && h.label !== "fr-temoin").map((h) => `${h.label} ${h.path}`)).toEqual([]);
+    expect({ names: (await resolvedNames(logDir)).filter((n) => n.startsWith("fr-")), tcp: net.tcp.length }).toEqual({ names: ["fr-temoin"], tcp: 0 });
+    // The frames' process refuses them before their channel (frame-actor.ts policeProcess); the parent's observer behind it is unit-tested (test/ui-network.test.ts).
   });
 
   it("the page's WebRTC is denied", async () => {

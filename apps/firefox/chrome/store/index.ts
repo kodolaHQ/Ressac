@@ -117,7 +117,6 @@ export interface RessacStore extends Store {
 
 const PAGE_ACTOR = "chrome://browser/content/ressac/page-actor.sys.mjs";
 
-
 /**
  * An actor's module (`extension-actor`, `site-actor`). Tests only: RESSAC_TEST_EXTENSION_ACTOR names a folder holding
  * both, served by a resource:// substitution (the content sandbox reads it only with

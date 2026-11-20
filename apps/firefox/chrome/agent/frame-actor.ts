@@ -7,7 +7,35 @@
 const PAGE_EVENTS = { "ressac-open": "open", "ressac-home": "home", "ressac-component": "component" } as const;
 /** A string detail is clipped to this many characters; anything else is dropped. */
 const MAX_DETAIL = 65536;
-import { FRAMES_TEST_KEY } from "../window/frames-root";
+import { isBlockedAddress } from "../store/ui-network";
+import { FRAMES_TEST_KEY, FRAMES_GROUP } from "../window/frames-root";
+
+const POLICY_CONTRACT = "@ressac/frames-network-policy;1";
+let policed = false;
+/**
+ * The frames' process refuses http(s)/ws(s) itself, as the parent's policy does for in-process UI documents: a
+ * WebSocket resolves its host name in the parent before its channel opens (WebSocketChannel::DoAdmissionDNS, measured
+ * in e2e/frames.e2e.ts), so the parent's opening-request observer alone lets a name out. Only in our webIsolated process.
+ */
+function policeProcess(): void {
+  if (policed) return;
+  policed = true;
+  if (!Services.appinfo.remoteType?.startsWith(`webIsolated=resource://${FRAMES_GROUP}-`)) return;
+  const policy = {
+    classID: Components.ID("{3f6b2d84-9c1e-4a7f-b5d2-6e0c8a4f1b93}"),
+    QueryInterface: ChromeUtils.generateQI(["nsIContentPolicy", "nsIFactory"]),
+    createInstance: (iid: unknown) => (policy.QueryInterface as (iid: unknown) => unknown)(iid),
+    shouldLoad: (location: { spec: string }) => (isBlockedAddress(location.spec) ? Ci.nsIContentPolicy.REJECT_REQUEST : Ci.nsIContentPolicy.ACCEPT),
+    shouldProcess: () => Ci.nsIContentPolicy.ACCEPT,
+  };
+  try {
+    Components.manager.QueryInterface(Ci.nsIComponentRegistrar).registerFactory(policy.classID, "Ressac frames network policy", POLICY_CONTRACT, policy);
+    Services.catMan.addCategoryEntry("content-policy", POLICY_CONTRACT, POLICY_CONTRACT, false, true);
+  } catch (e) {
+    // The parent's observer still cuts every channel; only a WebSocket's name lookup stays open.
+    console.error("[ui-network] the frames' policy did not install:", e);
+  }
+}
 
 type Callback = (name: string, data: unknown) => void;
 const owners = new WeakMap<object, Callback>();
@@ -54,6 +82,8 @@ export class RessacFrameChild extends JSWindowActorChild {
   private off: (() => void)[] = [];
 
   handleEvent(e: Event): void {
+    // DOMWindowCreated comes before the page's first load.
+    policeProcess();
     if (e.type !== "DOMWindowCreated") {
       if (e.type === "DOMContentLoaded" && e.target === this.document) this.sendAsyncMessage("loaded", { uri: this.document.documentURI });
       return;

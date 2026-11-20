@@ -46,6 +46,8 @@ export function loadFrame(browser: Element, src: string): boolean {
 
 /** The frame's messages (frame-actor.ts: loaded, press, focus, open, home, component); returns how to stop. */
 export function onFrameMessage(browser: Element, cb: (name: string, data: any) => void): () => void {
+  // Before the store registered the actor (it does so after awaits): nothing can arrive yet, nothing to stop.
+  if (!actor) return () => {};
   return ChromeUtils.importESModule(actor).onFrameMessage(browser, cb);
 }
 
