@@ -153,7 +153,7 @@ export class RessacDesignFramesParent extends JSWindowActorParent {}
 
 /**
  * The same viewfinder on a site app's home, a remote frame of the frames group (null principal). It reads only the
- * home copy the parent names in each query (`home`: the frames origin's /sites/, a per-launch token the page never gives).
+ * home copy the parent names in each query (`home`: a `resource://ressac-frames-…/sites/` prefix the parent computes; the child checks that prefix, not the token's shape).
  */
 export class RessacDesignFramesChild extends RessacDesignChild {
   async receiveMessage(m: { name: string; data?: { code?: unknown; home?: unknown } }): Promise<unknown> {

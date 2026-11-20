@@ -253,12 +253,13 @@ describe("design mode on a site app's home", () => {
            topReplace: t(() => top.location.replace("about:blank")), postMessage: t(() => parent.postMessage({ type: "open", url: "about:blank" }, "*")) };
        })()`,
     );
-    expect(sorted).toBeTruthy();
+    expect(Object.values(sorted)).toHaveLength(5);
+    for (const r of Object.values(sorted)) expect(r).toMatch(/^(ran|throws:)/);
     await sleep(1000);
     // parent and top are the home itself: at most the home leaves its copy, and is sent back to it.
     expect(await uris()).toEqual(before);
     expect(await view("sonde")).toBe("home");
-    await expect.poll(() => inHome<string | null>("sonde", `return document.readyState === "complete" ? document.documentURI : null;`), { timeout: 15_000 }).toMatch(HOME_COPY);
+    await expect.poll(() => inHome<string | null>("sonde", `return document.readyState === "complete" ? document.documentURI : null;`), { timeout: 15_000 }).toMatch(/\/sites\/sonde-/);
   });
 
   it("hover frames p#nue; middle and right clicks pick nothing; the primary click captures #cible; the home saw nothing, no global added", async () => {

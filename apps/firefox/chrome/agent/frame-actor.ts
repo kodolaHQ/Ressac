@@ -91,6 +91,7 @@ export class RessacFrameChild extends JSWindowActorChild {
     const win = this.contentWindow;
     const doc = this.document;
     const handler = this.docShell.chromeEventHandler;
+    if (!handler) return;
     // On the chrome event handler, in front of any page listener; only the user's own (trusted) events count.
     const trusted = (type: string, fn: (e: Event) => void) => {
       handler.addEventListener(type, fn, true);

@@ -535,7 +535,7 @@ describe("the UI's network", () => {
     const refused = (await uiRefusals(m)).slice(refused0);
     // Measured: the home's own CSP (img-src data: <frames origin>/sites/<copy>/) refuses it before the content policy is asked.
     expect((await consoleWith(m, "netsite-img.")).join("\n")).toMatch(/Content-Security-Policy.*netsite-img\..*img-src data: resource:\/\/ressac-frames-[0-9a-f]{16}\/sites\/netsite-accueil-/);
-    // Behind the CSP, the frames' process and the parent's observer refuse it too (Task 3): the home is a frame browser.
+    // The home is a frame browser of the frames' process (checked here by its remoteType only).
     expect(await m.execute(`return (${home}).remoteType;`)).toMatch(/^webIsolated=resource:\/\/ressac-frames-/);
     expect(refused.filter((r) => /netsite(-accueil)?\.localhost|\/page|localhost:/.test(r) || r.includes(`:${port}`))).toEqual([]);
     await callTool(dataDir, "stop_app", { folder: "essai" }).catch(() => {});

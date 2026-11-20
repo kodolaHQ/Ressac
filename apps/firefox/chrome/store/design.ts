@@ -240,7 +240,7 @@ export function createDesign(o: {
   };
 
   const guardFrame = (s: Session, wgp: any) => {
-    if (!wgp || wgp === s.wgp || !wgp.isProcessRoot) return;
+    if (s.home || !wgp || wgp === s.wgp || !wgp.isProcessRoot) return;
     s.guarded.add(wgp);
     ask(wgp, "guard").catch(() => {});
   };

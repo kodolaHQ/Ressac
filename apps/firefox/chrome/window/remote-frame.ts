@@ -41,7 +41,11 @@ export function loadFrame(browser: Element, src: string): boolean {
   if (!bc) return false;
   if (!(browser as any).webNavigation) {
     // Inserted before its document's DOMContentLoaded (a window still loading): the <browser> constructs then
-    // (delayConnectedCallback), after this later listener's turn comes.
+    // (delayConnectedCallback), after this later listener's turn comes. Any other state never constructs it: no wait.
+    if (browser.ownerDocument.readyState !== "loading") {
+      console.error("[frames] the frame browser has no web navigation in a loaded document: nothing loads");
+      return false;
+    }
     (browser.ownerDocument as any).defaultView.addEventListener("DOMContentLoaded", () => browser.isConnected && loadFrame(browser, src), { once: true });
     return true;
   }
