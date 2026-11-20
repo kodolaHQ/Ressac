@@ -71,7 +71,7 @@ export class RessacFrameChild extends JSWindowActorChild {
     if (msg.name === "test") {
       if (!Services.cpmm.sharedData.get(FRAMES_TEST_KEY)) throw new Error("test hook off");
       const win = this.contentWindow;
-      const sandbox = Cu.Sandbox(this.document.nodePrincipal, { sandboxPrototype: win, wantXrays: true, sameZoneAs: win });
+      const sandbox = Cu.Sandbox((this.document as any).nodePrincipal, { sandboxPrototype: win, wantXrays: true, sameZoneAs: win });
       return JSON.stringify(await Cu.evalInSandbox(String(msg.data?.expr), sandbox));
     }
     return undefined;
