@@ -109,7 +109,7 @@ agent-mozilla-save = Save
 
 ## Settings › Privacy
 
-agent-telemetry-notice = Ressac sends its developer crashes and errors, without any page address, to fix the beta's bugs, and an anonymous install identifier at each launch to count users. A crash can contain fragments of memory.
+agent-telemetry-notice = Ressac sends its developer its errors, without any page address, to fix the beta's bugs, and an anonymous install identifier at each launch to count users. Firefox's crash reports, which can contain parts of the open pages, are only sent if you turn them on in Settings › Privacy.
 
 ## Agent panel
 

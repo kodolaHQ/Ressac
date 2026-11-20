@@ -506,8 +506,13 @@ describe("Settings page", () => {
     await openPage();
     await go("privacy");
     await waitUi(m, `const s = doc.querySelector('[data-testid="telemetry-switch"]'); return s && !s.disabled && s.checked`);
+    // Firefox's crash reports: off by default, their own yes.
+    await waitUi(m, `const s = doc.querySelector('[data-testid="crash-reports-switch"]'); return s && !s.disabled && !s.checked`);
+    await click(m, '[data-testid="crash-reports-switch"]');
+    await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.crashReports", false)`, (v) => v === true);
     await click(m, '[data-testid="telemetry-switch"]');
     await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.enabled", true)`, (v) => v === false);
+    await waitUi(m, `return doc.querySelector('[data-testid="crash-reports-switch"]').disabled`);
   });
 
   it("general: the navigation sidebar's side is saved", async () => {

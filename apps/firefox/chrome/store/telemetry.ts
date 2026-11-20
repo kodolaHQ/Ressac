@@ -3,6 +3,8 @@ import { createReporter, launchSession, parseDsn, type ReportedError } from "../
 const ENABLED = "ressac.telemetry.enabled";
 const INSTALL_ID = "ressac.telemetry.installId";
 const NOTICE_SHOWN = "ressac.telemetry.noticeShown";
+/** Firefox's crash reports: minidumps hold memory (page data) and are not scrubbed, so they need their own yes. */
+const CRASH_REPORTS = "ressac.telemetry.crashReports";
 // Our own chrome only: a web page's errors are its own (and would carry its addresses).
 const CRASH_TAB_SEND = "browser.tabs.crashReporting.sendReport";
 const OURS = "chrome://browser/content/ressac/";
@@ -24,11 +26,11 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
     enabled: consented,
     post: (url, body) => fetch(url, { method: "POST", body }),
   });
-  // Firefox's own crash reports follow the same choice. A build without a crash reporter has no such interface.
+  // Firefox's own crash reports: the same choice plus their own switch. A build without a crash reporter has no such interface.
   const syncCrashReports = () => {
     try {
       const crashReporter = Services.appinfo.QueryInterface(Ci.nsICrashReporter);
-      const on = active && consented();
+      const on = active && consented() && Services.prefs.getBoolPref(CRASH_REPORTS, false);
       if (crashReporter.submitReports !== on) crashReporter.submitReports = on;
       // The crashed-tab page's "send report" box starts from this pref.
       Services.prefs.setBoolPref(CRASH_TAB_SEND, on);
@@ -41,6 +43,7 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
     if (!enabled()) Services.prefs.clearUserPref(INSTALL_ID);
   });
   Services.prefs.addObserver(NOTICE_SHOWN, syncCrashReports);
+  Services.prefs.addObserver(CRASH_REPORTS, syncCrashReports);
   launchSession({
     dsn,
     release: __RESSAC_VERSION__,

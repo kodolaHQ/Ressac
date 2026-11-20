@@ -50,7 +50,7 @@ The design assumes **web pages are hostile, including the ones the agent reads**
 ### Updates and telemetry
 
 - **Updates are signed** with Ressac's own key (its certificate is built into the app) and must be newer than the running version (an update that could not be staged is judged by the feed's unsigned version); the DMG is signed with a Developer ID and notarized, and publishing refuses an update that does not verify. The VM image and its tools are pinned by SHA-256.
-- **Telemetry** sends nothing before its notice has shown and one switch turns it all off: Ressac's own errors (addresses and the home path scrubbed), Firefox's crash reports (minidumps, which can hold page data and are not scrubbed) and one anonymous count per launch (`apps/firefox/shared/telemetry.ts`, `apps/firefox/chrome/store/telemetry.ts`).
+- **Telemetry** sends nothing before its notice has shown and one switch turns it all off: Ressac's own errors (addresses and the home path scrubbed), Firefox's crash reports (minidumps, which can hold page data and are not scrubbed: off by default, their own switch in Réglages › Confidentialité) and one anonymous count per launch (`apps/firefox/shared/telemetry.ts`, `apps/firefox/chrome/store/telemetry.ts`).
 
 ### Known limits
 

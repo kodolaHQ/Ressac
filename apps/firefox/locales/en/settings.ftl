@@ -101,7 +101,9 @@ settings-restart = Restart
 settings-rebuild = Rebuild
 settings-cancel = Cancel
 
-settings-telemetry-label = Send crashes and errors
+settings-telemetry-label = Send errors
+settings-crash-reports-label = Attach Firefox's crash reports
+settings-crash-reports-help = Off by default. A crash report holds a piece of Ressac's memory at the moment of the crash: it can contain parts of the open pages. It also needs errors to be sent.
 settings-telemetry-unavailable = This version sends nothing.
 
 settings-language-label = Language

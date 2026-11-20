@@ -101,7 +101,9 @@ settings-restart = Redémarrer
 settings-rebuild = Reconstruire
 settings-cancel = Annuler
 
-settings-telemetry-label = Envoyer les plantages et les erreurs
+settings-telemetry-label = Envoyer les erreurs
+settings-crash-reports-label = Joindre les rapports de plantage de Firefox
+settings-crash-reports-help = Désactivé par défaut. Un rapport de plantage contient un extrait de la mémoire de Ressac au moment du plantage : il peut contenir des morceaux des pages ouvertes. Il demande aussi l'envoi des erreurs.
 settings-telemetry-unavailable = Cette version n'envoie rien.
 
 settings-language-label = Langue

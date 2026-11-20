@@ -567,8 +567,10 @@ export interface SettingsApi {
   exportData(): Promise<{ ok: true; path: string } | { ok: false; error: string }>;
   /** Marks the data to set aside and restarts; false when the restart was cancelled (nothing is reset then). */
   reset(): Promise<boolean>;
-  telemetry(): Promise<{ available: boolean; enabled: boolean }>;
+  telemetry(): Promise<{ available: boolean; enabled: boolean; crashReports: boolean }>;
   setTelemetry(enabled: boolean): void;
+  /** Firefox's crash reports (minidumps, unscrubbed), off by default; they also need the telemetry switch on. */
+  setCrashReports(on: boolean): void;
   version(): Promise<string>;
   /** Whether macOS opens web links with Ressac. */
   defaultBrowser(): Promise<boolean>;

@@ -134,7 +134,7 @@ async function noticeOnce(profile: string): Promise<void> {
   await waitFor(m, `return [...window.gNotificationBox.allNotifications].some((n) => n.getAttribute("value") === "${NOTICE}")`, (v) => v === true);
   expect(await m.execute("return Services.prefs.getBoolPref('ressac.telemetry.noticeShown')")).toBe(true);
   const label = await m.execute<string>(`return [...window.gNotificationBox.allNotifications].find((n) => n.getAttribute("value") === "${NOTICE}").messageText?.textContent ?? ""`);
-  expect(label).toContain("Ressac envoie à son développeur les plantages et les erreurs, sans adresse de page, pour corriger les bugs de la bêta, et à chaque lancement un identifiant d'installation anonyme pour compter les utilisateurs. Un plantage peut contenir des fragments de mémoire.");
+  expect(label).toContain("Ressac envoie à son développeur ses erreurs, sans adresse de page, pour corriger les bugs de la bêta, et à chaque lancement un identifiant d'installation anonyme pour compter les utilisateurs. Les rapports de plantage de Firefox, qui peuvent contenir des morceaux des pages ouvertes, ne partent que si vous les activez dans Réglages › Confidentialité.");
   await m.execute(
     `const n = [...window.gNotificationBox.allNotifications].find((n) => n.getAttribute("value") === "${NOTICE}");
      [...n.buttonContainer.children].find((b) => b.getAttribute("label") === "Couper l'envoi").doCommand();`,
@@ -152,7 +152,7 @@ async function noticeOnce(profile: string): Promise<void> {
   expect(await notices()).toBe(0);
 }
 
-it("before the notice has shown, neither error reports nor crash reports go out", async () => {
+it("before the notice has shown, neither error reports nor crash reports go out; after it, crash reports only once turned on", async () => {
   await launch();
   await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.noticeShown", false)`, (v) => v === true);
   await m.execute(`Services.prefs.setBoolPref("ressac.telemetry.noticeShown", false);`);
@@ -161,7 +161,12 @@ it("before the notice has shown, neither error reports nor crash reports go out"
   await settle();
   expect(envelopes.filter((e) => e.raw.includes("before the notice"))).toEqual([]);
   await m.execute(`Services.prefs.setBoolPref("ressac.telemetry.noticeShown", true);`);
+  // Minidumps can hold page data: off until the user turns them on, and off again with the telemetry switch.
+  expect(await m.execute("return Services.prefs.getBoolPref('browser.tabs.crashReporting.sendReport')")).toBe(false);
+  await m.execute(`Services.prefs.setBoolPref("ressac.telemetry.crashReports", true);`);
   expect(await m.execute("return Services.prefs.getBoolPref('browser.tabs.crashReporting.sendReport')")).toBe(true);
+  await m.execute(`Services.prefs.setBoolPref("ressac.telemetry.enabled", false);`);
+  expect(await m.execute("return Services.prefs.getBoolPref('browser.tabs.crashReporting.sendReport')")).toBe(false);
 });
 
 it("no dsn: no notice, nothing sent", async () => {

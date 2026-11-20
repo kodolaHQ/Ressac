@@ -113,6 +113,7 @@ export function createSettingsApi(o: {
       }),
     telemetry: async () => o.chrome.telemetry(),
     setTelemetry: (enabled) => o.chrome.setTelemetry(enabled),
+    setCrashReports: (on) => o.chrome.setCrashReports(on),
     version: async () => o.chrome.version(),
     defaultBrowser: async () => o.chrome.defaultBrowser(),
     setDefaultBrowser: () => o.chrome.setDefaultBrowser(),

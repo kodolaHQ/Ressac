@@ -17,7 +17,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     },
     notify: vi.fn(),
   } as any;
-  const chrome = { telemetry: vi.fn(), setTelemetry: vi.fn(), version: vi.fn(), defaultBrowser: vi.fn(() => true), setDefaultBrowser: vi.fn(), repairScreenSharing: vi.fn(async () => true), reveal: vi.fn(), openNotificationSettings: vi.fn(), openFullDiskAccessSettings: vi.fn(), openFilesAndFoldersSettings: vi.fn(), exportFolder: async () => "/u/Downloads", reset: vi.fn(), checkForUpdate: vi.fn(), restartToUpdate: vi.fn(), updateDownloadUrl: vi.fn(() => "https://updates.example/updates/k/Ressac.dmg") };
+  const chrome = { telemetry: vi.fn(), setTelemetry: vi.fn(), setCrashReports: vi.fn(), version: vi.fn(), defaultBrowser: vi.fn(() => true), setDefaultBrowser: vi.fn(), repairScreenSharing: vi.fn(async () => true), reveal: vi.fn(), openNotificationSettings: vi.fn(), openFullDiskAccessSettings: vi.fn(), openFilesAndFoldersSettings: vi.fn(), exportFolder: async () => "/u/Downloads", reset: vi.fn(), checkForUpdate: vi.fn(), restartToUpdate: vi.fn(), updateDownloadUrl: vi.fn(() => "https://updates.example/updates/k/Ressac.dmg") };
   const forget = vi.fn(async () => {});
   const sitePermissions = { list: async () => [{ profile: "default", origin: "https://a.fr", permissions: { "media-camera": "allow", notifications: "deny" } as const }], forget };
   const dispatched: Action[] = [];

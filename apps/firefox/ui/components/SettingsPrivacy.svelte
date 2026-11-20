@@ -28,8 +28,9 @@
 
   /** null: not asked; then whether macOS forgot its screen recording grant. */
   let repaired = $state<boolean | null>(null);
-  let telemetry = $state<{ available: boolean; enabled: boolean } | null>(null);
-  $effect(() => void s.telemetry().then((t) => (telemetry = t)));
+  let telemetry = $state<{ available: boolean; enabled: boolean; crashReports: boolean } | null>(null);
+  // Copied: an object from the chrome's realm is not made reactive, and the crash switch follows `enabled`.
+  $effect(() => void s.telemetry().then((t) => (telemetry = { ...t })));
 </script>
 
 <section data-testid="settings-privacy" aria-label={t("settings-section-privacy")}>
@@ -102,6 +103,22 @@
         {#snippet below()}
           {#if !telemetry?.available}<span class="help">{t("settings-telemetry-unavailable")}</span>{/if}
         {/snippet}
+      </SettingsRow>
+      <SettingsRow label={t("settings-crash-reports-label")} id="crash-reports-switch" help={t("settings-crash-reports-help")}>
+        <input
+          id="crash-reports-switch"
+          class="switch"
+          type="checkbox"
+          role="switch"
+          data-testid="crash-reports-switch"
+          aria-describedby="crash-reports-switch-help"
+          disabled={!telemetry.available || !telemetry.enabled}
+          checked={telemetry.crashReports}
+          onchange={(e) => {
+            telemetry!.crashReports = e.currentTarget.checked;
+            s.setCrashReports(telemetry!.crashReports);
+          }}
+        />
       </SettingsRow>
     {/if}
   </div>

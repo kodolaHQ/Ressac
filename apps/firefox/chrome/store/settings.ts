@@ -4,13 +4,15 @@ import { relaunchAfterQuit } from "./relaunch";
 import { testEnv } from "../test-env";
 
 const ENABLED = "ressac.telemetry.enabled";
+const CRASH_REPORTS = "ressac.telemetry.crashReports";
 /** Firefox's own default browser service. */
 export const SHELL_SERVICE = "moz-src:///browser/components/shell/ShellService.sys.mjs";
 const EXPORT_NAME = /^Ressac-donnees-\d{4}-\d{2}-\d{2}( \(\d+\))?\.zip$/;
 
 export interface SettingsChrome {
-  telemetry(): { available: boolean; enabled: boolean };
+  telemetry(): { available: boolean; enabled: boolean; crashReports: boolean };
   setTelemetry(enabled: boolean): void;
+  setCrashReports(on: boolean): void;
   version(): string;
   reveal(path: string): void;
   /** macOS's System Settings › Notifications: a site's or the watch's notification never shows while Ressac is off there. */
@@ -69,8 +71,9 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean, 
   let testDefault = false;
   const shell = () => ChromeUtils.importESModule(SHELL_SERVICE).ShellService;
   return {
-    telemetry: () => ({ available: telemetryActive, enabled: Services.prefs.getBoolPref(ENABLED, false) }),
+    telemetry: () => ({ available: telemetryActive, enabled: Services.prefs.getBoolPref(ENABLED, false), crashReports: Services.prefs.getBoolPref(CRASH_REPORTS, false) }),
     setTelemetry: (enabled) => Services.prefs.setBoolPref(ENABLED, enabled === true),
+    setCrashReports: (on) => Services.prefs.setBoolPref(CRASH_REPORTS, on === true),
     version: () => __RESSAC_VERSION__,
     checkForUpdate: () => updates.check(),
     restartToUpdate: () => updates.restart(),
