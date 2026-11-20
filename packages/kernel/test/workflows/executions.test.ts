@@ -97,7 +97,7 @@ test("huge logs and errors are bounded: the file stays under 4 MB", async () => 
   expect(Buffer.byteLength(loaded.blocks[0]!.error!)).toBeLessThanOrEqual(2048);
   expect(loaded.blocks.every((b) => b.log.length >= 1 && b.log.length <= 201)).toBe(true);
   expect(loaded.blocks[0]!.log.some((l) => l.includes("lignes coupées"))).toBe(true);
-});
+}, 60_000); // ~150 MB of input: 4 s on an M5 Pro, 21 s on the 3-core CI runner
 
 test("listRuns does not re-read an unchanged file (same date, same size), re-reads a rewritten file", async () => {
   const d = await tempFolder();

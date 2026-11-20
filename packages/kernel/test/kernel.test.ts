@@ -131,7 +131,7 @@ test("container start failure: createKernel succeeds, the session throws Worksho
     [/ image inspect /, { code: 0 }],
     [/ run /, { code: 125, stderr: "Bind for 127.0.0.1:5280 failed: port is already allocated" }],
   ]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: await workshopWithoutDocker(root, run) });
   const error = await kernel.openAgentSession({ cols: 80, rows: 24 }).catch((e) => e);
   expect(error).toBeInstanceOf(WorkshopError);
   expect(error.message).toContain("port is already allocated");
@@ -145,7 +145,7 @@ test("build failed at launch: the first session returns that failure without reb
     [/ inspect -f/, { code: 1 }],
     [/ build /, { code: 1, stderr: "réseau coupé" }],
   ]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: await workshopWithoutDocker(root, run) });
   const error = await kernel.openAgentSession({ cols: 80, rows: 24 }).catch((e) => e);
   expect(error.message).toContain("réseau coupé");
   expect(calls.filter((a) => a.args[0] === "build")).toHaveLength(1);
