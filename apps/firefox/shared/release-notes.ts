@@ -1,6 +1,17 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.19",
+    date: "novembre 2026",
+    items: [
+      "Sécurité : l'agent ne peut plus modifier les règles réseau de son atelier. Sur la machine de Ressac, il pouvait contourner le filtre qui limite les sites qu'il joint ; son conteneur n'a désormais plus aucun privilège. L'atelier se recrée une fois au prochain démarrage.",
+      "Sécurité : une recherche de l'agent se met en pause si elle contient une clé d'accès, un numéro de carte, un IBAN ou un numéro de sécurité sociale, ou une donnée lue dans vos onglets, votre historique ou vos favoris (adresse e-mail, téléphone, identifiant). Une adresse écrite par l'agent qui en contient une s'affiche avec une ligne rouge sur sa carte.",
+      "Pendant une recherche, vos sites sensibles (messagerie, banque, impôts, santé…), votre historique et vos favoris redemandent votre accord une fois.",
+      "Le juge local des recherches est désormais désactivé par défaut (il arrêtait trop souvent des recherches honnêtes) ; vous pouvez l'activer dans Réglages › Agent.",
+      "Le halo de l'onglet de recherche reste allumé pendant que l'agent lit des pages, et la bande de recherche s'affiche en anglais quand Ressac est en anglais.",
+    ],
+  },
+  {
     version: "0.1.18",
     date: "novembre 2026",
     items: [
