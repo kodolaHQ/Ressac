@@ -9,3 +9,5 @@ allowBuilds:
 overrides:
   # surfer declares a git fork of is-apple-silicon (rejected by blockExoticSubdeps) but never imports it: the registry version is enough.
   is-apple-silicon: 1.1.2
+  # surfer's sharp 0.32 (logo resizing at build time, not shipped) carries libvips/libheif advisories fixed in 0.35.4.
+  sharp: 0.35.5

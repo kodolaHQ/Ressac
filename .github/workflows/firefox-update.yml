@@ -71,8 +71,11 @@ jobs:
           corepack enable
       - name: Install
         run: corepack pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: corepack pnpm typecheck
+      # Every package, one at a time (same as unit-tests.yml: the 3-core runner times out otherwise).
       - name: Unit tests
-        run: corepack pnpm --filter firefox-ressac exec vitest run test
+        run: corepack pnpm -r --workspace-concurrency=1 --if-present test
       - name: Download Firefox
         working-directory: apps/firefox
         run: zsh scripts/env.sh ./node_modules/.bin/surfer download
