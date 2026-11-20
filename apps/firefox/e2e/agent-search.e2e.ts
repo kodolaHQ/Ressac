@@ -357,35 +357,26 @@ it("the band enters and leaves with a transition", async () => {
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
-  // Samples of the band's opacity and the page's top inset at every frame, from before the band exists.
-  await m.execute(`window.__samples = []; window.__sampling = true;
-    const tick = () => { const b = document.querySelector('${BAND}'); window.__samples.push({ o: b ? +getComputedStyle(b).opacity : 0, inset: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8 }); if (window.__sampling) requestAnimationFrame(tick); };
-    requestAnimationFrame(tick);`);
+  // Every transition started in the window. Not frames: a hidden window under load paints a few frames a second,
+  // which misses a 150 ms fade and catches the page's inset frozen mid-way.
+  await m.execute(`window.__runs = []; window.addEventListener("transitionrun", (e) => window.__runs.push((e.target === document.documentElement ? "root" : e.target.id) + " " + e.propertyName), true);`);
+  const runs = () => m.execute<string[]>(`return window.__runs.splice(0);`);
+  const moved = ["ressac-search-band opacity", "root --ressac-search-band"];
   // Opening the agent panel starts the agent's session, which resets the searches: the agent searches only once it is ready.
   await agentPanelReady(m);
+  await runs();
   const id = idOf((await callTool(w.dataDir, "search_web", { query: "x", goal: "but" })).text);
   await dispatch(m, { type: "activateTab", id });
   await waitBand((v) => v.shown);
-  // Settled: the inset no longer moves.
-  const inset = () => m.execute<number>(`return document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8`);
-  let settled = -1;
-  for (let before = -2; settled < 0; await new Promise((r) => setTimeout(r, 300))) {
-    const now = await inset();
-    if (now > 0 && now === before) settled = now;
-    before = now;
-  }
+  // In: the page goes down to the band's room on a transition, the band fades in.
+  const inset = `const room = parseFloat(document.documentElement.style.getPropertyValue("--ressac-search-band"));
+    return { room, inset: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8 };`;
+  await waitFor<{ room: number; inset: number }>(m, inset, (v) => v.room > 0 && Math.abs(v.inset - v.room) < 0.5);
+  expect(await runs()).toEqual(expect.arrayContaining(moved));
+  // Out: it comes back on a transition, the band fades out.
   await otherTab();
   await waitBand((v) => !v.shown);
-  await waitFor(m, `return document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top - 8`, (v) => v === 0);
-  expect(await inset()).toBe(0);
-  const samples = await m.execute<{ o: number; inset: number }[]>(`window.__sampling = false; return window.__samples;`);
-  const lastFull = samples.findLastIndex((x) => x.inset >= settled - 0.5);
-  const firstFull = samples.findIndex((x) => x.inset >= settled - 0.5);
-  const mid = (xs: typeof samples) => xs.some((x) => x.inset > 0.5 && x.inset < settled - 0.5);
-  // In: the page goes down by steps (not at once) and the band fades in; out: it comes back by steps.
-  expect(mid(samples.slice(0, firstFull))).toBe(true);
-  expect(samples.slice(0, firstFull).some((x) => x.o > 0.02 && x.o < 0.98)).toBe(true);
-  expect(mid(samples.slice(lastFull))).toBe(true);
-  expect(samples.slice(lastFull).some((x) => x.o > 0.02 && x.o < 0.98)).toBe(true);
+  await waitFor<{ room: number; inset: number }>(m, inset, (v) => v.room === 0 && v.inset === 0);
+  expect(await runs()).toEqual(expect.arrayContaining(moved));
   await dispatch(m, { type: "activateTab", id });
 });
