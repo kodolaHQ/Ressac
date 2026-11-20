@@ -23,4 +23,5 @@ jobs:
       - run: corepack enable
       - run: corepack pnpm install --frozen-lockfile
       - run: corepack pnpm typecheck
-      - run: corepack pnpm test
+      # One package at a time: kernel and Firefox tests together overload the 3-core runner (timeouts).
+      - run: corepack pnpm -r --workspace-concurrency=1 --if-present test
