@@ -1153,7 +1153,8 @@ function createToolsServer(
             let off = () => {};
             const over = new Promise<void>((ok2) => { off = sessions.onEnd(id, ok2); });
             try {
-              await sessions.step(id, label(), () => Promise.race([Promise.all(ok.map((x, i) => read(x, i === 0 ? first : undefined))), over]));
+              // The pages are read in background tabs: the search tab, the one shown, is the one at work (its halo).
+              await working(id, () => sessions.step(id, label(), () => Promise.race([Promise.all(ok.map((x, i) => read(x, i === 0 ? first : undefined))), over])));
             } finally {
               off();
               await Promise.all([...opened].map(close));

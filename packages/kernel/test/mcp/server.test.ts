@@ -1805,6 +1805,19 @@ test("read_pages: a stop abandons a page that never answers: STOP_TEXT at once, 
   }, { address: true, hanging: ["https://exemple.fr/pend"] });
 });
 
+test("read_pages: the search tab is running while its background reads last, not after (the window's halo)", async () => {
+  await withSearch(async ({ call, fake, search, policy }) => {
+    await call("search_web", { query: "x" });
+    expect(policy.state()["search-1"]?.running ?? false).toBe(false);
+    const pending = call("read_pages", { urls: ["https://exemple.fr/pend"] });
+    await vi.waitFor(() => expect(fake.calls.some((x) => x.method === "readText" && x.args[0] === "bg-2")).toBe(true));
+    expect(policy.state()["search-1"]?.running).toBe(true);
+    search.stop("search-1");
+    await pending;
+    expect(policy.state()["search-1"]?.running ?? false).toBe(false);
+  }, { address: true, hanging: ["https://exemple.fr/pend"] });
+});
+
 test("read_pages: a page past the time limit gives its error and its tab is closed; the others are read", async () => {
   await withSearch(async ({ call, fake }) => {
     await call("search_web", { query: "x" });
