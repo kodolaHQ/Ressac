@@ -155,6 +155,16 @@ try {
   // Caps, inside the workshop container only.
   const limits = pod(["inspect", "-f", "{{.HostConfig.Memory}} {{.HostConfig.PidsLimit}} {{.HostConfig.SecurityOpt}}", containerName()]);
   line(limits.stdout.startsWith(`${2.5 * 2 ** 30} 1024 `) && limits.stdout.includes("no-new-privileges"), "workshop: --memory 2.5g, --pids-limit 1024, no-new-privileges", limits.stdout);
+  // No capability in the container: root's bounding set is empty, node has none and cannot touch the rules; the proxy
+  // (started by secureNetwork's privileged exec, then its own user) keeps none either.
+  const caps = pod(["exec", "-u", "root", containerName(), "sh", "-c", "grep '^CapBnd' /proc/self/status"]);
+  const nodeCaps = pod(["exec", containerName(), "sh", "-c", "id -un; grep '^CapEff' /proc/self/status; iptables -S >/dev/null 2>&1; echo iptables=$?"]);
+  const proxyCaps = pod(["exec", "-u", "root", containerName(), "sh", "-c", "for d in /proc/[0-9]*; do grep -q \"^Uid:\\s*$(id -u ressac-proxy)\\s\" $d/status 2>/dev/null && grep '^CapEff' $d/status; done"]);
+  line(
+    /CapBnd:\s*0+$/m.test(caps.stdout) && /^node\nCapEff:\s*0+\niptables=[1-9]/.test(nodeCaps.stdout) && /^CapEff:\s*0+$/m.test(proxyCaps.stdout) && !/CapEff:\s*0*[1-9a-f]/.test(proxyCaps.stdout),
+    "workshop: no capability (root bounding set empty; node has none and cannot run iptables; the proxy has none)",
+    `${out(caps)} | ${out(nodeCaps)} | proxy ${out(proxyCaps)}`,
+  );
   // 2.64 GiB: above the container's 2.5 GiB but under what the 3 GiB machine has free, so the cgroup's own OOM must be the
   // killer: its memory.events `oom` (limit reached) and `oom_kill` counters must both go up.
   const events = "while read k v; do printf '%s=%s ' $k $v; done < /sys/fs/cgroup/memory.events; echo";

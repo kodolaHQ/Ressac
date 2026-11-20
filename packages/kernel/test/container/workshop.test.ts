@@ -660,8 +660,8 @@ describe("agent network", () => {
     await new Workshop({ paths: paths, docker: "docker", run }).ensureStarted();
     const args = calls.find((a) => a.args[0] === "run")!.args;
     const count = (x: string) => args.filter((a) => a === x).length;
-    for (const f of ["--cap-add", "--memory", "--pids-limit", "--sysctl"]) expect(count(f)).toBe(1);
-    expect(args.join(" ")).toContain("--cap-add NET_ADMIN --security-opt no-new-privileges --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1");
+    for (const f of ["--cap-drop", "--memory", "--pids-limit", "--sysctl"]) expect(count(f)).toBe(1);
+    expect(args.join(" ")).toContain("--cap-drop ALL --security-opt no-new-privileges --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1");
     for (const e of [
       "HTTPS_PROXY=http://127.0.0.1:3128", "https_proxy=http://127.0.0.1:3128", "HTTP_PROXY=http://127.0.0.1:3128", "http_proxy=http://127.0.0.1:3128",
       "NO_PROXY=localhost,127.0.0.1,host.docker.internal", "no_proxy=localhost,127.0.0.1,host.docker.internal",
@@ -672,14 +672,14 @@ describe("agent network", () => {
   test("the image hash covers the network module and the run flags version", async () => {
     const { RUN_FLAGS, RUN_FLAGS_VERSION } = await import("../../src/container/workshop.js");
     // Changing a flag must bump RUN_FLAGS_VERSION (and the fake docker's copy of it).
-    expect(RUN_FLAGS_VERSION).toBe("5");
-    expect(RUN_FLAGS.join(" ")).toMatchInlineSnapshot(`"--cap-add NET_ADMIN --security-opt no-new-privileges --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1 -e HTTPS_PROXY=http://127.0.0.1:3128 -e https_proxy=http://127.0.0.1:3128 -e HTTP_PROXY=http://127.0.0.1:3128 -e http_proxy=http://127.0.0.1:3128 -e NO_PROXY=localhost,127.0.0.1,host.docker.internal -e no_proxy=localhost,127.0.0.1,host.docker.internal -e NODE_USE_ENV_PROXY=1 -e DISABLE_AUTOUPDATER=1 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"`);
+    expect(RUN_FLAGS_VERSION).toBe("6");
+    expect(RUN_FLAGS.join(" ")).toMatchInlineSnapshot(`"--cap-drop ALL --security-opt no-new-privileges --pids-limit 1024 --sysctl net.ipv6.conf.all.disable_ipv6=1 -e HTTPS_PROXY=http://127.0.0.1:3128 -e https_proxy=http://127.0.0.1:3128 -e HTTP_PROXY=http://127.0.0.1:3128 -e http_proxy=http://127.0.0.1:3128 -e NO_PROXY=localhost,127.0.0.1,host.docker.internal -e no_proxy=localhost,127.0.0.1,host.docker.internal -e NODE_USE_ENV_PROXY=1 -e DISABLE_AUTOUPDATER=1 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"`);
   });
 
   test("secureNetwork applies the rules with valid domains only, then probes", async () => {
     const { workshop, calls } = make([[/curl/, { code: 7 }]]);
     await workshop.secureNetwork();
-    expect(calls[0]!.args).toEqual(["exec", "-u", "root", "-w", "/", "-i", "ressac-workshop", "node", "/opt/ressac/ressac-network.mjs", "apply"]);
+    expect(calls[0]!.args).toEqual(["exec", "--privileged", "-u", "root", "-w", "/", "-i", "ressac-workshop", "node", "/opt/ressac/ressac-network.mjs", "apply"]);
     expect(JSON.parse(calls[0]!.opts!.input!)).toEqual({ ports: [5281, 5282], domains: ["ok.example.com", "*.good.dev"] });
     expect(calls[1]!.args).toEqual(["exec", "ressac-workshop", "curl", "-s", "--noproxy", "*", "--max-time", "3", "https://1.1.1.1"]);
   });
@@ -954,7 +954,7 @@ describe("container engine", () => {
     expect(await runArgs()).toBe(String(2.5 * 2 ** 30));
     const machine: ContainerEngine = { kind: "machine", binary: () => "podman", args: () => [], hostAddress: () => "192.168.5.2", up: async () => true, wake: async () => {}, memory: () => 2 ** 30 };
     expect(await runArgs(machine)).toBe(String(2 ** 30));
-    expect(RUN_FLAGS_VERSION).toBe("5");
+    expect(RUN_FLAGS_VERSION).toBe("6");
   });
 
   test("busy while a start is in progress: memory pressure never stops the machine under it", async () => {

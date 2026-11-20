@@ -75,10 +75,12 @@ export function codexRequirements(url: string): string {
  * Bumped with any change to RUN_FLAGS or to the `docker run` mounts: it goes into the image hash, so the container is
  * recreated (the fake docker of the e2e tests repeats it).
  */
-export const RUN_FLAGS_VERSION = "5";
+export const RUN_FLAGS_VERSION = "6";
 /** The network and proxy flags of `docker run` (the part after the ports and the memory cap). */
 export const RUN_FLAGS = [
-  "--cap-add", "NET_ADMIN",
+  // No capability at all: Podman hands --cap-add ones to the non-root user too (the agent could flush the rules).
+  // secureNetwork's exec alone runs privileged, as root, for the rules and the proxy started as its own user.
+  "--cap-drop", "ALL",
   // No setuid route to root for the agent: root alone (docker exec -u root) applies the network rules.
   "--security-opt", "no-new-privileges",
   "--pids-limit", "1024",
@@ -452,7 +454,7 @@ export class Workshop {
     this.applying = JSON.stringify(rules);
     const { ports, domains } = rules;
     const apply = await this.launch(
-      ["exec", "-u", "root", "-w", "/", "-i", containerName(), "node", "/opt/ressac/ressac-network.mjs", "apply"],
+      ["exec", "--privileged", "-u", "root", "-w", "/", "-i", containerName(), "node", "/opt/ressac/ressac-network.mjs", "apply"],
       PROBE_DELAY_MS,
       JSON.stringify({ ports, domains: domains.filter(validDomain) }),
     );
