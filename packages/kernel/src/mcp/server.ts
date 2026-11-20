@@ -25,7 +25,8 @@ import { SeenUrls } from "./seen.js";
 import { NOTES_PREFIX, type BrowsingNotes } from "../search/notes.js";
 import { RECAP_TITLE_MAX, RECAP_UNKNOWN, type Recaps } from "../recaps/recaps.js";
 import { pageState, reducedPage, stateLine } from "./reduce.js";
-import { OUTFLOW_LABELS, type Outflow, type OutflowHit } from "../outflow/outflow.js";
+import { outflowLabel, type Outflow, type OutflowHit } from "../outflow/outflow.js";
+import { say } from "../i18n.js";
 import { isSensitive } from "../access/sensitive.js";
 import { TabNotFound, PrivateTab, SiteChanged, PRIVATE_TEXT, type TabInfo, type PageLink, type TabRead, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
 
@@ -34,7 +35,6 @@ export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne
 export const HANDING_TEXT = "La page est à l'utilisateur : attends la fin de hand_over.";
 const TOO_LONG_TEXT = `Adresse trop longue (${URL_MAX} caractères au plus).`;
 /** The band while an address card waits: a step, so the idle delay does not end the search under the card. */
-const ADDRESS_STEP = "Accord demandé pour une adresse";
 /** The key of the search of a session without a window (the main token). */
 const MAIN_WINDOW = "main";
 const SETTLE_MAX_MS = 5000;
@@ -90,11 +90,14 @@ export type AgentActivity = { tab: string; label: string };
 export type OpenWorkflow = { widget: string; block: string | null } | { action: string; block: string | null };
 const HISTORY_LIMIT = { default: 20, max: 50 };
 
-const outflowWhat = (hit: OutflowHit) => `${OUTFLOW_LABELS[hit.kind]}${hit.source ? `, lu dans ${hit.source}` : ""}`;
+const outflowWhat = (locale: string, hit: OutflowHit) => {
+  const what = outflowLabel(locale, hit.kind);
+  return hit.source ? say(locale, "kernel-outflow-read-in", { what, source: hit.source }) : what;
+};
 /** The band of a search paused because its query carries a secret or private data the agent read. */
-export const OUTFLOW_PAUSE = (hit: OutflowHit) => `Le surveillant a mis en pause : la recherche contient ${outflowWhat(hit)} (${hit.masked})`;
+export const OUTFLOW_PAUSE = (locale: string, hit: OutflowHit) => say(locale, "kernel-outflow-pause", { what: outflowWhat(locale, hit), masked: hit.masked });
 /** The red line of an address card whose address carries such data. */
-export const OUTFLOW_DANGER = (hit: OutflowHit) => `Contient ${outflowWhat(hit)} : ${hit.masked}`;
+export const OUTFLOW_DANGER = (locale: string, hit: OutflowHit) => say(locale, "kernel-outflow-danger", { what: outflowWhat(locale, hit), masked: hit.masked });
 /**
  * Rule 2 remembers the text every tool returns, except these: public pages read by the search and the engine's results
  * (search_web, read_pages), tools that feed it themselves with their exceptions (read_tab, current_page, list_tabs), an
@@ -111,31 +114,30 @@ const OUTFLOW_UNFED = new Set([
  * red line, never one inside a title or excerpt (the tab reads and the tab list say so themselves).
  */
 const OUTFLOW_LINKS = new Set(["search_history", "read_history", "search_bookmarks", "hand_over"]);
-const DEV_SOURCE = "outils de développement";
 /** A search query's length cap: the outflow check scans it piece by piece, and no engine takes more. */
 const SEARCH_QUERY_MAX = 2000;
-/** Where a tool's text comes from, as the pause names it (French UI text); a tool missing here: « un outil de l'agent ». */
-const OUTFLOW_SOURCES: Record<string, (a: { id?: unknown }) => string> = {
-  search_history: () => "ton historique",
-  read_history: () => "ton historique",
-  search_bookmarks: () => "tes favoris",
-  list_sites: () => "tes applis de site",
-  site_memory: (a) => `l'appli de site ${String(a.id)}`,
-  tweak_errors: (a) => `l'appli de site ${String(a.id)}`,
-  harvest_widget: (a) => `le widget ${String(a.id)}`,
-  widget_data: (a) => `le widget ${String(a.id)}`,
-  widget_runs: (a) => `le widget ${String(a.id)}`,
-  launch_action: (a) => `l'action ${String(a.id)}`,
-  action_runs: (a) => `l'action ${String(a.id)}`,
-  hand_over: () => "ta navigation pendant le passage de main",
-  list_extensions: () => "tes extensions",
-  request_extension: () => "tes extensions",
-  reload_extension: () => "tes extensions",
-  extension_console: () => "la console d'une extension",
-  unlock_console: () => "la console d'une extension",
-  lock_console: () => "la console d'une extension",
+/** Where a tool's text comes from, as the pause names it: its message (kernel-outflow-source-*), with the tool's `id` for some; a tool missing here: « un outil de l'agent ». */
+const OUTFLOW_SOURCES: Record<string, string> = {
+  search_history: "history",
+  read_history: "history",
+  search_bookmarks: "bookmarks",
+  list_sites: "sites",
+  site_memory: "site",
+  tweak_errors: "site",
+  harvest_widget: "widget",
+  widget_data: "widget",
+  widget_runs: "widget",
+  launch_action: "action",
+  action_runs: "action",
+  hand_over: "hand-over",
+  list_extensions: "extensions",
+  request_extension: "extensions",
+  reload_extension: "extensions",
+  extension_console: "extension-console",
+  unlock_console: "extension-console",
+  lock_console: "extension-console",
   ...Object.fromEntries(
-    ["request_devtools", "read_console", "read_network", "read_request", "profile_performance", "memory_snapshot", "compare_memory", "run_js", "reload"].map((n) => [n, () => DEV_SOURCE]),
+    ["request_devtools", "read_console", "read_network", "read_request", "profile_performance", "memory_snapshot", "compare_memory", "run_js", "reload"].map((n) => [n, "devtools"]),
   ),
 };
 const NOT_SHARED_LABEL = "onglet non partagé";
@@ -436,7 +438,10 @@ function createToolsServer(
   onActivity?: (a: AgentActivity) => void,
   /** What the agent read from private sources and what the user typed (absent: no outflow rule). */
   outflow?: Outflow,
+  locale: () => string = () => "en",
 ): McpServer {
+  /** A text the user reads (band, card line, activity), in their language. */
+  const l10n = (id: string, args?: Record<string, string | number>) => say(locale(), id, args);
   const server = new McpServer({ name: "ressac", version: "0.1.0" });
   const key = win ?? MAIN_WINDOW;
   /** The outflow remembers the text a tool returns (rule 2). */
@@ -453,7 +458,7 @@ function createToolsServer(
   // Any tool but note_lesson closes the window's lesson slot: a lesson follows its hand-over, never a page read after it.
   const registerTool = server.registerTool.bind(server);
   server.registerTool = ((name: string, config: never, cb: (...a: unknown[]) => unknown) => {
-    const source = outflow && !OUTFLOW_UNFED.has(name) ? (OUTFLOW_SOURCES[name] ?? (() => "un outil de l'agent")) : undefined;
+    const source = outflow && !OUTFLOW_UNFED.has(name) ? (a: { id?: unknown }) => l10n(`kernel-outflow-source-${OUTFLOW_SOURCES[name] ?? "tool"}`, { id: String(a.id) }) : undefined;
     const run = name === "note_lesson" ? cb : (...a: unknown[]) => (searching?.notes?.forget(key), cb(...a));
     const fed = source
       ? async (...a: unknown[]) => {
@@ -590,7 +595,7 @@ function createToolsServer(
     const state = pageState(r, now.url, now.title);
     // A check page or a login: the user gets the page without the agent deciding it, then it is read again (once).
     if (!opts.handed && (state === "bloquée" || state === "connexion demandée")) {
-      const lead = state === "bloquée" ? "Bloqué par une vérification. À vous : passez-la, puis Continuer." : "Connexion demandée. À vous : connectez-vous si vous le voulez, puis Continuer.";
+      const lead = l10n(state === "bloquée" ? "kernel-search-blocked" : "kernel-search-sign-in");
       const h = await awaitHand(o.id, lead, opts.extra);
       if (!("path" in h)) return h;
       const back = [`La page est de nouveau à toi (elle était ${state}).`, h.path.length ? `Chemin suivi par l'utilisateur :\n${h.path.join("\n")}` : "L'utilisateur n'a pas changé de page."];
@@ -641,7 +646,7 @@ function createToolsServer(
   const cut = (x: string) => x.slice(0, 200);
 
   /** The band of a pause for what the watcher found strange. */
-  const strangeBand = (goal: string, what: string) => `Le surveillant a mis en pause : ${what} sans rapport avec « ${cut(goal)} »`;
+  const strangeBand = (goal: string, what: string) => l10n("kernel-search-strange", { what, goal: cut(goal) });
 
   /** Pauses the search on its tab with `band`. Returns the text to answer, or undefined when the user lets it go on. */
   async function pause(tabId: string, band: string, signal?: AbortSignal): Promise<string | undefined> {
@@ -681,16 +686,15 @@ function createToolsServer(
     return v?.strange ? pause(v.tabId, strangeBand(v.goal, what), signal) : undefined;
   }
 
-  const OPINION_TEXT = "Sans rapport apparent avec le but annoncé.";
   /** The watcher's line for the card of an address the agent composed (it never blocks the card). */
   async function opinion(g: Gesture): Promise<{ opinion?: string }> {
-    return (await judge(g, false))?.strange ? { opinion: OPINION_TEXT } : {};
+    return (await judge(g, false))?.strange ? { opinion: l10n("kernel-search-opinion") } : {};
   }
 
   /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks). */
   function danger(url: string): { danger?: string } {
     const hit = outflow?.check(key, url, true);
-    return hit ? { danger: OUTFLOW_DANGER(hit) } : {};
+    return hit ? { danger: OUTFLOW_DANGER(locale(), hit) } : {};
   }
 
   /**
@@ -748,13 +752,13 @@ function createToolsServer(
     if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, o.id)) return text(STOP_TEXT);
     if (searching?.sessions.owns(o.id)) {
       searching.sessions.log(o.id, { tool: "read_tab" });
-      act(o.id, `Lit ${siteOf(o.url)}`);
-      return readSearch(win ?? MAIN_WINDOW, o, withLinks, "Lecture de la page", [], { full, extra });
+      act(o.id, l10n("kernel-activity-reads-site", { site: siteOf(o.url) }));
+      return readSearch(win ?? MAIN_WINDOW, o, withLinks, l10n("kernel-search-reading-page"), [], { full, extra });
     }
-    const other = await watch({ tool: "read_tab", url: o.url.slice(0, 500) }, "lecture d'un autre onglet", signal);
+    const other = await watch({ tool: "read_tab", url: o.url.slice(0, 500) }, l10n("kernel-search-what-other-tab"), signal);
     if (other) return text(other);
     if (!(await readAccess(o))) return text(DENIAL_TEXT);
-    const r = present(o, await working(o.id, () => bridge.readText(o.id, { expect: o.url }), `Lit ${siteOf(o.url)}`), withLinks, [], undefined, full);
+    const r = present(o, await working(o.id, () => bridge.readText(o.id, { expect: o.url }), l10n("kernel-activity-reads-site", { site: siteOf(o.url) })), withLinks, [], undefined, full);
     // The result carries the tab's URL.
     if (!exempt(o)) remember(r, siteOf(o.url), linksFollowable(o));
     return r;
@@ -803,7 +807,7 @@ function createToolsServer(
           : `${o.id} · ${NOT_SHARED_LABEL} ·  · ${o.space}`;
       });
       for (const follow of [true, false])
-        remember(text(lines.filter((_, i) => !exempt(tabs[i]!) && linksFollowable(tabs[i]!) === follow).join("\n")), "tes onglets", follow);
+        remember(text(lines.filter((_, i) => !exempt(tabs[i]!) && linksFollowable(tabs[i]!) === follow).join("\n")), l10n("kernel-outflow-source-tabs"), follow);
       return text(lines.join("\n") || "Aucun onglet ouvert.");
     }),
   );
@@ -841,7 +845,7 @@ function createToolsServer(
         else {
           if (!bridge.askAddress) return text(UNREAD_ADDRESS_TEXT);
           const view = await opinion({ tool: "open_tab", url, composed: true });
-          const yes = await sessions.step(cur.tabId, ADDRESS_STEP, () =>
+          const yes = await sessions.step(cur.tabId, l10n("kernel-search-address-step"), () =>
             askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view, ...danger(url) }, `address:${cur.tabId}:${url}`, win ?? undefined, (f) => sessions.onEnd(cur.tabId, f), extra?.signal),
           );
           if (!sessions.owns(cur.tabId)) return text(sessions.takeStop(key, cur.tabId) ? STOP_TEXT : CLOSED_TEXT);
@@ -888,7 +892,7 @@ function createToolsServer(
           if (!bridge.askAddress) return text(UNREAD_ADDRESS_TEXT);
           const view = await opinion({ tool: "navigate", url, composed: true });
           if (!sessions.owns(id)) return text(sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
-          const yes = await sessions.step(id, ADDRESS_STEP, () =>
+          const yes = await sessions.step(id, l10n("kernel-search-address-step"), () =>
             askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view, ...danger(url) }, `address:${id}:${url}`, win ?? undefined, (f) => sessions.onEnd(id, f), extra?.signal),
           );
           if (!sessions.owns(id)) return text(sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
@@ -898,7 +902,7 @@ function createToolsServer(
           sessions.allow(id, url);
         }
         sessions.log(id, { tool: "navigate", url: target, ...(free ? {} : { composed: true }) });
-        await sessions.step(id, `Ouverture de ${target}`, () => working(id, () => bridge.navigate(id, target), `Va sur ${siteOf(target)}`));
+        await sessions.step(id, l10n("kernel-search-opening", { url: target }), () => working(id, () => bridge.navigate(id, target), l10n("kernel-activity-goes-to", { site: siteOf(target) })));
         return text(`Onglet ${id} → ${target}`);
       }
       if (o.site !== undefined) {
@@ -910,7 +914,7 @@ function createToolsServer(
         // link counts as written too: the app's tweaks put it in the page, as for a local page.
         const refusal = await composedRefusal("navigate", url, reason, extra?.signal);
         if (refusal) return text(refusal);
-        if ((await working(id, () => bridge.navigate(id, url), `Va sur ${siteOf(url)}`)) === "pending") return text(PENDING_SITE_NAVIGATION);
+        if ((await working(id, () => bridge.navigate(id, url), l10n("kernel-activity-goes-to", { site: siteOf(url) }))) === "pending") return text(PENDING_SITE_NAVIGATION);
         return text(`Appli de site ${id} → ${url}`);
       }
       if (!(await access(o))) return text(DENIAL_TEXT);
@@ -927,7 +931,7 @@ function createToolsServer(
       // Before bridge.navigate: the browser may report the navigation (tabNavigated) before it
       // ends, and the agent must not lose access to its own demo.
       policy.navigationByAgent(id, url);
-      await working(id, () => bridge.navigate(id, url), `Va sur ${siteOf(url)}`);
+      await working(id, () => bridge.navigate(id, url), l10n("kernel-activity-goes-to", { site: siteOf(url) }));
       return text(`Onglet ${id} → ${url}`);
     }),
   );
@@ -941,11 +945,11 @@ function createToolsServer(
       const o = await tab(id);
       // As read_tab: during a search, the judge sees a capture of any tab but the search's own.
       if (!searching?.sessions.owns(id)) {
-        const other = await watch({ tool: "capture_screen", url: o.url.slice(0, 500) }, "capture d'un autre onglet", extra?.signal);
+        const other = await watch({ tool: "capture_screen", url: o.url.slice(0, 500) }, l10n("kernel-search-what-capture"), extra?.signal);
         if (other) return text(other);
       }
       if (!(await (searching?.sessions.owns(id) ? access(o) : readAccess(o)))) return text(DENIAL_TEXT);
-      const png = await working(id, () => bridge.capture(id, { expect: o.url }), `Regarde ${siteOf(o.url)}`);
+      const png = await working(id, () => bridge.capture(id, { expect: o.url }), l10n("kernel-activity-looks", { site: siteOf(o.url) }));
       return { content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }] };
     }),
   );
@@ -1024,11 +1028,11 @@ function createToolsServer(
           // Rule 1 and 2: a query carrying a secret or private data read earlier pauses before it reaches the engine.
           const hit = outflow?.check(key, query);
           // A held query is never shown in clear on the watcher's band.
-          const what = hit ? `recherche contenant ${hit.masked}` : `recherche « ${cut(query)} »`;
+          const what = hit ? l10n("kernel-search-what-held", { masked: hit.masked }) : l10n("kernel-search-what-query", { query: cut(query) });
           let o: TabInfo;
           if (current) {
             if (hit) {
-              const held = await pause(current.tabId, OUTFLOW_PAUSE(hit), extra?.signal);
+              const held = await pause(current.tabId, OUTFLOW_PAUSE(locale(), hit), extra?.signal);
               if (held) return text(held);
             }
             const stop = await watch(g, what, extra?.signal);
@@ -1044,7 +1048,7 @@ function createToolsServer(
             o = await search.open(win ?? undefined, hit || strange ? { query: "" } : { query });
             sessions.start(key, o.id, aim);
             sessions.log(o.id, g);
-            for (const band of [hit && OUTFLOW_PAUSE(hit), strange && strangeBand(judged, what)]) {
+            for (const band of [hit && OUTFLOW_PAUSE(locale(), hit), strange && strangeBand(judged, what)]) {
               if (!band) continue;
               const stop = await pause(o.id, band, extra?.signal);
               if (stop) return text(stop);
@@ -1053,7 +1057,7 @@ function createToolsServer(
           }
           // A search's first search_web (the one that gives its goal) brings the notebook: given by the kernel, framed as data.
           const notes = current?.goal ? "" : ((await searching.notes?.shown()) ?? "");
-          return readSearch(key, o, true, `Recherche : ${query}`, [`Onglet : ${o.id}`, ...(notes ? [`${NOTES_PREFIX}\n${notes}`] : [])], { extra });
+          return readSearch(key, o, true, l10n("kernel-search-query", { query }), [`Onglet : ${o.id}`, ...(notes ? [`${NOTES_PREFIX}\n${notes}`] : [])], { extra });
         });
         searching.chains.set(key, mine);
         return mine;
@@ -1092,7 +1096,7 @@ function createToolsServer(
             if (!bridge.askAddress) { errors.set(u, `Erreur : ${UNREAD_ADDRESS_TEXT}`); continue; }
             const t = tabId;
             const ask = () => askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...views.get(u), ...danger(u) }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}), extra?.signal);
-            const yes = await (t ? sessions.step(t, ADDRESS_STEP, ask) : ask());
+            const yes = await (t ? sessions.step(t, l10n("kernel-search-address-step"), ask) : ask());
             if (t && !sessions.owns(t)) return ended();
             if (!yes) { errors.set(u, `Erreur : ${DENIAL_TEXT}`); continue; }
             if (t) sessions.allow(t, u);
@@ -1112,9 +1116,9 @@ function createToolsServer(
           const sections = new Map<string, string>();
           if (id) {
             for (const [, u] of ok) sessions.log(id, { tool: "read_pages", url: u });
-            act(id, urls.length > 1 ? `Lit ${urls.length} pages` : "Lit 1 page");
+            act(id, l10n("kernel-activity-reads-pages", { n: urls.length }));
             let done = 0;
-            const label = () => `Lecture de ${ok.length} page${ok.length > 1 ? "s" : ""}, ${done} faite${done > 1 ? "s" : ""}`;
+            const label = () => l10n("kernel-search-reading-pages", { total: ok.length, done });
             const opened = new Set<string>();
             const close = async (t: string) => {
               if (opened.delete(t)) await search.close(t).catch((e) => console.error("read_pages: closing a tab failed", e));
@@ -1177,9 +1181,9 @@ function createToolsServer(
       },
       async ({ id, reason, kind }, extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
         if (!sessions.owns(id)) return text("hand_over ne vaut que pour l'onglet de recherche en cours.", true);
-        const lead = kind === "verification" ? "Bloqué par une vérification. À vous : " : "Je ne trouve pas mon chemin. À vous : ";
+        const lead = l10n(kind === "verification" ? "kernel-search-hand-verification" : "kernel-search-hand-lost", { reason: reason.slice(0, 200) });
         const where = kind === "lost" ? (await bridge.listTabs()).find((t) => t.id === id)?.url : undefined;
-        const h = await awaitHand(id, lead + reason.slice(0, 200), extra);
+        const h = await awaitHand(id, lead, extra);
         if (!("path" in h)) return h;
         const lesson = kind === "lost" && !!searching.notes;
         if (lesson) {
@@ -1270,7 +1274,7 @@ function createToolsServer(
       },
       protect(async ({ query: request, since: from, until, limit }, extra) => {
         // Judged first: a read the search would pause never puts up a card for nothing.
-        const stop = await watch({ tool: "search_history", query: request }, "lecture de l'historique", extra?.signal);
+        const stop = await watch({ tool: "search_history", query: request }, l10n("kernel-search-what-history"), extra?.signal);
         if (stop) return text(stop);
         if (!(await userDataAccess())) return text(HISTORY_DENIED_TEXT);
         const results = await hist.find({
@@ -1288,7 +1292,7 @@ function createToolsServer(
       { description: "Texte retenu d'une page visitée par l'utilisateur (trouvée par search_history), pour la résumer.", inputSchema: { url: z.string() } },
       protect(async ({ url }, extra) => {
         // Judged first: a read the search would pause never puts up a card for nothing.
-        const stop = await watch({ tool: "read_history", url }, "lecture de l'historique", extra?.signal);
+        const stop = await watch({ tool: "read_history", url }, l10n("kernel-search-what-history"), extra?.signal);
         if (stop) return text(stop);
         if (!(await userDataAccess())) return text(HISTORY_DENIED_TEXT);
         const p = await hist.read(url);
@@ -1308,7 +1312,7 @@ function createToolsServer(
       },
       protect(async ({ query: request, limit }, extra) => {
         // Judged first: a read the search would pause never puts up a card for nothing.
-        const stop = await watch({ tool: "search_bookmarks", query: request }, "lecture des favoris", extra?.signal);
+        const stop = await watch({ tool: "search_bookmarks", query: request }, l10n("kernel-search-what-bookmarks"), extra?.signal);
         if (stop) return text(stop);
         if (!(await userDataAccess())) return text(HISTORY_DENIED_TEXT);
         const results = await marks.find({ query: request, limit: Math.min(HISTORY_LIMIT.max, limit ?? HISTORY_LIMIT.default) });
@@ -1326,6 +1330,7 @@ function createToolsServer(
       // The site app: its grant (the app's card if needed) before any dev-tools card.
       siteAccess: access,
       activity: act,
+      acting: l10n("kernel-activity-acting"),
       ...(dev.tools ? { tools: dev.tools } : {}),
       ...dev.profiles,
     });
@@ -1783,6 +1788,8 @@ export async function startMcpServer(o: {
   onActivity?: (a: AgentActivity) => void;
   /** What the agent read from private sources and what the user typed, per window; absent: no outflow rule. */
   outflow?: Outflow;
+  /** The user's language, for the texts they read (band, card lines, activity); English without it. */
+  locale?: () => string;
 }): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string): string; closeSession(token: string): void; stop(): Promise<void> }> {
   const expected = Buffer.from(o.token);
   // Session tokens: one per window agent. Security note: their config files are readable by the
@@ -1812,7 +1819,7 @@ export async function startMcpServer(o: {
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request (so a judge turned on or off applies at the next one).
     const watcher = o.watcher?.();
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(watcher ? { watcher } : {}), ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(watcher ? { watcher } : {}), ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

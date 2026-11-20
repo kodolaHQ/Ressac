@@ -73,7 +73,6 @@ const profileName = (tool: string, extension: string): string =>
 const headerLines = (h: Record<string, string>): string[] =>
   Object.entries(h).map(([name, value]) => `  ${name}: ${truncate(value)}`);
 
-const ACTING = "Agit sur la page";
 
 export function registerDevTools(
   server: McpServer,
@@ -91,6 +90,8 @@ export function registerDevTools(
     siteAccess?: (o: TabInfo) => Promise<boolean>;
     /** Tells the browser what the agent does on a tab (never a private one). */
     activity?: (tab: string, label: string) => void;
+    /** The activity label of run_js and reload, in the user's language. */
+    acting?: string;
   } & ProfileFiles,
 ): void {
   const { bridge, policy, requests } = c;
@@ -428,7 +429,7 @@ export function registerDevTools(
       withRight(id, "act", "run_js", async (_o, signal, _write, at) => {
         const r = await tools.run(id, at, code, signal);
         return "exception" in r ? text(`Exception : ${truncate(r.exception)}`) : text(truncate(r.value));
-      }, ACTING),
+      }, c.acting),
     ),
   );
 
@@ -439,7 +440,7 @@ export function registerDevTools(
       withRight(id, "act", "reload", async (_o, _signal, _write, at) => {
         await tools.reload(id, at, no_cache ?? false);
         return text(`Onglet ${id} rechargé.`);
-      }, ACTING),
+      }, c.acting),
     ),
   );
 }

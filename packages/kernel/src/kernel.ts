@@ -477,6 +477,7 @@ export async function createKernel(o: {
     policy: policy,
     search: search,
     outflow: outflow,
+    locale: loc,
     watcher: () => (o.judge?.() ? watcher : undefined),
     notes: notes,
     token: token,

@@ -51,7 +51,7 @@ async function start(o: {
   root = await tempFolder();
   isPrivate = join(await tempFolder(), "profiling");
   const profiles = { ...profileFiles(spacePaths(root), isPrivate), ...o.profiles };
-  server = await startMcpServer({ bridge: bridge, policy: policy, token: token, agent: "Claude", profiles: profiles });
+  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, agent: "Claude", profiles: profiles });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {

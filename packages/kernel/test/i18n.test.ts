@@ -24,3 +24,16 @@ test("a message formatted with a missing variable returns text and does not thro
   expect(spy).toHaveBeenCalled();
   spy.mockRestore();
 });
+
+test("the search band and the outflow speak the user's language", async () => {
+  const { OUTFLOW_PAUSE } = await import("../src/mcp/server.js");
+  expect(say("fr", "kernel-search-reading-pages", { total: 1, done: 0 })).toBe("Lecture de 1 page, 0 faite");
+  expect(say("fr", "kernel-search-reading-pages", { total: 3, done: 2 })).toBe("Lecture de 3 pages, 2 faites");
+  expect(say("en", "kernel-search-reading-pages", { total: 1, done: 0 })).toBe("Reading 1 page, 0 done");
+  expect(say("en", "kernel-activity-reads-pages", { n: 2 })).toBe("Reading 2 pages");
+  const hit = { kind: "iban", masked: "FR76••••89", source: say("en", "kernel-outflow-source-history") } as const;
+  expect(OUTFLOW_PAUSE("en", hit)).toBe("The watcher paused: the search contains an IBAN, from your history (FR76••••89)");
+  expect(OUTFLOW_PAUSE("fr", { ...hit, source: say("fr", "kernel-outflow-source-history") })).toBe(
+    "Le surveillant a mis en pause : la recherche contient un IBAN, lu dans votre historique (FR76••••89)",
+  );
+});

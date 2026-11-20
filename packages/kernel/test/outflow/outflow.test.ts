@@ -329,13 +329,13 @@ test("a slug read in a tab's address is not an identifier, a code glued to a wor
 test("an address read whole in a private source is a followed link, not a leak; rule 1 and queries are unchanged", () => {
   const o = new Outflow();
   const article = "https://www.lemonde.fr/economie/article/2026/11/09/pompes-a-chaleur_6398712_3234.html";
-  o.read("w", `Pompes à chaleur · ${article} · 2026-11-12 · 2 visites\nVoir (https://Shop.Example/Commande/48213977/).`, "ton historique", true);
+  o.read("w", `Pompes à chaleur · ${article} · 2026-11-12 · 2 visites\nVoir (https://Shop.Example/Commande/48213977/).`, "votre historique", true);
   expect(o.check("w", article, true)).toBeUndefined();
   // Same address up to host case, a trailing slash, percent-encoding and the text's punctuation.
   expect(o.check("w", "https://shop.example/Commande/48213977", true)).toBeUndefined();
   expect(o.check("w", "https://www.lemonde.fr/economie/article/2026/11/09/pompes-%61-chaleur_6398712_3234.html", true)).toBeUndefined();
   // Anything else carrying the number is still a hit: another address, an added parameter, a search query.
-  expect(o.check("w", "https://x.example/?id=6398712", true)).toMatchObject({ kind: "digits", source: "ton historique" });
+  expect(o.check("w", "https://x.example/?id=6398712", true)).toMatchObject({ kind: "digits", source: "votre historique" });
   expect(o.check("w", `${article}?ref=48213977`, true)).toMatchObject({ kind: "digits" });
   expect(o.check("w", article)).toMatchObject({ kind: "digits" });
   // A secret in a read address still shows on the card.
@@ -353,7 +353,7 @@ test("an address the agent wrote itself into a tool's output is not a followed l
 
 test("a read address with one parameter value changed is still a hit", () => {
   const o = new Outflow();
-  o.read("w", "Suivi · https://shop.example/suivi?commande=48213977&lang=fr · 2 visites", "ton historique", true);
+  o.read("w", "Suivi · https://shop.example/suivi?commande=48213977&lang=fr · 2 visites", "votre historique", true);
   expect(o.check("w", "https://shop.example/suivi?commande=48213977&lang=fr", true)).toBeUndefined();
   expect(o.check("w", "https://shop.example/suivi?commande=48213977&lang=en", true)).toMatchObject({ kind: "digits" });
 });
@@ -361,8 +361,8 @@ test("a read address with one parameter value changed is still a hit", () => {
 test("an address evicted from the kept addresses is a hit again", () => {
   const o = new Outflow();
   const first = "https://shop.example/commande/48213977";
-  o.read("w", first, "ton historique", true);
-  o.read("w", Array.from({ length: 5000 }, (_, i) => `https://pad.example/p${i}`).join("\n"), "ton historique", true);
+  o.read("w", first, "votre historique", true);
+  o.read("w", Array.from({ length: 5000 }, (_, i) => `https://pad.example/p${i}`).join("\n"), "votre historique", true);
   expect(o.check("w", first, true)).toMatchObject({ kind: "digits" });
   expect(o.check("w", "https://pad.example/p4999", true)).toBeUndefined();
 });

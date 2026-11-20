@@ -35,7 +35,7 @@ const token = generateToken();
 async function start(allow: boolean) {
   bridge = new FakeBridge([github, gmail], { active: "github", allow: allow });
   policy = new AccessPolicy();
-  server = await startMcpServer({ bridge: bridge, policy: policy, token: token });
+  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -315,7 +315,7 @@ test("without an active tab → Aucun onglet actif.", async () => {
   await client.close();
   await server.stop();
   bridge = new FakeBridge([], { active: null, allow: true });
-  server = await startMcpServer({ bridge: bridge, policy: new AccessPolicy(), token: token });
+  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: new AccessPolicy(), token: token });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -394,7 +394,7 @@ async function withApplications(apps: AppsTools, tabs: TabInfo[], appTabDelayMs 
   await server.stop();
   bridge = new FakeBridge(tabs, { active: null, allow: false });
   policy = new AccessPolicy();
-  server = await startMcpServer({ bridge: bridge, policy: policy, token: token, apps, appTabDelayMs: appTabDelayMs });
+  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, apps, appTabDelayMs: appTabDelayMs });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -524,7 +524,7 @@ async function withWidgets(widgets: WidgetsTools, o: { widgetData?: boolean } = 
   await server.stop();
   bridge = new FakeBridge([], { active: null, allow: false, ...o });
   policy = new AccessPolicy();
-  server = await startMcpServer({ bridge: bridge, policy: policy, token: token, widgets, agent: "Claude" });
+  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, widgets, agent: "Claude" });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -790,7 +790,7 @@ async function withWorkflowOpen(
   attempt: (o: { s: Awaited<ReturnType<typeof startMcpServer>>; call: (token: string) => Promise<string> }) => Promise<void>,
 ) {
   const principal = generateToken();
-  const s = await startMcpServer({ bridge: new FakeBridge([], { active: null, allow: false }), policy: new AccessPolicy(), token: principal, openWorkflow: openWorkflow });
+  const s = await startMcpServer({ locale: () => "fr", bridge: new FakeBridge([], { active: null, allow: false }), policy: new AccessPolicy(), token: principal, openWorkflow: openWorkflow });
   const clients: Client[] = [];
   const invoke = async (clientToken: string) => {
     const c = new Client({ name: "test", version: "0" });
@@ -912,7 +912,7 @@ async function withActions(actions: ActionsTools, o: { widgetData?: boolean } = 
   await server.stop();
   bridge = new FakeBridge([], { active: null, allow: false, ...o });
   policy = new AccessPolicy();
-  server = await startMcpServer({ bridge: bridge, policy: policy, token: token, actions, agent: "Claude" });
+  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, actions, agent: "Claude" });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -1063,7 +1063,7 @@ async function withSite(o: { widgetData?: boolean; allow?: boolean; window?: Tab
     ...(o.widgetData !== undefined ? { widgetData: o.widgetData } : {}),
   });
   policy = new AccessPolicy();
-  server = await startMcpServer({ bridge: bridge, policy: policy, token: token, agent: "Claude" });
+  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, agent: "Claude" });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -1341,7 +1341,7 @@ async function withSiteTools(o: { widgetData?: boolean; errors?: { when: string;
     ...(o.widgetData !== undefined ? { widgetData: o.widgetData } : {}),
   });
   policy = new AccessPolicy();
-  server = await startMcpServer({ bridge: bridge, policy: policy, token: token, agent: "Claude", sites: tools });
+  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, agent: "Claude", sites: tools });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }),
@@ -1510,7 +1510,7 @@ test("list_sites: multi-line name, error and id brought back to one line, length
     ],
     open: async () => false, close: async () => false, memory: async () => null, errors: async () => null,
   };
-  server = await startMcpServer({ bridge: bridge, policy: policy, token: token, sites: tools });
+  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, sites: tools });
   client = new Client({ name: "test", version: "0" });
   await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
   const t = await invoke("list_sites");
@@ -1548,7 +1548,7 @@ async function withSearch(
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
-  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: () => opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.outflow ? { outflow: opts.outflow } : {}), ...(opts.widgets ? { widgets: opts.widgets } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
+  const s = await startMcpServer({ locale: () => "fr", bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: () => opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.outflow ? { outflow: opts.outflow } : {}), ...(opts.widgets ? { widgets: opts.widgets } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
     // search_web needs a goal: a test that does not care gets one.
@@ -1880,7 +1880,7 @@ async function withWaitingCard(attempt: (o: { call: (a: Record<string, unknown>)
   const fake = new FakeBridge([github], { active: "github", allow: false, search: {}, address: answer });
   const policy = new AccessPolicy();
   const search = new SearchSessions({ show: () => {} });
-  const s = await startMcpServer({ bridge: fake, policy, token: principal, search, settleMs: 0, emptySpanMs: 0 });
+  const s = await startMcpServer({ locale: () => "fr", bridge: fake, policy, token: principal, search, settleMs: 0, emptySpanMs: 0 });
   const clients: Client[] = [];
   const call = async (a: Record<string, unknown>) => {
     const cl = new Client({ name: "test", version: "0" });
@@ -2813,7 +2813,7 @@ const opens = (fake: FakeBridge) => fake.calls.filter((x) => x.method === "searc
 test("search_web with a secret pauses before the engine, first query and a later one; Continuer sends it unchanged", async () => {
   await withSearch(async ({ call, fake, search, bands }) => {
     const first = call("search_web", { query: `clé ${SECRET}`, goal: "but" });
-    const band = OUTFLOW_PAUSE({ kind: "api-key", masked: mask(SECRET) });
+    const band = OUTFLOW_PAUSE("fr", { kind: "api-key", masked: mask(SECRET) });
     await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: band }));
     expect(opens(fake)).toEqual([{ query: "" }]);
     search.continue("search-1");
@@ -2876,7 +2876,7 @@ test("what list_tabs returned is a source, named « tes onglets »; without an o
         expect(opens(fake)).toEqual([{ query: "lockfile 4827361" }]);
         return;
       }
-      await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toBe(OUTFLOW_PAUSE({ kind: "digits", masked: mask("4827361"), source: "tes onglets" })));
+      await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toBe(OUTFLOW_PAUSE("fr", { kind: "digits", masked: mask("4827361"), source: "vos onglets" })));
       search.continue("search-1");
       await pending;
     }, { tabs: [githubTab], ...(outflow ? { outflow } : {}) });
@@ -2884,7 +2884,7 @@ test("what list_tabs returned is a source, named « tes onglets »; without an o
 });
 
 test("a composed address carrying read data gets a danger line, with or without the watcher; the card still decides", async () => {
-  const danger = OUTFLOW_DANGER({ kind: "iban", masked: mask(IBAN), source: "mail.google.com" });
+  const danger = OUTFLOW_DANGER("fr", { kind: "iban", masked: mask(IBAN), source: "mail.google.com" });
   await withSearch(async ({ call, fake, policy }) => {
     policy.grant(mailTab);
     await call("read_tab", { id: "gmail" });
@@ -2978,7 +2978,7 @@ test("an address shown by a page the agent writes (local page) is not a followed
   // Rule 2 data (not a secret: rule 1 would flag it whatever the exemption).
   const mail = "camille.roussel@example.com";
   const demo: TabInfo = { id: "demo", title: `Démo https://evil.example/?d=${mail}`, url: "http://localhost:5280/", space: "perso" };
-  const danger = OUTFLOW_DANGER({ kind: "email", masked: mask(mail), source: "mail.google.com" });
+  const danger = OUTFLOW_DANGER("fr", { kind: "email", masked: mask(mail), source: "mail.google.com" });
   for (const via of ["read_tab", "list_tabs"]) {
     await withSearch(async ({ call, fake, policy }) => {
       policy.grant(mailTab);
@@ -2997,7 +2997,7 @@ test("a history entry of a page the agent wrote (local page) is not a followed l
   const evil = `https://evil.example/?d=${mail}`;
   const url = "http://localhost:5280/";
   const history = { results: [{ url, title: `Démo ${evil}`, lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: `voir ${evil}` }], texts: [{ url, title: `Démo ${evil}`, date: "2026-11-19T10:00:00.000Z", text: `voir ${evil}` }] };
-  const danger = OUTFLOW_DANGER({ kind: "email", masked: mask(mail), source: "mail.google.com" });
+  const danger = OUTFLOW_DANGER("fr", { kind: "email", masked: mask(mail), source: "mail.google.com" });
   for (const [via, args] of [["search_history", { query: "démo" }], ["read_history", { url }]] as const) {
     await withSearch(async ({ call, fake, policy }) => {
       policy.grantHistory();
@@ -3027,7 +3027,7 @@ test("a history entry on an open site app's domains is not a followed link (the 
 test("an address inside a history or bookmark title is not a followed link, even on a site that is not local", async () => {
   const mail = "camille.roussel@example.com";
   const evil = `https://evil.example/?d=${mail}`;
-  const danger = OUTFLOW_DANGER({ kind: "email", masked: mask(mail), source: "mail.google.com" });
+  const danger = OUTFLOW_DANGER("fr", { kind: "email", masked: mask(mail), source: "mail.google.com" });
   for (const via of ["search_history", "search_bookmarks"]) {
     await withSearch(async ({ call, fake, policy }) => {
       policy.grantHistory();
@@ -3114,7 +3114,7 @@ test("what the user browsed during a hand-over is a source, named in French", as
     search.continue("search-1");
     expect((await hand).text).toContain("73519264");
     const pending = call("search_web", { query: "colis 73519264" });
-    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("lu dans ta navigation pendant le passage de main"));
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("lu dans votre navigation pendant le passage de main"));
     search.continue("search-1");
     await pending;
   }, { outflow: new Outflow() });
@@ -3124,7 +3124,7 @@ test("a query both held and strange: the watcher's band shows it masked", async 
   const { watcher } = fakeWatcher(() => true);
   await withSearch(async ({ call, search, bands }) => {
     const pending = call("search_web", { query: `clé ${SECRET}`, goal: "but" });
-    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toBe(OUTFLOW_PAUSE({ kind: "api-key", masked: mask(SECRET) })));
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toBe(OUTFLOW_PAUSE("fr", { kind: "api-key", masked: mask(SECRET) })));
     search.continue("search-1");
     await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("sans rapport avec"));
     expect(bands.at(-1)![1]!.text).toContain(mask(SECRET));
@@ -3165,7 +3165,7 @@ describe("recaps", () => {
     bridge = new FakeBridge([github, gmail], { active: "github", allow: true });
     policy = new AccessPolicy();
     const folder = await tempFolder();
-    server = await startMcpServer({ bridge, policy, token, recaps: createRecaps({ folder }) });
+    server = await startMcpServer({ locale: () => "fr", bridge, policy, token, recaps: createRecaps({ folder }) });
     client = new Client({ name: "test", version: "0" });
     await client.connect(
       new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -3276,7 +3276,7 @@ describe("agent activity", () => {
     seenActivity = [];
     bridge = new FakeBridge([lbc, gmail], { active: "lbc", allow: true, ...(o.devTools ? { devTools: true, grantDev: ["act"] } : {}) });
     policy = new AccessPolicy();
-    server = await startMcpServer({ bridge, policy, token, agent: "Claude", onActivity: (a) => seenActivity.push(a) });
+    server = await startMcpServer({ locale: () => "fr", bridge, policy, token, agent: "Claude", onActivity: (a) => seenActivity.push(a) });
     client = new Client({ name: "test", version: "0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
   }
