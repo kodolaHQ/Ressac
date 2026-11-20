@@ -69,11 +69,10 @@ function sourcePath(dataDir: string, id: string): string | null {
 }
 
 /**
- * The widget guard, run in the page world from the served copy before the widget's own scripts. No
- * `JSWindowActor`: measured, the actor's child never installs on these `resource://` frames in this Firefox. Self-contained
- * (no imports, no `win`: it uses the page's `window`), serialized with `toString()`, the network-hint pattern passed as
- * its argument. The WebRTC globals go last: if an earlier step throws, `RTCPeerConnection` is still there, and the UI
- * (which only attaches its gesture listener when it is gone) records no click — the guard fails closed.
+ * The widget guard, run in the page world from the served copy before the widget's own scripts (the RessacFrame actor
+ * only forwards events; it does not touch the page). Self-contained (no imports, no `win`: it uses the page's `window`),
+ * serialized with `toString()`, the network-hint pattern passed as its argument. The WebRTC globals go last; the
+ * parent's peer connection blocker denies a frame's WebRTC whatever the guard did.
  */
 function widgetGuard(pattern: string): void {
   const w = window as unknown as Record<string, any>;

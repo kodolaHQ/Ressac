@@ -6,7 +6,8 @@
 
 import { FRAMES_GROUP, framesOrigin } from "../window/frames-root";
 
-export const UI_PREFIXES: readonly string[] = ["chrome://browser/content/ressac/", framesOrigin()];
+// With its slash: `resource://ressac-frames-<token>X` is another host.
+export const UI_PREFIXES: readonly string[] = ["chrome://browser/content/ressac/", `${framesOrigin()}/`];
 const BLOCKED = /^(https?|wss?):/i;
 
 /** http, https, ws, wss whatever the host; `view-source:` prefixes are stripped first. Every other scheme passes. */
@@ -117,15 +118,25 @@ const webrtcObserver = {
  * It relies on the innerWindowID the child sends; a compromised process could skip the request anyway (CSP and the
  * parent's observer remain).
  */
-export function frameRtcBlocker(params: { innerWindowID?: number }): "deny" | "allow" {
+export function frameRtcBlocker(params: { innerWindowID?: number; origin?: string }): "deny" | "allow" {
   const wg = WindowGlobalParent.getByInnerWindowId(params.innerWindowID ?? 0);
-  // By the process too: a frame whose <browser> was just removed (the home unmounted) has no embedder any more. A page
-  // already gone has nothing to serve.
-  const frame = !wg || isFrameBrowser(wg.browsingContext?.top?.embedderElement) || String(wg.domProcess?.remoteType).startsWith(`webIsolated=resource://${FRAMES_GROUP}-`);
-  if (!frame) return "allow";
+  // The frames' origin, as WebRTCParent reads it (a sandboxed frame's null principal names it as its precursor): still
+  // known when the window is gone.
+  const origin = String(params.origin ?? "");
+  const fromFrames = origin === framesOrigin() || origin.endsWith(`?${framesOrigin()}`);
+  // By the process too: a frame whose <browser> was just removed (the home unmounted) has no embedder any more.
+  const frame = fromFrames || (!!wg && (isFrameBrowser(wg.browsingContext?.top?.embedderElement) || wg.domProcess?.remoteType === `webIsolated=${framesOrigin()}`));
+  if (!frame) {
+    if (!wg && !warnedGone) {
+      warnedGone = true;
+      console.warn("[ui-network] webrtc allowed for a window already gone (not from a frame):", origin.slice(0, 80));
+    }
+    return "allow";
+  }
   console.warn("[ui-network] refused webrtc from a frame");
   return "deny";
 }
+let warnedGone = false;
 
 export interface UiNetworkState {
   policy: boolean;

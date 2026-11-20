@@ -409,7 +409,8 @@ describe("the UI's network", () => {
        add(document, "wd");
        // A child frame has its own opaque origin, out of the sandbox's reach: its link comes in its markup.
        const child = document.createElement("iframe"); child.srcdoc = '<a href="http://preco-wb-a.${SFX}:15366/">a</a>'; document.body.append(child);
-       for (let i = 0; i < 40 && !child.contentWindow?.length && i < 10; i++) await new Promise((r) => setTimeout(r, 50)); })()`,
+       // Time for the child to lay its link out (no load event reaches the sandbox from an opaque child).
+       await new Promise((r) => setTimeout(r, 500)); })()`,
     );
     await m.execute(`${add} add(document.getElementById("ressac-sidebar").contentDocument, "sb");`);
     // The witness: a tab's navigation resolves its name.
@@ -480,16 +481,26 @@ describe("the UI's network", () => {
     const windowId = (await state(m)).windows[0]!.id;
     const seen = (name: string) => net.hits.filter((h) => h.label === name).map((h) => `${h.method} ${h.path}`);
     await dispatch(m, { type: "openTab", windowId: windowId, url: `http://${host("tab-page")}/page`, activate: true });
-    await expect
-      .poll(() => seen("tab-page"), { timeout: 15_000 })
-      .toEqual(expect.arrayContaining(["GET /page", "GET /s2/witness/img", "GET /s2/witness/fetch", "UPGRADE /s2/witness/ws", "POST /s2/witness/beacon"]));
-    await closeTab("tab-page.", "sonde");
+    try {
+      await expect
+        .poll(() => seen("tab-page"), { timeout: 15_000 })
+        .toEqual(expect.arrayContaining(["GET /page", "GET /s2/witness/img", "GET /s2/witness/fetch", "UPGRADE /s2/witness/ws", "POST /s2/witness/beacon"]));
+    } finally {
+      await closeTab("tab-page.", "sonde");
+    }
+    // Measured: the home just came back and the spy widget's nested frame asks for WebRTC; opening a tab at once removes
+    // that frame mid-request, which delays the next tab's ICE gathering by a few seconds (gone 6 s later). Let it settle.
+    await sleep(4000);
     const tcp0 = net.tcp.length;
     const udp0 = net.udp.length;
     await dispatch(m, { type: "openTab", windowId: windowId, url: `http://${host("tab-rtc")}/rtc`, activate: true });
-    const result = await waitFor(m, `const b = gBrowser.selectedBrowser; return b.currentURI.spec.includes("/rtc") && b.contentTitle.startsWith("{") ? b.contentTitle : "";`, (v: string) => v !== "", 20_000);
-    expect({ tcp: tcpSince(tcp0) > 0, udp: net.udp.length - udp0 > 0 }, result).toEqual({ tcp: true, udp: true });
-    await closeTab("tab-rtc.", "sonde");
+    try {
+      const result = await waitFor(m, `const b = gBrowser.selectedBrowser; return b.currentURI.spec.includes("/rtc") && b.contentTitle.startsWith("{") ? b.contentTitle : "";`, (v: string) => v !== "", 20_000);
+      expect({ tcp: tcpSince(tcp0) > 0, udp: net.udp.length - udp0 > 0 }, result).toEqual({ tcp: true, udp: true });
+    } finally {
+      // Closed even on failure: an open tab hides the home and every widget test after this one would fail too.
+      await closeTab("tab-rtc.", "sonde");
+    }
     const read = await m.execute<string>(
       `return (async () => { const s = await ChromeUtils.importESModule("${STORE}").ready;
        try { return (await s.readPage(arguments[0], { profile: null, localAddresses: true })).title; } catch (e) { return "ERR " + e; } })();`,
@@ -610,6 +621,9 @@ describe("the UI's network", () => {
     await sleep(3000);
     expect(net.hits.filter((h) => h.label === "plain")).toEqual([]);
     expect(await inWidget("lien", "document.documentURI")).toMatch(/^resource:\/\/ressac-frames-[0-9a-f]{16}\/widgets\/lien\//);
+    // Measured: the parent's net refuses the frame's top-level navigation as a document load (type 6; its policy and its
+    // observer log the same line).
+    expect(await consoleWith(m, "plain.")).toEqual([expect.stringMatching(/^\[ui-network\] refused 6 http:\/\/plain\./)]);
   });
 
   it("Enter on a focused widget link resolves no name, opens no connection, and opens a tab only by today's gesture rule", { timeout: 60_000 }, async () => {

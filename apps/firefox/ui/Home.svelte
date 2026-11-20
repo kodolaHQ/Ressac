@@ -294,8 +294,6 @@
   .grid { position: relative; }
   .case { position: absolute; padding: calc(var(--home-spacing) / 2); box-sizing: border-box; }
   .grid.gesture { user-select: none; }
-  /* During a gesture, the widget frames must not capture the mouse. */
-  .grid.gesture :global(iframe) { pointer-events: none; }
   .guide { position: absolute; z-index: 4; pointer-events: none; background: var(--home-accent); opacity: 0.6; }
   .guide-x { top: 0; bottom: 0; width: 1px; }
   .guide-y { left: 0; right: 0; height: 1px; }

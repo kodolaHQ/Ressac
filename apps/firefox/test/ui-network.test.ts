@@ -47,7 +47,10 @@ afterEach(() => {
 
 describe("ui-network", () => {
   it("UI_PREFIXES holds the frames origin and none of the old per-frame prefixes", () => {
-    expect(N.UI_PREFIXES).toContain(O);
+    expect(N.UI_PREFIXES).toContain(`${O}/`);
+    const principal = (spec: string) => ({ loadingDocument: null, browsingContext: null, loadingPrincipal: { spec } });
+    expect(N.isUiLoad(principal(`${O}/widgets/a/display.html`))).toBe(true);
+    expect(N.isUiLoad(principal(`${O}X/widgets/a/display.html`)), "another host").toBeFalsy();
     expect(N.UI_PREFIXES.some((p) => /ressac-(widget|site|component)-/.test(p))).toBe(false);
   });
 
@@ -140,11 +143,18 @@ describe("ui-network", () => {
     });
     windowGlobals.set(1, wg("ressac-frames"));
     windowGlobals.set(2, wg("browsers"));
-    windowGlobals.set(4, wg("", "webIsolated=resource://ressac-frames-0123456789abcdef"));
+    windowGlobals.set(4, wg("", `webIsolated=${O}`));
+    windowGlobals.set(5, wg("", `webIsolated=${O}X`));
+    const warn = vi.mocked(console.warn);
     expect(N.frameRtcBlocker({ innerWindowID: 1 })).toBe("deny");
     expect(N.frameRtcBlocker({ innerWindowID: 2 })).toBe("allow");
-    expect(N.frameRtcBlocker({ innerWindowID: 3 }), "a page already gone").toBe("deny");
     expect(N.frameRtcBlocker({ innerWindowID: 4 }), "a frame whose browser was just removed").toBe("deny");
+    expect(N.frameRtcBlocker({ innerWindowID: 5 }), "another host than the frames'").toBe("allow");
+    expect(N.frameRtcBlocker({ innerWindowID: 3, origin: `moz-nullprincipal:{x}?${O}` }), "a frame's window already gone").toBe("deny");
+    warn.mockClear();
+    expect(N.frameRtcBlocker({ innerWindowID: 3, origin: "https://meet.example" }), "a tab's window already gone").toBe("allow");
+    expect(N.frameRtcBlocker({ innerWindowID: 3, origin: "https://meet.example" })).toBe("allow");
+    expect(warn.mock.calls.filter(([t]) => String(t).includes("already gone"))).toHaveLength(1);
   });
 
   it("a chain of UI-less chrome documents deeper than the walk's bound counts as the UI's (fails closed)", () => {

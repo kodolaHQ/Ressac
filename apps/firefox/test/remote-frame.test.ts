@@ -11,15 +11,19 @@ vi.stubGlobal("ChromeUtils", {
 });
 const { onFrameMessage, setFrameActor } = await import("../chrome/window/remote-frame");
 
-test("a frame subscribed before the store set the actor gets its messages once it does; a stopped one does not", () => {
+test("a frame subscribed before the store set the actor gets its messages once it does; a stopped one does not; a stop after the flush unsubscribes", () => {
   const early = {} as Element;
   const gone = {} as Element;
   const got: string[] = [];
-  onFrameMessage(early, (name) => got.push(name));
+  const stop = onFrameMessage(early, (name) => got.push(name));
   onFrameMessage(gone, () => got.push("gone"))();
   expect(registry.size).toBe(0);
   setFrameActor("resource://test/frame-actor.sys.mjs");
   expect([...registry.keys()]).toEqual([early]);
   registry.get(early)!("loaded", {});
   expect(got).toEqual(["loaded"]);
+  // Stopped after the flush: the subscription made then goes.
+  stop();
+  expect(registry.size).toBe(0);
 });
+
