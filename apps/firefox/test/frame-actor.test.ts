@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 vi.stubGlobal("JSWindowActorParent", class {});
 vi.stubGlobal("JSWindowActorChild", class {});
@@ -9,6 +9,7 @@ vi.stubGlobal("Cu", {
   Sandbox: () => ({}),
   evalInSandbox: async (expr: string) => ({ expr }),
 });
+afterEach(() => (testFlag = false));
 const { RessacFrameChild, RessacFrameParent, onFrameMessage } = await import("../chrome/agent/frame-actor");
 
 /** A child over fake window and chrome event handler; `fire` runs the listeners of a type. */
@@ -86,4 +87,19 @@ test("the parent drops messages of an unregistered browser and calls the owner o
   stop();
   parent.receiveMessage({ name: "press", data: {} });
   expect(cb).toHaveBeenCalledTimes(1);
+});
+
+test("the parent forwards only known names with bounded string fields", () => {
+  const browser = {};
+  const parent = new RessacFrameParent() as any;
+  parent.browsingContext = { top: { embedderElement: browser } };
+  const cb = vi.fn();
+  onFrameMessage(browser as Element, cb);
+  parent.receiveMessage({ name: "evil", data: {} });
+  parent.receiveMessage({ name: "home", data: { detail: { a: 1 } } });
+  parent.receiveMessage({ name: "open", data: { url: 5 } });
+  expect(cb).not.toHaveBeenCalled();
+  parent.receiveMessage({ name: "component", data: { detail: "y".repeat(70000), extra: 1 } });
+  expect(cb.mock.calls[0]?.[1].detail).toHaveLength(65536);
+  expect(Object.keys(cb.mock.calls[0]?.[1])).toEqual(["detail"]);
 });

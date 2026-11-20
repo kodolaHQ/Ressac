@@ -17,7 +17,7 @@ import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDesign, type DesignService } from "./design";
 import { createOverlays } from "../window/design-overlays";
-import { FRAMES_GROUP, framesKindDir, wipeFrames } from "../window/frames-root";
+import { FRAMES_GROUP, FRAMES_TEST_KEY, framesKindDir, wipeFrames } from "../window/frames-root";
 import { neutralizeFirefoxWindow } from "../window/firefox-items";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
@@ -381,7 +381,7 @@ async function start(): Promise<RessacStore> {
   });
   // The frames' test hook is on only in a dev build with RESSAC_TEST_FRAMES: a flag the web process reads, a page cannot set.
   if (testEnv("RESSAC_TEST_FRAMES")) {
-    Services.ppmm.sharedData.set("ressac-frames-test", true);
+    Services.ppmm.sharedData.set(FRAMES_TEST_KEY, true);
     Services.ppmm.sharedData.flush();
   }
   // Calls (call-actor.ts): every http(s) frame, a call's video may sit in one. The child acts on the parent's demand;

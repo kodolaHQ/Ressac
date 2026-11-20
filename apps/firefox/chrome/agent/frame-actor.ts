@@ -7,8 +7,7 @@
 const PAGE_EVENTS = { "ressac-open": "open", "ressac-home": "home", "ressac-component": "component" } as const;
 /** A string detail is clipped to this many characters; anything else is dropped. */
 const MAX_DETAIL = 65536;
-/** Set by the parent in sharedData when RESSAC_TEST_FRAMES is on (a dev build): a page cannot write it. */
-export const FRAMES_TEST_KEY = "ressac-frames-test";
+import { FRAMES_TEST_KEY } from "../window/frames-root";
 
 type Callback = (name: string, data: unknown) => void;
 const owners = new WeakMap<object, Callback>();
@@ -24,7 +23,30 @@ export function onFrameMessage(browser: Element, cb: Callback): () => void {
 export class RessacFrameParent extends JSWindowActorParent {
   receiveMessage(msg: { name: string; data: unknown }): void {
     const browser = this.browsingContext?.top?.embedderElement;
-    if (browser) owners.get(browser)?.(msg.name, msg.data);
+    const cb = browser && owners.get(browser);
+    if (!cb) return;
+    // The sender may be a compromised process: only these names, string fields, clipped. `press`/`focus` cannot be
+    // guaranteed trusted; owners treat them as the same hint the old in-process listener gave.
+    const d = (msg.data ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" ? v.slice(0, MAX_DETAIL) : null);
+    switch (msg.name) {
+      case "press":
+      case "focus":
+        return cb(msg.name, {});
+      case "loaded": {
+        const uri = str(d.uri);
+        return uri === null ? undefined : cb("loaded", { uri });
+      }
+      case "open": {
+        const url = str(d.url);
+        return url === null ? undefined : cb("open", { url });
+      }
+      case "home":
+      case "component": {
+        const detail = str(d.detail);
+        return detail === null ? undefined : cb(msg.name, { detail });
+      }
+    }
   }
 }
 
@@ -60,7 +82,13 @@ export class RessacFrameChild extends JSWindowActorChild {
   }
 
   didDestroy(): void {
-    for (const f of this.off.splice(0)) f();
+    for (const f of this.off.splice(0)) {
+      try {
+        f();
+      } catch {
+        // A dead wrapper: the rest still go.
+      }
+    }
   }
 
   async receiveMessage(msg: { name: string; data: any }): Promise<unknown> {

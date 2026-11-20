@@ -2,6 +2,8 @@
 // `<profile>/chrome/ressac-frames/<kind>/`, served by ONE resource:// substitution whose host carries a per-launch
 // random token, so a web page cannot guess any frame's address.
 export const FRAMES_GROUP = "ressac-frames";
+/** The sharedData key the parent sets in a dev build with RESSAC_TEST_FRAMES: the frame actor's test hook reads it, a page cannot write it. */
+export const FRAMES_TEST_KEY = "ressac-frames-test";
 
 let token: string | undefined;
 /** 16 hex chars, drawn once per process. */
