@@ -3,8 +3,8 @@ import { rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { agentInput, appRow, closeAppsPage, openAppsPage, rowButton, rowMenu, rowMenuItems, rowState, writeProject, type AppsPage } from "./apps";
-import { state } from "./firefox";
+import { agentInput, appRow, appWindowExpr, closeAppsPage, openAppsPage, rowButton, rowMenu, rowMenuItems, rowState, writeProject, type AppsPage } from "./apps";
+import { state, waitFor } from "./firefox";
 import { callTool } from "./mcp";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
@@ -46,6 +46,8 @@ async function confirmDelete(folder: string): Promise<void> {
 async function launchFromPage(): Promise<void> {
   await rowButton(p!.m, "essai", "Lancer");
   await rowState(p!.m, "essai", "running");
+  // The app's window takes the focus once open: a menu opened before that closes on the page's blur (measured under load).
+  await waitFor(p!.m, `return Services.focus.activeWindow === ${appWindowExpr("essai")};`, (v) => v === true, 15_000);
 }
 
 describe("Applications page actions", () => {
