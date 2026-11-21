@@ -108,11 +108,12 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
       Object.entries({ "ui.prefersReducedMotion": 1, ...o.prefs }).map(([k, v]) => `user_pref(${JSON.stringify(k)}, ${JSON.stringify(v)});\n`).join(""),
   );
   const out = o.output ? openSync(o.output, "a") : "ignore";
+  // Its own process group: the host and the commands it runs stay in it, so close() can wait for all of them to end.
   const proc = spawn(
     binary(),
     ["--marionette", ...(o.headed ? [] : ["--headless"]), "--no-remote", "--profile", profile, "--width", String(o.width ?? 1280), "--height", String(o.height ?? 800)],
     // The chrome context (the browser's own UI) is only reachable over Marionette with system access enabled.
-    { stdio: ["ignore", out, out], env: {
+    { detached: true, stdio: ["ignore", out, out], env: {
         ...process.env,
         MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1",
         RESSAC_DATA_DIR: dataDir,
@@ -165,13 +166,30 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
         const timer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
         await exited;
         clearTimeout(timer);
+        await groupEnded(proc.pid!);
         await cleanup();
       })());
     return { marionette, profile, dataDir, pid: proc.pid!, close };
   } catch (e) {
     proc.kill("SIGKILL");
     await exited;
+    await groupEnded(proc.pid!);
     await cleanup();
     throw e;
+  }
+}
+
+/**
+ * Waits for every process left in the browser's group to exit: a command the host started while quitting (a writer's
+ * stop script, a `docker info`) can outlive it by a few hundred ms and still write into the data folder. Bounded: a
+ * process that stays is left to the folder's removal, which then says so.
+ */
+async function groupEnded(pgid: number): Promise<void> {
+  for (const end = Date.now() + 10_000; Date.now() < end; await new Promise((r) => setTimeout(r, 50))) {
+    try {
+      process.kill(-pgid, 0);
+    } catch {
+      return; // ESRCH: nobody left in the group
+    }
   }
 }
