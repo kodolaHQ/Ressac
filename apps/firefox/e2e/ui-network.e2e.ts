@@ -501,8 +501,8 @@ describe("the UI's network", () => {
     const udp0 = net.udp.length;
     await dispatch(m, { type: "openTab", windowId: windowId, url: `http://${host("tab-rtc")}/rtc`, activate: true });
     try {
-      const result = await waitFor(m, `const b = gBrowser.selectedBrowser; return b.currentURI.spec.includes("/rtc") && b.contentTitle.startsWith("{") ? b.contentTitle : "";`, (v: string) => v !== "", 20_000);
-      expect({ tcp: tcpSince(tcp0) > 0, udp: net.udp.length - udp0 > 0 }, result).toEqual({ tcp: true, udp: true });
+      // Waits for the servers themselves: the page's call keeps gathering (and its connections open) until its tab closes.
+      await expect.poll(() => ({ tcp: tcpSince(tcp0) > 0, udp: net.udp.length - udp0 > 0 }), { timeout: 20_000 }).toEqual({ tcp: true, udp: true });
     } finally {
       // Closed even on failure: an open tab hides the home and every widget test after this one would fail too.
       await closeTab("tab-rtc.", "sonde");

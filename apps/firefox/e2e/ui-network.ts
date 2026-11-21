@@ -117,7 +117,8 @@ export const RTC = `async function rtc(C, tag) {
     const offer = await Promise.race([pc.createOffer(), new Promise((_, r) => setTimeout(() => r({ name: "pending" }), 3000))]);
     out.offerMs = Math.round(performance.now() - t0);
     await pc.setLocalDescription(offer);
-    await new Promise((r) => { const t = setTimeout(r, 3000); pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); r(); } }; });
+    // Until gathering is over (every server tried; long with servers that never answer): the caller bounds the wait.
+    await new Promise((r) => { const done = () => pc.iceGatheringState === "complete" && r(); pc.onicegatheringstatechange = done; done(); });
     out.result = "gathered:" + pc.iceGatheringState;
     out.candidates = (pc.localDescription.sdp.match(/typ [a-z]+/g) || []).map((c) => c.slice(4));
   } catch (e) {
