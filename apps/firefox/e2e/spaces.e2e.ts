@@ -283,6 +283,8 @@ describe("space settings", () => {
     const active = async () => (await state(m)).windows[0]!.activeSpace;
     expect(await active()).toBe(home.id);
     await click(m, button(work.id), { button: 2 });
+    await waitUi(m, "return doc.querySelectorAll('[role=menuitem]').length > 0");
+    // Shown: a window for a close that would follow (blur, the press's own click).
     await new Promise((r) => setTimeout(r, 300));
     expect(await inUi(m, "return [...doc.querySelectorAll('[role=menuitem]')].map((e) => e.textContent)")).toEqual(["Réglages", "Supprimer"]);
     expect(await active()).toBe(home.id);
