@@ -1,6 +1,15 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.20",
+    date: "novembre 2026",
+    items: [
+      "Sécurité : les widgets, les accueils d'applis de site et les composants d'action écrits par l'agent tournent désormais dans un processus séparé, isolé comme une page web, et non plus dans le processus de l'interface. Ils n'ont toujours aucun accès au réseau ; s'ils plantent, ils se relancent seuls.",
+      "Confidentialité : les rapports de plantage de Firefox (qui peuvent contenir des données de la mémoire) ne partent plus par défaut ; un interrupteur à part dans Réglages › Confidentialité les active. Les rapports d'erreurs de Ressac ne changent pas.",
+      "Une question posée à l'agent depuis ⌘T, ou les remarques du mode design, n'étaient parfois pas envoyées quand l'agent démarrait lentement ; elles partent maintenant dès qu'il est prêt.",
+    ],
+  },
+  {
     version: "0.1.19",
     date: "novembre 2026",
     items: [
