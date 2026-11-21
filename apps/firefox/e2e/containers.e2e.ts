@@ -29,12 +29,12 @@ describe("profile containers", () => {
         const cis = ${CIS};
         const id = store.containerFor("p1");
         const tab = gBrowser.addTab("${server.url}/cookie", { userContextId: id, triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
-        for (let i = 0; i < 50 && tab.linkedBrowser.currentURI.spec !== "${server.url}/cookie"; i++) await new Promise((r) => setTimeout(r, 100));
-        await new Promise((r) => setTimeout(r, 500));
+        const cookies = () => Services.cookies.getCookiesFromHost("127.0.0.1", { userContextId: id }).length;
+        // Until the response's cookie is stored, not a fixed pause.
+        for (let i = 0; i < 100 && !cookies(); i++) await new Promise((r) => setTimeout(r, 100));
         gBrowser.removeTab(tab);
         // SitePolicies.onMissing: removes every policy identity.
         for (const i of cis.getPolicyIdentities()) cis.removePolicyIdentity(i.userContextId);
-        const cookies = () => Services.cookies.getCookiesFromHost("127.0.0.1", { userContextId: id }).length;
         const out = { policy: cis.getPolicyIdentities().filter((i) => i.name.includes("webaios-")).length, kept: !!cis.getPrivateIdentity("userContextIdInternal.webaios-p1") && cookies() === 1 };
         return out;
       })();`);

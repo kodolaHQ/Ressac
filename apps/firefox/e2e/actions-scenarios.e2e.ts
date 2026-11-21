@@ -275,8 +275,9 @@ describe("action scenarios", () => {
       `return (async () => {
         const url = arguments[0] + "/cookie?v=default";
         const tab = gBrowser.addTab(url, { userContextId: 0, triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
-        for (let i = 0; i < 50 && tab.linkedBrowser.currentURI.spec !== url; i++) await new Promise((r) => setTimeout(r, 100));
-        await new Promise((r) => setTimeout(r, 500));
+        // Until the response's cookie is stored, not a fixed pause.
+        const set = () => Services.cookies.getCookiesFromHost("127.0.0.1", {}).some((c) => c.name === "seen" && c.value === "default");
+        for (let i = 0; i < 100 && !set(); i++) await new Promise((r) => setTimeout(r, 100));
         gBrowser.removeTab(tab);
       })();`,
       [servers.images.url],
