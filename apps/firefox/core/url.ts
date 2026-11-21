@@ -22,3 +22,17 @@ export function toUrl(input: string, template: string): string | null {
   // Neither a URL nor a valid domain: search the text as is.
   return template.replace("%s", encodeURIComponent(text));
 }
+
+/**
+ * What the address bar says of a page's connection, from its URL's scheme alone (the certificate state does not reach
+ * the UI): "secure" for https, "insecure" for http to a host that is not this Mac, null for local and internal pages.
+ */
+export function connectionOf(url: string): "secure" | "insecure" | null {
+  if (!URL.canParse(url)) return null;
+  const u = new URL(url);
+  if (u.protocol === "https:") return "secure";
+  if (u.protocol !== "http:") return null;
+  const host = u.hostname.toLowerCase();
+  // Loopback, as Firefox counts it trustworthy: localhost and its subdomains, 127.0.0.0/8, ::1.
+  return host === "localhost" || host.endsWith(".localhost") || /^127(\.\d{1,3}){3}$/.test(host) || host === "[::1]" ? null : "insecure";
+}

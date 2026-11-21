@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { toUrl as toUrlWith } from "../core/url";
+import { connectionOf, toUrl as toUrlWith } from "../core/url";
 import { customEngineError, searchTemplate, type SearchEngine } from "../shared/search";
 
 const toUrl = (input: string, engine: SearchEngine) => toUrlWith(input, searchTemplate({ engine, customEngine: null }));
@@ -47,4 +47,13 @@ test("a custom address must be https, carry %s and stay under 2 000 characters",
   expect(customEngineError("https://x.com/")).toBe("agent-engine-custom-missing-s");
   expect(customEngineError("https://x.com/?q=%s&p=" + "a".repeat(2000))).toBe("agent-engine-custom-too-long");
   expect(customEngineError("https://kagi.com/search?q=%s")).toBeNull();
+});
+
+test("connectionOf: https is secure, http elsewhere than this Mac is not, local and internal pages say nothing", () => {
+  expect(connectionOf("https://exemple.fr/a")).toBe("secure");
+  expect(connectionOf("http://exemple.fr/")).toBe("insecure");
+  expect(connectionOf("http://192.168.1.5:8080/")).toBe("insecure");
+  for (const url of ["http://localhost:5300/", "http://app.localhost/", "http://127.0.0.1/", "http://[::1]:80/", "about:blank", "file:///tmp/a.html", "resource://ressac/home.html", "moz-extension://x/p.html", "pas une adresse"]) {
+    expect(connectionOf(url)).toBeNull();
+  }
 });

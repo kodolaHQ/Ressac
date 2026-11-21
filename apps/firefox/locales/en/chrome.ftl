@@ -153,6 +153,9 @@ chrome-ui-stop = Stop
 chrome-ui-reload = Reload
 chrome-ui-compact = Compact mode
 chrome-ui-compact-leave = Leave compact mode
+# The padlock before the host in the address bar (https), and the open one for plain http to another machine.
+chrome-ui-connection-secure = Secure connection
+chrome-ui-connection-insecure = Not secure
 chrome-ui-address = Search or enter an address
 chrome-ui-essentials = Essentials
 chrome-ui-unload = Unload
