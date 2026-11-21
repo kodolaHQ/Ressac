@@ -163,9 +163,10 @@ describe("Applications page actions", () => {
     p = await openAppsPage(BLOCK, { noManifest: ["Mon Projet"] });
     await rowButton(p.m, "Mon Projet", "Déboguer");
     await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[projet sans fiche ressac.json : /workspace/projects/Mon Projet] ");
-    // Déboguer focuses the agent and retries 100 ms later if the terminal lost it (AgentPanel): a sidebar click inside
-    // that window gets its menu closed by the retry. A person is never that fast; the test waits it out.
-    await new Promise((r) => setTimeout(r, 200));
+    // Déboguer focuses the agent and asks again 100 and 500 ms later if the terminal lost it (AgentPanel): a sidebar
+    // click inside that window gets its menu closed by a retry. A person is never that fast; the test waits them out
+    // with a 500 ms timer set now in the panel's own window, which fires after both (the test's own clock may not).
+    await inUi(p.m, "await new Promise((r) => doc.defaultView.setTimeout(r, 500)); return true;", [], "agent");
     await confirmDelete("Mon Projet");
     await expect.poll(() => existsSync(project("Mon Projet")), { timeout: 10_000 }).toBe(false);
     await rowGone("Mon Projet");
