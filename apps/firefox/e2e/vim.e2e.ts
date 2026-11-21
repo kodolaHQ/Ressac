@@ -76,12 +76,15 @@ afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
 
-const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
+const inPage = <T = unknown>(script: string, system = false) => inBrowser<T>(m, B, script, { system });
 const setVim = (enabled: boolean) => dispatch(m, { type: "setVimMode", enabled });
-/** The page's actor has asked its mode (its parent exists), and the answer had time to come back. */
+/** A field of the page's vim actor (its child, read with chrome privileges). */
+const vimChild = <T = unknown>(field: string) => inPage<T>(`return window.windowGlobalChild.getExistingActor("RessacVim")?.[${JSON.stringify(field)}];`, true);
+/** The page's actor has asked its mode (its parent exists), and the answer has come back: its mode is the setting's. */
 async function actorReady() {
   await waitFor(m, `return !!${B}.browsingContext.currentWindowGlobal?.getExistingActor("RessacVim")`, (v) => v === true);
-  await sleep(200);
+  const on = (await state(m)).settings.vimMode;
+  await expect.poll(() => vimChild<boolean>("on")).toBe(on);
 }
 /** Opens `p` in a new tab, focused on its body; returns the tab id. */
 async function open(p = "/vim"): Promise<string> {
@@ -166,17 +169,28 @@ describe("vim mode on", () => {
     await open();
     await pressKeys(m, "j");
     await expect.poll(scrollY).toBeGreaterThan(0);
+    // Read from the actor, not timed here: its 1 s timer runs in the page's process, which a loaded machine runs late.
+    // Every key first clears the pending prefix, then a lone g sets it again: a log ending in "g" is a g taken alone.
+    await inPage(
+      `const a = window.windowGlobalChild.getExistingActor("RessacVim"), set = a.setPrefix;
+       a.ressacTestPrefixes = [];
+       a.setPrefix = function (k) { a.ressacTestPrefixes.push(k); return set.call(this, k); };`,
+      true,
+    );
+    const log = () => vimChild<string[]>("ressacTestPrefixes");
+    const prefix = () => vimChild<string>("prefix");
     await pressKeys(m, "g");
-    await sleep(1_200);
+    await expect.poll(log).toEqual(["", "g"]);
+    await expect.poll(prefix).toBe("");
     await pressKeys(m, "g");
-    await sleep(300);
+    await expect.poll(log).toEqual(["", "g", "", "g"]);
     expect(await scrollY()).toBeGreaterThan(0);
     await pressKeys(m, "Escape"); // drops the g pending above
     await pressKeys(m, "g");
-    await sleep(300);
+    await expect.poll(log).toEqual(["", "g", "", "g", "", "", "g"]);
     expect(await scrollY()).toBeGreaterThan(0);
     // With nothing pending (the last g has expired), Escape is the page's.
-    await sleep(1_200);
+    await expect.poll(prefix).toBe("");
     await pressKeys(m, "Escape");
     await expect.poll(seen).toContain("keydown:Escape");
   });
