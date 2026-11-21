@@ -140,12 +140,14 @@ describe("small Mac", () => {
     expect(s.tabs[other]!.unloaded).toBeUndefined();
     // The host relieves memory at the first unload (models, idle machine), without waiting for « memory-pressure ».
     await waitFor(m, "return true", () => relieved() === relievedBefore + 1, 10_000);
-    // A click on the tab brings its page back.
+    // A click on the tab brings its page back. An unloaded tab's browser reports its page's address, and once put back it shows about:blank until the restore
+    // loads the page (measured: up to ~120 ms): wait for the final state.
     await dispatch(m, { type: "activateTab", id: other });
-    await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v: string) => v.endsWith("/texte.html"));
     const end = Date.now() + 10_000;
-    while ((await xul(other))?.discarded && Date.now() < end) await new Promise((r) => setTimeout(r, 100));
-    expect(await xul(other)).toMatchObject({ discarded: false, url: expect.stringMatching(/\/texte\.html$/) });
+    let back = await xul(other);
+    while ((back?.discarded || !back?.url.endsWith("/texte.html")) && Date.now() < end) back = (await new Promise((r) => setTimeout(r, 100)), await xul(other));
+    expect(back).toMatchObject({ discarded: false, url: expect.stringMatching(/\/texte\.html$/) });
+    expect(await m.execute("return gBrowser.selectedTab.getAttribute('ressac-tab-id')")).toBe(other);
     await dispatch(m, { type: "activateTab", id: essential });
     await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v: string) => v.endsWith("/a.html"));
   });
