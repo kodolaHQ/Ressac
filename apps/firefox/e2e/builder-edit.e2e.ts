@@ -616,8 +616,7 @@ describe("the workflow builder", () => {
     expect(await closeHeld()).toBe(true);
     await answerConfirm(false);
     await click(m, '[data-testid="node-tri"]');
-    await sleep(300);
-    expect(await questions()).toHaveLength(1);
+    await poll(async () => (await questions()).length, 1);
     expect(await value("block-name-field")).toBe("Liens de la page");
     await answerConfirm(true);
     await click(m, '[data-testid="node-tri"]');
@@ -645,8 +644,10 @@ describe("the workflow builder", () => {
          for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1 });`,
       );
     await answerConfirm(false);
+    const asked = (await questions()).length;
     await closeButton();
-    await sleep(300);
+    // The close reaches the sidebar's beforeunload through the chrome: wait for its question, not a fixed time.
+    await poll(async () => (await questions()).length, asked + 1);
     expect(await builderTabs()).toBe(1);
     expect((await questions()).at(-1)).toContain("liens.mjs");
     const n = (await questions()).length;
