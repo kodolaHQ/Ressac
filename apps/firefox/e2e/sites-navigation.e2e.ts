@@ -336,16 +336,22 @@ describe("site app navigation", () => {
   it("window.open bursts to two alternated domains: at most one change of the mention per 500 ms", async () => {
     await openAndWait();
     await waitBar(`return true;`);
-    // Every state the controller sends to the bar.
-    await m.execute(`const win = ${site}; win.ressacTestSent = 0; win.ressacSiteWindow.onState(() => win.ressacTestSent++);`);
+    // When each change of the mention reached the bar, timed in the window where the throttle runs: under load the
+    // burst itself can take seconds to be refused, so a count over a fixed time would not tell a throttle that works.
+    await m.execute(
+      `const win = ${site}; let last = JSON.stringify(win.ressacSiteWindow.state().notice); win.ressacTestChanges = [];
+       win.ressacSiteWindow.onState((e) => { const n = JSON.stringify(e.notice); if (n !== last) win.ressacTestChanges.push(win.performance.now()); last = n; });`,
+    );
     const a = JSON.stringify(pub("/x"));
     const b = JSON.stringify(server.url("autre-pub.localhost", "/x"));
     await inSiteView(m, "vidola", `for (let i = 0; i < 20; i++) window.open(i % 2 ? ${a} : ${b}); return 1;`, { gesture: true });
     await waitNotice("pub.localhost");
+    // An observation window for later changes; the check below holds whatever arrives in it.
     await sleep(1200);
-    const sent = await m.execute<number>(`return ${site}.ressacTestSent;`);
-    expect(sent).toBeGreaterThanOrEqual(1);
-    expect(sent).toBeLessThanOrEqual(3);
+    const changes = await m.execute<number[]>(`return ${site}.ressacTestChanges;`);
+    expect(changes.length).toBeGreaterThanOrEqual(1);
+    // NOTICE_GAP_MS (500 ms) apart at least; a timer never fires early, 20 ms for the clocks' grain.
+    for (let i = 1; i < changes.length; i++) expect(changes[i]! - changes[i - 1]!, JSON.stringify(changes)).toBeGreaterThanOrEqual(480);
     await waitNotice("pub.localhost");
   });
 
@@ -440,6 +446,8 @@ describe("site app navigation", () => {
         sites.open(site);
         sites.routeOpen("vidola", arguments[0]);
         for (let i = 0; i < 50 && !old.closed; i++) await new Promise((r) => setTimeout(r, 100));
+        // Set up (a loaded machine can take longer than the unload's hold), then still there once the old window is gone.
+        for (let i = 0; i < 100 && !marked(); i++) await new Promise((r) => setTimeout(r, 100));
         await new Promise((r) => setTimeout(r, 1000));
         return marked();
       })();`,
@@ -459,10 +467,11 @@ describe("site app navigation", () => {
     const app = (await windowHandles(m)).find((h) => !before.has(h))!;
     for (const target of [second, first]) {
       // That main window was the last one in front, then the app came in front.
+      // Waited on what « Ouvrir dans un onglet » reads (the store's active window), not a fixed pause.
       await inWindow(m, target, () => m.execute(`window.focus();`));
-      await sleep(300);
+      await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).windows.active())();`, (v) => v === ids[target]);
       await m.execute(`${site}.focus();`);
-      await sleep(300);
+      await waitFor(m, `return Services.focus.activeWindow === ${site};`, (v) => v === true);
       await inSiteView(m, "vidola", "document.getElementById('pub').click(); return 1;", { gesture: true });
       await waitNotice("pub.localhost");
       await barClick("site-open-tab");
