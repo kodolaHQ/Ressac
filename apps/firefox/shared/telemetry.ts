@@ -20,7 +20,7 @@ const PRIVATE_URL = /(?<![a-z0-9+.-])(?!(?:chrome|resource|moz-src):)(?:[a-z][a-
 // hiding a few words too many is fine, a folder name is not.
 const TAIL = String.raw`[^\n)'"<>]*`;
 // Folders of the Mac other than the home (another account, an external disk), and a path written from the home.
-const OTHER_PATH = new RegExp(String.raw`(?<![\w.-])(?:/(?:Users|Volumes)/|~/)` + TAIL, "g");
+const OTHER_PATH = new RegExp(String.raw`(?<![\w.-])(?:/(?:Users|Volumes|tmp|private|var)/|~/)` + TAIL, "g");
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export function scrub(text: string, home: string): string {
@@ -29,8 +29,10 @@ export function scrub(text: string, home: string): string {
   if (h) {
     // The home in any case and accent form (both sides composed), slashes JSON-escaped or not; only at a path boundary
     // (/Users/marieX is someone else's folder). What follows it names the user's folders and files: it goes too.
-    const form = escape(h.normalize("NFC")).replace(/\//g, "\\\\?/");
-    t = t.replace(new RegExp(`${form}(?![\\w.-])((?:\\\\?/)${TAIL})?`, "giu"), (_, rest) => (rest ? "~/…" : "~"));
+    // A slash may also be percent-encoded (an address that carries the path).
+    const slash = String.raw`(?:\\?/|%2f)`;
+    const form = escape(h.normalize("NFC")).replace(/\//g, slash);
+    t = t.replace(new RegExp(`${form}(?![\\w.-])(${slash}${TAIL})?`, "giu"), (_, rest) => (rest ? "~/…" : "~"));
   }
   return t.replace(OTHER_PATH, (p) => (p.startsWith("~/") ? "~/…" : "<path>")).replace(PRIVATE_URL, "<url>");
 }
@@ -39,10 +41,15 @@ export function scrub(text: string, home: string): string {
 // quote only after a non-letter: « d'ouvrir 'contrat.pdf' » quotes the file name, not « ouvrir ».
 const QUOTED = /"[^"\n]*?"|(?<![\p{L}\d])'[^'\n]*?'|`[^`\n]*?`|«[^»\n]*?»|“[^”\n]*?”|‘[^’\n]*?’/gu;
 // In a message only (frames keep their file and function names): e-mails, IPs, and names with a dot (a host, a file).
-const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
-const IP = /\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b|\[[0-9a-f:.]+\](?::\d+)?/gi;
-const HOST = /(?<![\w/.:@~<-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?::\d+)?(?:\/[^\s)'"<>]*)?/gi;
-const message = (t: string, home: string) => scrub(t, home).replace(EMAIL, "<email>").replace(IP, "<ip>").replace(HOST, "<host>").replace(QUOTED, '"…"');
+// Each pattern starts only at a word's start: a match tried from every position of a long word is quadratic.
+const EMAIL = /(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
+// IPv6 bare: with « :: » or at least four colons, so a time (12:30:45) stays.
+const IP = /\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b|\[[0-9a-f:.]+\](?::\d+)?|(?<![\w:])(?=[0-9a-f:]*::|(?:[0-9a-f]{1,4}:){4})[0-9a-f:]{2,39}(?:%\w+)?(?![\w:])/gi;
+// A host by its last label, or by a port or path after it: « this.tabs is undefined » keeps the code name it is about.
+const TLD = "com|net|org|fr|io|dev|app|co|me|info|eu|de|uk|be|ch|ca|us|es|it|nl|example|test|local|internal|lan|home|corp";
+const HOST = new RegExp(String.raw`(?<![\w/.:@~<-])(?:[a-z0-9-]+\.)+(?:(?:${TLD})(?![\w-])|[a-z][a-z0-9-]*(?=[:/]))(?::\d+)?(?:/[^\s)'"<>]*)?`, "gi");
+// 300 characters are sent: the rest need not be scrubbed (a huge message would cost the chrome thread).
+const message = (t: string, home: string) => scrub(t.slice(0, 4000), home).replace(EMAIL, "<email>").replace(IP, "<ip>").replace(HOST, "<host>").replace(QUOTED, '"…"');
 
 const V8 = /^\s*at (?:(.*?) \()?(.*?):(\d+):(\d+)\)?\s*$/;
 const SPIDER = /^(.*?)@(.*?):(\d+):(\d+)\s*$/;

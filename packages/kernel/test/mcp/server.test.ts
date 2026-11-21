@@ -3148,6 +3148,19 @@ test("a sensitive tab and the history ask again during another window's search, 
     await call("read_tab", { id: "gmail" }, w1);
     expect(asks()).toBe(1);
   }, { allow: true, tabs: [github, gmail] });
+  // Two searches: a window that borrows the other's token, whose search already asked, still meets its own search's card.
+  await withSearch(async ({ call, fake, policy, s }) => {
+    const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;
+    const a = s.openSession("A");
+    const b = s.openSession("B");
+    policy.grant(gmail);
+    await call("search_web", { query: "x" }, a);
+    await call("read_tab", { id: "gmail" }, a);
+    expect(asks()).toBe(1);
+    await call("search_web", { query: "y" }, b);
+    await call("read_tab", { id: "gmail" }, a);
+    expect(asks()).toBe(2);
+  }, { allow: true, tabs: [github, gmail] });
   await withSearch(async ({ call, fake, policy, s }) => {
     const cards = () => fake.calls.filter((x) => x.method === "askWidgetData").length;
     policy.grantHistory();

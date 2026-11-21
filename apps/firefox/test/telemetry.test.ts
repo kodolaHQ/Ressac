@@ -77,6 +77,29 @@ describe("errorEnvelope: the message", () => {
   });
 });
 
+describe("errorEnvelope: review of the hardened scrub", () => {
+  const value = (message: string) =>
+    JSON.parse(errorEnvelope({ source: "host", type: "Error", message }, { release: "1", home, eventId: "e", now: new Date(0) }).split("\n")[2]!).exception.values[0].value;
+  it("stays fast on a very long message", () => {
+    const t = Date.now();
+    value("a".repeat(300_000));
+    value("ab.c".repeat(80_000));
+    expect(Date.now() - t).toBeLessThan(500);
+  });
+  it("hides a bare IPv6 address, temporary files and a percent-encoded home", () => {
+    expect(value("fetch 2a01:e0a:1:2::5 failed")).toBe("fetch <ip> failed");
+    expect(value("bind fe80::1%en0")).toBe("bind <ip>");
+    expect(value("open /tmp/Contrat Dupont.pdf")).toBe("open <path>");
+    expect(value("open /private/var/folders/x/Contrat.pdf")).toBe("open <path>");
+    expect(value("at %2FUsers%2Fmarie%2FDocs")).toBe("at ~/…");
+  });
+  it("keeps the code names a TypeError is about, and times", () => {
+    expect(value("x.y is undefined")).toBe("x.y is undefined");
+    expect(value("this.tabs is undefined")).toBe("this.tabs is undefined");
+    expect(value("at 12:30:45")).toBe("at 12:30:45");
+  });
+});
+
 describe("parseStack", () => {
   it("parses V8, oldest first", () => {
     const f = parseStack("Error: x\n    at inner (/a/b.js:1:2)\n    at /a/c.js:3:4");

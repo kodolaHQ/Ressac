@@ -678,8 +678,7 @@ function createToolsServer(
    * it. `ask` puts the card up under the key it is given. No search: true, nothing asked.
    */
   async function oncePerSearch(name: (searchTabId: string) => string, ask: (key: string) => Promise<boolean>): Promise<boolean> {
-    const own = searching?.sessions.current(key)?.tabId;
-    const tabs = own ? [own] : (searching?.sessions.runningTabs() ?? []);
+    const tabs = searching?.sessions.runningTabs() ?? [];
     const keys = tabs.map(name).filter((k) => !searching!.asked.has(k));
     if (keys.length === 0) return true;
     if (!(await ask(keys[0]!))) return false;

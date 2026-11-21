@@ -21,7 +21,7 @@ const interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = {
   lo0: [{ address: "::1", family: "IPv6", internal: true, netmask: "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", cidr: "::1/128", mac: "00:00:00:00:00:00", scopeid: 0 }],
   en0: [
     { address: "2a01:cb00:1234:5600:1c2d:3e4f:5a6b:7c8d", family: "IPv6", internal: false, netmask: "ffff:ffff:ffff:ffff::", cidr: null, mac: "aa:bb:cc:dd:ee:ff", scopeid: 0 },
-    { address: "86.247.10.20", family: "IPv4", internal: false, netmask: "255.255.255.0", cidr: null, mac: "aa:bb:cc:dd:ee:ff" },
+    { address: "86.247.10.20", family: "IPv4", internal: false, netmask: "255.255.255.0", cidr: "86.247.10.20/24", mac: "aa:bb:cc:dd:ee:ff" },
   ],
 };
 
@@ -30,7 +30,9 @@ test("the machine's own addresses, and IPv6 neighbours on its /64, are its netwo
   expect(onOwnNetwork("[2a01:cb00:1234:5600::42]", interfaces)).toBe(true);
   expect(onOwnNetwork("86.247.10.20", interfaces)).toBe(true);
   expect(onOwnNetwork("2a01:cb00:1234:5601::1", interfaces)).toBe(false);
-  expect(onOwnNetwork("86.247.10.21", interfaces)).toBe(false);
+  // A public IPv4 network (a university's): its neighbours are the local network too.
+  expect(onOwnNetwork("86.247.10.21", interfaces)).toBe(true);
+  expect(onOwnNetwork("86.247.11.21", interfaces)).toBe(false);
   expect(onOwnNetwork("example.com", interfaces)).toBe(false);
 });
 

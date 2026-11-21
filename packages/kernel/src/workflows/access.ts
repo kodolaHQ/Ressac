@@ -59,9 +59,9 @@ export function onOwnNetwork(address: string, interfaces: NodeJS.Dict<NetworkInt
   const own = new BlockList();
   for (const i of Object.values(interfaces).flat()) {
     if (!i || (i.family === "IPv6") !== (family === 6)) continue;
-    const ip = i.address.replace(/%.*$/, "");
-    if (family === 6) own.addSubnet(ip, 64, "ipv6");
-    else own.addAddress(ip, "ipv4");
+    // The interface's own network (a public IPv4 one too: a university's), else its address alone or its IPv6 /64.
+    const [ip = "", prefix] = (i.cidr ?? i.address).replace(/%[^/]*/, "").split("/");
+    own.addSubnet(ip, prefix ? Number(prefix) : family === 6 ? 64 : 32, family === 6 ? "ipv6" : "ipv4");
   }
   return own.check(a, family === 6 ? "ipv6" : "ipv4");
 }
