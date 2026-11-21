@@ -198,9 +198,19 @@ it("transparent text, unseen links and microdata text stay out; gradient text an
 it("a huge page with nested shadow roots is read quickly and bounded", async () => {
   const id = /Onglet : (\S+)/.exec((await callTool(w.dataDir, "search_web", { query: "x", goal: "lire" })).text)![1]!;
   await callTool(w.dataDir, "navigate", { id, url: `${server.url}/longue.html` });
-  const t = Date.now();
+  // The CPU time of the tab's process, not the wall clock: a saturated machine stretches the second, not the work.
+  const cpuMs = () =>
+    m.execute<number>(
+      `return (async () => {
+        const pid = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === arguments[0]).linkedBrowser.browsingContext.currentWindowGlobal.osPid;
+        return (await ChromeUtils.requestProcInfo()).children.find((c) => c.pid === pid).cpuTime / 1e6;
+      })();`,
+      [id],
+    );
+  const before = await cpuMs();
   const r = (await callTool(w.dataDir, "read_tab", { id })).text;
-  expect(Date.now() - t).toBeLessThan(6000);
+  // Measured 0.7-1.1 s alone and with 8 copies and 12 busy loops; a walk quadratic in the shadow roots takes far more.
+  expect((await cpuMs()) - before).toBeLessThan(3000);
   expect(r).toContain("Section 0");
   expect(r).toContain("Section 1\n");
   expect(r.length).toBeLessThan(100_000 + 1_000);
