@@ -1,12 +1,8 @@
 <script lang="ts" module>
   /** What a RemoteFrame's owner holds (bind:frame). */
   export interface RemoteFrameHandle {
-    /** Posts `data` into the page (its `message` event); dropped if the frame is gone or between documents. */
+    /** Posts `data` into the page (its `message` event); dropped if the frame is gone, between documents or not accepted. */
     send(data: unknown): Promise<void>;
-    /** The page's current document address. */
-    uri(): string | null;
-    /** Loads `src` again (a frame that navigated away goes back to its copy), bounded: frameReverter in remote-frame.ts. */
-    load(src: string): void;
     element: Element;
   }
 </script>
@@ -17,10 +13,12 @@
   /**
    * An agent-written frame in a remote <browser> of the frames' web content process (chrome/window/remote-frame.ts):
    * sandboxed like `<iframe sandbox="allow-scripts">`, out of the parent process. Its page's events come back through
-   * the RessacFrame actor; `press` and `focus` are the user's own (trusted) events.
+   * the RessacFrame actor; `press` and `focus` are the user's own (trusted) events. Only a document whose address
+   * `accept`s is the owner's: any other is sent back to `src` (bounded: frameReverter), sent nothing, and its events dropped.
    */
   let {
     src,
+    accept,
     title,
     testid,
     onmessage,
@@ -30,9 +28,11 @@
     frame = $bindable(),
   }: {
     src: string | null;
+    accept: (uri: string) => boolean;
     title: string;
     testid?: string;
-    onmessage?: (name: string, data: { url?: string; detail?: string }) => void;
+    /** `open`: `{ url }`; `home` and `component`: their detail, parsed (a non-object or bad JSON never comes). */
+    onmessage?: (name: string, data: Record<string, unknown>) => void;
     onload?: (uri: string) => void;
     onpress?: () => void;
     onfocus?: () => void;
@@ -56,13 +56,33 @@
       host.append(b);
       browser = b;
       const reverter = frames.frameReverter(b);
+      const ours = () => {
+        const u = frames.frameUri(b);
+        return u !== null && accept(u);
+      };
       off = frames.onFrameMessage(b, (name, data) => {
-        if (name === "loaded") reverter.loaded(() => onload?.(String(data.uri)));
+        if (name === "loaded") {
+          reverter.loaded(() => {
+            // Left its copy (the initial about:blank included: this first revert is what loads it): sent back.
+            if (!ours()) {
+              if (src) reverter.revert(src);
+            } else onload?.(String(data.uri));
+          });
+        } else if (!ours()) return;
         else if (name === "press") onpress?.();
         else if (name === "focus") onfocus?.();
-        else onmessage?.(name, data);
+        else if (typeof data.detail !== "string") onmessage?.(name, data);
+        else {
+          let d: unknown;
+          try {
+            d = JSON.parse(data.detail);
+          } catch {
+            return;
+          }
+          if (typeof d === "object" && d !== null) onmessage?.(name, d as Record<string, unknown>);
+        }
       });
-      frame = { send: (d) => frames.sendFrame(b, d), uri: () => frames.frameUri(b), load: reverter.revert, element: b };
+      frame = { send: async (d) => (ours() ? frames.sendFrame(b, d) : undefined), element: b };
     }
     frames.loadFrame(browser, s);
   });

@@ -25,11 +25,10 @@
 
   /** The frame shows the served copy (CSP, guard): never a page it navigated to. */
   // Without the fragment: a widget that sets its own #hash stays on its copy.
-  const ours = () => !!widget.src && frame?.uri()?.split("#")[0] === widget.src;
+  const accept = (uri: string) => uri.split("#")[0] === widget.src;
 
   function send() {
-    if (!frame || !ours()) return;
-    void frame.send({
+    void frame?.send({
       type: "widget",
       data: $state.snapshot(data),
       size: { w: size.w, h: size.h },
@@ -37,25 +36,16 @@
       state: { status: appState.status, lastUpdate: appState.lastUpdate },
     });
   }
-  // On each change of data, state or size (loading goes through onLoad).
+  // On each change of data, state or size (loading goes through onload).
   $effect(() => {
     void [data, appState.status, appState.lastUpdate, size.w, size.h, width, height];
     send();
   });
 
-  function onLoad() {
-    // Navigated away from its copy: sent back to it, with nothing given to the other page.
-    if (!ours()) {
-      if (frame && widget.src) frame.load(widget.src);
-      return;
-    }
-    send();
-  }
-
   // The widget's link: `ressacOpen` (provided by the guard in the page's world) emits an event the frames' actor
   // forwards. The main process only opens it if a real press by the user just landed in this widget.
-  function onMessage(name: string, d: { url?: string }) {
-    if (name === "open" && typeof d.url === "string" && ours()) api.home.open(d.url, widget.id);
+  function onMessage(name: string, d: { url?: unknown }) {
+    if (name === "open" && typeof d.url === "string") api.home.open(d.url, widget.id);
   }
 
   // The widget only takes the keyboard under the pointer (a click by the user): a focus() from its code is handed back
@@ -81,9 +71,10 @@
   {#if widget.src}
     <RemoteFrame
       src={widget.src}
+      {accept}
       title={widget.name}
       bind:frame
-      onload={onLoad}
+      onload={send}
       onmessage={onMessage}
       onpress={() => api.home.gesture(widget.id)}
       onfocus={guardFocus}

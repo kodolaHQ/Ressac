@@ -20,7 +20,7 @@ import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
 import { frameError, frameInjection, frameMemory, framePosition, frameResume, inheritedProfile, openedFromTab, siteOfFrame, type FrameSite } from "./site-frames";
 import { forgetHome, serveHome, servedKey, siteImage } from "./site-home";
 import { framesHost, framesKindDir, framesOrigin } from "../window/frames-root";
-import { loadFrame } from "../window/remote-frame";
+import { frameReverter } from "../window/remote-frame";
 import { cutFrameNetwork } from "../window/frame-network";
 import { testEnv } from "../test-env";
 
@@ -526,7 +526,8 @@ function guardHome(id: string, browser: Element): void {
   const back = () => {
     bc.stop(Ci.nsIWebNavigation.STOP_ALL);
     const key = servedKey(id);
-    if (key && browser.isConnected) loadFrame(browser, `${framesOrigin()}/sites/${key}/index.html`);
+    // Bounded with the frame owner's reverts: a page that keeps leaving would else reload in a loop.
+    if (key) frameReverter(browser).revert(`${framesOrigin()}/sites/${key}/index.html`);
   };
   const listener = {
     QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
@@ -540,7 +541,9 @@ function guardHome(id: string, browser: Element): void {
       }
       if (!homePage(id, uri)) bc.stop(Ci.nsIWebNavigation.STOP_ALL);
     },
-    onLocationChange(_progress: unknown, _request: unknown, location: { spec: string }) {
+    onLocationChange(_progress: unknown, _request: unknown, location: { spec: string }, flags: number) {
+      // Same document (pushState, #hash): still the guarded copy; its messages are dropped while its address is not a home page.
+      if (flags & L.LOCATION_CHANGE_SAME_DOCUMENT) return;
       if (!homePage(id, location)) back();
     },
   };

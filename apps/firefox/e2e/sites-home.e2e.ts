@@ -8,7 +8,7 @@ import { waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { HOME_COPY, SITE_HOME, acceptHomeCard, homePoint, inBrowser, inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, siteHomeBrowser, siteWindowExpr, startSitesServer, writeSite } from "./sites";
-import { missingApi } from "./ui";
+import { inFrame, missingApi } from "./ui";
 
 // Plan 31 Task 5: the site app's home screen and its messages. The home is the test
 // home (SITE_HOME) as is, plus a probe script the test drives by
@@ -60,6 +60,8 @@ const PROBE = `<script>
   });
 </script>`;
 const HOME = SITE_HOME + PROBE;
+// A JS router: moves to its own route as it loads (a same-document change), then says ready.
+const ROUTER = SITE_HOME.replace('parent.postMessage({ type: "ready" }, "*");', 'history.pushState(null, "", "/settings"); parent.postMessage({ type: "ready" }, "*");');
 const AUTO = HOME.replace('parent.postMessage({ type: "ready" }, "*");', 'parent.postMessage({ type: "ready" }, "*"); parent.postMessage({ type: "open", url: "/serie/the-bear?e=9" }, "*");');
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
@@ -127,7 +129,7 @@ async function realClick(id: string, selector: string): Promise<void> {
       if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("ressac-site");`)) === id)) break;
     }
     if (!found) throw new Error(`no window for ${id}`);
-    const [x, y] = await homePoint(m, siteHomeBrowser(id), selector);
+    const { x, y } = await homePoint(m, siteHomeBrowser(id), selector);
     await m.command("WebDriver:PerformActions", {
       actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", origin: "viewport", x, y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }] }],
     });
@@ -186,6 +188,7 @@ beforeAll(async () => {
   writeSite(dataDir, "vidola", { declaration, files: { "home/index.html": HOME, "home/img/logo.png": PNG, "home/app.js": "window.appJs = 1;", "home/style.css": "p { color: red; }", "home/x.svg": svg, "home/x.xhtml": xhtml } });
   writeSite(dataDir, "demenage", { declaration: { ...declaration, name: "Déménagé" }, files: { "home/index.html": HOME } });
   writeSite(dataDir, "auto", { declaration: { ...declaration, name: "Auto" }, files: { "home/index.html": AUTO } });
+  writeSite(dataDir, "routeur", { declaration: { ...declaration, name: "Routeur" }, files: { "home/index.html": ROUTER } });
   writeSite(dataDir, "tube", { declaration: { ...declaration, name: "Tube" }, files: { "home/index.html": "<p>accueil</p>" } });
   writeSite(dataDir, "autre", { declaration: { name: "Autre", url: url("/", "vidola-b.localhost"), domains: ["vidola-b.localhost"] }, files: { "home/index.html": "<p>autre</p>" } });
   writeMemory("vidola");
@@ -462,6 +465,24 @@ describe("site app home screen", () => {
     expect(server.requests.find((r) => r.path === "/affiche.png")?.cookie).toBe("essai=appli");
     expect(seen.filter((v) => v.includes("/boucle/"))).toEqual(["/boucle/0", "/boucle/1", "/boucle/2", "/boucle/3"].map((c) => `vidola-a.localhost${c}`));
   });
+
+  it("a home whose router calls pushState as it loads: a bounded number of loads, and it is sent nothing", async () => {
+    await openSite("routeur");
+    // Every document load in the home's frame from its first one, counted chrome side for 3 s.
+    await expect.poll(() => m.execute<boolean>(`return !!(${siteHomeBrowser("routeur")})?.browsingContext?.webProgress;`), { timeout: 15_000 }).toBe(true);
+    await m.execute(
+      `const b = ${siteHomeBrowser("routeur")}; b.ressacTestLoads = 0;
+       b.ressacTestCounter = { QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
+         onStateChange(_p, _r, f) { if (f & Ci.nsIWebProgressListener.STATE_START && f & Ci.nsIWebProgressListener.STATE_IS_DOCUMENT) b.ressacTestLoads++; } };
+       b.browsingContext.webProgress.addProgressListener(b.ressacTestCounter, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);`,
+    );
+    await sleep(3000);
+    const loads = await m.execute<number>(`return (${siteHomeBrowser("routeur")}).ressacTestLoads;`);
+    console.log(`[pushState] home loads over 3 s: ${loads}; address: ${await homeUri("routeur")}`);
+    // Firefox lets the sandboxed (opaque origin) document rewrite its address: it then fails the home's check.
+    expect(await homeUri("routeur")).toMatch(/^resource:\/\/ressac-frames-[0-9a-f]{16}\/settings$/);
+    // At most its first loads (about:blank, the copy, the load-bearing revert); a guard reload each pushState looped (286).
+    expect(loads).toBeLessThanOrEqual(3);
+    expect(await inFrame<unknown[]>(m, { browser: siteHomeBrowser("routeur") }, "JSON.parse(JSON.stringify(window.wrappedJSObject.recus))")).toEqual([]);
+  });
 });
-
-

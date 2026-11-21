@@ -9,7 +9,6 @@ import {
   WITH_HOME,
   withHomeDeclaration,
   overlayOf,
-  homePoint,
   inStore,
   readPng,
   siteExpr,
@@ -25,7 +24,7 @@ import {
 import { waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { grantSite, HOME_COPY, inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, siteHomeBrowser, startSitesServer, writeSite } from "./sites";
+import { grantSite, HOME_COPY, homePoint, inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, siteHomeBrowser, startSitesServer, writeSite } from "./sites";
 
 // Plan 36 Task 3: the design mode on a site app's home (spike S6), a remote frame of the bar aimed by the
 // RessacDesignFrames actor (chrome/agent/design-actor.ts). Apps avec-accueil and sonde (spike S6's home, for the
@@ -155,7 +154,7 @@ async function homeOn(id: string) {
 }
 /** A trusted click on `sel` in the home: the bubble. */
 async function aimHome(id: string, sel: string) {
-  await siteMouse(m, id, await homePoint(m, id, sel));
+  await siteMouse(m, id, await homePoint(m, siteHomeBrowser(id), sel));
   await expect.poll(() => bubble(id), { timeout: 10_000 }).not.toBeNull();
   return (await bubble(id))!;
 }
@@ -172,7 +171,7 @@ describe("design mode on a site app's home", () => {
     await expect.poll(() => homeHosts("avec-accueil"), { timeout: 10_000 }).toBe(1);
     // Nothing injected into the site's view, hidden below.
     expect(await viewHosts("avec-accueil")).toBe(0);
-    await siteMouse(m, "avec-accueil", await homePoint(m, "avec-accueil", "#titre"));
+    await siteMouse(m, "avec-accueil", await homePoint(m, siteHomeBrowser("avec-accueil"), "#titre"));
     await expect.poll(() => bubbleText("avec-accueil"), { timeout: 10_000 }).toContain("h1#titre");
     expect(await overlayOf(m, "avec-accueil", `return doc.querySelectorAll('${tid("bubble-warning")}').length;`)).toBe(0);
     expect(await overlayTop("avec-accueil")).toBeGreaterThanOrEqual(36);
@@ -268,13 +267,13 @@ describe("design mode on a site app's home", () => {
     const keys0 = await homeKeys("sonde");
     await toggle("sonde");
     await expect.poll(() => homeHosts("sonde"), { timeout: 10_000 }).toBe(1);
-    await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { move: true });
+    await siteMouse(m, "sonde", await homePoint(m, siteHomeBrowser("sonde"), "#nue"), { move: true });
     await expect
       .poll(() => inHome<string | null>("sonde", `const sh = document.querySelector("ressac-viewfinder")?.openOrClosedShadowRoot; return sh?.children[1]?.textContent ?? null;`, [], true), { timeout: 10_000 })
       .toBe("p#nue");
     expect(await inHome("sonde", `return String(fw.document.querySelector("ressac-viewfinder").shadowRoot);`)).toBe("null");
-    await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { button: 1 });
-    await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { button: 2 });
+    await siteMouse(m, "sonde", await homePoint(m, siteHomeBrowser("sonde"), "#nue"), { button: 1 });
+    await siteMouse(m, "sonde", await homePoint(m, siteHomeBrowser("sonde"), "#nue"), { button: 2 });
     await sleep(500);
     expect(await bubble("sonde")).toBeNull();
     const b = await aimHome("sonde", "#cible");

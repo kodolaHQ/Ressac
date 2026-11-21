@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect } from "vitest";
 import { HOOKS_PAGE } from "./design";
 import type { Marionette } from "./marionette";
-import { HOME_COPY, homePoint as framePoint, inHomeFrame, inSiteBar, inSiteView, siteHomeBrowser, siteWindowExpr } from "./sites";
+import { HOME_COPY, inHomeFrame, inSiteBar, inSiteView, siteHomeBrowser, siteWindowExpr } from "./sites";
 
 // The design mode in site apps' windows (plan 36): e2e helpers and pages. Chrome context.
 
@@ -132,12 +132,6 @@ export async function viewPoint(m: Marionette, id: string, sel: string): Promise
   const c = await inSiteView<{ x: number; y: number }>(m, id, `const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };`);
   const b = await m.execute<{ x: number; y: number; z: number }>(`const r = ${viewExpr(id)}.getBoundingClientRect(); return { x: r.left, y: r.top, z: ${viewExpr(id)}.fullZoom };`);
   return { x: b.x + c.x * b.z, y: b.y + c.y * b.z };
-}
-
-/** The centre of `sel` in the home's frame, in the site window's coordinates. */
-export async function homePoint(m: Marionette, id: string, sel: string): Promise<{ x: number; y: number }> {
-  const [x, y] = await framePoint(m, siteHomeBrowser(id), sel);
-  return { x, y };
 }
 
 /** `body` with `f` the site window's overlay frame (#ressac-design-calque) and `doc` its document; null while it is absent or hidden. */

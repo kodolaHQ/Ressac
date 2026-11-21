@@ -22,10 +22,10 @@
   let asked = $state<SiteStartRequest | null>(null);
 
   /** The frame's document is a page of this app's served home copy (never an address it navigated to). */
-  function ours(): boolean {
+  function accept(uri: string): boolean {
     let u: URL;
     try {
-      u = new URL(frame?.uri() ?? "");
+      u = new URL(uri);
     } catch {
       return false;
     }
@@ -33,9 +33,7 @@
     return !!src && u.protocol === "resource:" && u.host === new URL(src).host && u.pathname.startsWith(new URL(src).pathname.replace(/[^/]*$/, "")) && u.pathname.endsWith(".html");
   }
 
-  const send = (m: MessageToHome) => {
-    if (ours()) void frame?.send(m);
-  };
+  const send = (m: MessageToHome) => void frame?.send(m);
 
   const refresh = () => {
     const a = controller.homeAsk();
@@ -48,15 +46,9 @@
     );
   };
 
-  function onMessage(name: string, d: { detail?: string }) {
-    if (name !== "home" || typeof d.detail !== "string" || !ours()) return;
-    let data: unknown;
-    try {
-      data = JSON.parse(d.detail);
-    } catch {
-      return;
-    }
-    const r = HomeMessage.safeParse(data);
+  function onMessage(name: string, d: unknown) {
+    if (name !== "home") return;
+    const r = HomeMessage.safeParse(d);
     if (!r.success) return;
     const m = r.data;
     if (m.type === "ready") void api.memory().then(send, () => {});
@@ -66,11 +58,6 @@
         (data) => send({ type: "image", n: m.n, data }),
         () => send({ type: "image", n: m.n, data: null }),
       );
-  }
-
-  // Left its copy (about:blank, or a load done before guardHome's stop landed): back to its own page, sent nothing.
-  function onLoad() {
-    if (src && !ours()) frame?.load(src);
   }
 
   // The frame's <browser> is made on the first src: guarded once it exists.
@@ -91,7 +78,7 @@
 </script>
 
 <section class="home" data-testid="site-home-zone">
-  <RemoteFrame {src} title={ts("chrome-site-home")} testid="site-home-frame" bind:frame onload={onLoad} onmessage={onMessage} onpress={() => ours() && controller.homeGesture()} />
+  <RemoteFrame {src} {accept} title={ts("chrome-site-home")} testid="site-home-frame" bind:frame onmessage={onMessage} onpress={() => controller.homeGesture()} />
   {#if asked}
     <div class="ask" out:fade={{ duration: 150 }}>
       <SiteGrantCard grant={null} start={asked} onGrant={async (yes, hash) => controller.answerHomeAsk(yes, hash)} />

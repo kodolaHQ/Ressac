@@ -178,7 +178,7 @@ describe("an app essential's home", () => {
 
   /** A real click on `selector` in the tab's home (WebDriver actions in the main window, through both frames). */
   async function realClick(tab: string, selector: string): Promise<void> {
-    const [x, y] = await homePoint(m, homeBrowser(tab), selector);
+    const { x, y } = await homePoint(m, homeBrowser(tab), selector);
     await m.command("WebDriver:PerformActions", {
       actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", origin: "viewport", x, y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }] }],
     });

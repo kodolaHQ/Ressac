@@ -31,19 +31,18 @@ export function inUi<T = unknown>(m: Marionette, body: string, args: unknown[] =
 }
 
 /**
- * Evaluates `expr` (awaited, JSON-serializable) in the page of the frame <browser> matched by `selector` in the UI,
- * through the RessacFrame actor's test hook (RESSAC_TEST_FRAMES, set by launchRessac).
+ * Evaluates `expr` (awaited, JSON-serializable) in the page of a frame <browser>, through the RessacFrame actor's test
+ * hook (RESSAC_TEST_FRAMES, set by launchRessac): `target` is a selector in the UI `frame` (throws if nothing matches),
+ * or `{ browser }` a chrome expression (null if it gives nothing). `chrome`: in a system sandbox.
  */
-export async function inFrame<T = unknown>(m: Marionette, selector: string, expr: string, frame: Frame = "sidebar"): Promise<T> {
-  const json = await inUi<string>(
-    m,
-    `const b = doc.querySelector(arguments[0]);
-     if (!b) throw new Error("no frame browser " + arguments[0]);
-     return b.browsingContext.currentWindowGlobal.getActor("RessacFrame").sendQuery("test", { expr: arguments[1] });`,
-    [selector, expr],
-    frame,
-  );
-  return (json === undefined ? undefined : JSON.parse(json)) as T;
+export async function inFrame<T = unknown>(m: Marionette, target: string | { browser: string }, expr: string, frame: Frame = "sidebar", chrome = false): Promise<T> {
+  const byExpr = typeof target !== "string";
+  const body = `const b = ${byExpr ? `(${target.browser})` : "doc.querySelector(arguments[0])"};
+     if (!b) { if (${byExpr}) return null; throw new Error("no frame browser " + arguments[0]); }
+     return b.browsingContext.currentWindowGlobal.getActor("RessacFrame").sendQuery("test", { expr: arguments[1], chrome: arguments[2] });`;
+  const args = [byExpr ? null : target, expr, chrome];
+  const json = await (byExpr ? m.execute<string | null | undefined>(body, args) : inUi<string | undefined>(m, body, args, frame));
+  return (json == null ? json : JSON.parse(json)) as T;
 }
 
 /** Polls `body` (see inUi) until it returns a truthy value; returns it. */

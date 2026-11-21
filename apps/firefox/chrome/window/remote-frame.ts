@@ -66,9 +66,17 @@ const REVERT_FLOOR_MS = 1000;
  * An owner's « left its copy → load it again », bounded: a copy that never comes (a missing file gives a neterror
  * page) or a page that keeps leaving would else reload in a loop in the process every frame shares. One revert per
  * address until a load the owner keeps, at least REVERT_FLOOR_MS apart. The first one is what really loads a new
- * frame (its initial about:blank report, README).
+ * frame (its initial about:blank report, README). One per browser: its owner and the home's guard (sites.ts) share it.
  */
-export function frameReverter(browser: Element): { loaded(run: () => void): void; revert(src: string): void } {
+type Reverter = { loaded(run: () => void): void; revert(src: string): void };
+const reverters = new WeakMap<Element, Reverter>();
+export function frameReverter(browser: Element): Reverter {
+  let r = reverters.get(browser);
+  if (!r) reverters.set(browser, (r = makeReverter(browser)));
+  return r;
+}
+
+function makeReverter(browser: Element): Reverter {
   let tried: string | null = null;
   let asked = false;
   let last = -Infinity;

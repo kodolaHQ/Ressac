@@ -35,12 +35,12 @@
 
   /** The frame shows the current copy: never an older copy, nor a page it navigated to. */
   // Without the fragment: a component that sets its own #hash stays on its copy.
-  const ours = () => !!src && frame?.uri()?.split("#")[0] === src;
+  const accept = (uri: string) => !!src && uri.split("#")[0] === src;
 
   function send() {
-    if (frame && ours()) void frame.send({ type: "component", props: $state.snapshot(props), theme, width: width, tokens: tokens() });
+    void frame?.send({ type: "component", props: $state.snapshot(props), theme, width: width, tokens: tokens() });
   }
-  // On each change (loading goes through onLoad).
+  // On each change (loading goes through onload).
   $effect(() => {
     void [props, theme, width];
     send();
@@ -75,26 +75,10 @@
     };
   });
 
-  function onLoad() {
-    // Navigated away from its copy: sent back to it, with nothing given to the other page.
-    if (!ours()) {
-      if (frame && src) frame.load(src);
-      return;
-    }
-    send();
-  }
-
-  function onMessage(kind: string, data: { detail?: string }) {
-    // The component can dispatch this event itself, with any string detail.
-    if (kind !== "component" || typeof data.detail !== "string" || !ours()) return;
-    let d: unknown;
-    try {
-      d = JSON.parse(data.detail);
-    } catch {
-      return;
-    }
-    if (typeof d !== "object" || d === null) return;
-    const { type, px } = d as { type?: unknown; px?: unknown };
+  function onMessage(kind: string, d: { type?: unknown; px?: unknown }) {
+    // The component can dispatch this event itself, with any detail.
+    if (kind !== "component") return;
+    const { type, px } = d;
     if (type !== "height" || typeof px !== "number" || !Number.isFinite(px)) return;
     height = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, px)));
   }
@@ -102,6 +86,6 @@
 
 <div data-testid="block-{name}" bind:clientWidth={width}>
   <div class="pa-component" style:height="{height}px">
-    <RemoteFrame {src} title={name} testid="component-frame" bind:frame onload={onLoad} onmessage={onMessage} />
+    <RemoteFrame {src} {accept} title={name} testid="component-frame" bind:frame onload={send} onmessage={onMessage} />
   </div>
 </div>

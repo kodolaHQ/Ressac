@@ -73,7 +73,7 @@ async function realClickInHome(id: string, selector: string): Promise<void> {
       if ((found = (await m.execute<string | null>(`return document.documentElement.getAttribute("ressac-site");`)) === id)) break;
     }
     if (!found) throw new Error(`no window for ${id}`);
-    const [x, y] = await homePoint(m, siteHomeBrowser(id), selector);
+    const { x, y } = await homePoint(m, siteHomeBrowser(id), selector);
     await m.command("WebDriver:PerformActions", {
       actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", origin: "viewport", x, y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }] }],
     });

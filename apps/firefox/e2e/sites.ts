@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { storeSiteGrant, siteStartKey, siteStartsFile, DeclarationSite } from "../../../packages/kernel/src/index";
 import type { Marionette } from "./marionette";
+import { inFrame } from "./ui";
 
 // Site app helpers.
 
@@ -170,23 +171,18 @@ export const HOME_COPY = /^resource:\/\/ressac-frames-[0-9a-f]{16}\/sites\/[^/]+
  * shows a page of a home copy; the result goes through JSON.
  */
 export async function inHomeFrame<T = unknown>(m: Marionette, browser: string, body: string, args: unknown[] = [], chrome = false): Promise<T | null> {
+  const home = `(() => { const b = ${browser}; return ${HOME_COPY}.test(b?.browsingContext?.currentWindowGlobal?.documentURI?.spec ?? "") ? b : null; })()`;
   const expr = `(async () => { const fw = window.wrappedJSObject; const args = ${JSON.stringify(args)}; ${body} })()`;
-  const json = await m.execute<string | null | undefined>(
-    `const g = (${browser})?.browsingContext?.currentWindowGlobal;
-     if (!g || !${HOME_COPY}.test(g.documentURI?.spec ?? "")) return null;
-     return g.getActor("RessacFrame").sendQuery("test", { expr: arguments[0], chrome: arguments[1] });`,
-    [expr, chrome],
-  );
-  return json == null ? null : (JSON.parse(json) as T);
+  return (await inFrame<T | null | undefined>(m, { browser: home }, expr, "sidebar", chrome)) ?? null;
 }
 
 /** The centre of `selector` in that home page, in CSS px of its top chrome window's viewport (for WebDriver actions). */
-export async function homePoint(m: Marionette, browser: string, selector: string): Promise<[number, number]> {
+export async function homePoint(m: Marionette, browser: string, selector: string): Promise<{ x: number; y: number }> {
   const p = await inHomeFrame<[number, number]>(m, browser, `const r = document.querySelector(args[0]).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2];`, [selector]);
   if (!p) throw new Error(`no home page to click ${selector} in`);
-  return m.execute<[number, number]>(
+  return m.execute<{ x: number; y: number }>(
     `const b = ${browser}, w = b.ownerDocument.defaultView, r = b.getBoundingClientRect();
-     return [Math.round(w.mozInnerScreenX - w.top.mozInnerScreenX + r.left + arguments[0]), Math.round(w.mozInnerScreenY - w.top.mozInnerScreenY + r.top + arguments[1])];`,
+     return { x: Math.round(w.mozInnerScreenX - w.top.mozInnerScreenX + r.left + arguments[0]), y: Math.round(w.mozInnerScreenY - w.top.mozInnerScreenY + r.top + arguments[1]) };`,
     p,
   );
 }
