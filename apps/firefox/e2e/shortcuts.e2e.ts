@@ -76,6 +76,8 @@ describe("Ressac shortcuts", () => {
     await focusPage();
     await pressKeys(m, "Meta+,");
     await pressKeys(m, "Meta+,");
+    await waitState((s) => Object.values(s.tabs).some((o) => o.url === "ressac://settings" && o.title === "Réglages"), (v) => v);
+    // Opened: a window for a second page the other press would still add.
     await sleep(500);
     const s = await state(m);
     const pages = Object.values(s.tabs).filter((o) => o.url === "ressac://settings");
