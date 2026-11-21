@@ -175,6 +175,8 @@ describe("one Ressac, essai and autre launched in each test", () => {
     await launched("essai");
     await launched("autre");
     await callTool(p.dataDir, "read_tab", { id: "app:essai" });
+    // The read's end reaches the chrome in the host's next access notification (50 ms later): heard before listening.
+    await expect.poll(() => inBadge(m, "essai", `return (await f.contentWindow.ressac.access.state()).tabs["app:essai"]?.running;`), { timeout: 10_000 }).toBe(false);
     // What a change sends: each badge hears only its own app.
     const listen = (d: string) => inBadge(m, d, "const w = f.contentWindow; w.heard = []; w.ressac.onAccess((e) => w.heard.push(Object.keys(e.tabs).join(','))); return 1;");
     await listen("essai");
