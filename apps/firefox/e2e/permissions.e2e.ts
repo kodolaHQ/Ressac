@@ -127,13 +127,21 @@ describe("site permissions", () => {
   const waitBanner = (ok: (t: string | null) => boolean) => waitFor(m, `const b = document.querySelector('${BANNER}'); return b?.checkVisibility() ? b.querySelector("span").textContent : null;`, ok);
   const press = (label: "Refuser" | "Autoriser") =>
     m.execute(`[...document.querySelector('${BANNER}').querySelectorAll("button")].find((b) => b.textContent === arguments[0]).click();`, [label]);
+  /**
+   * Clicks « Autoriser » in the very task the next banner shows, as a page's second click would land. A click sent after
+   * the banner was seen can come after ARM_MS under load, and then rightly grants.
+   */
+  const pressAsShown = () =>
+    m.execute(`const b = document.querySelector('${BANNER}'); window.ressacTestPressed = false;
+      const o = new MutationObserver(() => b.hidden || (o.disconnect(), b.querySelector("button.allow").click(), (window.ressacTestPressed = true)));
+      o.observe(b, { attributes: true, attributeFilter: ["hidden"] });`);
   /** « Autoriser » takes a click only once armed (ARM_MS after the request shows), as for a person. */
   const answer = async (label: "Refuser" | "Autoriser") => {
     if (label === "Autoriser") await waitFor(m, `return document.querySelector('${BANNER} button.allow')?.dataset.armed !== undefined;`, (x) => x === true);
     await press(label);
   };
   const pending = () => chrome<unknown[]>(`return (await ChromeUtils.importESModule("${STORE}").ready).questions.pending();`);
-  /** The decisions kept for the default profile (permissions.json). */
+  /** The decisions kept for the default profile (permissions.json), written after the page has its answer: polled. */
   const saved = () => readFile(path.join(dirs.dataDir, "permissions.json"), "utf8").then((t) => JSON.parse(t) as Record<string, string>, () => ({}));
   const reload = async (id: string) => {
     await m.execute(`${browser(id)}.reload();`);
@@ -188,10 +196,11 @@ describe("site permissions", () => {
 
   it("a page that asks for notifications shows the banner; Autoriser → Notification.permission === 'granted'", { timeout: 120_000 }, async () => {
     const base = await origin();
+    // Right as it shows, a click meant for the page grants nothing.
+    await pressAsShown();
     const id = await open(base, "notif");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
-    // Right as it shows, a click meant for the page grants nothing.
-    await press("Autoriser");
+    expect(await m.execute("return window.ressacTestPressed")).toBe(true);
     expect(await banner()).not.toBeNull();
     await answer("Autoriser");
     await waitBanner((t) => t === null);
@@ -230,7 +239,7 @@ describe("site permissions", () => {
     await reload(id);
     expect(await result(id)).toEqual({ ok: { lat: 48.8566 } });
     expect(await banner()).toBeNull();
-    expect(await saved()).toMatchObject({ [`${base} geolocation`]: "allow" });
+    await expect.poll(saved).toMatchObject({ [`${base} geolocation`]: "allow" });
   });
 
   it("the same origin in a space of another profile is asked again", async () => {
@@ -334,18 +343,18 @@ describe("site permissions", () => {
     await dispatch(m, { type: "createSpace", name: "Privé", icon: "🔒", private: true, profile: "new", windowId: (await state(m)).windows[0]!.id });
     const s = await state(m);
     const profile = s.spaces.find((e) => e.name === "Privé")!.profile;
+    // Right as it shows, a click meant for the page grants nothing.
+    await pressAsShown();
     const id = await open(base, "notif");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
-    // Right as it shows, a click meant for the page grants nothing.
-    await press("Autoriser");
+    expect(await m.execute("return window.ressacTestPressed")).toBe(true);
     expect(await banner()).not.toBeNull();
     await answer("Autoriser");
     expect(await result(id)).toEqual({ ok: "granted" });
     await reload(id);
     expect(await result(id)).toEqual({ ok: "granted" });
     expect(await banner()).toBeNull();
-    const kept = await readFile(path.join(dirs.dataDir, `permissions-${profile}.json`), "utf8").then(JSON.parse);
-    expect(kept).toEqual({ [`${base} notifications`]: "allow" });
+    await expect.poll(() => readFile(path.join(dirs.dataDir, `permissions-${profile}.json`), "utf8").then(JSON.parse, () => null)).toEqual({ [`${base} notifications`]: "allow" });
     expect(await saved()).not.toHaveProperty(`${base} notifications`);
   });
 
@@ -377,7 +386,7 @@ describe("site permissions", () => {
     await reload(id);
     expect(await result(id)).toEqual({ ok: ["audio", "video"] });
     expect(await banner()).toBeNull();
-    expect(await saved()).toMatchObject({ [`${base} media-camera`]: "allow", [`${base} media-micro`]: "allow" });
+    await expect.poll(saved).toMatchObject({ [`${base} media-camera`]: "allow", [`${base} media-micro`]: "allow" });
     // Refused: NotAllowedError, kept too.
     const other = await open(await origin(), "both");
     await waitBanner((t) => t !== null);
@@ -394,7 +403,7 @@ describe("site permissions", () => {
     expect(await waitBanner((t) => t !== null)).toBe(`site2.localhost:${port} veut utiliser votre caméra`);
     await answer("Autoriser");
     expect(await result(id)).toEqual({ ok: ["video"] });
-    expect(await saved()).toMatchObject({ [`${frame} media-camera`]: "allow" });
+    await expect.poll(saved).toMatchObject({ [`${frame} media-camera`]: "allow" });
     expect(await saved()).not.toHaveProperty(`${base} media-camera`);
   });
 
@@ -451,7 +460,7 @@ describe("site permissions", () => {
     await reload(id);
     expect(await result(id)).toEqual({ ok: "org.w3.clearkey" });
     expect(await banner()).toBeNull();
-    expect(await saved()).toMatchObject({ [`${base} drm`]: "allow" });
+    await expect.poll(saved).toMatchObject({ [`${base} drm`]: "allow" });
   });
 
   it("MIDI: the banner, then navigator.requestMIDIAccess() succeeds; no module in about:addons", { timeout: 60_000 }, async () => {
@@ -480,7 +489,7 @@ describe("site permissions", () => {
     await waitBanner((t) => t !== null);
     await answer("Autoriser");
     expect(await result(id)).toEqual({ ok: "granted" });
-    expect(await saved()).toHaveProperty(`${base} notifications`);
+    await expect.poll(saved).toHaveProperty(`${base} notifications`);
     expect(await m.execute<string>(`return document.getElementById("main-menubar").querySelector("menu[label='Navigation']").label;`)).toBe("Navigation");
     await forgetFromMenu();
     await until(async () => !(`${base} notifications` in (await saved())));
@@ -503,7 +512,7 @@ describe("site permissions", () => {
     expect(await result(id)).toEqual({ ok: "granted" });
     const inFirefox = () => chrome<number>(`return Services.perms.all.filter((p) => p.type === "desktop-notification" && p.principal.originNoSuffix === arguments[0] && p.principal.originAttributes.userContextId > 0).length;`, [base]);
     expect(await inFirefox()).toBe(1);
-    expect(await readFile(file, "utf8").then(JSON.parse)).toHaveProperty(`${base} notifications`);
+    await expect.poll(() => readFile(file, "utf8").then(JSON.parse, () => ({}))).toHaveProperty(`${base} notifications`);
     await dispatch(m, { type: "deleteSpace", id: space.id });
     await until(() => access(file).then(() => false, () => true));
     expect(await inFirefox()).toBe(0);
