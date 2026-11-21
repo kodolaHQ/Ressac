@@ -491,14 +491,13 @@ it("Couper l'accès: the badge disappears, read_tab asks again", async () => {
 it("cutting « Agir » during an run_js: the call answers the cut text", async () => {
   const id = await openThird();
   await grant(id, ["console", "act"]);
-  const t0 = Date.now();
-  const pending = tool("run_js", { id, code: "new Promise((r) => setTimeout(() => r(1), 8000))" });
+  // A promise that never resolves: without the cut the call would answer its own 10 s delay text, so the cut text proves the cut.
+  const pending = tool("run_js", { id, code: "new Promise(() => {})" });
   // The badge pulses while the call runs.
   await waitUi(m, `return !!doc.querySelector(arguments[0])?.classList.contains("pulse")`, [tabBadge(id)]);
   await clickBadge(id);
   await click(m, `${BUBBLE} button[data-right="act"]`);
   expect(await pending).toBe(TEXT_CUT);
-  expect(Date.now() - t0).toBeLessThan(6000);
   // Console is kept: the badge goes back to 👁, still and quiet.
   await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.level === "read" && !p.classList.contains("pulse")`, [tabBadge(id)]);
   await pressKeys(m, "Escape");
@@ -688,7 +687,7 @@ async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>, t
   await leave(id);
   const r = await pending;
   expect(Date.now() - t0).toBeLessThan(10_000);
-  expect(texts.some((t) => r.text.includes(t))).toBe(true);
+  expect(texts.some((t) => r.text.includes(t)), r.text).toBe(true);
   expect(r.text).not.toContain("Profil :");
   expect(profiles()).toEqual(before);
   expect(await profilerActive()).toBe(false);
@@ -700,17 +699,20 @@ it("navigating to another site during profile_performance: the call answers the 
 }, 60_000);
 
 it("the page leaves by itself during profile_performance: the call answers, no partial file", async () => {
-  await profileCutBySiteChange((id) => tool("run_js", { id, code: `setTimeout(() => (location.href = "http://localhost:${demo.port}/"), 0); 1` }), ["L'onglet a changé de site."]);
+  // The browser's text when it sees the new page first, the kernel's when its tab list does: both say the site changed.
+  await profileCutBySiteChange(
+    (id) => tool("run_js", { id, code: `setTimeout(() => (location.href = "http://localhost:${demo.port}/"), 0); 1` }),
+    ["L'onglet a changé de site.", SITE_CHANGED_TEXT],
+  );
 }, 60_000);
 
-it("run_js cut by navigating to another site quickly answers the cut text", async () => {
+it("run_js cut by navigating to another site answers the cut text", async () => {
   const id = await openDemo();
-  const t0 = Date.now();
-  const pending = call("run_js", { id, code: "new Promise((r) => setTimeout(() => r(1), 8000))" });
+  // Never resolves: the call would otherwise answer its own 10 s delay text.
+  const pending = call("run_js", { id, code: "new Promise(() => {})" });
   await sleep(500);
   expect(await tool("navigate", { id, url: `http://localhost:${demo.port}/` })).toContain("→");
   expect(CUT_BY_OWN_NAVIGATION).toContain((await pending).text);
-  expect(Date.now() - t0).toBeLessThan(6000);
 }, 60_000);
 
 it("the host restarts: the new kernel does not see the old messages", async () => {
