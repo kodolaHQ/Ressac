@@ -294,14 +294,28 @@ describe("site app home screen", () => {
 
   it("at most one address opened per second from the home", async () => {
     await openHome();
-    await clickOpen("vidola", "/serie/the-bear?e=1");
+    // Two trusted presses on « Reprendre », each with its address, made in the home's own process one task apart: the
+    // chrome gets press, e=1, press, e=2 in that order with no Marionette round trip between (from the test side,
+    // going home between two opens took over the 1 s gap under load). e=2 has its own press, so only the gap refuses it.
+    await inHomeFrame(
+      m,
+      siteHomeBrowser("vidola"),
+      `const r = document.getElementById("ouvrir").getBoundingClientRect();
+       const press = (address) => { fw.adresse = address; for (const type of ["mousedown", "mouseup"]) window.synthesizeMouseEvent(type, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1 }); };
+       press(args[0]);
+       await new Promise((ok) => setTimeout(ok, 0));
+       press(args[1]);
+       return true;`,
+      ["/serie/the-bear?e=1", "/serie/the-bear?e=2"],
+      true,
+    );
+    // e=1 waits on its card; e=2, refused, did not take its place.
+    expect(await acceptHomeCard(m, "vidola")).toBe(true);
     await expect.poll(async () => (await viewState("vidola"))?.url, { timeout: 10_000 }).toBe(url("/serie/the-bear?e=1"));
+    expect(server.requests.filter((r) => r.path.includes("e=2"))).toEqual([]);
     await barClick("vidola", "site-home");
     await expect.poll(async () => (await viewState("vidola"))?.visible).toBe(false);
     await homeReady("vidola");
-    await clickOpen("vidola", "/serie/the-bear?e=2");
-    await sleep(300);
-    expect(await viewState("vidola")).toEqual({ visible: false, url: url("/serie/the-bear?e=1") });
     await sleep(1100);
     await clickOpen("vidola", "/serie/the-bear?e=3");
     await expect.poll(async () => (await viewState("vidola"))?.url, { timeout: 10_000 }).toBe(url("/serie/the-bear?e=3"));
