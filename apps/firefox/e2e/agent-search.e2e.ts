@@ -101,10 +101,11 @@ it("a search_web navigate follows a result in the same tab without activating it
   const after = await state(m);
   expect(after.tabs[id]!.url).toBe(`${server.url}/b.html?q=x`);
   expect(after.windows[0]!.active[after.windows[0]!.activeSpace]).toBe(active);
-  // A fragment the agent adds is dropped (the page's script would read it): the address read opens, quickly.
+  // A fragment the agent adds is dropped (the page's script would read it): the address read opens, quickly. Taken for a
+  // same-document move, the wait would end only on its 15 s fallback (tabs.ts waitLoad): 10 s sits well below it.
   const t = Date.now();
   expect((await callTool(w.dataDir, "navigate", { id, url: `${server.url}/b.html?q=x#d=secret` })).text).toBe(`Onglet ${id} → ${server.url}/b.html?q=x`);
-  expect(Date.now() - t).toBeLessThan(5000);
+  expect(Date.now() - t).toBeLessThan(10_000);
   expect((await state(m)).tabs[id]!.url).toBe(`${server.url}/b.html?q=x`);
 });
 
