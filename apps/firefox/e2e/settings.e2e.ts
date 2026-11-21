@@ -175,16 +175,16 @@ describe("Settings page", () => {
   });
 
   it("a slow Docker holds only its own sections", { timeout: 60_000 }, async () => {
-    await launch({ FAKE_DOCKER_SLOW: "1" });
-    const start = Date.now();
+    // Docker answers only when the test lets it: the sections below show while it has not, whatever the machine's load.
+    await launch({ FAKE_DOCKER_INFO_HOLD: "1" });
     await openPage();
     await go("about");
-    await waitUi(m, `return !!doc.querySelector('[data-testid="app-version"]')?.textContent.trim()`, [], 2_000);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="app-version"]')?.textContent.trim()`);
     await go("data");
-    await waitUi(m, `return !!doc.querySelector('[data-testid="data-dir"]')?.textContent.trim()`, [], 2_000);
-    expect(Date.now() - start).toBeLessThan(4_000);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="data-dir"]')?.textContent.trim()`);
     await go("agent");
     expect(await text("settings-agent")).toContain("Vérification…");
+    writeFileSync(join(w!.dataDir, "workspace", "fake-docker-info-go"), "");
     await shows("settings-agent", "Non connecté", 40_000);
   });
 

@@ -18,6 +18,10 @@ const quit = (code, out = "", err = "") => {
 
 // FAKE_DOCKER_SLOW: Docker that is starting up, `docker info` only answers after 8 s.
 if (args[0] === "info" && env.FAKE_DOCKER_SLOW === "1") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 8_000);
+// FAKE_DOCKER_INFO_HOLD=1: `docker info` answers once <RESSAC_ROOT>/fake-docker-info-go exists (the test writes it), or
+// after 60 s, so a failed test leaves no process behind.
+for (const end = Date.now() + 60_000; args[0] === "info" && env.FAKE_DOCKER_INFO_HOLD === "1" && Date.now() < end && !existsSync(join(env.RESSAC_ROOT, "fake-docker-info-go")); )
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
 if (args[0] === "info") quit(env.FAKE_DOCKER_ABSENT === "1" ? 1 : 0);
 // The settings page's workshop operations are noted for the tests; a removed workshop is absent until its next `run -d`.
 const removedMark = () => join(env.RESSAC_ROOT, "fake-docker-workshop-removed");
