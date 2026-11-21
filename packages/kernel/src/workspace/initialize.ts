@@ -19,6 +19,8 @@ const FALLBACK = "en";
  * the old version's hash (`shasum -a 256 templates/<language>/AGENTS.md`) before modifying it.
  */
 export const OLD_AGENTS = new Set([
+  "7b028830acee8f891d9258b5b3f5aab9a8934bd50537b70c0508fa27bee4c2eb",
+  "f9807f7224851e6bc752fff45cd70a22512f9ad462a9a7564963583d5ebc3527",
   "c2af8a5d6880a5dc9e0e76544955b305203ebb453eb5fa7e0bcc86e5eef931f1",
   "cb5203cc8fdbedc30f1dd77e138716f3ad3fbd27129a935dafc0d71d876ac89a",
   "08de4118ce41e65b76e8b9795595d41e749c9b60d72a4f3f87691d2cbc99e8ab",

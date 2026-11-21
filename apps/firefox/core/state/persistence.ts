@@ -83,7 +83,6 @@ const SchemaSession = z.object({
     auraMotionChosen: z.boolean().optional().catch(undefined),
     saveMemory: z.boolean().catch(false),
     saveMemoryChosen: z.boolean().catch(false),
-    localJudge: z.boolean().catch(false),
     appearance: z.enum(APPEARANCES).catch("system"),
     // A session saved before languages existed was in French: it stays so. A language no longer shipped → the Mac's.
     language: z

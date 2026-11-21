@@ -28,14 +28,14 @@ it("a question of a closed window moves to the other, or is refused without one"
   expect(await answer).toBe(false);
 });
 
-it("an address card carries the masked danger line next to the opinion, and omits it when absent", () => {
+it("an address card carries the masked danger line, and omits it when absent", () => {
   const store = createStore(initialState());
   const questions = new Questions(store);
   const win = store.state.windows[0]!.id;
-  void questions.askAddress({ url: "https://a.test/?q=x", reason: "r", agent: "A", opinion: "o", danger: "Contient un IBAN : FR76••••0189" }, win);
+  void questions.askAddress({ url: "https://a.test/?q=x", reason: "r", agent: "A", danger: "Contient un IBAN : FR76••••0189" }, win);
   void questions.askAddress({ url: "https://b.test/", reason: "r", agent: "A" }, win);
   const [a, b] = questions.pending();
-  expect(a).toMatchObject({ permissions: ["agent-address"], opinion: "o", danger: "Contient un IBAN : FR76••••0189" });
+  expect(a).toMatchObject({ permissions: ["agent-address"], danger: "Contient un IBAN : FR76••••0189" });
   expect(b).not.toHaveProperty("danger");
 });
 

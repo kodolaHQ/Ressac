@@ -40,7 +40,7 @@ export const D1_REVISION = "4a181094d1b6addfaa3a0956f78e7ab2aa406a0c";
 export const D1_URL = `https://huggingface.co/LiquidAI/d1-2B-GGUF/resolve/${D1_REVISION}/${D1_FILE}`;
 export const D1_SHA256 = "adca5789ad30ae6027e8e936749bb9f19673097492ab26fa1c5b69643ca50b4b";
 export const D1_BYTES = 1099629888;
-/** Measured: every ai.sort and watcher state of the bench fits in 4096 tokens. */
+/** Measured: every ai.sort state of the bench fits in 4096 tokens. */
 const D1_CONTEXT = 4096;
 /** llama-server splits `-c` across its parallel slots: 4 slots of D1_CONTEXT (the dispatcher sends up to 4 calls at once). */
 const D1_SLOTS = 4;
@@ -148,11 +148,6 @@ export class LocalAi {
     if (this.closed) return Promise.reject(new Error(AI_CLOSED_ERROR));
     const w = this.o.writer;
     return w ? w({ prompt: o.prompt, images: o.images, json: o.json, signal: o.signal }) : Promise.reject(new Error(this.say("kernel-writer-none")));
-  }
-
-  /** Starts the decision server ahead of a first call when the model is installed. Never throws. */
-  warmDecision(): void {
-    if (!this.closed) this.d1.warm();
   }
 
   /** Stops both servers and cancels the installs for good: kev() and gemma() are refused afterwards (stop(), on the other hand, allows a relaunch). */

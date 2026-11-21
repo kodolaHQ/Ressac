@@ -134,7 +134,6 @@ home-request-console-reason = Reason given by { $agent }: “{ $reason }”
 home-request-console-unlock = Unlock
 home-request-address-reason = Its reason: { $reason }
 home-request-address-danger = ⚠ { $danger }
-home-request-address-opinion = Watcher's opinion: { $opinion }
 home-request-why = Why am I being asked this?
 home-request-why-1 = The agent freely opens the links it finds in the pages it reads and in its search results. It found this address nowhere: it wrote it itself.
 home-request-why-2 = A booby-trapped page can whisper an address to it that carries information off to an unknown site. A glance at the address and its reason is enough; when in doubt, “Deny”: the agent carries on another way.

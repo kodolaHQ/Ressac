@@ -176,7 +176,6 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("setStartOnHome"), enabled: z.boolean() }),
   z.object({ type: z.literal("setAuraMotion"), enabled: z.boolean() }),
   z.object({ type: z.literal("setSaveMemory"), enabled: z.boolean() }),
-  z.object({ type: z.literal("setLocalJudge"), enabled: z.boolean() }),
   z.object({ type: z.literal("chooseAppearance"), appearance: z.enum(APPEARANCES) }),
   z.object({ type: z.literal("chooseLanguage"), language: z.string().regex(LANGUAGE_SETTING) }),
   /** The chrome only: the language shown after resolving « system » (chrome/store). */

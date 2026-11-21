@@ -15,14 +15,6 @@ kernel-search-blocked = Bloqué par une vérification. À vous : passez-la, puis
 kernel-search-sign-in = Connexion demandée. À vous : connectez-vous si vous le voulez, puis Continuer.
 kernel-search-hand-verification = Bloqué par une vérification. À vous : { $reason }
 kernel-search-hand-lost = Je ne trouve pas mon chemin. À vous : { $reason }
-kernel-search-strange = Le surveillant a mis en pause : { $what } sans rapport avec « { $goal } »
-kernel-search-opinion = Sans rapport apparent avec le but annoncé.
-kernel-search-what-other-tab = lecture d'un autre onglet
-kernel-search-what-capture = capture d'un autre onglet
-kernel-search-what-history = lecture de l'historique
-kernel-search-what-bookmarks = lecture des favoris
-kernel-search-what-query = recherche « { $query } »
-kernel-search-what-held = recherche contenant { $masked }
 
 # The outflow rules: what a held query or address carries, and where the agent read it.
 kernel-outflow-pause = Le surveillant a mis en pause : la recherche contient { $what } ({ $masked })

@@ -124,8 +124,8 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
         RESSAC_TEST_AI: o.ai === false ? "0" : "1",
         // Réglages never changes the owner's macOS: his default browser and his screen recording grant stay his.
         RESSAC_TEST_NO_SYSTEM: "1",
-        // Never the decision model running on this machine (nothing listens there): the search watcher lets every action
-        // pass. A test with a fake passes its own; `undefined` (dropped by spawn) restores the kernel's default.
+        // Never the decision model running on this machine (nothing listens there). A test with a fake passes its own;
+        // `undefined` (dropped by spawn) restores the kernel's default.
         RESSAC_KEV_URL: "http://127.0.0.1:9",
         // Never the real search model (334 MB): a test with a fake host passes its own.
         RESSAC_EMBED_URL: "http://127.0.0.1:9",
