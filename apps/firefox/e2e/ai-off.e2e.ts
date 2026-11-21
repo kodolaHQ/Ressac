@@ -195,9 +195,8 @@ it("on from Réglages, then home: the panel stays closed; opened, it shows the a
   await click(m, '[data-testid="agent-button"]');
   await panelShown(true);
   await waitUi(m, "return (doc.querySelector('.xterm-rows')?.textContent ?? '').includes('fake agent ready>')", [], 20_000, "agent");
-  // The card's fade-out started while the panel was hidden: it must not stay on screen.
-  await new Promise((r) => setTimeout(r, 500));
-  expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [tid("ai-asleep-agent")], "agent")).toBe(false);
+  // The card's fade-out started while the panel was hidden: it must not stay on screen (a 150 ms fade, late under load).
+  await waitUi(m, "return !doc.querySelector(arguments[0])", [tid("ai-asleep-agent")], 10_000, "agent");
 });
 
 it("off then on without relaunch: ⌘J shows a fresh agent session, no click", { timeout: 90_000 }, async () => {
@@ -211,10 +210,11 @@ it("off then on without relaunch: ⌘J shows a fresh agent session, no click", {
   await dispatch(m, { type: "disableAi" });
   await panelShown(false);
   await dispatch(m, { type: "enableAi" });
-  // The AI-only setup, if it shows: its Docker and local AI pages.
-  for (const page of ["welcome-5", "welcome-6"])
-    if (await waitUi(m, `return !!doc.querySelector('${tid(page)}')`, [], 3_000).then(() => true, () => false))
-      await click(m, `${tid("welcome-layer")} ${tid("welcome-next")}`);
+  // enableAi always asks for the AI-only setup: its Docker and local AI pages (Welcome.svelte, mode "ai").
+  for (const page of ["welcome-5", "welcome-6"]) {
+    await shown(tid(page));
+    await click(m, `${tid("welcome-layer")} ${tid("welcome-next")}`);
+  }
   await waitUi(m, `return !doc.querySelector('${tid("welcome-layer")}')`);
   await pressKeys(m, "Meta+j");
   await panelShown(true);
