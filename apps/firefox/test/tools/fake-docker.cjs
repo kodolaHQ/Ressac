@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Fake docker for the end-to-end tests: no real container, no network. See plan 3.
 const { createHash } = require("node:crypto");
-const { appendFileSync, existsSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } = require("node:fs");
+const { appendFileSync, existsSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } = require("node:fs");
+// Written whole (temp file, then rename): tests poll these files and must never read half of one.
+const put = (f, v) => (writeFileSync(`${f}.tmp`, v), renameSync(`${f}.tmp`, f));
 const { dirname, join } = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 
@@ -95,7 +97,7 @@ if (args[0] === "run" && args.includes("-i") && isRun(args[args.indexOf("--name"
   const child = spawn(process.execPath, [harvester, widget], { stdio: "inherit" });
   // Noted for `rm -f <name>`, which kills the container like the real docker (the `run` client then returns 137).
   const file = harvestPidFile(args[args.indexOf("--name") + 1]);
-  writeFileSync(file, String(process.pid));
+  put(file, String(process.pid));
   let killed = false;
   for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"])
     process.on(signal, () => {
@@ -161,7 +163,7 @@ function launchApp(options, command) {
   }
   const [program, ...rest] = command.map(local);
   const child = spawn(program, rest, { cwd: local(folder), env: { ...env, ...vars }, stdio: "inherit", detached: true });
-  writeFileSync(appPidFile(vars.RESSAC_APP), String(child.pid));
+  put(appPidFile(vars.RESSAC_APP), String(child.pid));
   for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"])
     process.on(signal, () => {
       try {
@@ -236,7 +238,7 @@ if (args[0] === "exec") {
     const at = command.indexOf("ressac-write");
     const [id, agent] = [command[at + 1], command[at + 2].split("/").pop()];
     const pidFile = join(env.RESSAC_ROOT, `ressac-write-${id}.pid`);
-    writeFileSync(pidFile, String(process.pid));
+    put(pidFile, String(process.pid));
     // No signal handler: killing this client leaves the "container" process, only the stop script removes the PID file.
     let input = "";
     process.stdin.on("data", (c) => (input += c));
@@ -317,7 +319,7 @@ if (args[0] === "exec") {
       vars[key] = value.length ? value.join("=") : env[key];
     }
   // What the agent received from docker exec, for the tests.
-  writeFileSync(join(env.RESSAC_ROOT, "fake-agent-env.json"), JSON.stringify(Object.fromEntries(Object.entries(vars).filter(([k]) => /^(RESSAC_|ANTHROPIC_|CLAUDE_CODE_)/.test(k)))));
+  put(join(env.RESSAC_ROOT, "fake-agent-env.json"), JSON.stringify(Object.fromEntries(Object.entries(vars).filter(([k]) => /^(RESSAC_|ANTHROPIC_|CLAUDE_CODE_)/.test(k)))));
   const r = spawnSync(process.execPath, [join(__dirname, "fake-agent.mjs"), ...command], { stdio: "inherit", env: { ...env, ...vars } });
   process.exit(r.status ?? 1);
 }
