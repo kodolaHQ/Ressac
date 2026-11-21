@@ -380,9 +380,12 @@ describe("Command bar", () => {
     for (let i = 0; i < 50 && (await pixel(m, 900, 700)).join() !== "255,0,0"; i++) await new Promise((r) => setTimeout(r, 100));
     await pressKeys(m, "Meta+t");
     await fieldFocused();
-    const [r, g, b] = await pixel(m, 900, 700);
-    expect(r).toBeLessThan(255);
-    expect(r).toBeGreaterThan(2 * Math.max(g, b, 20));
+    // The veil paints after the field takes the keyboard (and may fade in): poll the pixel, not one read.
+    const darkenedRed = async () => {
+      const [r, g, b] = await pixel(m, 900, 700);
+      return r < 255 && r > 2 * Math.max(g, b, 20) ? "darkened red" : `rgb ${r},${g},${b}`;
+    };
+    await expect.poll(darkenedRed, { timeout: 5000 }).toBe("darkened red");
   });
 
   // barre-commande.spec.ts:96
