@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { storeSiteGrant, spacePaths, DeclarationSite, readSiteGrants, SiteMemory } from "../../../packages/kernel/src/index";
 import { editWithAgent } from "../shared/sites";
-import { createSites, grantRequest, rightsHash, SiteRecords, type SitesChrome } from "../host/sites";
+import { createSites, grantRequest, RESYNC_WAIT_MS, rightsHash, SiteRecords, type SitesChrome } from "../host/sites";
 import { SchemaActionSite } from "../shared/api";
+import { MEMORY_DENIAL } from "../host/site-memory";
 
 // A gate on readSite: while armed, the next call waits (a slow read, for the deletion race).
 const gate: { armed: boolean; reached: (() => void) | null; open: (() => void) | null } = { armed: false, reached: null, open: null };
@@ -79,7 +80,7 @@ function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLink
     tabs: [],
   };
   let chromeErrors: Awaited<ReturnType<SitesChrome["errors"]>> = [];
-  let chromeOpened: string[] = [];
+  let chromeOpened: string[] | Promise<string[]> = [];
   let chromeView: Awaited<ReturnType<SitesChrome["view"]>> = null;
   /** While set, fermer waits for it (a deletion in progress). */
   let kept: Promise<void> | null = null;
@@ -123,7 +124,7 @@ function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLink
     await sites.stop();
     rmSync(root, { recursive: true, force: true });
   });
-  return { sites, paths: paths, dataDir, calls, log: log, diffuser: broadcast, prefill: prefill, memories: memories, write, setOpen: (o: string[]) => (chromeOpened = o),
+  return { sites, paths: paths, dataDir, calls, log: log, diffuser: broadcast, prefill: prefill, memories: memories, write, setOpen: (o: string[] | Promise<string[]>) => (chromeOpened = o),
     setView: (v: typeof chromeView) => (chromeView = v),
     keep: (p: Promise<void> | null) => (kept = p), setErrors: (e: typeof chromeErrors) => (chromeErrors = e) };
 }
@@ -290,6 +291,21 @@ describe("openById", () => {
     const sync = m.sites.resync();
     expect(await m.sites.memoryOp({ id: "vidola", url: "/serie/x", op: "remember", key: "k", value: 1 })).toEqual({ ok: true });
     await sync;
+  });
+
+  it("a memory request does not wait forever on a chrome that never answers the resync: it is refused after the bound", async () => {
+    const m = mount();
+    await storeSiteGrant(m.dataDir, "vidola", DeclarationSite.parse(declaration));
+    m.setOpen(new Promise<string[]>(() => {}));
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      void m.sites.resync();
+      const answer = m.sites.memoryOp({ id: "vidola", url: "/serie/x", op: "remember", key: "k", value: 1 });
+      await vi.advanceTimersByTimeAsync(RESYNC_WAIT_MS);
+      expect(await answer).toEqual({ ok: false, error: MEMORY_DENIAL });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

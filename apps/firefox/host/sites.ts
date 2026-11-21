@@ -49,6 +49,8 @@ import { hostSay } from "./locale.ts";
 export type SiteChrome = OpenableSite & { request: SiteGrantRequest; startCheck: SiteStartRequest | null; hash: string };
 
 const uniques = (l: string[]) => [...new Set(l)];
+/** How long an app's memory or resume request waits for a resync under way. */
+export const RESYNC_WAIT_MS = 5000;
 
 /** The hash of the rights the declaration asks for, on `domains` (the declared ones plus the tracked ones). */
 export function rightsHash(d: DeclarationSite, domains: string[] = d.domains): string {
@@ -464,7 +466,7 @@ export function createSites(o: {
     console.error("[sites] watch not started:", e);
   }
 
-  /** The resync under way (sites.resync), or done. */
+  /** The resync under way (sites.resync), or done, or given up on after RESYNC_WAIT_MS. */
   let synced: Promise<void> = Promise.resolve();
   async function resyncNow(): Promise<void> {
     opened = new Set(await o.chrome.openSites());
@@ -790,7 +792,8 @@ export function createSites(o: {
     resume: (d) => synced.then(() => positions.resume(d)),
     resync() {
       const r = resyncNow();
-      synced = r.catch(() => {});
+      // Bounded: a chrome that never answers must not hold these requests forever; after the bound they are checked (and refused) as before.
+      synced = Promise.race([r.catch(() => {}), new Promise<void>((ok) => setTimeout(ok, RESYNC_WAIT_MS).unref())]);
       return r;
     },
     async stop() {
