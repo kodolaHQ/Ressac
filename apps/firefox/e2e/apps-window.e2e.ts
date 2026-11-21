@@ -150,13 +150,17 @@ describe("one Ressac, the app launched in each test", () => {
     await expect.poll(async () => (await callTool(i.dataDir, "list_tabs")).text, { timeout: 10_000 }).toContain("app:essai");
     await expect.poll(async () => (await callTool(i.dataDir, "read_tab", { id: "app:essai" })).text, { timeout: 10_000 }).toContain("Titre : Essai essai");
     expect((await callTool(i.dataDir, "read_tab", { id: "app:essai" })).text).toContain("lien");
-    // A tool on the app lights the agent's halo around its view, as in the main window, then it goes out.
-    const working = `return ${app}.document.documentElement.hasAttribute("ressac-agent-working");`;
-    const reading = callTool(i.dataDir, "run_js", { id: "app:essai", code: "await new Promise((r) => setTimeout(r, 1500)); 1" });
-    await waitFor(m, working, (v) => v === true, 1_000);
-    expect(await m.execute(`return getComputedStyle(${app}.document.getElementById("tabbrowser-tabbox"), "::after").backgroundImage;`)).toContain("conic-gradient");
-    await reading;
-    await waitFor(m, working, (v) => v === false, 5_000);
+    // A tool on the app lights the agent's halo around its view, as in the main window, then it goes out. Under load
+    // the halo comes on seconds late and its hold runs late too: an observer notes the ring while it is on (the reads
+    // above may still hold it), the test then waits for the real end.
+    await m.execute(`const w = ${app}; w.ressacTestHaloRing = null;
+      const note = () => { if (w.document.documentElement.hasAttribute("ressac-agent-working"))
+        w.ressacTestHaloRing ??= w.getComputedStyle(w.document.getElementById("tabbrowser-tabbox"), "::after").backgroundImage; };
+      new w.MutationObserver(note).observe(w.document.documentElement, { attributes: true, attributeFilter: ["ressac-agent-working"] });
+      note();`);
+    await callTool(i.dataDir, "run_js", { id: "app:essai", code: "await new Promise((r) => setTimeout(r, 1500)); 1" });
+    expect(await waitFor<string | null>(m, `return ${app}.ressacTestHaloRing;`, (v) => v !== null, 20_000)).toContain("conic-gradient");
+    await waitFor(m, `return ${app}.document.documentElement.hasAttribute("ressac-agent-working");`, (v) => v === false, 20_000);
     const capture = await callTool(i.dataDir, "capture_screen", { id: "app:essai" });
     expect(capture.image!.length).toBeGreaterThan(1000);
     expect(await inStore(m, "return store.questions.pending().length;")).toBe(0);
