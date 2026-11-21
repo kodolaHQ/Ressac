@@ -331,6 +331,17 @@ export class Outflow {
     return undefined;
   }
 
+  /** `check` against what every window read: for a caller tied to no window (the main token), which could otherwise
+   *  send what a window read. */
+  checkAll(out: string, address = false): OutflowHit | undefined {
+    // No window yet: still one pass, for the secret shapes (rule 1).
+    for (const win of this.wins.size ? this.wins.keys() : [""]) {
+      const hit = this.check(win, out, address);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+
   /** A new conversation in the window: what the user typed before is no longer theirs to send; what was read stays. */
   forgetTyped(win: string): void {
     const w = this.wins.get(win);

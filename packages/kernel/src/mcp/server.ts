@@ -445,6 +445,8 @@ function createToolsServer(
   const l10n = (id: string, args?: Record<string, string | number>) => say(locale(), id, args);
   const server = new McpServer({ name: "ressac", version: "0.1.0" });
   const key = win ?? MAIN_WINDOW;
+  /** Rules 1 and 2. The main token belongs to no window: it is checked against every window's reads. */
+  const checkOutflow = (out: string, address = false) => (win == null ? outflow?.checkAll(out, address) : outflow?.check(key, out, address));
   /** The outflow remembers the text a tool returns (rule 2). */
   const remember = (r: Result, source: string, links: boolean | readonly string[] = false) => outflow?.read(key, r.content.map((c) => (c.type === "text" ? c.text : "")).join("\n"), source, links);
   /** Per OUTFLOW_LINKS result, the addresses it may let the agent follow. */
@@ -666,22 +668,27 @@ function createToolsServer(
 
   /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks). */
   function danger(url: string): { danger?: string } {
-    const hit = outflow?.check(key, url, true);
+    const hit = checkOutflow(url, true);
     return hit ? { danger: OUTFLOW_DANGER(locale(), hit) } : {};
   }
 
   /**
    * Rule 3: during a search, a sensitive source asks its card again once per search, even if granted in the conversation.
-   * `ask` puts the card up under the key it is given. No search: true, nothing asked.
+   * Any window's search counts, whatever the token: another window's token (readable in the container) must not read around
+   * it. `ask` puts the card up under the key it is given. No search: true, nothing asked.
    */
   async function oncePerSearch(name: (searchTabId: string) => string, ask: (key: string) => Promise<boolean>): Promise<boolean> {
-    const cur = searching?.sessions.current(key);
-    if (!cur) return true;
-    const k = name(cur.tabId);
-    if (searching!.asked.has(k)) return true;
-    if (!(await ask(k))) return false;
-    searching!.asked.add(k);
-    searching!.sessions.onEnd(cur.tabId, () => searching!.asked.delete(k));
+    const own = searching?.sessions.current(key)?.tabId;
+    const tabs = own ? [own] : (searching?.sessions.runningTabs() ?? []);
+    const keys = tabs.map(name).filter((k) => !searching!.asked.has(k));
+    if (keys.length === 0) return true;
+    if (!(await ask(keys[0]!))) return false;
+    tabs.forEach((t) => {
+      const k = name(t);
+      if (searching!.asked.has(k)) return;
+      searching!.asked.add(k);
+      searching!.sessions.onEnd(t, () => searching!.asked.delete(k));
+    });
     return true;
   }
 
@@ -986,7 +993,7 @@ function createToolsServer(
           // A search read_pages started without a reason takes this goal.
           if (current && !current.goal) sessions.setGoal(current.tabId, goal);
           // Rule 1 and 2: a query carrying a secret or private data read earlier pauses before it reaches the engine.
-          const hit = outflow?.check(key, query);
+          const hit = checkOutflow(query);
           let o: TabInfo;
           if (current) {
             if (hit) {

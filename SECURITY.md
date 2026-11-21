@@ -57,7 +57,7 @@ The design assumes **web pages are hostile, including the ones the agent reads**
 Known limits are marked with `shortcut:` comments in the code (for example custom-scheme navigations, preconnects and WebRTC in invisible reads). Others:
 
 - The allowed domains include code hosts, package registries and the model APIs: the agent can send data there to an account an attacker controls. Subscription logins sit in the agent's home volume, so the agent can read them.
-- A session token adds no rights over the main token, and the session config files are readable inside the container: it only ties a session to a window.
+- The main token and every window's session token are readable inside the container (in Atelier, the agent's shell can use them). Calls under the main token are checked against what every window read, and a sensitive source asks its card again during any window's search, whatever the token. What stays open: another window's session token sends what the first window read without rule 2 noticing, and the main token opens, during a window's search, an address read outside it with no card.
 - Once you grant `run_js` on a tab, script there can navigate or send anywhere without a card; an extension the agent wrote can act on its granted sites, and a changed one reloads without asking again while its rights stay the same.
 - An agent page can still put data in the address of a GET to a known CDN, or use WebRTC; a click you make in it can navigate out. A site app's subresources are not limited to its domains.
 - A page that steers the agent during a search where it gets lost can still leave one lesson in the notebook.

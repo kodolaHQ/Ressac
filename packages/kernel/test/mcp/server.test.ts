@@ -3121,3 +3121,38 @@ describe("agent activity", () => {
     }, { onActivity: (x) => got.push(x) });
   });
 });
+
+test("under the main token, a query is checked against what every window read", async () => {
+  await withSearch(async ({ call, fake, search, bands, policy, s }) => {
+    policy.grant(mailTab);
+    await call("read_tab", { id: "gmail" }, s.openSession("W1"));
+    const pending = call("search_web", { query: "camille.roussel@example.com" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    expect(bands.at(-1)![1]!.text).toContain("lu dans mail.google.com");
+    expect(opens(fake)).toEqual([{ query: "" }]);
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow(), tabs: [github, mailTab] });
+});
+
+test("a sensitive tab and the history ask again during another window's search, whatever the token", async () => {
+  await withSearch(async ({ call, fake, policy, s }) => {
+    const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;
+    const w1 = s.openSession("W1");
+    policy.grant(gmail);
+    await call("search_web", { query: "x" }, w1);
+    await call("read_tab", { id: "gmail" }, s.openSession("W2"));
+    expect(asks()).toBe(1);
+    // Once per search, whoever reads.
+    await call("read_tab", { id: "gmail" });
+    await call("read_tab", { id: "gmail" }, w1);
+    expect(asks()).toBe(1);
+  }, { allow: true, tabs: [github, gmail] });
+  await withSearch(async ({ call, fake, policy, s }) => {
+    const cards = () => fake.calls.filter((x) => x.method === "askWidgetData").length;
+    policy.grantHistory();
+    await call("search_web", { query: "x" }, s.openSession("W1"));
+    await call("search_history", { query: "h" });
+    expect(cards()).toBe(1);
+  }, { withUserData: true });
+});
