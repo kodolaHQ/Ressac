@@ -82,6 +82,8 @@ describe("the window's aura", () => {
       await new Promise((r) => setTimeout(r, 1500));
       expect(await waitFor(m, variable("--a2"), () => true)).toEqual(["rgb(59, 139, 235)", "rgb(59, 139, 235)"]);
     } finally {
+      // Ressac quit first: it still writes into its profile and data folder until it exits.
+      await w?.close();
       await rm(dataDir, { recursive: true, force: true });
       await rm(profile, { recursive: true, force: true });
     }
@@ -168,7 +170,14 @@ describe("the window's aura", () => {
   });
 
   it("the halo shows while the agent works on the displayed tab", async () => {
-    server = await startServer({ routes: { "/": (_, res) => res.writeHead(200, { "Content-Type": "text/html" }).end("<title>demo</title><p>demo</p>") } });
+    let released = false;
+    server = await startServer({
+      routes: {
+        "/": (_, res) => res.writeHead(200, { "Content-Type": "text/html" }).end("<title>demo</title><p>demo</p>"),
+        // The long run on the shown tab ends when the test releases it, not after a fixed time.
+        "/release": (_, res) => res.writeHead(200, { "Content-Type": "text/plain" }).end(released ? "1" : "0"),
+      },
+    });
     // The demo port is the kernel's own: the agent's tabs there get every right, no consent card.
     const m = await launch(undefined, { RESSAC_CONTAINER_PORTS: `${server.port}-${server.port}` });
     const config = path.join(w!.dataDir, "workspace", ".ressac", "mcp.json");
@@ -184,44 +193,60 @@ describe("the window's aura", () => {
     const other = await call("open_tab", { url: `${server.url}/?other` });
     const shown = await call("open_tab", { url: `${server.url}/` }); // open_tab displays it
     const working = `return document.documentElement.hasAttribute("ressac-agent-working");`;
-    const slow = "await new Promise((r) => setTimeout(r, 2500)); 1";
+    // Under load the halo comes on seconds late and its hold runs late too (on 2.6 s after a call, off up to 11 s
+    // after, measured in sites-agent): an observer notes that it is or came on, the test waits for the real end. The
+    // hold's length is test/halo.test.ts's.
+    const watchHalo = () =>
+      m.execute(`window.ressacTestHaloSeen = false; window.ressacTestHaloObserver?.disconnect();
+        const note = () => { if (document.documentElement.hasAttribute("ressac-agent-working")) window.ressacTestHaloSeen = true; };
+        (window.ressacTestHaloObserver = new MutationObserver(note)).observe(document.documentElement, { attributes: true, attributeFilter: ["ressac-agent-working"] });
+        note();`);
+    const haloSeen = "return window.ressacTestHaloSeen;";
+    // A tab switch reaches the halo in the dispatch itself: read right after it, no window of time.
+    const STORE = `ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready`;
+    const switchTo = (id: string) =>
+      m.execute<boolean>(
+        `return ${STORE}.then((store) => {
+           store.dispatch({ type: "activateTab", id: arguments[0] });
+           return document.documentElement.hasAttribute("ressac-agent-working");
+         });`,
+        [id],
+      );
 
     // A read takes a few ms, far less than the host's 50 ms grouping of access changes: the halo still lights.
+    await watchHalo();
     await call("read_tab", { id: shown });
-    await waitFor(m, working, (v) => v === true, 1_000);
-    await waitFor(m, working, (v) => v === false, 5_000);
+    await waitFor(m, haloSeen, (v) => v === true, 20_000);
+    await waitFor(m, working, (v) => v === false, 20_000);
 
-    const onOther = call("run_js", { id: other, code: slow });
-    const seen: boolean[] = [];
-    let done = false;
-    void onOther.then(() => (done = true), () => (done = true));
-    while (!done) {
-      seen.push(await m.execute<boolean>(working));
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    await onOther;
-    expect(seen.length).toBeGreaterThan(5);
-    expect(seen.some(Boolean)).toBe(false);
+    // A tool on a tab not shown: once its access changes have all arrived (it ran, it ended), the halo never lit.
+    await watchHalo(); // the halo is off here: only a light-up during the run counts
+    await m.execute(
+      `return ${STORE}.then((store) => {
+         window.ressacTestOtherRan = false;
+         window.ressacTestOff?.();
+         window.ressacTestOff = store.agent.on("access", (e) => { if (e.tabs[arguments[0]]?.running) window.ressacTestOtherRan = true; });
+       });`,
+      [other],
+    );
+    await call("run_js", { id: other, code: "await new Promise((r) => setTimeout(r, 2500)); 1" });
+    await waitFor(m, `return ${STORE}.then((store) => window.ressacTestOtherRan && !store.access.tabs[${JSON.stringify(other)}]?.running);`, (v) => v === true, 20_000);
+    expect(await m.execute(haloSeen)).toBe(false);
 
-    const onShown = call("run_js", { id: shown, code: "await new Promise((r) => setTimeout(r, 5000)); 1" });
+    const onShown = call("run_js", { id: shown, code: `while ((await (await fetch("/release")).text()) !== "1") await new Promise((r) => setTimeout(r, 100)); 1` });
     onShown.catch(() => {}); // awaited below; a failed wait must not leave it unhandled
-    await waitFor(m, working, (v) => v === true, 2_000);
+    await waitFor(m, working, (v) => v === true, 20_000);
     // Showing another tab puts it out at once (no hold), showing the worked-on tab again lights it.
-    await dispatch(m, { type: "activateTab", id: other });
-    const switched = Date.now();
-    await waitFor(m, working, (v) => v === false, 1_000);
-    expect(Date.now() - switched).toBeLessThan(1_000);
-    await dispatch(m, { type: "activateTab", id: shown });
-    await waitFor(m, working, (v) => v === true, 1_000);
+    expect(await switchTo(other)).toBe(false);
+    expect(await switchTo(shown)).toBe(true);
     const ring = `const s = getComputedStyle(document.getElementById("tabbrowser-tabbox"), "::after"); return { events: s.pointerEvents, image: s.backgroundImage, display: s.display };`;
     // None over a video in fullscreen.
     await m.execute(`document.documentElement.setAttribute("inDOMFullscreen", "true");`);
     expect((await m.execute<{ display: string }>(ring)).display).toBe("none");
     await m.execute(`document.documentElement.removeAttribute("inDOMFullscreen");`);
+    released = true;
     await onShown;
-    const end = Date.now();
-    await waitFor(m, working, (v) => v === false, 3_000);
-    expect(Date.now() - end).toBeLessThanOrEqual(3_000);
+    await waitFor(m, working, (v) => v === false, 20_000);
     // The ring sits over the page and lets the mouse through.
     const shape = await m.execute<{ events: string; image: string }>(ring);
     expect(shape.events).toBe("none");
