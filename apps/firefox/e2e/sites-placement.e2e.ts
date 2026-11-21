@@ -7,7 +7,7 @@ import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { SITE_HOME, grantSite, homePoint, inBrowser, inHomeFrame, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
-import { click, missingApi, pressKeys, waitUi } from "./ui";
+import { click, killFrames, missingApi, pressKeys, waitUi } from "./ui";
 
 // Plan 76 Task 3: where a site app lives — an essential (its own container), the sidebar bar, or nowhere.
 
@@ -220,4 +220,20 @@ describe("an app essential's home", () => {
     await click(m, '[role="menuitem"]', { text: "Accueil de l'appli" });
     await expect.poll(() => homeShown(tab), { timeout: 15_000 }).toBe(true);
   });
+
+  it("the frames' process killed: the essential's home comes back with its memory, no crash page, sandboxed in the frames' process", async () => {
+    // Where the test above left it: the essential's tab on /serie, its home shown.
+    const tab = await essentialTab((await essential("maison"))!.id);
+    await expect.poll(() => homeShown(tab), { timeout: 15_000 }).toBe(true);
+    await homePage(tab, "fw.recus.length = 0; return true;");
+    await killFrames(m);
+    // A new document that got its memory message again (the old one's `recus` was emptied).
+    await expect.poll(() => homePage(tab, "return fw.recus.some((x) => x.type === 'memory') ? document.getElementById('domaine').textContent : null;").catch(() => null), { timeout: 20_000 }).toBe("maison-a.localhost");
+    const g = await m.execute<{ isNull: boolean; type: string; crashed: boolean; uri: string }>(
+      `const g = ${homeBrowser(tab)}.browsingContext.currentWindowGlobal, t = ${xulTab(tab)};
+       return { isNull: g.documentPrincipal.isNullPrincipal, type: g.domProcess.remoteType, crashed: t.hasAttribute("crashed"), uri: t.linkedBrowser.currentURI.spec };`,
+    );
+    expect(g).toEqual({ isNull: true, type: expect.stringMatching(/^webIsolated=resource:\/\/ressac-frames-[0-9a-f]{16}$/), crashed: false, uri: url("/serie", "maison-a.localhost") });
+    expect(Object.values((await state(m)).tabs).filter((t) => t.crashed)).toEqual([]);
+  }, 60_000);
 });

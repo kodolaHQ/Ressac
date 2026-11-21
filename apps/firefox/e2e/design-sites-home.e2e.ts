@@ -25,6 +25,7 @@ import { waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { grantSite, HOME_COPY, homePoint, inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, siteHomeBrowser, startSitesServer, writeSite } from "./sites";
+import { killFrames } from "./ui";
 
 // Plan 36 Task 3: the design mode on a site app's home (spike S6), a remote frame of the bar aimed by the
 // RessacDesignFrames actor (chrome/agent/design-actor.ts). Apps avec-accueil and sonde (spike S6's home, for the
@@ -352,6 +353,20 @@ describe("design mode on a site app's home", () => {
     await expect.poll(() => homeHosts("sonde"), { timeout: 10_000 }).toBe(1);
     expect((await aimHome("sonde", "#cible")).label).toBe("div#cible");
   });
+
+  // Measured: design.ts's capture listener on the site window gets the home frame's crash before remote-frame.ts stops it there.
+  it("the frames' process killed while aiming at the home: the mode stops, nothing left on the dead page; a new arm aims the revived home", async () => {
+    await homeOn("sonde");
+    await killFrames(m);
+    await expect.poll(async () => (await state("sonde")).active, { timeout: 10_000 }).toBe(false);
+    expect((await bar("sonde")).pressed).toBe("false");
+    expect(await overlayOf(m, "sonde", "return 1;")).toBeNull();
+    await expect.poll(() => inHome("sonde", "return document.readyState === 'complete' && !!document.getElementById('cible');").catch(() => null), { timeout: 20_000 }).toBe(true);
+    expect(await homeHosts("sonde")).toBe(0);
+    await toggle("sonde");
+    await expect.poll(() => homeHosts("sonde"), { timeout: 10_000 }).toBe(1);
+    expect((await aimHome("sonde", "#cible")).label).toBe("div#cible");
+  }, 60_000);
 
   it("⌂ while aiming in the site view, then ⇧⌘D on the home: the home is aimed, the view is not", async () => {
     await toSite(m, "avec-accueil");
