@@ -311,6 +311,8 @@ export class SessionsAgent {
     const e = this.inputs.get(f);
     // Keys and pastes are the user's; the terminal's own replies (focus, queries, a click's mouse report) start with ESC.
     const user = !d.startsWith("\x1b") || d.startsWith("\x1b[200~");
+    // The terminal's answers to the agent's own startup queries (cursor, colors) reach it even while its input waits.
+    if (e?.session?.active && !e.asleep && TERMINAL_REPLY.test(d)) return void e.session.write(d);
     if (e?.asleep || e?.waking !== undefined) {
       // Any input wakes a sleeping agent (an empty write is the panel's click); the terminal's own replies are not kept.
       e.waking = (e.waking ?? "") + (TERMINAL_REPLY.test(d) ? "" : d);

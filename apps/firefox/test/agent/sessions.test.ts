@@ -230,6 +230,14 @@ test("prefill before the start writes once the started agent speaks, not before 
   expect(messages).toEqual([]);
 });
 
+test("while a first start's pre-fill waits, the terminal's replies to the agent's queries still reach it", async () => {
+  const { management: manager, sessions } = prepare();
+  manager.prefill("F", "[remarques] ", undefined, true);
+  await manager.start("F", size);
+  manager.write("F", "\x1b[12;1R");
+  expect(sessions[0]!.written).toEqual(["\x1b[12;1R"]);
+});
+
 test("a pending message to send (remarks, a ⌘T question) is not replaced by the panel's context; the context's tab share still runs", async () => {
   let open!: (s: SessionLike) => void;
   const session = new FakeSession();
