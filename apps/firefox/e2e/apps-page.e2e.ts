@@ -152,8 +152,7 @@ describe("Applications page", () => {
   it("a manifest that appears updates the page live", async () => {
     p = await openAppsPage(BLOCK);
     await rows(3);
-    // Time for the projects' watch to be ready.
-    await sleep(500);
+    // A project made before the projects' watch is ready is read once it is (kernel watchProjects).
     writeProject(p.dataDir, "nouveau", { manifest: { name: "Nouveau" } });
     await waitUi(p.m, "return !!doc.querySelector(arguments[0])", [appRow("nouveau")]);
     await expect.poll(() => filterText("all"), { timeout: 10_000 }).toBe("Tout 4");
@@ -164,7 +163,6 @@ describe("Applications page", () => {
     // `docker info` answers in 8 s: the orphans' cleanup is not over when the project comes.
     p = await openAppsPage(BLOCK, { env: { FAKE_DOCKER_SLOW: "1" } });
     await rows(3);
-    await sleep(500);
     writeProject(p.dataDir, "nouveau", { manifest: { name: "Nouveau" } });
     await waitUi(p.m, "return !!doc.querySelector(arguments[0])", [appRow("nouveau")], 4_000);
     expect(stopsLog(p.dataDir)).not.toContain("RESSAC_APP=.*");

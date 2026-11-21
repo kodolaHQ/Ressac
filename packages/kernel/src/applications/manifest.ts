@@ -102,6 +102,8 @@ export function watchProjects(c: SpacePaths, callback: () => void): () => Promis
     depth: 1,
     ignored: (p) => p.split(/[\\/]/).includes("node_modules") || p.endsWith(".tmp"),
   });
+  // A project made while the first scan ran is in no event (ignoreInitial): one more read once the watch is ready.
+  observer.on("ready", callback);
   observer.on("all", (event, path) => {
     const name = path.split(/[\\/]/).pop();
     const relevant = event === "addDir" || event === "unlinkDir" || (name === MANIFEST_FILE || name === LEGACY_MANIFEST_FILE);
