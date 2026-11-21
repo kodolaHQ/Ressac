@@ -29,8 +29,8 @@ async function site(name: string): Promise<Site> {
     if (u.pathname === "/302") return res.writeHead(302, { Location: to }).end();
     const body = u.pathname === "/script" ? `<title>s</title><p>saut</p><script>location.href = ${JSON.stringify(to)}</script>` : `<title>${name}</title><p>Texte de ${name}</p>`;
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    // ?slow holds the lane of a read for a while (one test only).
-    if (u.searchParams.has("slow")) setTimeout(() => res.end(body), 1500);
+    // ?held holds the lane of a read until the test calls releaseHeld() (one test only).
+    if (u.searchParams.has("held")) void held.then(() => res.end(body));
     // ?hold keeps site-b's lane past a read's 30 s deadline (one test only).
     else if (u.searchParams.has("hold")) setTimeout(() => res.end(body), 35_000);
     else res.end(body);
@@ -43,6 +43,8 @@ async function site(name: string): Promise<Site> {
   });
 }
 
+let releaseHeld = () => {};
+const held = new Promise<void>((r) => (releaseHeld = r));
 let a: Site;
 let b: Site;
 let w: LaunchedRessac;
@@ -137,8 +139,8 @@ describe("paced reads", () => {
 
   it("another read gets a place while two others wait for site-b's turn", async () => {
     const to = encodeURIComponent(urlB("/page"));
-    // A slow read of site-b holds its lane (1.5 s, then one gap): the waits below end long after the plain read.
-    const holder = paced(urlB("/page?slow"));
+    // A read of site-b holds its lane until the plain read below has ended: the waits end at least one gap after that.
+    const holder = paced(urlB("/page?held"));
     await waitFor(m, "return 0", () => b.hits.length === 1, 20_000);
     // Two sites, so the kernel queues neither before the chrome: both reads sit in the chrome's wait together
     // (site-b's lane serves them one gap apart, the first not before one gap after the read above).
@@ -147,7 +149,7 @@ describe("paced reads", () => {
     await new Promise((r) => setTimeout(r, 300));
     // Both stopped at their redirect, each holding a read place if it kept it: the third read must still get one
     // (read places: 2), and it ends before the first wait does.
-    const free = await plain(urlA("/page"));
+    const free = await plain(urlA("/page")).finally(releaseHeld);
     expect(text(free)).toContain("Texte de site-a");
     const ends = (await Promise.all(waiting)).map((r) => r.at);
     expect(free.at).toBeLessThan(Math.min(...ends));
