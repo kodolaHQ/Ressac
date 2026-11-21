@@ -199,6 +199,9 @@ describe("the UI's network", () => {
   let net: Awaited<ReturnType<typeof startNetWitness>>;
 
   const names = () => resolvedNames(logDir);
+  // The UI's refusals logged since `from`, less the leaking widgets' own: they navigate 1.5 s after each load of theirs (at
+  // startup, and again when the home comes back after a tab), so they land inside whichever test runs then.
+  const refusalsSince = async (from: number) => (await uiRefusals(m)).slice(from).filter((r) => !/\/\/fuite[-.]/.test(r));
   /** A frame `<iframe sandbox="allow-scripts">` appended to the sidebar on `src`; resolves once its document is `src`. */
   // The sidebar's CSP keeps `frame-src resource:` for these frames alone (no Ressac code frames resource: there since the
   // remote frames): removing it refuses them before the net, and these net tests could no longer set up their page.
@@ -479,7 +482,7 @@ describe("the UI's network", () => {
     expect(src.startsWith("data:") || (src.startsWith("moz-remote-image:") && new URL(src).searchParams.get("url")!.startsWith("data:")), src.slice(0, 80)).toBe(true);
     expect(net.hits.some((h) => h.label === "icone" && h.path === "/icone.png")).toBe(true);
     await closeTab("/avec-icone", "sonde");
-    expect((await uiRefusals(m)).slice(refused0)).toEqual([]);
+    expect(await refusalsSince(refused0)).toEqual([]);
   });
 
   it("the tabs and the agent's reads keep their network: a tab's image, fetch, WebSocket and WebRTC TURN/TCP reach the local servers, and an invisible read returns the page", { timeout: 120_000 }, async () => {
@@ -511,7 +514,7 @@ describe("the UI's network", () => {
     );
     expect(read).toBe("page");
     expect(seen("lu")).toContain("GET /page");
-    expect((await uiRefusals(m)).slice(refused0)).toEqual([]);
+    expect(await refusalsSince(refused0)).toEqual([]);
   });
 
   // Review Focus 1: the views are content <browser>s, never the UI's; the site bar and its home stay cut.
@@ -564,7 +567,7 @@ describe("the UI's network", () => {
     // The fake .xpi fails once downloaded.
     expect(addon).toMatch(/^failed/);
     expect(net.hits.filter((h) => h.label === "act-img" || h.label === "addon").map((h) => `${h.label} ${h.path}`)).toEqual(expect.arrayContaining(["act-img /s2/witness/img", "addon /x.xpi"]));
-    expect((await uiRefusals(m)).slice(refused0)).toEqual([]);
+    expect(await refusalsSince(refused0)).toEqual([]);
   });
 
   it("a widget re-rendered or added after the sidebar loaded inherits the cut", { timeout: 120_000 }, async () => {
