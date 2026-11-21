@@ -166,7 +166,8 @@
     if (n === served) return;
     served = n;
     focusOwed = untrack(() => appState.state !== "active");
-    if (notePending()) userAsked = true;
+    // Untracked: a note change re-running this effect would clear the retries below, then return (request served).
+    if (untrack(notePending)) userAsked = true;
     // The first-time note keeps the keyboard until Compris.
     const aim = () => visible && !notePending() && terminalAgent.focus();
     void tick().then(aim);
