@@ -228,10 +228,9 @@ export class SessionsAgent {
             this.o.send(f, "state", { state: "done", code });
           });
           this.o.send(f, "state", { state: "active" });
-          // Waking: the pre-fill goes with the buffered keys, once the agent speaks (deliver).
-          const p = entry.waking === undefined ? entry.prefill : undefined;
-          if (p) entry.prefill = undefined;
-          if (p) this.writePrefill(f, s, p);
+          // The pre-fill (and the keys typed meanwhile) wait for the agent to speak (deliver): written before its TUI
+          // takes the terminal raw, the line discipline turns the submit's \r into \n and the message is never sent.
+          if (entry.prefill && entry.waking === undefined) entry.waking = "";
         },
         (err: Error) => {
           // Startup abandoned (window closed, relancerTout): its failure no longer concerns the panel.

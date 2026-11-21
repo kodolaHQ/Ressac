@@ -211,7 +211,7 @@ test("stopAll waits for each session to stop", async () => {
   await stop;
 });
 
-test("prefill before the start writes as soon as the session is active", async () => {
+test("prefill before the start writes once the started agent speaks, not before (its TUI would not take the terminal raw yet)", async () => {
   let open!: (s: SessionLike) => void;
   const session = new FakeSession();
   const { management: manager, messages } = prepare(() => new Promise((r) => (open = r)));
@@ -222,6 +222,8 @@ test("prefill before the start writes as soon as the session is active", async (
   expect(session.written).toEqual([]);
   open(session);
   await startup;
+  expect(session.written).toEqual([]);
+  session.emit("agent> ");
   // The last text wins; access is given at write time, session open; nothing is sent.
   expect(session.written).toEqual(["[contexte] "]);
   expect(written).toEqual(["accès avant : 0"]);
@@ -238,6 +240,7 @@ test("a pending message to send (remarks, a ⌘T question) is not replaced by th
   const startup = manager.start("F", size);
   open(session);
   await startup;
+  session.emit("agent> ");
   expect(session.written[0]).toBe("[remarques] ");
   expect(shared).toEqual(["remarques", "onglet"]);
 });
