@@ -80,6 +80,8 @@ export class RessacFrameParent extends JSWindowActorParent {
 
 /** Removed from every document of the frames' process, nested ones included (RessacFrameRtc, allFrames). */
 const RTC_REMOVED = ["RTCPeerConnection", "webkitRTCPeerConnection"];
+/** Removed from Navigator.prototype, where the native getter and method live (an own value on `navigator` alone left the getter reachable). */
+const NAVIGATOR_REMOVED = ["mediaDevices", "mozGetUserMedia"];
 
 /**
  * No document of the frames' process makes a PeerConnection: the parent's blocker refuses one only after it has
@@ -92,7 +94,7 @@ export class RessacFrameRtcChild extends JSWindowActorChild {
   handleEvent(): void {
     const win = (this.contentWindow as any).wrappedJSObject;
     for (const name of RTC_REMOVED) Object.defineProperty(win, name, { value: undefined, writable: false, configurable: false, enumerable: false });
-    Object.defineProperty(win.navigator, "mediaDevices", { value: undefined, writable: false, configurable: false, enumerable: false });
+    for (const name of NAVIGATOR_REMOVED) Object.defineProperty(win.Navigator.prototype, name, { value: undefined, writable: false, configurable: false, enumerable: false });
   }
 }
 

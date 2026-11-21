@@ -19,11 +19,28 @@ const host = (name: string) => `${name}.${SFX}:${HTTP}`;
 const PAGE = `<!doctype html><meta charset="utf-8"><body style="margin:0">
 <link rel="dns-prefetch" href="//fr-dns.${SFX}"><link rel="preconnect" href="http://fr-preco.${SFX}:${RAW}">
 <a id="lien" href="http://fr-press.${SFX}:${RAW}/" style="position:fixed;inset:0;display:block">lien</a>
-<p id="t">cadre</p><p id="got">…</p><p id="net">…</p><p id="rtc">…</p><p id="nested">…</p>
+<p id="t">cadre</p><p id="got">…</p><p id="net">…</p><p id="rtc">…</p><p id="nested">…</p><p id="media">…</p><p id="blank">…</p>
 <img src="http://${host("fr-img")}/fr/img">
 <script>
   const note = (id, t) => (document.getElementById(id).textContent = t);
   try { new RTCPeerConnection().createOffer().then(() => note("rtc", "ok"), (e) => note("rtc", "err " + e.name)); } catch (e) { note("rtc", "throw " + e.name); }
+  // The native getter and method behind navigator.mediaDevices / mozGetUserMedia, read from the prototype.
+  const media = (w) => {
+    const d = Object.getOwnPropertyDescriptor(w.Navigator.prototype, "mediaDevices");
+    let got; try { got = d && d.get ? typeof d.get.call(w.navigator) : "value " + typeof (d && d.value); } catch (e) { got = "throw " + e.name; }
+    return got + " " + typeof w.navigator.mozGetUserMedia;
+  };
+  note("media", media(window));
+  // An empty frame's initial about:blank, read and called in the same task that made it.
+  const b = document.createElement("iframe"); b.style.cssText = "position:absolute;width:0;height:0;border:0";
+  document.body.append(b);
+  let blank;
+  try {
+    blank = typeof b.contentWindow.RTCPeerConnection;
+    try { new b.contentWindow.RTCPeerConnection(); blank += " made"; } catch (e) { blank += " " + e.name; }
+    blank += " " + media(b.contentWindow);
+  } catch (e) { blank = e.name; }
+  note("blank", blank);
   // A nested srcdoc frame (its own opaque origin under the sandbox): it answers by message.
   const s = document.createElement("iframe"); s.style.cssText = "position:absolute;width:0;height:0;border:0";
   s.srcdoc = "<scr" + "ipt>parent.postMessage({ nested: typeof RTCPeerConnection + ' ' + typeof navigator.mediaDevices }, '*')</scr" + "ipt>";
@@ -183,12 +200,21 @@ describe("remote frames", () => {
     expect(r[1]).toBe(r[0]);
   });
 
-  it("no WebRTC: no PeerConnection or mediaDevices in the page or a nested srcdoc frame; none reaches the parent's blocker", async () => {
+  it("no WebRTC: no PeerConnection or mediaDevices in the page, a nested srcdoc frame or a fresh about:blank one; none reaches the parent's blocker", async () => {
     const text = (id: string) => inFrame<string>(w.marionette, "#frames-a browser", `document.getElementById(${JSON.stringify(id)}).textContent`);
     await expect.poll(() => text("nested"), { timeout: 5000 }).toBe("undefined undefined");
     expect(await text("rtc")).toBe("throw TypeError");
     // Read through the page's own world (an Xray would see the native getter).
     expect(await inFrame(w.marionette, "#frames-a browser", "typeof window.wrappedJSObject.navigator.mediaDevices")).toBe("undefined");
+    // Not through Navigator.prototype's native getter either, nor the legacy mozGetUserMedia.
+    expect(await text("media")).toBe("value undefined undefined");
+    // An empty frame's initial about:blank, read in the task that appended it: the sandbox gives it its own opaque
+    // origin, so the page cannot reach it at all (measured; same origin, it would have to read "undefined TypeError …").
+    expect(await text("blank")).toBe("SecurityError");
+    // Read from the chrome side: the actor removed the same names there too.
+    const blankSeen = `(() => { const cw = document.querySelectorAll("iframe")[0].contentWindow.wrappedJSObject;
+      return [typeof cw.RTCPeerConnection, typeof Object.getOwnPropertyDescriptor(cw.Navigator.prototype, "mediaDevices").get, typeof cw.navigator.mozGetUserMedia].join(" "); })()`;
+    expect(await inFrame(w.marionette, "#frames-a browser", blankSeen, "sidebar", true)).toBe("undefined undefined undefined");
     expect(await consoleWith(w.marionette, "[ui-network] refused webrtc from a frame")).toHaveLength(0);
   });
 
