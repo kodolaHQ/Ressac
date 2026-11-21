@@ -174,8 +174,9 @@ describe("the Ressac window", () => {
     for (;;) {
       const handles = await windowHandles(m);
       if (handles.length === 1 && handles[0] !== old && handles[0] !== priv) {
-        await m.command("WebDriver:SwitchToWindow", { handle: handles[0], focus: false });
-        if (await m.execute("return !!window.ressacWindow").catch(() => false)) break;
+        // The private window may close between the list and the switch: it is not the one awaited.
+        const there = await m.command("WebDriver:SwitchToWindow", { handle: handles[0], focus: false }).then(() => true, () => false);
+        if (there && (await m.execute("return !!window.ressacWindow").catch(() => false))) break;
       }
       if (Date.now() > deadline) throw new Error("the Ressac window did not come back");
       await sleep(100);
