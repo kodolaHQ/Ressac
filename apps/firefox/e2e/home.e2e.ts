@@ -464,12 +464,23 @@ describe("the home page", () => {
     await click(m, '[data-testid="widget-sans-accord"] [data-testid="grant-banner"] button', { text: "Refuser" });
     expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="grant-banner"]');`)).toBe(true);
     // An added widget forces a reread (accueil.change): the denial holds for the session, the banner does not come back.
+    // A GC first: the home came back after a tab (link test), and the teardown of the frames' group from before used to
+    // drop the new group's id from Firefox's table, so this new frame started a second process.
+    await m.execute(`Cu.forceGC(); Cu.forceCC(); Cu.forceGC();`);
     await writeWidget(dataDir, "temoin", { name: "Témoin", display: DISPLAY("témoin") });
     await wait(
       () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`),
       (ts) => ts.includes("Témoin"),
       "la relecture après le refus",
     );
+    const pids = await waitUi<number[] | null>(
+      m,
+      `const gs = [...doc.querySelectorAll('[data-testid^="widget-"] browser')].map((b) => b.browsingContext?.currentWindowGlobal);
+       return doc.querySelector('[data-testid="widget-temoin"] browser') && gs.every((g) => g?.osPid) ? gs.map((g) => g.osPid) : null;`,
+      [],
+      15_000,
+    );
+    expect(new Set(pids).size, "the added widget in the frames' one process").toBe(1);
     expect(await inUi<boolean>(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="grant-banner"]');`)).toBe(false);
     await wait(() => readGrants(dataDir), (a) => a["sans-accord"] === undefined, "le retrait de l'accord refusé");
     await wait(async () => existsSync(DATA(dataDir, "sans-accord")), (present) => !present, "le retrait des données du refus");

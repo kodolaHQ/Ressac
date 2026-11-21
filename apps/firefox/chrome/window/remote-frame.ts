@@ -8,7 +8,7 @@ const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 export const SANDBOX_ALLOW_SCRIPTS = 1048191;
 
 let actor = "";
-/** The group every frame browser joins; Firefox makes it again under the same id if its last browser went, a crash starts a new one (revive). */
+/** The group every frame browser joins; a new one once they all went (forgetDeadGroup) or after a crash (revive). */
 let groupId: number | null = null;
 
 /** Frames mounted before setFrameActor (the home's widgets at startup): subscribed once it runs. */
@@ -32,8 +32,24 @@ export function createFrameBrowser(doc: Document, onCrash?: (revived: boolean) =
   return b;
 }
 
+/** Every frame browser made, in any window; dropped once seen out of its document (an owner unmounted it). */
+const frameBrowsers = new Set<Element>();
+
+/**
+ * The group id is reused only while one of our frames is still in the page. Once every frame went (the home hidden by a
+ * tab), its group dies, and Firefox's late teardown of it (its last reference released at a GC) removes from its table
+ * whatever group holds that id by then: a new group made under the same id loses its entry, and the next frame gets
+ * a group of its own, so a second process (measured: one forced GC after the home came back is enough).
+ */
+function forgetDeadGroup(b: Element): void {
+  for (const f of frameBrowsers) if (f !== b && !f.isConnected) frameBrowsers.delete(f);
+  if (![...frameBrowsers].some((f) => f !== b)) groupId = null;
+  frameBrowsers.add(b);
+}
+
 /** Before each insertion: Firefox drops `remoteType` once the remote browser is up, and without it a new one goes to a shared web process. */
 function setFrameAttributes(b: Element): void {
+  forgetDeadGroup(b);
   // No maychangeremoteness: the frame stays in its webIsolated process whatever it navigates to.
   // `transparent`: else the remote page paints an opaque canvas over what is behind it (BrowserParent reads it once).
   // `disablefullscreen`: a XUL browser allows fullscreen to its page otherwise (BrowsingContext::FullscreenAllowed).

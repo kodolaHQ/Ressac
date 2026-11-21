@@ -138,3 +138,41 @@ test("a frame whose process dies is put back (a new frame loader) at most REVIVE
   err.mockRestore();
   vi.useRealTimers();
 });
+
+test("a new frame joins the frames' group while one of them is in a page, never once they all went (a dead group's id)", async () => {
+  // A fresh copy: the frames of the tests above are still "in a page".
+  vi.resetModules();
+  const { createFrameBrowser } = await import("../chrome/window/remote-frame");
+  vi.useFakeTimers();
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
+  const make = (connected: boolean) => {
+    let crash: (e: unknown) => void = () => {};
+    const el = {
+      isConnected: connected,
+      parentNode: { insertBefore: (b: { isConnected: boolean }) => (b.isConnected = true) },
+      nextSibling: null,
+      browsingContext: { group: { id: 34 } },
+      setAttribute: vi.fn(),
+      removeAttribute: vi.fn(),
+      addEventListener: (type: string, fn: (e: unknown) => void) => type === "oop-browser-crashed" && (crash = fn),
+      remove() {
+        this.isConnected = false;
+      },
+    };
+    const b = createFrameBrowser({ createXULElement: () => el } as unknown as Document);
+    return { el, crash: () => crash({ isTrusted: true, isTopFrame: true, target: b, childID: 1000, stopPropagation: () => {} }) };
+  };
+  // A revival sets the group from its new browsing context: 34.
+  const first = make(true);
+  first.crash();
+  vi.runAllTimers();
+  const second = make(false);
+  expect(second.el.setAttribute).toHaveBeenCalledWith("initialBrowsingContextGroupId", "34");
+  // Every frame out of its page (the home hidden): the next frame starts a new group.
+  first.el.isConnected = false;
+  const third = make(false);
+  expect(third.el.setAttribute).not.toHaveBeenCalledWith("initialBrowsingContextGroupId", expect.anything());
+  expect(third.el.removeAttribute).toHaveBeenCalledWith("initialBrowsingContextGroupId");
+  err.mockRestore();
+  vi.useRealTimers();
+});
