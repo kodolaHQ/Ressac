@@ -488,7 +488,9 @@ describe("leaving a page with unsaved changes", () => {
       while (!(text = await onAlert<string>(handle, "WebDriver:GetAlertText")) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
       expect(text).toContain("Les modifications que vous avez faites");
       await onAlert(handle, button === 1 ? "WebDriver:DismissAlert" : "WebDriver:AcceptAlert");
-      await new Promise((r) => setTimeout(r, 500));
+      // Accepted, the close lands later: wait for it. Refused, a window for a close that would still come.
+      if (button === 1) await new Promise((r) => setTimeout(r, 500));
+      else await waitState((s) => Object.keys(s.tabs).length, (n) => n === 0);
       expect(Object.keys((await state(m)).tabs)).toHaveLength(button === 1 ? 1 : 0);
       // Only one question: none is left open.
       if (button === 1) expect(await onAlert(handle, "WebDriver:GetAlertText")).toBeNull();
@@ -518,7 +520,7 @@ describe("leaving a page with unsaved changes", () => {
     expect(text).toContain("Les modifications que vous avez faites");
     await onAlert(handle, "WebDriver:DismissAlert");
     // Asked in front, its own tab active in the state, then the previous one again.
-    expect(await m.execute<string[]>("return [...new Set(window.actives)]")).toEqual([id, b]);
+    await expect.poll(() => m.execute<string[]>("return [...new Set(window.actives)]")).toEqual([id, b]);
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('ressac-tab-id')", (v) => v === b);
     const after = await win();
     expect(after.active[after.activeSpace]).toBe(b);
