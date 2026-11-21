@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, openSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -55,6 +55,14 @@ function binary(): string {
   const file = path.join(DIST, "Ressac.app/Contents/MacOS/ressac");
   if (!existsSync(file)) throw new Error("build missing: pnpm --filter firefox-ressac build");
   return file;
+}
+
+/** Run once per e2e run (vitest globalSetup): the built app must carry package.json's version, or version tests fail far from the cause. */
+export function checkBuildCurrent(): void {
+  const store = path.join(path.dirname(binary()), "../Resources/browser/chrome/browser/content/browser/ressac/store.sys.mjs");
+  const built = /version: \(\) => "([^"]+)"/.exec(readFileSync(store, "utf8"))?.[1];
+  const source = JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../package.json"), "utf8")).version;
+  if (built !== source) throw new Error(`build:ui is stale: the built app is ${built ?? "of unknown version"}, package.json is ${source}. Run: echo N | corepack pnpm run build:ui`);
 }
 
 async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: string): Promise<T> {
