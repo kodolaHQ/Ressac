@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { NO_CLIENT } from "../../../packages/kernel/src/design/projects";
 import { reviewUrl } from "../shared/model";
+import { MESSAGE_DURATION_MS } from "../chrome/store/design-copies";
 import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
 import { startDesignServers, trustedMouse } from "./design";
@@ -99,6 +100,18 @@ const message = async () => {
   return f?.shown ? f.v : null;
 };
 const columnShown = async () => (await frameOf("ressac-design-volet"))?.shown ?? false;
+/** Notes, where the overlay is shown and hidden, each change of its display (the message's timer starts with the show). */
+const watchMessage = () =>
+  m.execute(`window.__messageWatch?.disconnect();
+    const seen = (window.__messageSeen = []);
+    // The overlay frame may not exist yet: the whole window is watched, and only its display changes are noted.
+    const on = () => { const f = document.getElementById("ressac-design-calque"); return !!f && f.style.display !== "none"; };
+    let last = on();
+    (window.__messageWatch = new MutationObserver(() => { if (on() !== last) seen.push([Date.now(), (last = on())]); })).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ["style"] });`);
+/** How long the message stayed, from its show to its hide, as noted by watchMessage. */
+const messageLife = () =>
+  m.execute<number>(`const seen = window.__messageSeen, shown = seen.find(([, on]) => on), hidden = seen.find(([t, on]) => !on && t >= shown[0]);
+    return hidden[0] - shown[0];`);
 const sendButton = () =>
   frameOf<{ text: string; disabled: boolean; cart: string } | null>(
     "ressac-design-volet",
@@ -148,47 +161,49 @@ describe("outside the followed projects", () => {
 
   it("design.spec.ts:311 outside a project, ⇧⌘D shows message-design = INDISPONIBLE, gone after 4 s; the next key or a click closes it too", async () => {
     await open(`${demo.frame}/x`);
+    await watchMessage();
     await pressKeys(m, "Meta+Shift+d");
     await expect.poll(message, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN);
-    const shownAt = Date.now();
     expect(await hosts()).toBe(0);
     // 12 px from the top and the right of the <browser>, 360×56.
     const b = await m.execute<{ x: number; y: number; width: number }>(`const r = ${B}.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width };`);
     expect((await frameOf("ressac-design-calque"))!.rect).toEqual({ x: b.x + b.width - 12 - 360, y: b.y + 12, width: 360, height: 56 });
     // The message never takes the keyboard.
     expect(await m.execute("return document.activeElement === gBrowser.selectedBrowser;")).toBe(true);
-    await sleep(2500);
-    expect(await message()).toBe(UNAVAILABLE_DESIGN);
+    // Its own timer ends it: timed where it shows (a round trip under load lasted past the 4 s).
     await expect.poll(message, { timeout: 10_000 }).toBeNull();
-    expect(Date.now() - shownAt).toBeGreaterThanOrEqual(3500);
+    expect(await messageLife()).toBeGreaterThanOrEqual(MESSAGE_DURATION_MS - 20);
     expect(await frameOf("ressac-design-calque").then((f) => f?.shown)).toBe(false);
 
     // The next key in the page.
+    await watchMessage();
     await pressKeys(m, "Meta+Shift+d");
     await expect.poll(message, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN);
-    let t = Date.now();
     await pressKeys(m, "a");
     await expect.poll(message, { timeout: 10_000 }).toBeNull();
-    expect(Date.now() - t).toBeLessThan(3000);
+    // Gone before its own timer could end it (a timer never fires early), timed where it shows, not across round trips.
+    expect(await messageLife()).toBeLessThan(MESSAGE_DURATION_MS);
 
     // The next key in the window's UI.
+    await watchMessage();
     await pressKeys(m, "Meta+Shift+d");
     await expect.poll(message, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN);
     await m.execute(`document.getElementById("ressac-sidebar").focus();`);
     expect(await m.execute("return document.activeElement?.id;")).toBe("ressac-sidebar");
-    t = Date.now();
     await pressKeys(m, "a");
     await expect.poll(message, { timeout: 10_000 }).toBeNull();
-    expect(Date.now() - t).toBeLessThan(3000);
+    // Gone before its own timer could end it (a timer never fires early), timed where it shows, not across round trips.
+    expect(await messageLife()).toBeLessThan(MESSAGE_DURATION_MS);
     await m.execute(`${B}.focus();`);
 
     // A click on the message.
+    await watchMessage();
     await pressKeys(m, "Meta+Shift+d");
     await expect.poll(message, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN);
-    t = Date.now();
     await click(m, tid("message-design"), { frame: "overlay" });
     await expect.poll(message, { timeout: 10_000 }).toBeNull();
-    expect(Date.now() - t).toBeLessThan(3000);
+    // Gone before its own timer could end it (a timer never fires early), timed where it shows, not across round trips.
+    expect(await messageLife()).toBeLessThan(MESSAGE_DURATION_MS);
     expect(await hosts()).toBe(0);
   });
 
