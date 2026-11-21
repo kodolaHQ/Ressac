@@ -17,7 +17,14 @@ let w: LaunchedRessac;
 let m: Marionette;
 let trapBase: string;
 beforeAll(async () => {
-  page = await startServer();
+  page = await startServer({
+    routes: {
+      // A download link clicked while an image still holds the page's load: the download ends that load.
+      "/telecharge-pendant": (_req, res) =>
+        res.writeHead(200, { "Content-Type": "text/html" }).end('<title>pendant</title><p>Texte lu</p><img src="/image-lente"><a id="t" href="/telecharge" download>t</a><script>document.getElementById("t").click()</script>'),
+      "/image-lente": (_req, res) => void setTimeout(() => res.writeHead(404).end(), 1_000),
+    },
+  });
   trap = await startServer({ host: "::1" });
   trapBase = `http://localtest.me:${trap.port}`;
   // Honoured by Firefox only under automation (Marionette running).
@@ -169,6 +176,14 @@ it("a read never downloads: not the page, nor a frame, nor a download link", asy
   expect(await readPage(`${page.url}/telecharge-cadre`)).toMatchObject({ ok: { title: "telecharge" } });
   expect(await readPage(`${page.url}/telecharge`)).toHaveProperty("err");
   await new Promise((r) => setTimeout(r, 1_000));
+  expect(await downloads()).toEqual([]);
+});
+
+it("a download the page starts while it loads: the page is still read, at once", async () => {
+  const start = Date.now();
+  expect(await readPage(`${page.url}/telecharge-pendant`)).toMatchObject({ ok: { title: "pendant", text: expect.stringContaining("Texte lu") } });
+  // Not the 26 s forced read: generous for a loaded machine (measured 2.4-8 s with 8 copies and 12 busy loops).
+  expect(Date.now() - start).toBeLessThan(20_000);
   expect(await downloads()).toEqual([]);
 });
 

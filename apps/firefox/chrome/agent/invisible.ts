@@ -385,8 +385,9 @@ function readIn<T>(
           const refused = ChromeUtils.getXPCOMErrorName(status) === "NS_ERROR_WONT_HANDLE_CONTENT" && current() !== "about:blank";
           if (!Components.isSuccessCode(status) && status !== Cr.NS_BINDING_ABORTED && !refused)
             return finish({ error: new Error(`Page non chargée : ${ChromeUtils.getXPCOMErrorName(status)}`) });
-          // The shown page stays: its calm, cut by this navigation's start, resumes.
-          if (!Components.isSuccessCode(status)) return void (loaded && waitCalm());
+          // The shown page stays: its calm, cut by this navigation's start, resumes. A download the page starts while it
+          // loads (refused) ends that page's own load: it is the read's first load, else nothing read it until the 30 s.
+          if (!Components.isSuccessCode(status) && !refused) return void (loaded && waitCalm());
           const first = !loaded;
           loaded = true;
           // Past the forced-read time already (slow page): read as is.
