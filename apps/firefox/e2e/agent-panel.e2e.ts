@@ -258,6 +258,30 @@ it("a starting machine: the panel says « L'atelier démarre… » instead of «
   expect(await inUi(m, "return doc.querySelector('[data-testid=\"agent-panel\"]').textContent", [], "agent")).not.toContain("Préparation");
 });
 
+it("a slow start: the keyboard the user took elsewhere meanwhile does not jump into the terminal once the agent is ready", async () => {
+  // Docker answers after 8 s: the session stays in preparation, the terminal's keyboard is owed until it is active.
+  await launch({ FAKE_DOCKER_SLOW: "1" });
+  await openTab("/a.html");
+  await openPanel();
+  // The user goes back to the page and types there while the agent starts (after the panel's own retries, 500 ms).
+  await new Promise((r) => setTimeout(r, 700));
+  await m.execute("gBrowser.selectedBrowser.focus();");
+  await waitFor(m, "return document.activeElement === gBrowser.selectedBrowser", (v) => v === true);
+  await terminalShows("fake agent ready>", 30_000);
+  await new Promise((r) => setTimeout(r, 800));
+  expect(await m.execute("return document.activeElement === gBrowser.selectedBrowser")).toBe(true);
+  expect(await inUi(m, "return !!doc.activeElement?.classList.contains('xterm-helper-textarea') && doc.hasFocus()", [], "agent")).toBe(false);
+});
+
+it("a slow start: with the keyboard left on the panel, the terminal takes it once the agent is ready", async () => {
+  await launch({ FAKE_DOCKER_SLOW: "1" });
+  await openTab("/a.html");
+  await openPanel();
+  await terminalShows("fake agent ready>", 30_000);
+  await waitFor(m, "return document.activeElement?.id", (v) => v === "ressac-agent");
+  await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 10_000, "agent");
+});
+
 describe("the agent selector", () => {
   const SELECT = '[data-testid="agent-profile"]';
   const argsFile = () => join(w!.dataDir, "workspace", "fake-agent-args.json");
