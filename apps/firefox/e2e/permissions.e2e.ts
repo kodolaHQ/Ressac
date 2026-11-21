@@ -147,6 +147,9 @@ describe("site permissions", () => {
     await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
     await m.setContext("content");
     try {
+      // Under load the page can still be 0×0 right after its load (its size not yet received from the parent): the click
+      // would be out of bounds, or land before its first layout.
+      await waitFor(m, `return innerWidth > 0 && innerHeight > 0 && document.readyState === "complete";`, (x) => x === true);
       if (inFrame) await m.command("WebDriver:SwitchToFrame", { id: 0 });
       const found = await m.command<{ value: Record<string, string> }>("WebDriver:FindElement", { using: "css selector", value: "#go" });
       await m.command("WebDriver:PerformActions", {
@@ -311,9 +314,12 @@ describe("site permissions", () => {
     const before = await m.execute<number>(top);
     const id = await open(base, "notif");
     await waitBanner((t) => t !== null);
-    const r = await m.execute<{ banner: number[]; page: number }>(
+    // The banner enters with a transition: the page reaches its place once it is done.
+    const r = await waitFor<{ banner: number[]; page: number }>(
+      m,
       `const b = document.querySelector('${BANNER}').getBoundingClientRect(); return { banner: [b.top, b.bottom], page: gBrowser.selectedBrowser.getBoundingClientRect().top };`,
-    );
+      (v) => v.page >= v.banner[1]! - 0.5,
+    ).catch(() => m.execute<{ banner: number[]; page: number }>(`const b = document.querySelector('${BANNER}').getBoundingClientRect(); return { banner: [b.top, b.bottom], page: gBrowser.selectedBrowser.getBoundingClientRect().top };`));
     expect(r.banner[0]).toBe(0);
     expect(r.banner[1]).toBeGreaterThan(20);
     expect(r.page).toBeGreaterThanOrEqual(r.banner[1]! - 0.5);
