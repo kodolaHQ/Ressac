@@ -149,6 +149,7 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
   );
   if (typeof out === "number") closeSync(out);
   const exited = new Promise<void>((r) => proc.once("exit", () => r()));
+  track(proc.pid!);
   try {
     const port = await waitFor(
       () => readFile(path.join(profile, "MarionetteActivePort"), "utf8").then((t) => Number(t.trim()) || undefined, () => undefined),
@@ -167,6 +168,7 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
         await exited;
         clearTimeout(timer);
         await groupEnded(proc.pid!);
+        live.delete(proc.pid!);
         await cleanup();
       })());
     return { marionette, profile, dataDir, pid: proc.pid!, close };
@@ -174,9 +176,37 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
     proc.kill("SIGKILL");
     await exited;
     await groupEnded(proc.pid!);
+    live.delete(proc.pid!);
     await cleanup();
     throw e;
   }
+}
+
+/** The process groups this worker started and has not seen end. */
+const live = new Set<number>();
+let hooked = false;
+const killLive = () => {
+  for (const pgid of live)
+    try {
+      process.kill(-pgid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
+};
+/**
+ * A detached group outlives its parent: a worker that exits, or is stopped (Ctrl-C, vitest ending it), kills the
+ * groups it started so no headless Ressac is left behind. A SIGKILLed worker still leaves them.
+ */
+function track(pgid: number): void {
+  live.add(pgid);
+  if (hooked) return;
+  hooked = true;
+  process.once("exit", killLive);
+  for (const [sig, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const)
+    process.once(sig, () => {
+      killLive();
+      process.exit(code);
+    });
 }
 
 /**
