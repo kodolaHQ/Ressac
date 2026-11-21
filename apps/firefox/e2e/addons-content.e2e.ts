@@ -74,7 +74,8 @@ describe("add-ons in pages", () => {
     await installAddon(m, hider());
     const tab = await open(m, "/cache.html");
     const display = "return [getComputedStyle(document.getElementById('cache-moi')).display, getComputedStyle(document.getElementById('reste')).display].join()";
-    expect(await inPage(m, tab, display)).toBe("none,block");
+    // The add-on's sheet can land after the load the tab waited for.
+    await expect.poll(() => inPage(m, tab, display)).toBe("none,block");
   });
 });
 

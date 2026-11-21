@@ -88,7 +88,7 @@ describe("Settings › Raccourcis", () => {
     expect(await inUi<number>(m, "return doc.querySelectorAll('[data-testid^=\"shortcut-\"][data-testid$=\"-edit\"]').length")).toBe(SHORTCUT_IDS.length);
     expect(await inUi<boolean>(m, "return doc.querySelector('[data-testid=\"vim-mode\"]').checked")).toBe(false);
     await click(m, '[data-testid="vim-mode"]');
-    expect((await state(m)).settings.vimMode).toBe(true);
+    await expect.poll(async () => (await state(m)).settings.vimMode).toBe(true);
   });
 
   it("the vim keys' table shows only while the mode is on", async () => {
