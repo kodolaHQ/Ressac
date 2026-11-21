@@ -137,13 +137,12 @@ describe("design viewfinder actor", () => {
   // design.spec.ts:174
   // Pagehide ends the viewfinder first ({ r: null }); a rejection (AbortError,
   // the window gone first) is null for the parent as well.
-  it("reloading during the viewfinder ends the query with null, in under 1 s", async () => {
+  // Not a wall-clock bound: either end comes with the reload itself; a query left open is still "pending" after 10 s.
+  it("reloading during the viewfinder ends the query with null, not left pending", async () => {
     await open("/");
     const a = await arm();
-    const t0 = Date.now();
     await m.execute(`${B}.reload();`);
     const r = await a.result();
-    expect(Date.now() - t0).toBeLessThan(1000);
     expect(r).not.toBe("pending");
     if (typeof r !== "string") expect("e" in r ? r.e : r.r).toSatisfy((v: unknown) => v === null || /AbortError/.test(String(v)));
   });

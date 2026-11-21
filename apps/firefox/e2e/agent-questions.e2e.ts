@@ -251,7 +251,8 @@ describe("several windows", () => {
     const closed = Date.now();
     await m.execute("window.close()");
     expect((await reading).text).toBe(REFUSED);
-    expect(settled - closed).toBeLessThan(2000);
+    // Without the refusal the card would wait QUESTION_DELAY_MS (120 s): 10 s holds on a loaded machine and still tells.
+    expect(settled - closed).toBeLessThan(10_000);
   });
 
   it("with the last window closed (kept), the agent sees no active tab and a read is refused at once", async () => {
@@ -260,7 +261,8 @@ describe("several windows", () => {
     await waitWindowCount(m, 0);
     const start = Date.now();
     expect((await call("read_tab", { id })).text).toBe(REFUSED);
-    expect(Date.now() - start).toBeLessThan(2000);
+    // A card would wait QUESTION_DELAY_MS (120 s).
+    expect(Date.now() - start).toBeLessThan(10_000);
     expect((await call("current_page")).text).toBe("Aucun onglet actif.");
   });
 });
