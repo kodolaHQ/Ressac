@@ -19,7 +19,7 @@ describe("parseDsn", () => {
 
 describe("scrub", () => {
   it("replaces home and web urls", () => {
-    expect(scrub("ENOENT /Users/marie/Ressac/x and https://banque.fr/compte?id=3", home)).toBe("ENOENT ~/Ressac/x and <url>");
+    expect(scrub("ENOENT /Users/marie/Ressac/x and https://banque.fr/compte?id=3", home)).toBe("ENOENT ~/…");
   });
   it("hides every private scheme but keeps chrome and resource", () => {
     for (const u of ["file:///Users/marie/a", "wss://x", "blob:https://a/b", "data:text/html,hi"]) expect(scrub(u, home)).toBe("<url>");
@@ -34,14 +34,46 @@ describe("scrub hardening", () => {
   });
   it("replaces home only at a path boundary, trailing slash ignored", () => {
     for (const h of [home, home + "/"]) {
-      expect(scrub("/Users/marie/x", h)).toBe("~/x");
+      expect(scrub("/Users/marie/x", h)).toBe("~/…");
       expect(scrub("in /Users/marie", h)).toBe("in ~");
-      expect(scrub("/Users/marieX/f", h)).toBe("/Users/marieX/f");
+      expect(scrub("/Users/marieX/f", h)).toBe("<path>");
     }
   });
   it("scrubs no home when it is empty or the root", () => {
     expect(scrub("/a/b", "")).toBe("/a/b");
     expect(scrub("/a/b", "/")).toBe("/a/b");
+  });
+});
+
+describe("scrub: what the security bench saw leave", () => {
+  it("hides the home in another case, decomposed, JSON-escaped, and every folder name under it", () => {
+    expect(scrub("/users/marie/x", home)).toBe("~/…");
+    expect(scrub("/Users/andre\u0301/a", "/Users/andr\u00e9")).toBe("~/…");
+    expect(scrub('{"p":"\\/Users\\/marie\\/Espace Banque"}', home)).toBe('{"p":"~/…"}');
+    expect(scrub("ENOENT ~/Ressac/Espace Banque/projet-divorce/app.js", home)).toBe("ENOENT ~/…");
+    expect(scrub("/Users/marie/Ressac/Espace Banque/projet-divorce/app.js", home)).not.toContain("divorce");
+    expect(scrub("/Volumes/ClientSecret/plan.pdf", home)).toBe("<path>");
+  });
+  it("hides other schemes and glued or wrapped addresses, but keeps chrome, resource and moz-src", () => {
+    for (const u of ["ftp://a.b/c", "sftp://a.b/c", "moz-extension://1234-uuid/p.html", "mailto:marie@x.fr", "about:reader?url=https%3A%2F%2Fbank.example%2Fx"])
+      expect(scrub(u, home)).toBe("<url>");
+    expect(scrub("url_https://bank.example/a", home)).toBe("url_<url>");
+    expect(scrub("moz-src:///browser/x.mjs", home)).toBe("moz-src:///browser/x.mjs");
+  });
+});
+
+describe("errorEnvelope: the message", () => {
+  const value = (message: string, type = "Error") =>
+    JSON.parse(errorEnvelope({ source: "host", type, message }, { release: "1", home, eventId: "e", now: new Date(0) }).split("\n")[2]!).exception.values[0];
+  it("hides addresses without a scheme, bare hosts, IPs and e-mails", () => {
+    const v = value("bank.example/compte/12345?iban=FR76 · Domaine non déclaré : intranet.client-secret.example · 10.0.0.2:8080 · [2a01:e0a::1]:80 · marie.dupont@gmail.com").value;
+    for (const leak of ["bank.example", "12345", "client-secret", "10.0.0.2", "2a01", "marie.dupont", "gmail"]) expect(v).not.toContain(leak);
+  });
+  it("hides a quote after a French elision, typographic quotes, and quotes in the type", () => {
+    expect(value("Impossible d'ouvrir 'contrat-acme.pdf'").value).toBe('Impossible d\'ouvrir "…"');
+    expect(value("can't read 'secret.txt'").value).toBe('can\'t read "…"');
+    expect(value("lu “Marie Dupont” et ‘x’").value).toBe('lu "…" et "…"');
+    expect(value("x", 'Error "secret"').type).toBe('Error "…"');
   });
 });
 
@@ -74,8 +106,8 @@ describe("errorEnvelope", () => {
     expect(ev).toMatchObject({ event_id: "e1", release: "0.1.0", environment: "beta", platform: "node", tags: { source: "host" } });
     expect(ev.sdk.settings).toEqual({ infer_ip: "never" });
     expect(ev.user).toEqual({ ip_address: "0.0.0.0" });
-    expect(ev.exception.values[0]).toMatchObject({ type: "Error", value: "ENOENT ~/x <url>" });
-    expect(ev.exception.values[0].stacktrace.frames[0].filename).toBe("~/p.js");
+    expect(ev.exception.values[0]).toMatchObject({ type: "Error", value: "ENOENT ~/…" });
+    expect(ev.exception.values[0].stacktrace.frames[0].filename).toBe("~/…");
   });
   it("omits the stacktrace when there are no frames", () => {
     const v = JSON.parse(errorEnvelope({ source: "host", type: "Error", message: "m" }, { release: "1", home, eventId: "e", now: new Date() }).split("\n")[2]!).exception.values[0];
