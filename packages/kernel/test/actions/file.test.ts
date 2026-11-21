@@ -224,8 +224,10 @@ describe("FileActions", () => {
     o.onTrace({ block: "lire", step: "read", host: "gitlab.com" });
     o.onTrace({ block: "lire", step: "progress", done: 7, total: 12 });
     expect(f.direct().running[0]!.blocks).toEqual({ lire: { status: "running", items: null, host: "gitlab.com", done: 7, total: 12 } });
+    o.onTrace({ block: "lire", step: "progress", done: 12, total: 12 });
     o.onTrace({ block: "lire", step: "end", status: "succeeded", items: 12 });
-    expect(f.direct().running[0]!.blocks.lire).toMatchObject({ status: "succeeded", items: 12 });
+    // The count stays once the block ended (its last progress and its end can reach the UI as one update).
+    expect(f.direct().running[0]!.blocks.lire).toMatchObject({ status: "succeeded", items: 12, done: 12, total: 12 });
     o.onStep("layout");
     expect(f.direct().running[0]!.step).toBe("layout");
     // surDirect is called on each change.

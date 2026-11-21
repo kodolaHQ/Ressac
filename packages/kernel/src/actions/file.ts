@@ -220,7 +220,8 @@ export class FileActions {
       if (d.direct !== tracking) return;
       const b = tracking.blocks[t.block];
       if (t.step === "start") tracking.blocks[t.block] = { status: "running", items: null };
-      else if (t.step === "end") tracking.blocks[t.block] = { status: t.status, items: t.items };
+      // A per-item block keeps its last count: the UI may get its last progress and its end in one update.
+      else if (t.step === "end") tracking.blocks[t.block] = { status: t.status, items: t.items, ...(b?.total !== undefined ? { done: b.done, total: b.total } : {}) };
       else if (t.step === "progress") tracking.blocks[t.block] = { ...(b ?? { status: "running", items: null }), done: t.done, total: t.total };
       else tracking.blocks[t.block] = { ...(b ?? { status: "running", items: null }), host: t.host };
       if (t.type !== undefined) tracking.blocks[t.block]!.type = t.type;

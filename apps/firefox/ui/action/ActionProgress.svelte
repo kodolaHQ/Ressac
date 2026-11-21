@@ -12,18 +12,8 @@
    */
   let { current, waiting: pending, stop }: { current: DirectAction | null; waiting: boolean; stop: () => void } = $props();
 
-  // The kernel forgets a per-item block's count when it ends: the line keeps the last one seen (« 3 / 3 »). A new
-  // run remounts this component (keyed on its start), nothing gets mixed up.
-  let accounts = $state<Record<string, { done: number; total: number }>>({});
-  $effect(() => {
-    for (const [id, b] of Object.entries(current?.blocks ?? {})) {
-      if (b.total === undefined) continue;
-      const c = { done: b.done ?? 0, total: b.total };
-      const seen = untrack(() => accounts[id]);
-      if (seen?.done !== c.done || seen?.total !== c.total) accounts[id] = c;
-    }
-  });
-  const lines = $derived(Object.entries(current?.blocks ?? {}).map(([id, b]) => ({ id, ...b, account: b.total !== undefined ? { done: b.done ?? 0, total: b.total } : accounts[id] })));
+  // A per-item block keeps its last count once it ended (« 3 / 3 »), from the kernel.
+  const lines = $derived(Object.entries(current?.blocks ?? {}).map(([id, b]) => ({ id, ...b, account: b.total !== undefined ? { done: b.done ?? 0, total: b.total } : undefined })));
   /** The catalog label of each block type; the block id until it is read (or unknown type). */
   let labels = $state.raw<ReadonlyMap<string, string>>(new Map());
   $effect(() =>
