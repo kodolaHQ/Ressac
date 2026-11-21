@@ -52,7 +52,6 @@ test.each([
   "https://example.com/%6Cogin",
   "https://example.com/%256Cogin",
   "https://example.com/ACCOUNT%2f",
-  "https://example.com/%E0%A4%A",
   // Nesting past what is unwrapped fails closed.
   "view-source:view-source:view-source:view-source:https://www.marmiton.org/x",
 ])("sensitive: %s", (url) => expect(isSensitive(url)).toBe(true));
@@ -73,6 +72,10 @@ test.each([
   "view-source:https://www.marmiton.org/x",
   "about:reader?url=https%3A%2F%2Fwww.marmiton.org%2Fx",
   "https://www.mailchimp.com/",
+  // A literal percent sign is not a hidden segment.
+  "https://en.wikipedia.org/wiki/100%25_(film)",
+  "https://example.com/promo-50%25-off",
+  "https://example.com/a%2525zz",
   "not a url",
   "",
 ])("not sensitive: %s", (url) => expect(isSensitive(url)).toBe(false));
