@@ -124,24 +124,18 @@ export function missingApi(m: Marionette): Promise<string[]> {
   return inUi(m, "return [...(ui.ressacMissingApi ?? [])]");
 }
 
-/** The RGB colour at (x, y) of a Marionette screenshot of the browser window (chrome context). */
+/** The RGB colour at (x, y) of the browser window, painted as Marionette's screenshot paints it (chrome context).
+ * Only that pixel is painted: a frame elsewhere in the window (a home widget loading) cannot fail the capture. */
 export async function pixel(m: Marionette, x: number, y: number): Promise<[number, number, number]> {
-  const png = (await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value;
   return m.execute(
     `return (async () => {
-      const img = new Image();
-      img.src = "data:image/png;base64," + arguments[0];
-      await img.decode();
-      const canvas = document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const c = canvas.getContext("2d");
-      c.drawImage(img, 0, 0);
-      // The screenshot is in device pixels.
-      const d = c.getImageData(Math.round(arguments[1] * devicePixelRatio), Math.round(arguments[2] * devicePixelRatio), 1, 1).data;
+      const s = await window.browsingContext.currentWindowGlobal.drawSnapshot(new DOMRect(arguments[0], arguments[1], 1, 1), 1, "white");
+      const c = new OffscreenCanvas(1, 1).getContext("2d");
+      c.drawImage(s, 0, 0);
+      const d = c.getImageData(0, 0, 1, 1).data;
       return [d[0], d[1], d[2]];
     })();`,
-    [png, x, y],
+    [x, y],
   );
 }
 
