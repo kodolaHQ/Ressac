@@ -265,8 +265,15 @@ describe("the builder's Agent tab", () => {
     const before = await view();
     await click(m, ".svelte-flow__controls-zoomin");
     for (const end = Date.now() + 10_000; (await view()) === before; await sleep(100)) if (Date.now() > end) throw new Error("no zoom");
-    await sleep(300);
-    const zoomed = await view();
+    // The zoom may animate: take the view once it stays put, not after a fixed time.
+    let zoomed = await view();
+    for (const end = Date.now() + 10_000; ; ) {
+      await sleep(200);
+      const now = await view();
+      if (now === zoomed) break;
+      if (Date.now() > end) throw new Error("the zoom does not settle");
+      zoomed = now;
+    }
 
     // The agent adds a block between « tri » and « textes » (atomic write, like its tools).
     const file = path.join(widgetDir(dataDir, "veille"), "workflow.json");
