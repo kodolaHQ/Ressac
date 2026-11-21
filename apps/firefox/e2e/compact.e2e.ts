@@ -43,12 +43,12 @@ const waitSidebar = (shown: boolean) =>
     [shown],
   );
 
-/** A mouse move through the widget, as an OS one: over a web page the UI document does not see it. */
-const moveMouse = (x: number) =>
+/** Mouse moves through the widget, as OS ones: over a web page the UI document does not see them. Several in one go, with no round trip between. */
+const moveMouse = (...xs: number[]) =>
   m.execute(
     `const ratio = window.devicePixelRatio;
-     window.windowUtils.sendNativeMouseEvent((window.mozInnerScreenX + arguments[0]) * ratio, (window.mozInnerScreenY + 300) * ratio, window.windowUtils.NATIVE_MOUSE_MESSAGE_MOVE, 0, 0, document.documentElement);`,
-    [x],
+     for (const x of arguments[0]) window.windowUtils.sendNativeMouseEvent((window.mozInnerScreenX + x) * ratio, (window.mozInnerScreenY + 300) * ratio, window.windowUtils.NATIVE_MOUSE_MESSAGE_MOVE, 0, 0, document.documentElement);`,
+    [xs],
   );
 
 async function openPage(): Promise<void> {
@@ -102,8 +102,8 @@ describe("compact mode", () => {
     await waitSidebar(false);
     await moveMouse(5);
     await waitSidebar(true);
-    await moveMouse(600);
-    await moveMouse(100);
+    // Back within the 300 ms the sidebar waits before it hides (App.svelte HIDING_MS): both moves in one go.
+    await moveMouse(600, 100);
     await sleep(500);
     expect((await layout()).sidebar).toBe(true);
   });
