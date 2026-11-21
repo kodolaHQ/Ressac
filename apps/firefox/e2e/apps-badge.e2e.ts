@@ -189,7 +189,8 @@ describe("one Ressac, essai and autre launched in each test", () => {
     const heard = (d: string) => inBadge<string[]>(m, d, "return [...f.contentWindow.heard];");
     await expect.poll(async () => (await heard("essai"))!.length, { timeout: 10_000 }).toBeGreaterThan(0);
     expect(new Set(await heard("essai"))).toEqual(new Set(["app:essai"]));
-    expect(new Set(await heard("autre"))).toEqual(new Set([""]));
+    // Each badge hears on its own schedule: poll the other one too.
+    await expect.poll(async () => new Set(await heard("autre")), { timeout: 10_000 }).toEqual(new Set([""]));
     // Security: a badge cuts only its own app's access.
     await inBadge(m, "autre", `f.contentWindow.ressac.access.cut("app:essai"); return 1;`);
     await sleep(700);
