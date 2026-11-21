@@ -282,6 +282,15 @@ describe("openById", () => {
     m.sites.closed("vidola");
     expect((await m.sites.list()).find((s) => s.id === "vidola")!.open).toBe(false);
   });
+
+  it("a memory request sent while a resync reads the open windows waits for it instead of being refused", async () => {
+    const m = mount();
+    await storeSiteGrant(m.dataDir, "vidola", DeclarationSite.parse(declaration));
+    m.setOpen(["vidola"]);
+    const sync = m.sites.resync();
+    expect(await m.sites.memoryOp({ id: "vidola", url: "/serie/x", op: "remember", key: "k", value: 1 })).toEqual({ ok: true });
+    await sync;
+  });
 });
 
 describe("agir", () => {

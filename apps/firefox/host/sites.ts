@@ -464,6 +464,24 @@ export function createSites(o: {
     console.error("[sites] watch not started:", e);
   }
 
+  /** The resync under way (sites.resync), or done. */
+  let synced: Promise<void> = Promise.resolve();
+  async function resyncNow(): Promise<void> {
+    opened = new Set(await o.chrome.openSites());
+    for (const id of [...openSites.keys()]) if (!opened.has(id)) forget(id);
+    // A host that started again knows the open apps only by id: read again, as they were opened.
+    for (const id of opened)
+      if (!openSites.has(id)) {
+        const p = await prepare(id).catch(() => null);
+        if (p && opened.has(id)) {
+          openSites.set(id, p.site);
+          tweaks.set(id, p.tweaks);
+        }
+      }
+    // A host that started again has no subscription: the windows already open keep their home's feed.
+    for (const id of opened) await memory(id).then((m) => subscribe(id, m), () => {});
+  }
+
   function memory(id: string): Promise<SiteMemory> {
     // During a deletion, the memory is neither reopened nor written (memory.json does not come back).
     if (deletions.has(id)) return Promise.reject(new Error(`appli de site en cours de suppression : ${id}`));
@@ -766,23 +784,14 @@ export function createSites(o: {
       await reread(id);
     },
     // Checked again here: only an open app whose tweaks are granted has a memory for its page.
-    memoryOp: (d) => memoryOp((id) => (granted(id) ? memory(id) : Promise.reject(new Error("pas d'accord"))), d),
-    position: (d) => positions.position(d),
-    resume: (d) => positions.resume(d),
-    async resync() {
-      opened = new Set(await o.chrome.openSites());
-      for (const id of [...openSites.keys()]) if (!opened.has(id)) forget(id);
-      // A host that started again knows the open apps only by id: read again, as they were opened.
-      for (const id of opened)
-        if (!openSites.has(id)) {
-          const p = await prepare(id).catch(() => null);
-          if (p && opened.has(id)) {
-            openSites.set(id, p.site);
-            tweaks.set(id, p.tweaks);
-          }
-        }
-      // A host that started again has no subscription: the windows already open keep their home's feed.
-      for (const id of opened) await memory(id).then((m) => subscribe(id, m), () => {});
+    // After a resync began, its open apps are not known until it ends: their requests wait for it instead of being refused.
+    memoryOp: (d) => synced.then(() => memoryOp((id) => (granted(id) ? memory(id) : Promise.reject(new Error("pas d'accord"))), d)),
+    position: (d) => synced.then(() => positions.position(d)),
+    resume: (d) => synced.then(() => positions.resume(d)),
+    resync() {
+      const r = resyncNow();
+      synced = r.catch(() => {});
+      return r;
     },
     async stop() {
       try {
