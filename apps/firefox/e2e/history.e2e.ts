@@ -342,7 +342,8 @@ describe("history panel", () => {
     await visitedAB();
     await pressKeys(m, "Meta+y");
     await panelOpen(true);
-    expect((await panelLinks()).sort()).toEqual(["Page A", "Page B"]);
+    // The panel mounts, then reads the history: its list fills a round trip later.
+    expect((await until(panelLinks, (l) => l.length > 0)).sort()).toEqual(["Page A", "Page B"]);
     await click(m, `${PANEL} a`, { text: "Page A" });
     await panelOpen(false);
     const s = await state(m);
