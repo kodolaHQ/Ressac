@@ -55,8 +55,8 @@ describe("the window's aura", () => {
     const letter = () =>
       waitUi(m, `const l = doc.querySelector('[data-testid^="tab-"] .letter'); return l ? doc.defaultView.getComputedStyle(l).backgroundImage : null;`, [], 10_000);
     await waitUi(m, "return !!doc.querySelector('[data-testid^=\"tab-\"] .letter')");
-    await new Promise((r) => setTimeout(r, 1200));
-    expect(await letter()).toContain("rgb(59, 139, 235)");
+    // The initial takes the aura's color after a transition: poll its final value, not one read after a fixed time.
+    await expect.poll(letter, { timeout: 10_000 }).toContain("rgb(59, 139, 235)");
   });
 
   it("relaunched on a Lagon space, the sidebar's initials take Lagon at once", async () => {
