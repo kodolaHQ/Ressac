@@ -1,3 +1,5 @@
+import { writeFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { appRow, appWindowExpr, closeAppsPage, inAppView, openAppsPage, rowButton, rowCount, rowState, stopsLog, writeProject, type AppsPage } from "./apps";
 import { dispatch, state, waitFor } from "./firefox";
@@ -125,10 +127,12 @@ describe("Applications page", () => {
 
   // applications.spec.ts:356
   it("Lancer from the page: En marche, port shown, window open; Arrêter closes it", async () => {
-    p = await openAppsPage(BLOCK, { slow: true });
+    // Not « En erreur » while the test holds the launch: the 3 s delay is for the tests that check it.
+    p = await openAppsPage(BLOCK, { slow: true, env: { RESSAC_APP_DELAY_MS: "30000" } });
     const m = p.m;
     await rowButton(m, "essai", "Lancer");
     await rowState(m, "essai", "launching");
+    writeFileSync(path.join(p.dataDir, "workspace", "projects", "essai", "go"), "");
     await rowState(m, "essai", "running");
     expect(await rowText("essai")).toMatch(/port 1528[5-9]/);
     await expect.poll(() => filterText("running"), { timeout: 10_000 }).toBe("En marche 1");

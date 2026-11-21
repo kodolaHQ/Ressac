@@ -132,7 +132,8 @@ export interface AppsPage {
 
 /**
  * Three projects (`essai` an application, `zod` a POC, `vieux` without
- * manifest) and the Applications page open. `lent`: essai's server waits a second before listening (« Launch… » shows).
+ * manifest) and the Applications page open. `slow`: essai's server listens only once its folder holds a `go` file (« Lancement… »
+ * shows until the test writes it; the page skips a state that ends before its list comes back, measured under load).
  * `dataDir` and `profile` given are reused (a restart); the caller removes the folders.
  */
 export async function openAppsPage(
@@ -143,7 +144,7 @@ export async function openAppsPage(
   const profile = o.profile ?? (await mkdtemp(join(os.tmpdir(), "ressac-firefox-")));
   if (!o.dataDir) {
     if (o.projects ?? true) {
-      writeProject(dataDir, "essai", { manifest: { name: "Essai", ...(o.slow ? { launch: "sleep 1 && node serveur.mjs" } : {}) } });
+      writeProject(dataDir, "essai", { manifest: { name: "Essai", ...(o.slow ? { launch: "until [ -e go ]; do sleep 0.1; done; node serveur.mjs" } : {}) } });
       writeProject(dataDir, "zod", { manifest: { type: "poc", origin: "https://github.com/colinhacks/zod" } });
       writeProject(dataDir, "vieux");
     }
