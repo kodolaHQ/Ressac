@@ -4,7 +4,7 @@
 
   // An Ollama model picked among the installed ones (read by the host); a name typed by hand when Ollama has none to offer.
   let { url, value, onchange }: { url: string; value: string; onchange: (name: string) => void } = $props();
-  let models = $state<{ name: string; size?: string }[] | null>(null);
+  let models = $state<{ name: string; size?: string; cloud?: true }[] | null>(null);
   let error = $state<string | null>(null);
   // Only the latest read applies: an older answer must not overwrite a newer one.
   let reads = 0;
@@ -27,7 +27,7 @@
     <select data-testid="ollama-model" aria-label={t("agent-engine-model")} {value} onchange={(e) => onchange(e.currentTarget.value)}>
       {#if value === ""}<option value="" disabled>{t("agent-ollama-choose")}</option>{/if}
       {#if missing}<option value={value}>{t("agent-ollama-missing", { name: value })}</option>{/if}
-      {#each models as m (m.name)}<option value={m.name}>{m.name}{m.size ? ` · ${m.size}` : ""}</option>{/each}
+      {#each models as m (m.name)}<option value={m.name}>{m.name}{m.size ? ` · ${m.size}` : ""}{m.cloud ? ` · ${t("agent-ollama-cloud")}` : ""}</option>{/each}
     </select>
   {:else}
     <input data-testid="ollama-model" aria-label={t("agent-engine-model")} {value} spellcheck="false" onchange={(e) => onchange(e.currentTarget.value)} />
