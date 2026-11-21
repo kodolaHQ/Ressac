@@ -36,6 +36,14 @@ async function openPanel(): Promise<void> {
   if (await m.execute("return document.getElementById('ressac-agent').hidden")) await toggleWithButton();
   await shown();
 }
+/**
+ * The panel's focus request has run (its first try focused the agent's frame) and its last retry is over: a timer as
+ * long as that retry (AgentPanel.svelte, 500 ms), set in the same window after it, fires after it.
+ */
+async function panelRetriesOver(): Promise<void> {
+  await waitFor(m, "return document.activeElement?.id", (v) => v === "ressac-agent");
+  await inUi(m, "await new Promise((ok) => ui.setTimeout(ok, 500));", [], "agent");
+}
 /** Opens a tab and waits for its page. */
 async function openTab(path: string): Promise<void> {
   await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${server.url}${path}` });
@@ -263,8 +271,8 @@ it("a slow start: the keyboard the user took elsewhere meanwhile does not jump i
   await launch({ FAKE_DOCKER_SLOW: "1" });
   await openTab("/a.html");
   await openPanel();
-  // The user goes back to the page and types there while the agent starts (after the panel's own retries, 500 ms).
-  await new Promise((r) => setTimeout(r, 700));
+  // The user goes back to the page and types there while the agent starts (after the panel's own retries).
+  await panelRetriesOver();
   await m.execute("gBrowser.selectedBrowser.focus();");
   await waitFor(m, "return document.activeElement === gBrowser.selectedBrowser", (v) => v === true);
   await terminalShows("fake agent ready>", 30_000);
@@ -277,7 +285,7 @@ it("a slow start: the command bar opened meanwhile keeps the keyboard once the a
   await launch({ FAKE_DOCKER_SLOW: "1" });
   await openTab("/a.html");
   await openPanel();
-  await new Promise((r) => setTimeout(r, 700));
+  await panelRetriesOver();
   await pressKeys(m, "Meta+t");
   await waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input'");
   await terminalShows("fake agent ready>", 30_000);
