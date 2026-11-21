@@ -12,6 +12,7 @@ import { dispatch, pressClosing, waitFor, waitReady, waitWindowCount } from "./f
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { inBrowser, resolveLocalHosts } from "./sites";
+import { inUi } from "./ui";
 
 // Plan 35b Task 2: the chrome's design service (chrome/store/design.ts) driven through store.design, the overlays
 // replaced by a recorder (they come with Task 3). The demo is 127.0.0.1:15303, in this file's block 15300-15304.
@@ -435,6 +436,9 @@ describe("design service", () => {
   // Review minor 4: the last window's id is reused when it reopens (windows.ts kept).
   it("closing the last window forgets its overlay context: reopened, the context is fresh", async () => {
     await open("/");
+    // The window's UI closes its cart column once it reads the last test's stop: a close that would overtake this
+    // openCart. ✎ unpressed, that read is applied, and its effect (designPanel(false)) ran in the same flush.
+    await expect.poll(() => inUi(m, `return doc.querySelector('[data-testid="design-button"]')?.getAttribute("aria-pressed");`), { timeout: 10_000 }).toBe("false");
     await svc("await d.openCart(t); return 1;");
     expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("basket");
     const id = await m.execute<string>("return window.ressacWindow.windowId;");
