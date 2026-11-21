@@ -169,11 +169,11 @@ describe("action page rendering", () => {
     expect(await q.text(tid("block-group"))).toContain("Dans le groupe.");
     expect(await q.text(tid("block-columns"))).toContain("À droite.");
     // The colours follow the theme (Firefox's system theme pref stands in for Playwright's emulateMedia).
-    const background = () => inUi<string>(m, "return ui.getComputedStyle(doc.querySelector(arguments[0])).backgroundColor;", [tid("block-callout")]);
     await m.execute("Services.prefs.setIntPref('ui.systemUsesDarkTheme', 1);");
     try {
-      await new Promise((r) => setTimeout(r, 300));
-      const dark = await background();
+      // Waited, not paused for: a loaded machine applies the theme change late.
+      await waitUi(m, "return ui.matchMedia('(prefers-color-scheme: dark)').matches;");
+      const dark = await inUi<string>(m, "return ui.getComputedStyle(doc.querySelector(arguments[0])).backgroundColor;", [tid("block-callout")]);
       await m.execute("Services.prefs.setIntPref('ui.systemUsesDarkTheme', 0);");
       await waitUi(m, "return ui.getComputedStyle(doc.querySelector(arguments[0])).backgroundColor !== arguments[1];", [tid("block-callout"), dark]);
     } finally {
