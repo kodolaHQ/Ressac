@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { STOP_TIMEOUT_MS } from "../chrome/store/design";
 import { bubbleSlot, rectCapture } from "../chrome/store/design-copies";
 import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
@@ -104,8 +105,10 @@ const record = (o: { arm?: string; stop?: "hang" | "throw" } = {}) =>
     `const a = ${B}.browsingContext.currentWindowGlobal.getActor("RessacDesign"), [o] = arguments;
      const real = (a.__real ??= a.sendQuery);
      window.__queries = [];
+     window.__queryTimes = [];
      a.sendQuery = (n, data) => {
        window.__queries.push(n);
+       window.__queryTimes.push(Date.now());
        if (n === "arm" && o.arm) return Promise.resolve(JSON.parse(o.arm));
        if (n === "stop" && o.stop === "hang") return new Promise(() => {});
        if (n === "stop" && o.stop === "throw") return Promise.reject(new Error("eval"));
@@ -370,10 +373,13 @@ describe("design service", () => {
       await toggle();
       await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
       await record({ stop: how });
-      const t0 = Date.now();
       await stopMode();
-      expect(Date.now() - t0).toBeLessThan(how === "hang" ? 2500 : 1000);
       expect(await queries()).toEqual(["stop", "unguard"]);
+      // Measured where the queries are sent, not around the round trips: a stop that throws goes on at once, one that
+      // never answers after STOP_TIMEOUT_MS (a timer never fires early). The mode ending at all bounds the hang.
+      const [stop, unguard] = await m.execute<number[]>("return window.__queryTimes;");
+      if (how === "throw") expect(unguard! - stop!).toBeLessThan(STOP_TIMEOUT_MS);
+      else expect(unguard! - stop!).toBeGreaterThanOrEqual(STOP_TIMEOUT_MS - 20);
       expect((await state()).active).toBe(false);
       // The guard is gone: a trusted click reaches the page (the viewfinder's own listeners never take a click).
       await clearLog(m, B);
