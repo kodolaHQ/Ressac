@@ -123,6 +123,12 @@ const clearContainer = (userContextId: number) =>
   );
 
 /**
+ * The host pages being loaded, with their windowless browser: until the load ends nothing else holds them (the web
+ * progress holds its listener weakly), and a GC meanwhile (seen under load) stopped the load, the read waiting forever.
+ */
+const hostPagesLoading = new Set<object>();
+
+/**
  * A windowless browser hosting one remote <browser> in `userContextId` (BackgroundPageThumbs.sys.mjs).
  * `private`: a private window, so that add-ons without private access (webRequest included) never see the page.
  */
@@ -133,20 +139,22 @@ async function createBrowser(userContextId: number, o: { private: boolean }): Pr
     (o.private ? Ci.nsIWebBrowserChrome.CHROME_PRIVATE_WINDOW : 0);
   const windowless = Services.appShell.createWindowlessBrowser(true, flags);
   const close = () => windowless.close();
+  const loading = { windowless, listener: null as object | null };
+  hostPagesLoading.add(loading);
   try {
     await new Promise<void>((ok) => {
       const progress = windowless.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIWebProgress);
-      const listener = {
+      const listener = (loading.listener = {
         QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
         onStateChange(_p: unknown, request: unknown, state: number) {
           if (!request || !(state & Ci.nsIWebProgressListener.STATE_STOP) || !(state & Ci.nsIWebProgressListener.STATE_IS_NETWORK)) return;
           progress.removeProgressListener(listener);
           ok();
         },
-      };
+      });
       progress.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_STATE_ALL);
       windowless.loadURI(Services.io.newURI(HOST_PAGE), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
-    });
+    }).finally(() => hostPagesLoading.delete(loading));
     const doc = windowless.document;
     const browser = doc.createXULElement("browser");
     for (const [k, v] of Object.entries({
