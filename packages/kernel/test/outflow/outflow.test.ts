@@ -84,33 +84,24 @@ test("windows are separate", () => {
   expect(o.check("a", `q=${IBAN}`)).toBeUndefined();
 });
 
-test("lastMessage", () => {
+// What the user typed is never a leak: these tests see the typed text through check().
+const MAIL = "camille.roussel@example.com";
+const typedThenRead = (...chunks: string[]) => {
   const o = new Outflow();
-  expect(o.lastMessage("w")).toBeUndefined();
-  o.typed("w", "trouve un vélo\r");
-  expect(o.lastMessage("w")).toBe("trouve un vélo");
-  o.typed("w", "pas \x1b[Acher");
-  expect(o.lastMessage("w")).toBe("pas cher");
-  o.typed("w", "\r");
-  expect(o.lastMessage("w")).toBe("pas cher");
-});
+  for (const c of chunks) o.typed("w", c);
+  o.read("w", MAIL, "mail.google.com");
+  return o.check("w", MAIL);
+};
 
 test("typed escapes, paste returns, backspace and clear keys", () => {
-  const o = new Outflow();
-  o.typed("w", "\x1b]0;title\x07\x1bOAab\x1b[1;5Dc\x7f\x08d\x1bxe");
-  expect(o.lastMessage("w")).toBe("ade");
-  o.typed("w", "\x1b[200~ligne 1\rligne 2\x1b[201~");
-  expect(o.lastMessage("w")).toBe("ade" + "ligne 1\nligne 2");
-  o.typed("w", "\x15effacé\x03neuf\x1b]2;t\x1b\\\r");
-  expect(o.lastMessage("w")).toBe("neuf");
+  expect(typedThenRead("\x1b]0;title\x07\x1bOAcamille.rx\x7foussel@exa\x1b[1;5Dmple.com\r")).toBeUndefined();
+  expect(typedThenRead("\x1b[200~ligne 1\r" + MAIL + "\x1b[201~\r")).toBeUndefined();
+  // Cleared before it was sent: not the user's.
+  expect(typedThenRead("\x15" + MAIL + "\x03neuf\r")).toMatchObject({ kind: "email" });
 });
 
 test("an escape split across chunks is still stripped", () => {
-  const o = new Outflow();
-  o.typed("w", "a\x1b");
-  o.typed("w", "[20");
-  o.typed("w", "0~b\rc\x1b[201~");
-  expect(o.lastMessage("w")).toBe("ab\nc");
+  expect(typedThenRead("camille.rous\x1b", "[20", "0~sel@example.com\x1b[201~\r")).toBeUndefined();
 });
 
 test("forget clears read and typed for that window only", () => {
@@ -121,9 +112,7 @@ test("forget clears read and typed for that window only", () => {
   }
   o.forget("a");
   expect(o.check("a", "camille.roussel@example.com")).toBeUndefined();
-  expect(o.lastMessage("a")).toBeUndefined();
   expect(o.check("b", "camille.roussel@example.com")).toMatchObject({ kind: "email" });
-  expect(o.lastMessage("b")).toBe("bonjour");
 });
 
 test("oldest read items are dropped past 20 000", () => {
@@ -188,17 +177,12 @@ test("any separator between digits is ignored", () => {
 });
 
 test("DCS, APC, PM and SOS payloads are not typed text", () => {
-  const o = new Outflow();
-  o.typed("w", "\x1bP1$r0;1m\x1b\\h\x1b_apc\x07i\x1b^pm\x1b\\\x1bXsos\x1b\\!");
-  expect(o.lastMessage("w")).toBe("hi!");
+  expect(typedThenRead("\x1bP1$r0;1m\x1b\\camille\x1b_apc\x07.roussel\x1b^pm\x1b\\@example.com\x1bXsos\x1b\\\r")).toBeUndefined();
 });
 
 test("the message being typed is capped to its latest 64 KB", () => {
-  const o = new Outflow();
-  o.typed("w", "x".repeat(200_000) + "fin");
-  const last = o.lastMessage("w")!;
-  expect(last.length).toBe(64 * 1024);
-  expect(last.endsWith("fin")).toBe(true);
+  expect(typedThenRead("x".repeat(200_000) + " " + MAIL)).toBeUndefined();
+  expect(typedThenRead(MAIL + " " + "x".repeat(200_000))).toMatchObject({ kind: "email" });
 });
 
 test("junk before or after a private item in the same read does not hide it", () => {
@@ -399,5 +383,4 @@ test("forgetTyped clears what was typed, not what was read", () => {
   expect(o.check("w", "camille.roussel@example.com")).toBeUndefined();
   o.forgetTyped("w");
   expect(o.check("w", "camille.roussel@example.com")).toMatchObject({ kind: "email" });
-  expect(o.lastMessage("w")).toBeUndefined();
 });
