@@ -196,6 +196,7 @@ describe("design viewfinder actor", () => {
     const at = { email: await center(m, B, "#email"), link: await center(m, B, "#lien"), send: await center(m, B, "#envoyer") };
     await clearLog(m, B);
     const tabs = await m.execute<number>("return gBrowser.tabs.length;");
+    // No wait on the host here: the page hooks querySelectorAll, so any probe would land in its log.
     const a = await armActor(m, B);
     await sleep(200);
     await trustedMouse(m, B, at.email, { move: true });
@@ -272,11 +273,11 @@ describe("design viewfinder actor", () => {
     await stopActor(m, B);
     await clearLog(m, B);
     await trustedMouse(m, B, "#email");
-    // Well inside the 500 ms swallow.
-    await sleep(100);
-    expect((await pageLog(m, B)).reactions).toContain("click:email");
+    // Well inside the 500 ms swallow. A swallowed click never comes later: polling for it proves the same.
+    await expect.poll(async () => (await pageLog(m, B)).reactions, { timeout: 10_000 }).toContain("click:email");
     await afterSwallow();
     a = await armActor(m, B, `globalThis.__viewfinderPick = () => { throw new Error("pick"); }; new Promise((ok) => (globalThis.__viewfinderStop = () => ok(null)))`);
+    // A custom script shows no host to wait on: pacing only.
     await sleep(100);
     await trustedMouse(m, B, "#envoyer");
     expect(await a.result()).toEqual({ r: null });
@@ -298,8 +299,7 @@ describe("design viewfinder actor", () => {
     expect(await hosts()).toBe(0);
     await m.execute("gBrowser.selectedTab = window.__designTabA;");
     await waitFor(m, "return gBrowser.selectedTab === window.__designTabA;", (v) => v === true);
-    await sleep(200);
-    expect(await hosts()).toBe(1);
+    await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     await trustedMouse(m, B, "#envoyer");
     expect(((await a.result()) as { r?: { selector: string } }).r?.selector).toBe("#envoyer");
   });
