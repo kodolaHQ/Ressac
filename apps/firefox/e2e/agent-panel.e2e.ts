@@ -273,6 +273,18 @@ it("a slow start: the keyboard the user took elsewhere meanwhile does not jump i
   expect(await inUi(m, "return !!doc.activeElement?.classList.contains('xterm-helper-textarea') && doc.hasFocus()", [], "agent")).toBe(false);
 });
 
+it("a slow start: the command bar opened meanwhile keeps the keyboard once the agent is ready", async () => {
+  await launch({ FAKE_DOCKER_SLOW: "1" });
+  await openTab("/a.html");
+  await openPanel();
+  await new Promise((r) => setTimeout(r, 700));
+  await pressKeys(m, "Meta+t");
+  await waitUi(m, "return doc.activeElement?.dataset.testid === 'command-input'");
+  await terminalShows("fake agent ready>", 30_000);
+  await new Promise((r) => setTimeout(r, 800));
+  expect(await inUi(m, "return doc.activeElement?.dataset.testid === 'command-input' && doc.hasFocus()")).toBe(true);
+});
+
 it("a slow start: with the keyboard left on the panel, the terminal takes it once the agent is ready", async () => {
   await launch({ FAKE_DOCKER_SLOW: "1" });
   await openTab("/a.html");

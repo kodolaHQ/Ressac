@@ -319,7 +319,7 @@ describe("site permissions", () => {
       m,
       `const b = document.querySelector('${BANNER}').getBoundingClientRect(); return { banner: [b.top, b.bottom], page: gBrowser.selectedBrowser.getBoundingClientRect().top };`,
       (v) => v.page >= v.banner[1]! - 0.5,
-    ).catch(() => m.execute<{ banner: number[]; page: number }>(`const b = document.querySelector('${BANNER}').getBoundingClientRect(); return { banner: [b.top, b.bottom], page: gBrowser.selectedBrowser.getBoundingClientRect().top };`));
+    );
     expect(r.banner[0]).toBe(0);
     expect(r.banner[1]).toBeGreaterThan(20);
     expect(r.page).toBeGreaterThanOrEqual(r.banner[1]! - 0.5);

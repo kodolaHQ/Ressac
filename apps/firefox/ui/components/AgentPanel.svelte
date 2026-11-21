@@ -166,7 +166,6 @@
     if (n === served) return;
     served = n;
     focusOwed = untrack(() => appState.state !== "active");
-    if (focusOwed) watchMoves();
     if (notePending()) userAsked = true;
     // The first-time note keeps the keyboard until Compris.
     const aim = () => visible && !notePending() && terminalAgent.focus();
@@ -182,27 +181,15 @@
   });
   // A session still preparing masks its terminal, which cannot take the keyboard: it does once active (a first opening),
   // unless the user went elsewhere meanwhile (a page, the address bar): the agent may take seconds to start, and the keys
-  // typed there must not jump into its terminal. Any focus moving to another element of the window drops the debt.
+  // typed there must not jump into its terminal: served only while this panel still holds the window's focus (its request
+  // focused it; the top document's activeElement follows the focus into any other frame or page).
   let focusOwed = false;
-  let stopWatching: (() => void) | undefined;
-  function watchMoves(): void {
-    stopWatching?.();
-    const top = window.parent;
-    const moved = (e: FocusEvent) => {
-      if (!(e.target instanceof top.Element) || e.target === window.frameElement) return;
-      focusOwed = false;
-      stopWatching?.();
-    };
-    top.addEventListener("focus", moved, true);
-    stopWatching = () => (top.removeEventListener("focus", moved, true), (stopWatching = undefined));
-  }
-  $effect(() => () => stopWatching?.());
   $effect(() => {
     if (appState.state !== "active" || !visible) return;
     untrack(() => {
-      if (focusOwed && !notePending()) void tick().then(() => visible && !terminalAgent.hasFocus() && terminalAgent.focus());
+      const stillHere = window.parent.document.activeElement === window.frameElement;
+      if (focusOwed && stillHere && !notePending()) void tick().then(() => visible && !terminalAgent.hasFocus() && terminalAgent.focus());
       focusOwed = false;
-      stopWatching?.();
     });
   });
   // The note takes the keyboard; Compris gives it back: to the terminal if the user opened the panel (⌘J, ✦), else to
