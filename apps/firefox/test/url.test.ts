@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { connectionOf, toUrl as toUrlWith } from "../core/url";
+import { connectionFromSecurity, connectionOf, STATE_IS_BROKEN, STATE_IS_SECURE, toUrl as toUrlWith } from "../core/url";
 import { customEngineError, searchTemplate, type SearchEngine } from "../shared/search";
 
 const toUrl = (input: string, engine: SearchEngine) => toUrlWith(input, searchTemplate({ engine, customEngine: null }));
@@ -56,4 +56,21 @@ test("connectionOf: https is secure, http elsewhere than this Mac is not, local 
   for (const url of ["http://localhost:5300/", "http://app.localhost/", "http://127.0.0.1/", "http://[::1]:80/", "about:blank", "file:///tmp/a.html", "resource://ressac/home.html", "moz-extension://x/p.html", "pas une adresse"]) {
     expect(connectionOf(url)).toBeNull();
   }
+});
+
+test("connectionFromSecurity follows Firefox's identity block", () => {
+  const INSECURE = 0x4;
+  const MIXED_ACTIVE = 0x20;
+  const on = (url: string, state: number, o: { secureContext?: boolean; documentUri?: string } = {}) =>
+    connectionFromSecurity(url, { state, secureContext: o.secureContext ?? false, documentUri: o.documentUri ?? url });
+  expect(on("https://exemple.fr/", STATE_IS_SECURE, { secureContext: true })).toBe("secure");
+  // Mixed active content or a weak cipher: broken.
+  expect(on("https://exemple.fr/", STATE_IS_BROKEN | MIXED_ACTIVE, { secureContext: true })).toBe("insecure");
+  expect(on("https://expired.badssl.com/", INSECURE, { documentUri: "about:certerror?e=nssBadCert&u=https%3A//expired.badssl.com/" })).toBe("insecure");
+  expect(on("https://exemple.fr/", INSECURE, { documentUri: "about:neterror?e=nssFailure2&u=x" })).toBe("insecure");
+  expect(on("http://exemple.fr/", INSECURE, { documentUri: "about:httpsonlyerror?e=x" })).toBe("insecure");
+  expect(on("https://nulle-part.invalid/", INSECURE, { documentUri: "about:neterror?e=dnsNotFound&u=x" })).toBeNull();
+  expect(on("http://exemple.fr/", INSECURE)).toBe("insecure");
+  expect(on("http://localhost:5300/", INSECURE, { secureContext: true })).toBeNull();
+  for (const url of ["about:blank", "resource://ressac/home.html", "moz-extension://x/p.html", "file:///tmp/a.html"]) expect(on(url, INSECURE, { secureContext: true })).toBeNull();
 });

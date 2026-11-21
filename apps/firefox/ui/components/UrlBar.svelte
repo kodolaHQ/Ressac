@@ -16,7 +16,8 @@
     return id ? appState.value?.tabs[id] : undefined;
   });
   const agentRights = $derived(tab ? accessOf(tab.id) : undefined);
-  const connection = $derived(tab ? connectionOf(tab.url) : null);
+  // Firefox's own judgment once it has reported one; the scheme before (a tab not loaded yet, an unloaded essential).
+  const connection = $derived(tab ? (tab.security !== undefined ? tab.security : connectionOf(tab.url)) : null);
   let input = $state<string | null>(null); // non-null during editing
   let field: HTMLInputElement;
   let suggestions = $state<Visit[]>([]);

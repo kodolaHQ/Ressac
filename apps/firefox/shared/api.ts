@@ -68,6 +68,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
         error: z.string().nullable(),
         sound: z.enum(["playing", "muted"]).nullable(),
         playback: z.enum(["playing", "paused"]).nullable(),
+        security: z.enum(["secure", "insecure"]).nullable(),
         unloaded: z.boolean(),
         notifies: z.boolean(),
       })

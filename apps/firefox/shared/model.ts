@@ -122,6 +122,8 @@ export interface Tab {
   sound?: "playing" | "muted" | null;
   /** The tab's media session (a video, music), as Firefox's media keys see it; volatile, never saved. */
   playback?: "playing" | "paused" | null;
+  /** The page's connection as Firefox's identity block judges it (core/url.ts connectionFromSecurity); absent until Firefox reports it; volatile, never saved. */
+  security?: "secure" | "insecure" | null;
   /** The tab uses the camera or the microphone while another tab is shown (the sidebar's call bar); volatile, never saved. */
   call?: { mic: boolean; camera: boolean };
   /** An essential unloaded by the user: its page is closed until the essential is opened again; volatile, never saved. */

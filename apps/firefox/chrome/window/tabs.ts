@@ -2,6 +2,7 @@ import type { Action } from "../../shared/api";
 import { FAVICON_MAX, KEEP_LOADED_HOSTS, hasView, keptLoaded, tabProfile, type BrowserState, type WindowId, type TabId, type Tab } from "../../shared/model";
 import type { RessacStore } from "../store";
 import { testEnv } from "../test-env";
+import { connectionFromSecurity } from "../../core/url";
 
 export const TAB_ID = "ressac-tab-id";
 export const PARKING = "ressac-parking";
@@ -129,7 +130,11 @@ export class TabSync {
         this.failures.delete(browser); // read once: an older failure (a download) must not name a later error page
         const code = browser.documentURI ? new URL(browser.documentURI.spec).searchParams.get("e") : null;
         const error = flags & LOCATION_CHANGE_ERROR_PAGE ? (failure !== undefined ? ChromeUtils.getXPCOMErrorName(failure) : errorName(code)) : undefined;
-        this.update(gBrowser.getTabForBrowser(browser), { url: location.spec, ...this.history(browser), ...(error ? { error: error, loading: false } : {}) });
+        this.update(gBrowser.getTabForBrowser(browser), { url: location.spec, ...this.history(browser), ...this.security(browser, location.spec), ...(error ? { error: error, loading: false } : {}) });
+      },
+      // After each location change, and when the page's state changes later (mixed content loaded).
+      onSecurityChange: (browser: any, progress: any) => {
+        if (progress.isTopLevel) this.update(gBrowser.getTabForBrowser(browser), this.security(browser, browser.currentURI?.spec ?? ""));
       },
       onStateChange: (browser: any, progress: any, _request: unknown, flags: number, status: number) => {
         if (!progress.isTopLevel || !(flags & STATE_IS_NETWORK)) return;
@@ -411,6 +416,13 @@ export class TabSync {
 
   private history(browser: any): Pick<TabFields, "canGoBack" | "canGoForward"> {
     return { canGoBack: browser.canGoBack, canGoForward: browser.canGoForward };
+  }
+
+  /** What Firefox's identity block would show for the browser's page (nothing while it has no security UI). */
+  private security(browser: any, url: string): Pick<TabFields, "security"> {
+    const ui = browser.securityUI;
+    if (!ui) return {};
+    return { security: connectionFromSecurity(url, { state: ui.state, secureContext: !!ui.isSecureContext, documentUri: browser.documentURI?.spec ?? null }) };
   }
 
   private update(tab: any, fields: TabFields): void {

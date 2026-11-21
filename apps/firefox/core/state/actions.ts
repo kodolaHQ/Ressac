@@ -497,6 +497,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
         Object.assign(o, { unloaded: true, loading: false, crashed: false, error: null });
         delete o.sound;
         delete o.playback;
+        delete o.security;
         delete o.call;
         for (const [space, id] of Object.entries(f.active)) if (id === o.id) f.active[space] = list(f, space)[0] ?? null;
       }
