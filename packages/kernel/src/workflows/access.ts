@@ -1,7 +1,8 @@
 import dns from "node:dns";
 import http, { type IncomingMessage } from "node:http";
 import https from "node:https";
-import { isIP, type LookupFunction } from "node:net";
+import { BlockList, isIP, type LookupFunction } from "node:net";
+import { networkInterfaces, type NetworkInterfaceInfo } from "node:os";
 import type { ChangeHost } from "./pacing.js";
 import type { ReadPage } from "./protocol.js";
 
@@ -36,12 +37,33 @@ export function localUrl(host: string): boolean {
   if (isIP(h) === 4) {
     const [a = 0, b = 0] = h.split(".").map(Number);
     return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+      (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
   }
   if (isIP(h) === 6) {
-    return h === "::" || h === "::1" || /^f[cd]/.test(h) || /^fe[89ab]/.test(h) || h.startsWith("::ffff:") || h.startsWith("64:ff9b:");
+    return h === "::" || h === "::1" || /^f[cd]/.test(h) || /^fe[89a-f]/.test(h) || /^ff/.test(h) || h.startsWith("::ffff:") || h.startsWith("64:ff9b:") ||
+      // 6to4 and Teredo carry a v4 address inside (a private one reaches the local network): both are obsolete
+      h.startsWith("2002:") || /^2001:0*:/.test(h);
   }
   return false;
+}
+
+/**
+ * An address of this machine, or a global IPv6 address on the same /64 as one of its own (a neighbour on the local
+ * network): public by its text, local in fact.
+ */
+export function onOwnNetwork(address: string, interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = networkInterfaces()): boolean {
+  const a = address.replace(/^\[|\]$/g, "");
+  const family = isIP(a);
+  if (!family) return false;
+  // One list per family: Node checks a v4 address as v4-mapped v6, which `::1/64` would cover.
+  const own = new BlockList();
+  for (const i of Object.values(interfaces).flat()) {
+    if (!i || (i.family === "IPv6") !== (family === 6)) continue;
+    const ip = i.address.replace(/%.*$/, "");
+    if (family === 6) own.addSubnet(ip, 64, "ipv6");
+    else own.addAddress(ip, "ipv4");
+  }
+  return own.check(a, family === 6 ? "ipv6" : "ipv4");
 }
 
 /**
@@ -60,7 +82,7 @@ export function checkUrl(raw: string, domains: readonly string[] | null, localUr
   // The trailing dot (« app.daily.dev. ») does not change the name: it is removed before any comparison.
   const host = u.hostname.toLowerCase().replace(/(?<!\.)\.+$/, "");
   if (domains && !domains.includes(host)) throw new Error(`Domaine non déclaré : ${host}`);
-  if (!localUrls && localUrl(host)) throw new Error(`Adresse locale refusée : ${host}`);
+  if (!localUrls && (localUrl(host) || onOwnNetwork(host))) throw new Error(`Adresse locale refusée : ${host}`);
   return u;
 }
 
@@ -71,7 +93,7 @@ export function checkUrl(raw: string, domains: readonly string[] | null, localUr
 export const lookupWithoutLocal: LookupFunction = (host, options, callback) => {
   dns.lookup(host, { ...options, all: true }, (err, urls) => {
     if (err) return callback(err, "");
-    const locale = urls.find((a) => localUrl(a.address));
+    const locale = urls.find((a) => localUrl(a.address) || onOwnNetwork(a.address));
     if (locale) return callback(new Error(`Adresse locale refusée : ${host} (${locale.address})`), "");
     if (options.all) return callback(null, urls);
     const [first] = urls;

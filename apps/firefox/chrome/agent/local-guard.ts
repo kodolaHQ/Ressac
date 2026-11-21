@@ -17,6 +17,8 @@ function testPublic(): Set<string> {
 }
 
 /** A local address or name from its text alone (`adresseLocale`), unless tests declared it public. */
+// shortcut: the Mac's own global IPv6 address and its /64 neighbours pass here (the kernel's fetch refuses them with
+// `onOwnNetwork`, which needs node:os), upgrade when invisible reads are benched in the engine.
 export function localLiteral(host: string): boolean {
   return localUrl(host) && !testPublic().has(host.replace(/^\[|\]$/g, ""));
 }

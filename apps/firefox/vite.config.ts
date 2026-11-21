@@ -46,6 +46,7 @@ export default defineConfig(({ mode }) => {
           "node:path": shim("path"),
           "@ressac/kernel": shim("kernel"),
           "node:net": shim("net"),
+          "node:os": shim("os"),
           "node:url": shim("url"),
           "node:dns": shim("empty"),
           "node:http": shim("empty"),
