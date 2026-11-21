@@ -402,6 +402,10 @@ describe("the home page", () => {
     expect((await urls()).filter((u) => u.includes("exemple.invalid"))).toEqual([]);
     // A real press in the frame: the actor signals the gesture, the link opens.
     await inUi(m, `doc.querySelector(arguments[0]).scrollIntoView({ block: "center" }); await new Promise((r) => requestAnimationFrame(r));`, [FRAME("lien")]);
+    // The frame's process learns its new place a paint or more after the scroll; a press before that lands where the frame
+    // was (measured: the page got the press 194 px above the link). Pressed once both agree, as ui-network.e2e.ts.
+    const where = () => Promise.all([inUi<number>(m, `return ui.mozInnerScreenY + doc.querySelector(arguments[0]).getBoundingClientRect().top;`, [FRAME("lien")]), inFrame<number>(m, FRAME("lien"), "window.mozInnerScreenY")]);
+    await expect.poll(async () => { const [outer, inner] = await where(); return Math.abs(outer - inner) < 1; }).toBe(true);
     const q = (await inFrame<{ left: number; top: number; width: number; height: number }>(m, FRAME("lien"), `document.getElementById("go").getBoundingClientRect().toJSON()`))!;
     await inUi(
       m,
