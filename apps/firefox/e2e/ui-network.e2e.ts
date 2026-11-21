@@ -19,6 +19,11 @@ import { consoleWith, DATA_PNG, NET_PREFS, netEnv, resolvedNames, rtcPage, SFX, 
 const HTTP = 15365;
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** The UI refusals among `whats` that are not logged yet (polled: a refusal is logged when the load is judged, not when it is started). */
+const missingRefusals = async (m: Marionette, whats: string[]) => {
+  const refusals = (await uiRefusals(m)).join("\n");
+  return whats.filter((w) => !refusals.includes(w));
+};
 const host = (name: string) => `${name}.${SFX}:${HTTP}`;
 
 /** Shows the data it receives. No `e.source !== parent` test: in a sandboxed frame it is not parent (home.e2e.ts). */
@@ -315,10 +320,11 @@ describe("the UI's network", () => {
     await expect.poll(() => data("fuite"), { timeout: 20_000 }).toBe('"reste"');
     await expect.poll(() => data("fuite-data"), { timeout: 10_000 }).toBe('"reste"');
     await expect.poll(() => inWidget("fuite-cadres", `!!document.getElementById("t")`), { timeout: 10_000 }).toBe(true);
+    await expect.poll(spy, { timeout: 20_000 }).toEqual({ rtc: "erreur TypeError", imbrique: "erreur TypeError", js: "posé", vide: "erreur SecurityError" });
+    // A window, from the last attempt's answer, for anything that would still reach the parent or the net.
     await sleep(3000);
     // The nested srcdoc frame has no RTCPeerConnection either (frame-actor.ts RessacFrameRtcChild): no offer reaches
     // the parent's blocker. The counters below are the acceptance.
-    expect(await spy()).toEqual({ rtc: "erreur TypeError", imbrique: "erreur TypeError", js: "posé", vide: "erreur SecurityError" });
     expect(await consoleWith(m, "[ui-network] refused webrtc from a frame")).toEqual([]);
     expect(await data("fuite")).toBe('"reste"');
     expect(await data("fuite-data")).toBe('"reste"');
@@ -366,11 +372,11 @@ describe("the UI's network", () => {
       [SFX, DATA_PNG],
     );
     expect(widths).toEqual({ sb: 1, ag: 1 });
+    const whats = ["sb", "ag"].flatMap((tag) => [`${tag}-img.`, `${tag}-imgs.`, `127.0.0.1:${HTTP}/${tag}-local`, `${tag}-bg.`]);
+    await expect.poll(() => missingRefusals(m, whats), { timeout: 15_000 }).toEqual([]);
     await sleep(3000);
     expect(net.hits.filter((h) => /^(sb|ag)-/.test(h.label) || /\/(sb|ag)-/.test(h.path)).map((h) => `${h.label} ${h.path}`)).toEqual([]);
     expect((await names()).filter((n) => /^(sb|ag)-/.test(n))).toEqual([]);
-    const refusals = (await uiRefusals(m)).join("\n");
-    for (const tag of ["sb", "ag"]) for (const what of [`${tag}-img.`, `${tag}-imgs.`, `127.0.0.1:${HTTP}/${tag}-local`, `${tag}-bg.`]) expect(refusals, what).toContain(what);
   });
 
   it("an unguarded opaque page in the sidebar loads nothing: fetch, WebSocket, sendBeacon, img, font, frame, a worker's fetch and WebSocket, WebTransport", { timeout: 120_000 }, async () => {
@@ -391,12 +397,11 @@ describe("the UI's network", () => {
     const title = (id: string) => m.execute<string>(`return document.getElementById("ressac-sidebar").contentDocument.getElementById(arguments[0]).contentDocument.title;`, [id]);
     await expect.poll(() => title("worker-net"), { timeout: 10_000 }).toBe("worker ran");
     expect(await title("wt-net")).toBe("function");
+    await expect.poll(() => missingRefusals(m, ["tp-wfetch.", "tp-wws.", "tp-wt."]), { timeout: 15_000 }).toEqual([]);
     await sleep(3000);
     expect(net.hits.filter((h) => h.label.startsWith("tp-")).map((h) => `${h.label} ${h.method} ${h.path}`)).toEqual([]);
     // The policy refuses before the DNS (S2 p1).
     expect({ names: (await names()).filter((n) => n.startsWith("tp-")), udp: net.udp.length - udp0 }).toEqual({ names: [], udp: 0 });
-    const refusals = (await uiRefusals(m)).join("\n");
-    for (const what of ["tp-wfetch.", "tp-wws.", "tp-wt."]) expect(refusals, what).toContain(what);
   });
 
   // accueil.spec.ts:810
@@ -456,11 +461,10 @@ describe("the UI's network", () => {
        }`,
       [SFX],
     );
+    await expect.poll(() => missingRefusals(m, ["bar-img.", "badge-img."]), { timeout: 15_000 }).toEqual([]);
     await sleep(3000);
     expect(net.hits.filter((h) => /^(bar|badge)-img/.test(h.label)).map((h) => `${h.label} ${h.path}`)).toEqual([]);
     expect((await names()).filter((n) => /^(bar|badge)-img/.test(n))).toEqual([]);
-    const refusals = (await uiRefusals(m)).join("\n");
-    for (const what of ["bar-img.", "badge-img."]) expect(refusals, what).toContain(what);
     expect(await size()).toEqual([88, 28]);
     await callTool(dataDir, "stop_app", { folder: "essai" }).catch(() => {});
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; for (const id of store.sites.openIds()) await store.sites.close(id); })();`);
@@ -535,12 +539,12 @@ describe("the UI's network", () => {
     const home = siteHomeBrowser("netsite-accueil");
     await expect.poll(() => inHomeFrame(m, home, `return document.getElementById("h")?.textContent ?? null;`), { timeout: 15_000 }).toBe("accueil");
     await inHomeFrame(m, home, `const i = document.createElement("img"); i.src = args[0]; document.body.append(i); return 1;`, [`http://${host("netsite-img")}/x.png`]);
+    // Measured: the home's own CSP (img-src data: <frames origin>/sites/<copy>/) refuses it before the content policy is asked.
+    await expect.poll(async () => (await consoleWith(m, "netsite-img.")).join("\n"), { timeout: 15_000 }).toMatch(/Content-Security-Policy.*netsite-img\..*img-src data: resource:\/\/ressac-frames-[0-9a-f]{16}\/sites\/netsite-accueil-/);
     await sleep(3000);
     expect(net.hits.filter((h) => h.label === "netsite-img")).toEqual([]);
     expect((await names()).filter((n) => n === "netsite-img")).toEqual([]);
     const refused = (await uiRefusals(m)).slice(refused0);
-    // Measured: the home's own CSP (img-src data: <frames origin>/sites/<copy>/) refuses it before the content policy is asked.
-    expect((await consoleWith(m, "netsite-img.")).join("\n")).toMatch(/Content-Security-Policy.*netsite-img\..*img-src data: resource:\/\/ressac-frames-[0-9a-f]{16}\/sites\/netsite-accueil-/);
     // The home is a frame browser of the frames' process (checked here by its remoteType only).
     expect(await m.execute(`return (${home}).remoteType;`)).toMatch(/^webIsolated=resource:\/\/ressac-frames-/);
     expect(refused.filter((r) => /netsite(-accueil)?\.localhost|\/page|localhost:/.test(r) || r.includes(`:${port}`))).toEqual([]);
