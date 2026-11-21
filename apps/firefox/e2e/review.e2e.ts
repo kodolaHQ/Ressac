@@ -160,6 +160,8 @@ it("a file changed while the page is open: nothing changes before « Rafraîchir
     writeFileSync(path.join(p.folder, "autre.txt"), "autre\n");
     await new Promise((r) => setTimeout(r, 1500));
     await openFile("app.js");
+    // The file's diff waited for (a loaded machine shows it late), then still the old one a moment later.
+    await waitTexts(ADDED, ["15ligne 15 modifiée"]);
     await new Promise((r) => setTimeout(r, 300));
     expect(await texts(ADDED)).toEqual(["15ligne 15 modifiée"]);
     expect(await count(tid("review-file"))).toBe(1);
