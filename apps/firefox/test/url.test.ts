@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { connectionFromSecurity, connectionOf, STATE_IS_BROKEN, STATE_IS_SECURE, toUrl as toUrlWith } from "../core/url";
+import { connectionFromSecurity, connectionOf, shownConnection, STATE_IS_BROKEN, STATE_IS_SECURE, toUrl as toUrlWith } from "../core/url";
 import { customEngineError, searchTemplate, type SearchEngine } from "../shared/search";
 
 const toUrl = (input: string, engine: SearchEngine) => toUrlWith(input, searchTemplate({ engine, customEngine: null }));
@@ -73,4 +73,13 @@ test("connectionFromSecurity follows Firefox's identity block", () => {
   expect(on("http://exemple.fr/", INSECURE)).toBe("insecure");
   expect(on("http://localhost:5300/", INSECURE, { secureContext: true })).toBeNull();
   for (const url of ["about:blank", "resource://ressac/home.html", "moz-extension://x/p.html", "file:///tmp/a.html"]) expect(on(url, INSECURE, { secureContext: true })).toBeNull();
+});
+
+test("shownConnection: Firefox's report first, the scheme before it, never a padlock over a failed load", () => {
+  expect(shownConnection({ url: "https://a.fr/", error: null })).toBe("secure");
+  expect(shownConnection({ url: "https://a.fr/", error: null, security: "insecure" })).toBe("insecure");
+  expect(shownConnection({ url: "https://a.fr/", error: null, security: null })).toBeNull();
+  expect(shownConnection({ url: "https://a.fr/", error: "SEC_ERROR_EXPIRED_CERTIFICATE" })).toBeNull();
+  expect(shownConnection({ url: "https://a.fr/", error: "ERR_NAME_NOT_RESOLVED", security: "secure" })).toBeNull();
+  expect(shownConnection({ url: "https://a.fr/", error: "SEC_ERROR_UNKNOWN_ISSUER", security: "insecure" })).toBe("insecure");
 });

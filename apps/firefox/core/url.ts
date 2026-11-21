@@ -63,3 +63,9 @@ export function connectionFromSecurity(url: string, s: { state: number; secureCo
   }
   return s.secureContext ? null : "insecure";
 }
+
+/** What the bar shows for a tab: Firefox's report, else the scheme; never a padlock over a failed load (its error page keeps the https address). */
+export function shownConnection(tab: { url: string; error: string | null; security?: Connection }): Connection {
+  const c = tab.security !== undefined ? tab.security : connectionOf(tab.url);
+  return c === "secure" && tab.error ? null : c;
+}

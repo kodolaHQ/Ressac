@@ -4,7 +4,7 @@
   import AccessBadge from "./AccessBadge.svelte";
   import Icon from "./Icon.svelte";
   import { fade } from "svelte/transition";
-  import { connectionOf } from "../../core/url";
+  import { shownConnection } from "../../core/url";
   import type { WindowState, Visit } from "../../shared/model";
   import { shortcutLabel } from "../../shared/shortcuts";
   import { accessOf, api, appState } from "../state.svelte";
@@ -16,8 +16,7 @@
     return id ? appState.value?.tabs[id] : undefined;
   });
   const agentRights = $derived(tab ? accessOf(tab.id) : undefined);
-  // Firefox's own judgment once it has reported one; the scheme before (a tab not loaded yet, an unloaded essential).
-  const connection = $derived(tab ? (tab.security !== undefined ? tab.security : connectionOf(tab.url)) : null);
+  const connection = $derived(tab ? shownConnection(tab) : null);
   let input = $state<string | null>(null); // non-null during editing
   let field: HTMLInputElement;
   let suggestions = $state<Visit[]>([]);
@@ -93,7 +92,8 @@
 </div>
 <div class="line">
 <form onsubmit={validate}>
-  {#if connection && input === null}
+  <!-- Kept while editing, as Firefox's identity block: the text never shifts on focus. -->
+  {#if connection}
     {@const label = t(connection === "secure" ? "chrome-ui-connection-secure" : "chrome-ui-connection-insecure")}
     <span class="connection" data-connection={connection} data-testid="address-connection" role="img" aria-label={label} title={label} out:fade={{ duration: 150 }}>
       <Icon name={connection === "secure" ? "lock" : "lock-open"} size={13} />
