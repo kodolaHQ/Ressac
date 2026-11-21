@@ -143,13 +143,18 @@ describe("design overlay", () => {
   });
 
   it("the calque and the volet are cut before they load", async () => {
-    // The previous test opened the bubble and the cart column: both frames are there.
-    const cut = await m.execute(
-      `return ["ressac-design-calque", "ressac-design-volet"].map((id) => { const f = document.getElementById(id), ds = f?.frameLoader?.docShell;
-         return ds ? { dns: ds.allowDNSPrefetch, mail: ds.appType === Ci.nsIDocShell.APP_TYPE_MAIL, uri: f.contentDocument?.documentURI } : null; });`,
-    );
+    // Its own bubble and cart column (not the previous test's), so it passes alone.
+    await open();
+    await modeOn();
+    await remark("#email", "input#email.champ", "cadre");
+    await expect.poll(columnShown, { timeout: 10_000 }).toBe(true);
+    const cut = () =>
+      m.execute(
+        `return ["ressac-design-calque", "ressac-design-volet"].map((id) => { const f = document.getElementById(id), ds = f?.frameLoader?.docShell;
+           return ds ? { dns: ds.allowDNSPrefetch, mail: ds.appType === Ci.nsIDocShell.APP_TYPE_MAIL, uri: f.contentDocument?.documentURI } : null; });`,
+      );
     const page = { dns: false, mail: true, uri: "chrome://browser/content/ressac/sidebar.html?overlay" };
-    expect(cut).toEqual([page, page]);
+    expect(await cut()).toEqual([page, page]);
     await m.execute(
       `for (const id of ["ressac-design-calque", "ressac-design-volet"]) { const d = document.getElementById(id).contentDocument, i = d.createElement("img");
          i.style.cssText = "position:absolute;width:1px;height:1px"; i.src = "http://127.0.0.1:${PORT}/ui-net-probe.png?" + id; d.body.append(i); }`,
@@ -162,6 +167,7 @@ describe("design overlay", () => {
     await expect.poll(missing, { timeout: 15_000 }).toEqual([]);
     await sleep(3000);
     expect(servers.paths.filter((p) => p.includes("ui-net-probe"))).toEqual([]);
+    await modeOff();
   });
 
   it("the cart column shrinks the page by 300 px and is never covered", async () => {
