@@ -228,6 +228,10 @@ describe("the UI's network", () => {
    */
   const press = async (id: string, sel: string, click: boolean) => {
     await m.execute(`return (async () => { ${widgetFrame(id)}.scrollIntoView({ block: "center" }); await new Promise((r) => document.getElementById("ressac-sidebar").contentWindow.requestAnimationFrame(r)); })();`);
+    // The frame's process learns its new place a paint or more after the scroll; a press before that lands where the frame
+    // was (measured: the page got the press 253 px above the link, the scroll's distance). Pressed once both agree.
+    const where = () => Promise.all([m.execute<number>(`return document.getElementById("ressac-sidebar").contentWindow.mozInnerScreenY + ${widgetFrame(id)}.getBoundingClientRect().top;`), inFrame<number>(m, FRAME(id), "window.mozInnerScreenY")]);
+    await expect.poll(async () => { const [outer, inner] = await where(); return Math.abs(outer - inner) < 1; }).toBe(true);
     return m.execute<string | null>(
       `return (async () => { const sb = document.getElementById("ressac-sidebar"), ui = sb.contentWindow, f = ${widgetFrame(id)};
        const r = f.getBoundingClientRect(), q = arguments[2];
