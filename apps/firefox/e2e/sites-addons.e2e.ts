@@ -332,6 +332,9 @@ describe("add-ons and what the agent adds to the app", () => {
     await start({ sites, granted: ["vidola"] });
     await installAddon(m, marker());
     await installAddon(m, probe());
+    // The resumes the main process answered: the view's actor notes no position before its answer (core/resume.ts).
+    await inStore(`const s = store.sites, real = s.frameResume; s.ressacTestResumes = 0;
+      s.frameResume = function (...a) { return Promise.resolve(real.apply(this, a)).finally(() => s.ressacTestResumes++); };`);
     await openAndWait("vidola", SERIES);
     // The add-ons run in the view (the marker's content script); both are in the bar, the marker greyed (no action).
     await expect.poll(() => view("document.getElementById('addon-mark')?.textContent ?? null"), { timeout: 10_000 }).toBe("MARQUE-MODULE");
@@ -342,7 +345,7 @@ describe("add-ons and what the agent adds to the app", () => {
     await expect.poll(() => memory()?.values["encours.the-bear"] ?? null, { timeout: 10_000 }).toMatchObject({ value: KEPT, url: SERIES });
     // The resume (see sites-resume.e2e.ts: the headless browser decodes nothing, the position is currentTime as set).
     await expect.poll(() => view("document.getElementById('v').duration"), { timeout: 15_000 }).toBe(90);
-    await new Promise((r) => setTimeout(r, 500));
+    await expect.poll(() => inStore<number>(`return store.sites.ressacTestResumes;`), { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
     await view("(() => { const v = document.getElementById('v'); v.currentTime = 70; v.play().catch(() => {}); v.pause(); return 1; })()");
     await expect.poll(() => memory()?.positions[SERIES]?.t ?? null, { timeout: 10_000 }).toBeCloseTo(70, 0);
   });

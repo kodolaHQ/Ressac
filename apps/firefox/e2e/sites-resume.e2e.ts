@@ -45,6 +45,14 @@ const waitDuration = (duration: number, frame = 0) => expect.poll(() => player("
 /** The player is put at `t` and paused (play then pause: the browser dispatches a trusted `pause` at `t`). */
 const seekThenPause = (t: number, frame = 0) => player(`(v.currentTime = ${t}, v.play().catch(() => {}), v.pause(), v.currentTime)`, frame);
 const openSite = (id: string) => inStore(`await store.agent.request("sites.act", { id: arguments[0], action: "open", window: store.state.windows[0].id });`, [id]);
+/**
+ * Counts the resumes the main process has answered (the actor notes nothing before its answer, core/resume.ts): set up
+ * before the page opens, then `resumed` waits for one instead of a pause that a loaded machine can outlast.
+ */
+const countResumes = () =>
+  inStore(`const s = store.sites, real = s.frameResume; s.ressacTestResumes = 0;
+    s.frameResume = function (...a) { return Promise.resolve(real.apply(this, a)).finally(() => s.ressacTestResumes++); };`);
+const resumed = () => expect.poll(() => inStore<number>(`return store.sites.ressacTestResumes;`), { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
 async function openAndWait(path: string, id = "vidola") {
   await openSite(id);
   await expect.poll(() => viewUrl(id), { timeout: 20_000 }).toBe(url(path));
@@ -110,10 +118,11 @@ afterAll(() => server?.close());
 describe("video resume", () => {
   it('the test seeks the video to 70 s then pauses: positions["/episode/4"].t is about 70, nothing under the player\'s address; reloading: the video starts and currentTime is about 65 (sites.spec.ts:1256)', async () => {
     await start();
+    await countResumes();
     await openAndWait("/episode/4");
     await waitDuration(90);
     // The first event settled the resume (no position kept: nothing); a pause is noted.
-    await sleep(500);
+    await resumed();
     expect(await seekThenPause(70)).toBeCloseTo(70, 0);
     await expect.poll(() => positions()?.["/episode/4"]?.t ?? null, { timeout: 10_000 }).toBeCloseTo(70, 0);
     const p = positions()!;
@@ -186,10 +195,11 @@ describe("video resume", () => {
 
   it("events dispatched by the page (isTrusted false) note nothing", async () => {
     await start({ decl: declaration("/manuel") });
+    await countResumes();
     await openAndWait("/manuel");
     const v = 'document.getElementById("v")';
     await expect.poll(() => view(`${v}.duration`), { timeout: 15_000 }).toBe(90);
-    await sleep(500);
+    await resumed();
     // The page fakes the events that would note a position (pause and ended bypass the 10 s step).
     await view(`(${v}.currentTime = 40, ["play", "timeupdate", "pause", "ended"].forEach((t) => ${v}.dispatchEvent(new Event(t, { bubbles: true }))), 1)`);
     await sleep(1800);
