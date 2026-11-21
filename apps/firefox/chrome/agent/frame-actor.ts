@@ -78,6 +78,24 @@ export class RessacFrameParent extends JSWindowActorParent {
   }
 }
 
+/** Removed from every document of the frames' process, nested ones included (RessacFrameRtc, allFrames). */
+const RTC_REMOVED = ["RTCPeerConnection", "webkitRTCPeerConnection"];
+
+/**
+ * No document of the frames' process makes a PeerConnection: the parent's blocker refuses one only after it has
+ * reached the socket process, and that refused connection's teardown made the socket process exit (status 1) and
+ * stalled a tab's call started at that moment (measured in e2e/ui-network.e2e.ts). Non-configurable own values, set
+ * at DOMWindowCreated, before the document's first script and before the script that created an about:blank frame
+ * reads it (as extension-actor.ts).
+ */
+export class RessacFrameRtcChild extends JSWindowActorChild {
+  handleEvent(): void {
+    const win = (this.contentWindow as any).wrappedJSObject;
+    for (const name of RTC_REMOVED) Object.defineProperty(win, name, { value: undefined, writable: false, configurable: false, enumerable: false });
+    Object.defineProperty(win.navigator, "mediaDevices", { value: undefined, writable: false, configurable: false, enumerable: false });
+  }
+}
+
 export class RessacFrameChild extends JSWindowActorChild {
   private off: (() => void)[] = [];
 

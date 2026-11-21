@@ -19,12 +19,16 @@ const host = (name: string) => `${name}.${SFX}:${HTTP}`;
 const PAGE = `<!doctype html><meta charset="utf-8"><body style="margin:0">
 <link rel="dns-prefetch" href="//fr-dns.${SFX}"><link rel="preconnect" href="http://fr-preco.${SFX}:${RAW}">
 <a id="lien" href="http://fr-press.${SFX}:${RAW}/" style="position:fixed;inset:0;display:block">lien</a>
-<p id="t">cadre</p><p id="got">…</p><p id="net">…</p><p id="rtc">…</p>
+<p id="t">cadre</p><p id="got">…</p><p id="net">…</p><p id="rtc">…</p><p id="nested">…</p>
 <img src="http://${host("fr-img")}/fr/img">
 <script>
   const note = (id, t) => (document.getElementById(id).textContent = t);
   try { new RTCPeerConnection().createOffer().then(() => note("rtc", "ok"), (e) => note("rtc", "err " + e.name)); } catch (e) { note("rtc", "throw " + e.name); }
-  addEventListener("message", (e) => note("got", JSON.stringify(e.data)));
+  // A nested srcdoc frame (its own opaque origin under the sandbox): it answers by message.
+  const s = document.createElement("iframe"); s.style.cssText = "position:absolute;width:0;height:0;border:0";
+  s.srcdoc = "<scr" + "ipt>parent.postMessage({ nested: typeof RTCPeerConnection + ' ' + typeof navigator.mediaDevices }, '*')</scr" + "ipt>";
+  document.body.append(s);
+  addEventListener("message", (e) => (e.data && e.data.nested ? note("nested", e.data.nested) : note("got", JSON.stringify(e.data))));
   fetch("http://${host("fr-fetch")}/fr/fetch").then(() => note("net", "ok"), (e) => note("net", "err " + e.name));
   try { new WebSocket("ws://${host("fr-ws")}/fr/ws"); } catch (e) {}
   const l = document.createElement("link"); l.rel = "dns-prefetch"; l.href = "//fr-dns-script.${SFX}"; document.head.append(l);
@@ -179,9 +183,13 @@ describe("remote frames", () => {
     expect(r[1]).toBe(r[0]);
   });
 
-  it("the page's WebRTC is denied", async () => {
-    await expect.poll(() => inFrame<string>(w.marionette, "#frames-a browser", `document.getElementById("rtc").textContent`), { timeout: 5000 }).toMatch(/^err /);
-    expect(await consoleWith(w.marionette, "[ui-network] refused webrtc from a frame")).toHaveLength(1);
+  it("no WebRTC: no PeerConnection or mediaDevices in the page or a nested srcdoc frame; none reaches the parent's blocker", async () => {
+    const text = (id: string) => inFrame<string>(w.marionette, "#frames-a browser", `document.getElementById(${JSON.stringify(id)}).textContent`);
+    await expect.poll(() => text("nested"), { timeout: 5000 }).toBe("undefined undefined");
+    expect(await text("rtc")).toBe("throw TypeError");
+    // Read through the page's own world (an Xray would see the native getter).
+    expect(await inFrame(w.marionette, "#frames-a browser", "typeof window.wrappedJSObject.navigator.mediaDevices")).toBe("undefined");
+    expect(await consoleWith(w.marionette, "[ui-network] refused webrtc from a frame")).toHaveLength(0);
   });
 
   it("refuse a full screen: no fullscreenEnabled, a request under a real click is rejected, the window stays as it is", async () => {

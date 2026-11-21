@@ -313,10 +313,10 @@ describe("the UI's network", () => {
     await expect.poll(() => data("fuite-data"), { timeout: 10_000 }).toBe('"reste"');
     await expect.poll(() => inWidget("fuite-cadres", `!!document.getElementById("t")`), { timeout: 10_000 }).toBe(true);
     await sleep(3000);
-    // The nested srcdoc frame has no guard: it makes its offer, which the parent's blocker refuses (ui-network.ts
-    // frameRtcBlocker). The counters below are the acceptance.
-    expect(await spy()).toEqual({ rtc: "erreur TypeError", imbrique: "lancé", js: "posé", vide: "erreur SecurityError" });
-    expect((await consoleWith(m, "[ui-network] refused webrtc from a frame")).length).toBeGreaterThan(0);
+    // The nested srcdoc frame has no RTCPeerConnection either (frame-actor.ts RessacFrameRtcChild): no offer reaches
+    // the parent's blocker. The counters below are the acceptance.
+    expect(await spy()).toEqual({ rtc: "erreur TypeError", imbrique: "erreur TypeError", js: "posé", vide: "erreur SecurityError" });
+    expect(await consoleWith(m, "[ui-network] refused webrtc from a frame")).toEqual([]);
     expect(await data("fuite")).toBe('"reste"');
     expect(await data("fuite-data")).toBe('"reste"');
     for (const id of ["espion", "fuite", "fuite-data", "fuite-cadres"])
@@ -494,9 +494,6 @@ describe("the UI's network", () => {
     } finally {
       await closeTab("tab-page.", "sonde");
     }
-    // Measured: the home just came back and the spy widget's nested frame asks for WebRTC; opening a tab at once removes
-    // that frame mid-request, which delays the next tab's ICE gathering by a few seconds (gone 6 s later). Let it settle.
-    await sleep(4000);
     const tcp0 = net.tcp.length;
     const udp0 = net.udp.length;
     await dispatch(m, { type: "openTab", windowId: windowId, url: `http://${host("tab-rtc")}/rtc`, activate: true });

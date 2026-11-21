@@ -388,6 +388,14 @@ async function start(): Promise<RessacStore> {
     messageManagerGroups: [FRAMES_GROUP],
     safeForUntrustedWebProcess: true,
   });
+  // Every document of those frames, nested ones too: no PeerConnection (frame-actor.ts RessacFrameRtcChild). The
+  // parent's blocker (ui-network.ts frameRtcBlocker) stays behind it.
+  ChromeUtils.registerWindowActor("RessacFrameRtc", {
+    child: { esModuleURI: frameActor, events: { DOMWindowCreated: {} } },
+    allFrames: true,
+    messageManagerGroups: [FRAMES_GROUP],
+    safeForUntrustedWebProcess: true,
+  });
   // The frames' test hook is on only in a dev build with RESSAC_TEST_FRAMES: a flag the web process reads, a page cannot set.
   if (testEnv("RESSAC_TEST_FRAMES")) {
     Services.ppmm.sharedData.set(FRAMES_TEST_KEY, true);
