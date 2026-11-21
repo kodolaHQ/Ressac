@@ -367,8 +367,10 @@ describe("design mode, site target, the view", () => {
   // Review Focus 2
   it("zoomed view: the bubble sits under the element and under the bar, the PNG is rectCapture's size", async () => {
     await toSite(m, "vidola", "/design");
+    const width0 = (await view<number>("vidola", "innerWidth"))!;
     await m.execute(`${viewExpr("vidola")}.fullZoom = 1.5;`);
-    await sleep(300);
+    // The page's process applies the zoom later: wait until its layout sees it, not a fixed time.
+    await expect.poll(() => view<number>("vidola", "innerWidth"), { timeout: 10_000 }).toBeLessThan(width0 / 1.2);
     try {
       const r = await cssRect("vidola", "#cible");
       const viewOf = (await view<{ width: number; height: number }>("vidola", "({ width: innerWidth, height: innerHeight })"))!;
