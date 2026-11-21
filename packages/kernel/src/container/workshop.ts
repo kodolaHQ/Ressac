@@ -172,7 +172,8 @@ function escalate(targets: string): string[] {
   return [
     `targets() { ${targets}; }`,
     // No « -- »: the kill of dash (the container's sh) refuses it, and the group would never be targeted.
-    `signal_all() { for c in $(targets); do kill -$1 "$c" 2>/dev/null; done; }`,
+    // true: a target already gone when its kill runs is not a failure of the stop.
+    `signal_all() { for c in $(targets); do kill -$1 "$c" 2>/dev/null; done; true; }`,
     `alive() { for c in $(targets); do kill -0 "$c" 2>/dev/null && return 0; done; return 1; }`,
     `for s in HUP TERM; do signal_all $s; i=0; while [ $i -lt 20 ] && alive; do sleep 0.1; i=$((i + 1)); done; alive || exit 0; done`,
     `signal_all KILL`,
