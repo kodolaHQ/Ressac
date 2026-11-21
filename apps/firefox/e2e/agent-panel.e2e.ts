@@ -214,7 +214,8 @@ it("a second profile in .ressac/profiles appears in the panel; choosing it resta
     const pidFile = join(dataDir, "workspace", "fake-agent-pid");
     const first = read(pidFile);
     const select = '[data-testid="agent-profile"]';
-    expect(await waitUi(m, "const o = [...(doc.querySelector(arguments[0])?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [select], 10_000, "agent")).toEqual([
+    // The profiles and their accounts load apart: the marks can come after the names.
+    await expect.poll(() => inUi(m, "return [...(doc.querySelector(arguments[0])?.options ?? [])].map((x) => x.textContent.trim())", [select], "agent"), { timeout: 10_000 }).toEqual([
       "Autre",
       "Claude Code (non connecté)",
       "Codex (non connecté)",
@@ -239,7 +240,8 @@ it("the built-in profiles: Claude Code and Codex in the menu, signed-out ones ma
   await launch();
   await openPanel();
   await terminalShows("fake agent ready>");
-  expect(await waitUi(m, "const o = [...(doc.querySelector('[data-testid=\"agent-profile\"]')?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [], 10_000, "agent")).toEqual([
+  // The profiles and their accounts load apart: the marks can come after the names.
+  await expect.poll(() => inUi(m, "return [...(doc.querySelector('[data-testid=\"agent-profile\"]')?.options ?? [])].map((x) => x.textContent.trim())", [], "agent"), { timeout: 10_000 }).toEqual([
     "Claude Code (non connecté)",
     "Codex (non connecté)",
   ]);
@@ -732,18 +734,13 @@ it("a link the agent prints (OSC 8, Claude Code's sign-in address) opens in a ta
   await homeAgent();
   await send("link");
   await terminalShows("sign-in-link sign-in-link");
-  // xterm activates the link under the pointer: a move first, then the press.
-  await inUi(
-    m,
-    `const row = [...doc.querySelectorAll(".xterm-rows > div")].find((e) => e.textContent.startsWith("sign-in-link"));
+  // xterm activates the link under the pointer: a move first, then the press once xterm shows the link as hovered.
+  const at = `const row = [...doc.querySelectorAll(".xterm-rows > div")].find((e) => e.textContent.startsWith("sign-in-link"));
      const r = row.getBoundingClientRect();
-     const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
-     ui.synthesizeMouseEvent("mousemove", x, y, {});
-     await new Promise((r) => setTimeout(r, 300));
-     for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, x, y, { button: 0, clickCount: 1 });`,
-    [],
-    "agent",
-  );
+     const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];`;
+  await inUi(m, `${at} ui.synthesizeMouseEvent("mousemove", x, y, {});`, [], "agent");
+  await waitUi(m, "return !!doc.querySelector('.xterm-cursor-pointer')", [], 10_000, "agent");
+  await inUi(m, `${at} for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, x, y, { button: 0, clickCount: 1 });`, [], "agent");
   await waitFor(m, "return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec === 'https://sign-in.invalid/oauth?code=1' || t.linkedBrowser.browsingContext?.currentWindowGlobal?.documentURI?.spec.includes('sign-in.invalid'))", (v) => v === true);
 });
 
