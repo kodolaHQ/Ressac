@@ -538,6 +538,9 @@ describe("the home page", () => {
       (d) => d !== null,
       "les données dans le cadre",
     );
+    // The data and the home's re-reads reach the pages by message: neither this widget nor another one reloads.
+    const mark = `document.documentElement.dataset.kept = "1"`, kept = `document.documentElement.dataset.kept === "1"`;
+    for (const id of ["lent", "alpha"]) await inWidget(m, id, mark);
     await harvest(m, "lent");
     // The « en cours » state is written before the container: the badge stays visible during the slow harvest.
     await waitUi(m, `return (doc.querySelector('[data-testid="widget-lent"] header')?.textContent ?? '').includes('mise à jour…');`, [], 10_000);
@@ -554,6 +557,7 @@ describe("the home page", () => {
       20_000,
     );
     expect(after!.fait).toBeGreaterThan(before!.fait);
+    for (const id of ["lent", "alpha"]) expect(await inWidget(m, id, kept), id).toBe(true);
   });
 
   it("a failed harvest says so and leaves no data", async () => {

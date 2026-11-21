@@ -51,11 +51,15 @@
   let stopped = $state(false);
   let browser: Element | null = null;
   let off: (() => void) | null = null;
+  /** The address last loaded: an owner's getter (`src={widget.src}`) reruns this effect on every new widget object. */
+  let loaded: string | null = null;
 
   // Made on the first src, inserted and loaded at once: loadFrame keeps the group id the next browsers join.
   $effect(() => {
     const s = src;
-    if (!s || !host) return;
+    // The same address again would reload the page: each home read (any widget's harvest) reloaded every widget,
+    // dropping a click under way and the page's own state.
+    if (!s || !host || s === loaded) return;
     if (!browser) {
       const b = frames.createFrameBrowser(document, (revived) => {
         // Revived: a new browsing context in the same element, a new handle so the owner's per-context work (the home's guard) runs again.
@@ -96,7 +100,7 @@
       const handle = (): RemoteFrameHandle => ({ send: async (d) => (ours() ? frames.sendFrame(b, d) : undefined), element: b });
       frame = handle();
     }
-    frames.loadFrame(browser, s);
+    if (frames.loadFrame(browser, s)) loaded = s;
   });
 
   $effect(() => browser?.setAttribute("aria-label", title));
