@@ -16,8 +16,7 @@ import type { MemoryContent } from "../sites/memory.js";
 import { isLocal, type DevRight, type AccessPolicy } from "../access/policy.js";
 import { registerDevTools, type ProfileFiles } from "./devtools.js";
 import { registerExtensionsTools, type ExtensionsTools } from "./extensions.js";
-import { STOP_TEXT, CLOSED_TEXT, URL_MAX, type SearchSessions, type Gesture } from "../search/sessions.js";
-import type { Watcher } from "../search/watcher.js";
+import { STOP_TEXT, CLOSED_TEXT, URL_MAX, type SearchSessions } from "../search/sessions.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { unwrapLink, rankLinks } from "./links.js";
@@ -31,7 +30,7 @@ import { isSensitive } from "../access/sensitive.js";
 import { TabNotFound, PrivateTab, SiteChanged, PRIVATE_TEXT, type TabInfo, type PageLink, type TabRead, type BrowserDevTools, type BrowserBridge, type HistoryResult } from "./bridge.js";
 
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
-/** While the user has the search tab (a hand_over or a watcher pause), the agent gets nothing from it. */
+/** While the user has the search tab (a hand_over or an outflow pause), the agent gets nothing from it. */
 export const HANDING_TEXT = "La page est à l'utilisateur : attends la fin de hand_over.";
 const TOO_LONG_TEXT = `Adresse trop longue (${URL_MAX} caractères au plus).`;
 /** The band while an address card waits: a step, so the idle delay does not end the search under the card. */
@@ -379,7 +378,7 @@ function askAddressCard(
   bridge: BrowserBridge,
   policy: AccessPolicy,
   requests: Map<string, Promise<boolean>>,
-  card: { url: string; reason: string; agent: string; opinion?: string; danger?: string },
+  card: { url: string; reason: string; agent: string; danger?: string },
   key: string,
   window: string | undefined,
   /** Registers a callback for the end of the search (stop, idle, tab closed): the card then comes down. */
@@ -426,7 +425,7 @@ function createToolsServer(
   toolSites?: SitesTools,
   beatMs?: number,
   searching?: {
-    sessions: SearchSessions; watcher?: Watcher; notes?: BrowsingNotes; settleMs: number; emptySpanMs: number; readPageMs: number; chains: Map<string, Promise<unknown>>;
+    sessions: SearchSessions; notes?: BrowsingNotes; settleMs: number; emptySpanMs: number; readPageMs: number; chains: Map<string, Promise<unknown>>;
     /** Cards already answered yes in a running search (rule 3), by key; a key goes when its search ends. */
     asked: Set<string>;
   },
@@ -643,11 +642,6 @@ function createToolsServer(
     }
   }
 
-  const cut = (x: string) => x.slice(0, 200);
-
-  /** The band of a pause for what the watcher found strange. */
-  const strangeBand = (goal: string, what: string) => l10n("kernel-search-strange", { what, goal: cut(goal) });
-
   /** Pauses the search on its tab with `band`. Returns the text to answer, or undefined when the user lets it go on. */
   async function pause(tabId: string, band: string, signal?: AbortSignal): Promise<string | undefined> {
     const sessions = searching!.sessions;
@@ -666,29 +660,6 @@ function createToolsServer(
     if (r.outcome === "continue") return undefined;
     if (r.outcome === "stop") { searching!.sessions.takeStop(win ?? MAIN_WINDOW, tabId); return STOP_TEXT; }
     return CLOSED_TEXT;
-  }
-
-  /** The watcher's verdict on a gesture of the search running in this window, which it logs (unless `log` is false: the caller logs it); no goal, no search, no watcher: nothing. */
-  async function judge(g: Gesture, log = true): Promise<{ strange: boolean; tabId: string; goal: string } | undefined> {
-    const cur = searching?.sessions.current(win ?? MAIN_WINDOW);
-    if (!searching?.watcher || !cur?.goal) return undefined;
-    // What the user asked, in their own words, rather than the goal the agent wrote.
-    const goal = outflow?.lastMessage(key) ?? cur.goal;
-    const verdict = await searching.watcher.judge(goal, cur.gestures, g);
-    // Without a goal or a watcher nothing is logged here (later queries included): only the watcher reads the gestures.
-    if (log) searching.sessions.log(cur.tabId, g);
-    return { strange: verdict === "strange", tabId: cur.tabId, goal };
-  }
-
-  /** Judges an action of the user's side (history, bookmarks, another tab) during a search; strange: paused, and the text to answer unless the user continues. */
-  async function watch(g: Gesture, what: string, signal?: AbortSignal): Promise<string | undefined> {
-    const v = await judge(g);
-    return v?.strange ? pause(v.tabId, strangeBand(v.goal, what), signal) : undefined;
-  }
-
-  /** The watcher's line for the card of an address the agent composed (it never blocks the card). */
-  async function opinion(g: Gesture): Promise<{ opinion?: string }> {
-    return (await judge(g, false))?.strange ? { opinion: l10n("kernel-search-opinion") } : {};
   }
 
   /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks). */
@@ -736,8 +707,7 @@ function createToolsServer(
     if ((await bridge.listTabs()).some((t) => t.url === url && policy.canRead(t))) return null;
     if (url.length > URL_MAX) return TOO_LONG_TEXT;
     if (!bridge.askAddress) return DENIAL_TEXT;
-    const view = await opinion({ tool, url, composed: true });
-    const card = { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view, ...danger(url) };
+    const card = { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(url) };
     const yes = await askAddressCard(bridge, policy, requests, card, `address:${url}`, win ?? undefined, () => () => {}, signal);
     if (!yes) return DENIAL_TEXT;
     policy.grantAddress(url);
@@ -747,16 +717,13 @@ function createToolsServer(
   /** The search tab `id` is the user's for now (a hand is open on it). */
   const handing = (id: string | undefined) => !!id && !!searching?.sessions.handing(id);
 
-  async function content(o: TabInfo, withLinks = false, signal?: AbortSignal, full = false, extra?: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<Result> {
+  async function content(o: TabInfo, withLinks = false, full = false, extra?: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<Result> {
     if (handing(o.id)) return text(HANDING_TEXT, true);
     if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, o.id)) return text(STOP_TEXT);
     if (searching?.sessions.owns(o.id)) {
-      searching.sessions.log(o.id, { tool: "read_tab" });
       act(o.id, l10n("kernel-activity-reads-site", { site: siteOf(o.url) }));
       return readSearch(win ?? MAIN_WINDOW, o, withLinks, l10n("kernel-search-reading-page"), [], { full, extra });
     }
-    const other = await watch({ tool: "read_tab", url: o.url.slice(0, 500) }, l10n("kernel-search-what-other-tab"), signal);
-    if (other) return text(other);
     if (!(await readAccess(o))) return text(DENIAL_TEXT);
     const r = present(o, await working(o.id, () => bridge.readText(o.id, { expect: o.url }), l10n("kernel-activity-reads-site", { site: siteOf(o.url) })), withLinks, [], undefined, full);
     // The result carries the tab's URL.
@@ -780,10 +747,10 @@ function createToolsServer(
   server.registerTool(
     "current_page",
     { description: "URL, titre, texte principal et sélection de l'onglet que l'utilisateur regarde." },
-    protect(async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+    protect(async () => {
       if (bridge.activePrivateTab?.()) return text(PRIVATE_TEXT);
       const o = await bridge.activeTab();
-      return o ? content(o, false, extra.signal) : text("Aucun onglet actif.");
+      return o ? content(o) : text("Aucun onglet actif.");
     }),
   );
 
@@ -820,7 +787,7 @@ function createToolsServer(
         "l'état de la page et une page réduite aux passages utiles pour ton but ; full: true donne toute la page.",
       inputSchema: { id: z.string(), links: z.boolean().optional(), full: z.boolean().optional() },
     },
-    protect(async ({ id, links, full }, extra) => content(await tab(id), links, extra?.signal, full, extra)),
+    protect(async ({ id, links, full }, extra) => content(await tab(id), links, full, extra)),
   );
 
   server.registerTool(
@@ -844,9 +811,8 @@ function createToolsServer(
         if (free) target = free;
         else {
           if (!bridge.askAddress) return text(UNREAD_ADDRESS_TEXT);
-          const view = await opinion({ tool: "open_tab", url, composed: true });
           const yes = await sessions.step(cur.tabId, l10n("kernel-search-address-step"), () =>
-            askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view, ...danger(url) }, `address:${cur.tabId}:${url}`, win ?? undefined, (f) => sessions.onEnd(cur.tabId, f), extra?.signal),
+            askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(url) }, `address:${cur.tabId}:${url}`, win ?? undefined, (f) => sessions.onEnd(cur.tabId, f), extra?.signal),
           );
           if (!sessions.owns(cur.tabId)) return text(sessions.takeStop(key, cur.tabId) ? STOP_TEXT : CLOSED_TEXT);
           if (!yes) return text(DENIAL_TEXT);
@@ -890,10 +856,8 @@ function createToolsServer(
         if (!free) {
           // An address the agent composed: the user decides, on a card showing it whole.
           if (!bridge.askAddress) return text(UNREAD_ADDRESS_TEXT);
-          const view = await opinion({ tool: "navigate", url, composed: true });
-          if (!sessions.owns(id)) return text(sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
           const yes = await sessions.step(id, l10n("kernel-search-address-step"), () =>
-            askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...view, ...danger(url) }, `address:${id}:${url}`, win ?? undefined, (f) => sessions.onEnd(id, f), extra?.signal),
+            askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(url) }, `address:${id}:${url}`, win ?? undefined, (f) => sessions.onEnd(id, f), extra?.signal),
           );
           if (!sessions.owns(id)) return text(sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
           // The user took the page while the card was up.
@@ -901,7 +865,6 @@ function createToolsServer(
           if (!yes) return text(DENIAL_TEXT);
           sessions.allow(id, url);
         }
-        sessions.log(id, { tool: "navigate", url: target, ...(free ? {} : { composed: true }) });
         await sessions.step(id, l10n("kernel-search-opening", { url: target }), () => working(id, () => bridge.navigate(id, target), l10n("kernel-activity-goes-to", { site: siteOf(target) })));
         return text(`Onglet ${id} → ${target}`);
       }
@@ -939,15 +902,10 @@ function createToolsServer(
   server.registerTool(
     "capture_screen",
     { description: "Capture d'écran PNG d'un onglet.", inputSchema: { id: z.string() } },
-    protect(async ({ id }, extra) => {
+    protect(async ({ id }) => {
       // shortcut: the kernel does not know a tab's window, so any capture waits while this window's search is the user's; refine if it annoys.
       if (handing(id) || handing(searching?.sessions.current(win ?? MAIN_WINDOW)?.tabId)) return text(HANDING_TEXT, true);
       const o = await tab(id);
-      // As read_tab: during a search, the judge sees a capture of any tab but the search's own.
-      if (!searching?.sessions.owns(id)) {
-        const other = await watch({ tool: "capture_screen", url: o.url.slice(0, 500) }, l10n("kernel-search-what-capture"), extra?.signal);
-        if (other) return text(other);
-      }
       if (!(await (searching?.sessions.owns(id) ? access(o) : readAccess(o)))) return text(DENIAL_TEXT);
       const png = await working(id, () => bridge.capture(id, { expect: o.url }), l10n("kernel-activity-looks", { site: siteOf(o.url) }));
       return { content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }] };
@@ -1022,38 +980,28 @@ function createToolsServer(
           if (sessions.takeStop(key)) return text(STOP_TEXT);
           const current = sessions.current(key);
           if (current && sessions.handing(current.tabId)) return text(HANDING_TEXT, true);
-          // A search read_pages started without a reason takes this goal: the watcher works from now on.
+          // A search read_pages started without a reason takes this goal.
           if (current && !current.goal) sessions.setGoal(current.tabId, goal);
-          const g: Gesture = { tool: "search_web", query };
           // Rule 1 and 2: a query carrying a secret or private data read earlier pauses before it reaches the engine.
           const hit = outflow?.check(key, query);
-          // A held query is never shown in clear on the watcher's band.
-          const what = hit ? l10n("kernel-search-what-held", { masked: hit.masked }) : l10n("kernel-search-what-query", { query: cut(query) });
           let o: TabInfo;
           if (current) {
             if (hit) {
               const held = await pause(current.tabId, OUTFLOW_PAUSE(locale(), hit), extra?.signal);
               if (held) return text(held);
+              // The user took the page again after the pause.
+              if (sessions.handing(current.tabId)) return text(HANDING_TEXT, true);
             }
-            const stop = await watch(g, what, extra?.signal);
-            if (stop) return text(stop);
-            // The user took the page while the watcher judged.
-            if (sessions.handing(current.tabId)) return text(HANDING_TEXT, true);
             o = await search.open(win ?? undefined, { query }, current.tabId);
           } else {
-            const aim = goal;
-            const judged = outflow?.lastMessage(key) ?? aim;
-            // The first query is checked and judged before it goes to the engine; a held one pauses on the engine's empty page.
-            const strange = (await searching.watcher?.judge(judged, [], g)) === "strange";
-            o = await search.open(win ?? undefined, hit || strange ? { query: "" } : { query });
-            sessions.start(key, o.id, aim);
-            sessions.log(o.id, g);
-            for (const band of [hit && OUTFLOW_PAUSE(locale(), hit), strange && strangeBand(judged, what)]) {
-              if (!band) continue;
-              const stop = await pause(o.id, band, extra?.signal);
+            // The first query is checked before it goes to the engine; a held one pauses on the engine's empty page.
+            o = await search.open(win ?? undefined, hit ? { query: "" } : { query });
+            sessions.start(key, o.id, goal);
+            if (hit) {
+              const stop = await pause(o.id, OUTFLOW_PAUSE(locale(), hit), extra?.signal);
               if (stop) return text(stop);
+              o = await search.open(win ?? undefined, { query }, o.id);
             }
-            if (hit || strange) o = await search.open(win ?? undefined, { query }, o.id);
           }
           // A search's first search_web (the one that gives its goal) brings the notebook: given by the kernel, framed as data.
           const notes = current?.goal ? "" : ((await searching.notes?.shown()) ?? "");
@@ -1084,10 +1032,6 @@ function createToolsServer(
           const errors = new Map<string, string>();
           /** The addresses to read: as asked, and as opened. */
           const ok: [string, string][] = [];
-          // The opinions of the addresses that will ask a card, in parallel (each waits for the model).
-          const asking = [...new Set(urls)].filter((u) => urlWeb(u) && u.length <= URL_MAX && !(tabId && sessions.isFree(tabId, u)) && bridge.askAddress);
-          const views = new Map(await Promise.all(asking.map(async (u) => [u, await opinion({ tool: "read_pages", url: u, composed: true })] as const)));
-          if (tabId && !sessions.owns(tabId)) return ended();
           for (const u of new Set(urls)) {
             if (!urlWeb(u)) { errors.set(u, `Erreur : URL refusée (http ou https uniquement) : ${u}`); continue; }
             if (u.length > URL_MAX) { errors.set(u, `Erreur : ${TOO_LONG_TEXT}`); continue; }
@@ -1095,7 +1039,7 @@ function createToolsServer(
             if (free) { ok.push([u, free]); continue; }
             if (!bridge.askAddress) { errors.set(u, `Erreur : ${UNREAD_ADDRESS_TEXT}`); continue; }
             const t = tabId;
-            const ask = () => askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...views.get(u), ...danger(u) }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}), extra?.signal);
+            const ask = () => askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(u) }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}), extra?.signal);
             const yes = await (t ? sessions.step(t, l10n("kernel-search-address-step"), ask) : ask());
             if (t && !sessions.owns(t)) return ended();
             if (!yes) { errors.set(u, `Erreur : ${DENIAL_TEXT}`); continue; }
@@ -1107,7 +1051,7 @@ function createToolsServer(
           let first: TabInfo | undefined;
           if (!tabId && ok.length) {
             first = await search.open(win ?? undefined, { url: ok[0]![1] });
-            // Its reason is the watcher's goal (none: the watcher stays out of this search).
+            // Its reason is the search's goal (none: a later search_web gives one).
             sessions.start(key, first.id, reason?.trim() ?? "");
             sessions.allow(first.id, ok[0]![1]);
             tabId = first.id;
@@ -1115,7 +1059,6 @@ function createToolsServer(
           const id = tabId;
           const sections = new Map<string, string>();
           if (id) {
-            for (const [, u] of ok) sessions.log(id, { tool: "read_pages", url: u });
             act(id, l10n("kernel-activity-reads-pages", { n: urls.length }));
             let done = 0;
             const label = () => l10n("kernel-search-reading-pages", { total: ok.length, done });
@@ -1272,10 +1215,7 @@ function createToolsServer(
           limit: z.number().int().min(1).optional(),
         },
       },
-      protect(async ({ query: request, since: from, until, limit }, extra) => {
-        // Judged first: a read the search would pause never puts up a card for nothing.
-        const stop = await watch({ tool: "search_history", query: request }, l10n("kernel-search-what-history"), extra?.signal);
-        if (stop) return text(stop);
+      protect(async ({ query: request, since: from, until, limit }) => {
         if (!(await userDataAccess())) return text(HISTORY_DENIED_TEXT);
         const results = await hist.find({
           query: request,
@@ -1290,10 +1230,7 @@ function createToolsServer(
     server.registerTool(
       "read_history",
       { description: "Texte retenu d'une page visitée par l'utilisateur (trouvée par search_history), pour la résumer.", inputSchema: { url: z.string() } },
-      protect(async ({ url }, extra) => {
-        // Judged first: a read the search would pause never puts up a card for nothing.
-        const stop = await watch({ tool: "read_history", url }, l10n("kernel-search-what-history"), extra?.signal);
-        if (stop) return text(stop);
+      protect(async ({ url }) => {
         if (!(await userDataAccess())) return text(HISTORY_DENIED_TEXT);
         const p = await hist.read(url);
         if (!p) return text(NOTHING_KEPT);
@@ -1310,10 +1247,7 @@ function createToolsServer(
         description: "Cherche dans les favoris importés ou enregistrés de l'utilisateur (titre et URL). 20 résultats par défaut, 50 au plus.",
         inputSchema: { query: z.string(), limit: z.number().int().min(1).optional() },
       },
-      protect(async ({ query: request, limit }, extra) => {
-        // Judged first: a read the search would pause never puts up a card for nothing.
-        const stop = await watch({ tool: "search_bookmarks", query: request }, l10n("kernel-search-what-bookmarks"), extra?.signal);
-        if (stop) return text(stop);
+      protect(async ({ query: request, limit }) => {
         if (!(await userDataAccess())) return text(HISTORY_DENIED_TEXT);
         const results = await marks.find({ query: request, limit: Math.min(HISTORY_LIMIT.max, limit ?? HISTORY_LIMIT.default) });
         return follow(text(results.map((r) => `${r.title} · ${r.url}`).join("\n") || "Aucun favori trouvé."), results.map((r) => r.url));
@@ -1772,8 +1706,6 @@ export async function startMcpServer(o: {
   sites?: SitesTools;
   /** The agent's search sessions; with the bridge's `search`, the `search_web` tool exists. */
   search?: SearchSessions;
-  /** Judges the agent's actions during a search, read at each request (absent or undefined: every action passes). */
-  watcher?: () => Watcher | undefined;
   /** The agent's research notebook; without it, no `note_lesson` and no notebook at a search's start. */
   notes?: BrowsingNotes;
   /** Pause between two reads of the search page while its results come (tests: 0). */
@@ -1817,9 +1749,8 @@ export async function startMcpServer(o: {
     // A session of another agent (profile) asks under its own name; the pending-request maps stay shared.
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
-    // Stateless mode: a new server and transport per request (so a judge turned on or off applies at the next one).
-    const watcher = o.watcher?.();
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(watcher ? { watcher } : {}), ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale);
+    // Stateless mode: a new server and transport per request.
+    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

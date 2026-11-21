@@ -136,7 +136,8 @@
 </div>
 
 <style>
-  .fields { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+  /* Stretched as a setting's .line: in the column of .control (aligned to the start), a long model name in the select would size it past the card. */
+  .fields { align-self: stretch; min-width: 0; display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
   .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
   .key { display: flex; align-items: center; gap: 8px; }
   .key input { flex: 1; min-width: 0; }

@@ -180,7 +180,6 @@
           <p class="address" data-testid="address-request-url">{request.origin}</p>
           {#if agentReason}<p class="reason">{t("home-request-address-reason", { reason: agentReason })}</p>{/if}
           {#if request.danger}<p class="reason danger" role="alert" data-testid="address-request-danger">{t("home-request-address-danger", { danger: request.danger.slice(0, UNLOCK_REASON_LENGTH) })}</p>{/if}
-          {#if request.opinion}<p class="reason">{t("home-request-address-opinion", { opinion: request.opinion.slice(0, UNLOCK_REASON_LENGTH) })}</p>{/if}
           <button class="why-toggle" data-testid="address-request-why" aria-expanded={why} aria-controls="address-request-why" onclick={() => (why = !why)}>{t("home-request-why")}</button>
           <div class="why" class:open={why} id="address-request-why" aria-hidden={!why}>
             <div>

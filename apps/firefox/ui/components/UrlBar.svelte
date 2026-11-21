@@ -3,6 +3,8 @@
   import DesignButton from "./DesignButton.svelte";
   import AccessBadge from "./AccessBadge.svelte";
   import Icon from "./Icon.svelte";
+  import { fade } from "svelte/transition";
+  import { shownConnection } from "../../core/url";
   import type { WindowState, Visit } from "../../shared/model";
   import { shortcutLabel } from "../../shared/shortcuts";
   import { accessOf, api, appState } from "../state.svelte";
@@ -14,6 +16,7 @@
     return id ? appState.value?.tabs[id] : undefined;
   });
   const agentRights = $derived(tab ? accessOf(tab.id) : undefined);
+  const connection = $derived(tab ? shownConnection(tab) : null);
   let input = $state<string | null>(null); // non-null during editing
   let field: HTMLInputElement;
   let suggestions = $state<Visit[]>([]);
@@ -89,6 +92,13 @@
 </div>
 <div class="line">
 <form onsubmit={validate}>
+  <!-- Kept while editing, as Firefox's identity block: the text never shifts on focus. -->
+  {#if connection}
+    {@const label = t(connection === "secure" ? "chrome-ui-connection-secure" : "chrome-ui-connection-insecure")}
+    <span class="connection" data-connection={connection} data-testid="address-connection" role="img" aria-label={label} title={label} out:fade={{ duration: 150 }}>
+      <Icon name={connection === "secure" ? "lock" : "lock-open"} size={13} />
+    </span>
+  {/if}
   <input
     bind:this={field}
     data-testid="address-bar"
@@ -152,14 +162,17 @@
   .line::before { content: ""; position: absolute; z-index: -1; inset: 0 0 auto; height: 34px; box-sizing: border-box; border-radius: 10px; border: 1px solid var(--glass-edge); background: var(--glass-hi); transition: border-color var(--tap), box-shadow var(--tap); }
   .line:has(input:focus)::before { border-color: var(--accent); background: var(--sheet); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
   .line :global(.extensions) { padding-right: 3px; }
-  form { position: relative; flex: 1; min-width: 80px; height: 34px; }
+  form { position: relative; flex: 1; min-width: 80px; height: 34px; display: flex; align-items: center; }
+  .connection { display: grid; place-content: center; padding-left: 10px; color: var(--text-muted); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .connection[data-connection="insecure"] { color: var(--in-progress); }
+  .connection + input { padding-left: 6px; }
   .access { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
   .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--sheet); border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--modal-shadow); animation: ressac-drop var(--spring-d) var(--spring) both; }
   .suggestions li { display: flex; flex-direction: column; padding: 6px 9px; border-radius: 8px; color: var(--text); }
   .suggestions li[aria-selected="true"], .suggestions li:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .suggestions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .suggestions .url { font: 11px var(--font-mono); color: var(--text-muted); }
-  input { width: 100%; height: 100%; box-sizing: border-box; padding: 0 10px; border: none; background: none; color: var(--text); font: inherit; outline: none; -webkit-app-region: no-drag; }
+  input { flex: 1; min-width: 0; height: 100%; box-sizing: border-box; padding: 0 10px; border: none; background: none; color: var(--text); font: inherit; outline: none; -webkit-app-region: no-drag; }
   input::placeholder { color: var(--text-muted); }
   input.with-access { padding-right: 56px; }
 </style>

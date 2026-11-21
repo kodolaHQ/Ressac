@@ -21,13 +21,6 @@ import { FakeBridge } from "../src/mcp/fake-bridge.js";
 import { tempFolder } from "./helpers/temp.js";
 import { fakeRunner } from "./helpers/fake-runner.js";
 import type { InstructionChange } from "../src/workspace/instructions.js";
-import * as mcpServer from "../src/mcp/server.js";
-
-// Calls through: a test reads the options the kernel gave its MCP server.
-vi.mock("../src/mcp/server.js", async (original) => {
-  const m = await original<typeof import("../src/mcp/server.js")>();
-  return { ...m, startMcpServer: vi.fn(m.startMcpServer) };
-});
 
 let kernel: Kernel | undefined;
 afterEach(async () => {
@@ -258,23 +251,6 @@ test("kernel: arreter() stops the scheduler and the local AI", async () => {
   expect(order).toEqual(["planificateur", "ia"]);
   expect(ai.stop).not.toHaveBeenCalled();
   schedule.mockRestore();
-});
-
-test("kernel: the search judge is off by default, on only while the setting says so", async () => {
-  const root = await tempFolder();
-  const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
-  const access = { kev: vi.fn(), gemma: vi.fn(), close: vi.fn(async () => {}) };
-  const ai = { access: () => access, stop: vi.fn() } as unknown as LocalAi;
-  let on = false;
-  const base = { locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, ai: ai };
-  const watcherOf = () => vi.mocked(mcpServer.startMcpServer).mock.calls.at(-1)![0].watcher?.();
-  kernel = await createKernel(base);
-  expect(watcherOf()).toBeUndefined();
-  await kernel.stop();
-  kernel = await createKernel({ ...base, judge: () => on });
-  expect(watcherOf()).toBeUndefined();
-  on = true;
-  expect(watcherOf()?.judge).toBeTypeOf("function");
 });
 
 test("kernel: readHome reads the widgets; ia is null without local AI", async () => {

@@ -2,11 +2,10 @@ export type BandState = "working" | "yours" | "idle";
 export interface Band { state: BandState; text: string; pages: number; startedAt: number }
 export const STOP_TEXT = "L'utilisateur a arrêté la recherche : ne continue pas, dis ce que tu as trouvé.";
 export const CLOSED_TEXT = "Onglet fermé par l'utilisateur : la recherche est finie.";
-export type Gesture = { tool: string; query?: string; url?: string; composed?: boolean };
 
 type Outcome = "continue" | "stop" | "closed";
 interface Search {
-  window: string; tabId: string; goal: string; gestures: Gesture[];
+  window: string; tabId: string; goal: string;
   free: Set<string>; pages: number; startedAt: number; text: string;
   timer?: ReturnType<typeof setTimeout>;
   inFlight: number;
@@ -16,7 +15,6 @@ interface Search {
 
 const PATH_MAX = 20;
 export const URL_MAX = 500;
-const GESTURES_MAX = 50;
 const FREE_MAX = 10_000;
 /** A parsed http(s) address of at most URL_MAX characters, else undefined. */
 function web(u: string): URL | undefined {
@@ -40,16 +38,16 @@ export class SearchSessions {
     this.idleMs = o.idleMs ?? 120_000;
   }
 
-  current(window: string): { tabId: string; goal: string; gestures: readonly Gesture[] } | undefined {
+  current(window: string): { tabId: string; goal: string } | undefined {
     const s = this.byWindow.get(window);
-    return s && { tabId: s.tabId, goal: s.goal, gestures: [...s.gestures] };
+    return s && { tabId: s.tabId, goal: s.goal };
   }
 
   start(window: string, tabId: string, goal: string): void {
     if (this.byWindow.has(window)) throw new Error("a search is already running in this window");
     if (this.byTab.has(tabId)) throw new Error("this tab already belongs to a search");
     this.stopped.delete(window);
-    const s: Search = { window, tabId, goal, gestures: [], free: new Set(), pages: 0, startedAt: this.now(), text: "", inFlight: 0, enders: new Set() };
+    const s: Search = { window, tabId, goal, free: new Set(), pages: 0, startedAt: this.now(), text: "", inFlight: 0, enders: new Set() };
     this.byWindow.set(window, s);
     this.byTab.set(tabId, s);
     this.arm(s);
@@ -147,17 +145,10 @@ export class SearchSessions {
     return this.byTab.get(tabId)?.hand?.promise.then(() => {}) ?? Promise.resolve();
   }
 
-  log(tabId: string, g: Gesture): void {
-    const list = this.byTab.get(tabId)?.gestures;
-    if (!list) return;
-    list.push(g);
-    if (list.length > GESTURES_MAX) list.shift();
-  }
-
   handOver(tabId: string, text: string): Promise<{ outcome: Outcome; path: string[] }> {
     const s = this.byTab.get(tabId);
     if (!s) return Promise.resolve({ outcome: "stop", path: [] });
-    if (s.hand) return s.hand.promise; // one question to the user at a time (a watcher pause waits for its own: handEnd)
+    if (s.hand) return s.hand.promise; // one question to the user at a time (an outflow pause waits for its own: handEnd)
     clearTimeout(s.timer);
     s.text = text;
     this.band(s, "yours");
@@ -185,7 +176,7 @@ export class SearchSessions {
     const { resolve } = s.hand;
     s.hand = undefined;
     this.resume(s);
-    // shortcut: a second hand_over sent while this hand was open shares it and gets a stop too (a watcher pause never
+    // shortcut: a second hand_over sent while this hand was open shares it and gets a stop too (an outflow pause never
     // shares: it waits for its own hand); track callers if agents send two hand_over at once.
     resolve({ outcome: "stop", path: [] });
   }

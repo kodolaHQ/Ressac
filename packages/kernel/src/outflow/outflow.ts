@@ -35,7 +35,6 @@ interface Win {
   /** Normalised submitted messages, newest last. */
   typedText: string;
   buffer: string;
-  last?: string;
   paste: boolean;
   /** Start of an escape sequence cut at the end of the previous chunk. */
   carry: string;
@@ -275,7 +274,6 @@ export class Outflow {
     const message = w.buffer.trim();
     w.buffer = "";
     if (!message) return;
-    w.last = message;
     w.typedText = (w.typedText + "\n" + norm(message)).slice(-TYPED_MAX);
     for (const item of extract(message)) {
       w.typedItems.delete(item.norm);
@@ -285,12 +283,6 @@ export class Outflow {
       if (w.typedItems.size <= TYPED_ITEMS_MAX) break;
       w.typedItems.delete(old);
     }
-  }
-
-  lastMessage(win: string): string | undefined {
-    const w = this.wins.get(win);
-    // The message being typed is newer than the last one sent.
-    return w?.buffer.trim() || w?.last;
   }
 
   /** `address`: `out` is an address the agent opens, not a search query. */
@@ -345,7 +337,6 @@ export class Outflow {
     if (!w) return;
     w.typedItems.clear();
     w.typedText = w.buffer = w.carry = "";
-    delete w.last;
     w.paste = false;
   }
 

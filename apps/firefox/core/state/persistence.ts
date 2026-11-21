@@ -83,7 +83,6 @@ const SchemaSession = z.object({
     auraMotionChosen: z.boolean().optional().catch(undefined),
     saveMemory: z.boolean().catch(false),
     saveMemoryChosen: z.boolean().catch(false),
-    localJudge: z.boolean().catch(false),
     appearance: z.enum(APPEARANCES).catch("system"),
     // A session saved before languages existed was in French: it stays so. A language no longer shipped → the Mac's.
     language: z
@@ -254,7 +253,7 @@ export class SessionRecorder {
 
   private async write(state: BrowserState): Promise<void> {
     const tabs = Object.fromEntries(
-      Object.entries(state.tabs).map(([id, { loading: _load, canGoBack: _back, canGoForward: _forward, crashed: _crashed, error: _error, agentSearch: _band, call: _call, sound: _sound, playback: _playback, unloaded: _unloaded, notifies: _notifies, ...rest }]) => [id, rest]),
+      Object.entries(state.tabs).map(([id, { loading: _load, canGoBack: _back, canGoForward: _forward, crashed: _crashed, error: _error, agentSearch: _band, call: _call, sound: _sound, playback: _playback, security: _security, unloaded: _unloaded, notifies: _notifies, ...rest }]) => [id, rest]),
     );
     const target = join(this.folder, FILE);
     const { update: _update, locale: _locale, aiSetup: _aiSetup, welcomeReplay: _welcomeReplay, ...saved } = state;

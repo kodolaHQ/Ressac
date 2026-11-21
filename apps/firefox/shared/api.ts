@@ -68,6 +68,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
         error: z.string().nullable(),
         sound: z.enum(["playing", "muted"]).nullable(),
         playback: z.enum(["playing", "paused"]).nullable(),
+        security: z.enum(["secure", "insecure"]).nullable(),
         unloaded: z.boolean(),
         notifies: z.boolean(),
       })
@@ -176,7 +177,6 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("setStartOnHome"), enabled: z.boolean() }),
   z.object({ type: z.literal("setAuraMotion"), enabled: z.boolean() }),
   z.object({ type: z.literal("setSaveMemory"), enabled: z.boolean() }),
-  z.object({ type: z.literal("setLocalJudge"), enabled: z.boolean() }),
   z.object({ type: z.literal("chooseAppearance"), appearance: z.enum(APPEARANCES) }),
   z.object({ type: z.literal("chooseLanguage"), language: z.string().regex(LANGUAGE_SETTING) }),
   /** The chrome only: the language shown after resolving « system » (chrome/store). */
@@ -555,7 +555,7 @@ export interface SettingsApi {
   writer(): Promise<{ agent: "claude" | "codex" | "workshop-stopped" | null }>;
   /** Downloads the given models one after the other without waiting; a system notification says the end. */
   pullInBackground(names: string[]): Promise<SettingsResult>;
-  ollamaModels(url: string): Promise<{ ok: true; models: { name: string; size?: string }[] } | { ok: false; error: string }>;
+  ollamaModels(url: string): Promise<{ ok: true; models: { name: string; size?: string; cloud?: true }[] } | { ok: false; error: string }>;
   grants(): Promise<GrantRow[]>;
   revoke(kind: GrantKind, key: string): Promise<void>;
   dataDir(): string;

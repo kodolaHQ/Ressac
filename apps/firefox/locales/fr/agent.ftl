@@ -33,6 +33,8 @@ agent-ollama-none = Aucun modèle installé dans Ollama.
 agent-ollama-choose = Choisir un modèle
 agent-ollama-missing = { $name } (non installé)
 agent-ollama-refresh = Actualiser
+# A model run on ollama.com, not on this Mac: shown after its name in the picker.
+agent-ollama-cloud = cloud (hors du Mac)
 agent-ollama-silent = Ollama ne répond pas à cette adresse.
 
 ## Réglages › Données

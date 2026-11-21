@@ -172,21 +172,6 @@ describe("LocalAi", () => {
     expect(ai.state().state).toBe("active");
   });
 
-  it("warmDecision starts the server once and never throws", async () => {
-    const launch = vi.fn((): AiProcess => ({ stop() {}, onOutput() {} }));
-    const none = new LocalAi({ folder: await tempFolder(), llamaServer: LLAMA, launch, ...fast });
-    expect(() => none.warmDecision()).not.toThrow();
-    const noBinary = new LocalAi({ folder: await installed(), launch, ...fast });
-    expect(() => noBinary.warmDecision()).not.toThrow(); // the rejection is swallowed
-    expect(launch).not.toHaveBeenCalled();
-    const ai = new LocalAi({ folder: await installed(), llamaServer: LLAMA, launch, port: 1, ...fast });
-    toStop.push(ai);
-    ai.warmDecision();
-    ai.warmDecision();
-    expect(launch).toHaveBeenCalledTimes(1);
-    expect(ai.state().state).toBe("starting");
-  });
-
   it("after 10 min without a call, the server is stopped (fake clock)", async () => {
     const kev = keep(await fakeKev());
     let now = 1000;

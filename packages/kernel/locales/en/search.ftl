@@ -12,14 +12,6 @@ kernel-search-blocked = Blocked by a verification. Your turn: complete it, then 
 kernel-search-sign-in = Sign-in requested. Your turn: sign in if you want, then Continue.
 kernel-search-hand-verification = Blocked by a verification. Your turn: { $reason }
 kernel-search-hand-lost = I can't find my way. Your turn: { $reason }
-kernel-search-strange = The watcher paused: { $what } unrelated to “{ $goal }”
-kernel-search-opinion = No apparent link with the stated goal.
-kernel-search-what-other-tab = reading another tab
-kernel-search-what-capture = capturing another tab
-kernel-search-what-history = reading the history
-kernel-search-what-bookmarks = reading the bookmarks
-kernel-search-what-query = search “{ $query }”
-kernel-search-what-held = search containing { $masked }
 
 # The outflow rules: what a held query or address carries, and where the agent read it.
 kernel-outflow-pause = The watcher paused: the search contains { $what } ({ $masked })

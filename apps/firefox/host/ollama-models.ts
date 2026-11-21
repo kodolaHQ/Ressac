@@ -2,7 +2,8 @@ import { withoutV1, withV1 } from "./claude-engine.ts";
 import { modelField } from "../shared/settings.ts";
 import { hostSay } from "./locale.ts";
 
-export type OllamaModels = { ok: true; models: { name: string; size?: string }[] } | { ok: false; error: string };
+/** `cloud`: an Ollama cloud model (pulled as `…-cloud`, `remote_host` set): its prompts go to ollama.com, not this Mac. */
+export type OllamaModels = { ok: true; models: { name: string; size?: string; cloud?: true }[] } | { ok: false; error: string };
 
 const down = (): OllamaModels => ({ ok: false, error: hostSay("host-ollama-down") });
 
@@ -31,10 +32,15 @@ export async function listOllamaModels(url: string, o: { fetch?: typeof fetch; t
   try {
     const res = await (o.fetch ?? fetch)(u.toString(), { redirect: "error", signal: AbortSignal.timeout(o.timeoutMs ?? 3000) });
     if (!res.ok) return down();
-    const body = (await res.json()) as { models?: { name?: unknown; details?: { parameter_size?: unknown } }[] };
+    type Listed = { name: string; remote_host?: unknown; details?: { parameter_size?: unknown } };
+    const body = (await res.json()) as { models?: Partial<Listed>[] };
     const models = (body.models ?? [])
-      .filter((m): m is { name: string; details?: { parameter_size?: unknown } } => typeof m.name === "string" && m.name !== "" && modelField.safeParse(m.name).success)
-      .map((m) => (typeof m.details?.parameter_size === "string" ? { name: m.name, size: m.details.parameter_size } : { name: m.name }))
+      .filter((m): m is Listed => typeof m.name === "string" && m.name !== "" && modelField.safeParse(m.name).success)
+      .map((m) => ({
+        name: m.name,
+        ...(typeof m.details?.parameter_size === "string" && m.details.parameter_size ? { size: m.details.parameter_size } : {}),
+        ...(typeof m.remote_host === "string" && m.remote_host ? { cloud: true as const } : {}),
+      }))
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     return { ok: true, models };
   } catch {

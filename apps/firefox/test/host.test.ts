@@ -490,10 +490,10 @@ describe("agent host", { timeout: 30_000 }, () => {
       const bin = join(realpathSync(mkdtempSync(join(tmpdir(), "ressac-llama-"))), "llama-server");
       writeFileSync(bin, '#!/bin/sh\necho $$ > llama.pid\nexec sleep 60\n', { mode: 0o755 });
       const h = startHost({ RESSAC_LLAMA_SERVER: bin, ...env }, (dataDir) => {
-        mkdirSync(join(dataDir, "local-ai", "d1"), { recursive: true });
-        writeFileSync(join(dataDir, "local-ai", "d1", "d1-2B-Q4_K_M.gguf"), "gguf");
+        mkdirSync(join(dataDir, "local-ai", "embed"), { recursive: true });
+        writeFileSync(join(dataDir, "local-ai", "embed", "embeddinggemma-300M-Q8_0.gguf"), "gguf");
       });
-      const pidFile = join(h.dataDir, "local-ai", "d1", "llama.pid");
+      const pidFile = join(h.dataDir, "local-ai", "embed", "llama.pid");
       const alive = () => {
         try {
           process.kill(-Number(readFileSync(pidFile, "utf8")), 0);
@@ -505,9 +505,9 @@ describe("agent host", { timeout: 30_000 }, () => {
       return { h, pidFile, alive };
     };
     const warm = async (h: Host, pidFile: string) => {
-      h.rpc.notify("settings.localJudge", { on: true }); // only the judge warms the decision server; set before start answers
       await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
-      await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } }); // warms the decision server
+      await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
+      await h.rpc.request("ask.warm"); // starts the search model's llama-server
       await until(() => existsSync(pidFile) && readFileSync(pidFile, "utf8").trim() !== "");
     };
 
@@ -519,15 +519,6 @@ describe("agent host", { timeout: 30_000 }, () => {
       await until(() => !alive(), 2000); // well before the 4 s session stop ends
       await stopped;
       expect(await h.exited).toBe(0);
-    });
-
-    it("switching the judge on with AI on warms the decision server", async () => {
-      const { h, pidFile, alive } = withLlama();
-      await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
-      h.rpc.notify("settings.localJudge", { on: true });
-      await until(() => existsSync(pidFile) && readFileSync(pidFile, "utf8").trim() !== "");
-      await h.rpc.request("stop").catch(() => {});
-      await until(() => !alive(), 2000);
     });
 
     it("SIGTERM (Firefox's kill after its 5 s): exits 0 and kills the llama-servers' groups", async () => {

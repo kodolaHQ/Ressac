@@ -215,8 +215,10 @@ test("the CLAUDE.md and AGENTS.md shipped before the English formats are known o
 });
 
 test("the AGENTS.md templates are pinned: before editing one, add its hash to OLD_AGENTS, then update the pin", async () => {
-  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("7b028830acee8f891d9258b5b3f5aab9a8934bd50537b70c0508fa27bee4c2eb");
-  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("f9807f7224851e6bc752fff45cd70a22512f9ad462a9a7564963583d5ebc3527");
+  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("db5bfd093244cfc14097afa5bc69ec85cd3076f922c118da1b362da5c85ada11");
+  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("e078a5edca645e49e1f1021a3114feaff533ed9669124cedf1dd1bc232d41f58");
+  expect(OLD_AGENTS.has("7b028830acee8f891d9258b5b3f5aab9a8934bd50537b70c0508fa27bee4c2eb")).toBe(true);
+  expect(OLD_AGENTS.has("f9807f7224851e6bc752fff45cd70a22512f9ad462a9a7564963583d5ebc3527")).toBe(true);
   expect(OLD_AGENTS.has("2efd3c8aa133558c7855b6877ced708b8740062bb6e589cde32507d6d308c459")).toBe(true);
   expect(OLD_AGENTS.has("ad517ef63b2ed4f0ea6acf49fdd81579d83168022e96b0838af07beb8bc094e2")).toBe(true);
   expect(OLD_AGENTS.has("2c2667b528edf83b2eb01334e3f9b22557480db6fbfdaf49a438f23520c28097")).toBe(true);

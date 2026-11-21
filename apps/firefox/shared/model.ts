@@ -122,6 +122,8 @@ export interface Tab {
   sound?: "playing" | "muted" | null;
   /** The tab's media session (a video, music), as Firefox's media keys see it; volatile, never saved. */
   playback?: "playing" | "paused" | null;
+  /** The page's connection as Firefox's identity block judges it (core/url.ts connectionFromSecurity); absent until Firefox reports it; volatile, never saved. */
+  security?: "secure" | "insecure" | null;
   /** The tab uses the camera or the microphone while another tab is shown (the sidebar's call bar); volatile, never saved. */
   call?: { mic: boolean; camera: boolean };
   /** An essential unloaded by the user: its page is closed until the essential is opened again; volatile, never saved. */
@@ -290,8 +292,6 @@ export interface BrowserState {
      */
     saveMemory: boolean;
     saveMemoryChosen: boolean;
-    /** « Juge local des recherches »: the decision model pauses search gestures it finds off-goal. Off by default (measured: it pauses many honest ones). */
-    localJudge: boolean;
     /** « system » (the Mac's language when Ressac has it) or a shipped language code (shared/i18n.ts). */
     language: string;
     /** The user's own bindings; an action absent here keeps its default (shared/shortcuts.ts). */
@@ -443,8 +443,6 @@ export interface Request {
   reason?: string;
   /** « outils-dev » and « donnees-widget »: the agent's name, displayed as is. */
   agent?: string;
-  /** « agent-address »: the watcher's view of the address, displayed as text. */
-  opinion?: string;
   /** « agent-address »: the sensitive data the address carries (already masked), displayed as text. */
   danger?: string;
   /** « extension »: the grant card, displayed as text. */

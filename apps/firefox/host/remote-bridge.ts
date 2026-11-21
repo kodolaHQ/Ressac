@@ -98,7 +98,7 @@ export class RemoteBridge implements BrowserBridge {
       throw e;
     });
   // Taken down (signal) when a new conversation starts: refused.
-  askAddress = (o: { url: string; reason: string; agent: string; opinion?: string; danger?: string }, window: string | undefined, signal?: AbortSignal) =>
+  askAddress = (o: { url: string; reason: string; agent: string; danger?: string }, window: string | undefined, signal?: AbortSignal) =>
     this.call<boolean>("askAddress", [o, window], signal).catch((e) => {
       if (signal?.aborted) return false;
       throw e;

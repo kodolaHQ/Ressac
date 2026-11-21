@@ -18,7 +18,6 @@ import { createRunner, type Runner } from "./container/runner.js";
 import { SessionAgent } from "./pty/session.js";
 import { AccessPolicy } from "./access/policy.js";
 import { SearchSessions } from "./search/sessions.js";
-import { createWatcher } from "./search/watcher.js";
 import type { BrowserBridge } from "./mcp/bridge.js";
 import type { ExtensionsTools } from "./mcp/extensions.js";
 import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow, type AgentActivity } from "./mcp/server.js";
@@ -342,8 +341,6 @@ export async function createKernel(o: {
   onActivity?: (a: AgentActivity) => void;
   /** Local AI for the harvests; stopped with the kernel. */
   ai?: LocalAi;
-  /** The local judge of searches is on (Réglages, off by default), read at each MCP request; it also needs `ai`. */
-  judge?: () => boolean;
   /** Workflow engine, mounted in the harvest container (by default `<resources>/docker/engine`). */
   engine?: string;
   /** The workflow open in a window's builder (MCP tool `open_workflow`). */
@@ -471,14 +468,12 @@ export async function createKernel(o: {
     loc,
   );
   const outflow = new Outflow();
-  const watcher = aiAccess ? createWatcher(aiAccess) : undefined;
   const server = await startMcpServer({
     bridge: o.bridge,
     policy: policy,
     search: search,
     outflow: outflow,
     locale: loc,
-    watcher: () => (o.judge?.() ? watcher : undefined),
     notes: notes,
     token: token,
     agent: profile.name,

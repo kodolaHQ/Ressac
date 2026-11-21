@@ -158,20 +158,6 @@
         {/snippet}
       </SettingsRow>
     </div>
-    <div class="group">
-      <SettingsRow label={t("settings-local-judge")} id="local-judge" help={t("settings-local-judge-help")}>
-        <input
-          id="local-judge"
-          class="switch"
-          type="checkbox"
-          role="switch"
-          data-testid="settings-local-judge"
-          aria-describedby="local-judge-help"
-          checked={appState.value?.settings.localJudge ?? false}
-          onchange={(e) => api.dispatch({ type: "setLocalJudge", enabled: e.currentTarget.checked })}
-        />
-      </SettingsRow>
-    </div>
     <SettingsMozilla />
   {/if}
 </section>

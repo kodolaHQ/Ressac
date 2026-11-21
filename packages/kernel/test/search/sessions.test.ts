@@ -185,14 +185,13 @@ describe("SearchSessions", () => {
     expect(s.takeStop("w")).toBe(false);
   });
 
-  test("log records gestures; goal and gestures are gone once the search ends", () => {
+  test("the goal is gone once the search ends", () => {
     s.start("w", "t1", "g");
-    s.log("t1", { tool: "search", query: "q" });
-    expect(s.current("w")).toEqual({ tabId: "t1", goal: "g", gestures: [{ tool: "search", query: "q" }] });
+    expect(s.current("w")).toEqual({ tabId: "t1", goal: "g" });
     s.dismiss("t1");
     expect(s.current("w")).toBeUndefined();
     s.start("w", "t1", "g2");
-    expect(s.current("w")?.gestures).toEqual([]);
+    expect(s.current("w")?.goal).toBe("g2");
   });
 
   test("a second handOver returns the pending promise", async () => {
@@ -268,12 +267,8 @@ describe("SearchSessions", () => {
     expect(last()?.state).toBe("idle");
   });
 
-  test("gestures keep the last 50; the free set stops growing at 10 000", () => {
+  test("the free set stops growing at 10 000", () => {
     s.start("w", "t1", "g");
-    for (let i = 0; i < 60; i++) s.log("t1", { tool: "t", query: String(i) });
-    const g = s.current("w")!.gestures;
-    expect(g).toHaveLength(50);
-    expect(g[0]!.query).toBe("10");
     s.pageRead("t1", "https://a.test/", Array.from({ length: 10_050 }, (_, i) => `https://f.test/${i}`));
     expect(s.isFree("t1", "https://f.test/100")).toBe(true);
     expect(s.isFree("t1", "https://f.test/10040")).toBe(false);

@@ -5,12 +5,11 @@ import { dirname, join } from "node:path";
 import { BrowsingNotes, NOTES_PREFIX } from "../../src/search/notes.js";
 import { createRecaps } from "../../src/recaps/recaps.js";
 import { tempFolder } from "../helpers/temp.js";
-import { SearchSessions, STOP_TEXT, CLOSED_TEXT, type Band, type Gesture } from "../../src/search/sessions.js";
+import { SearchSessions, STOP_TEXT, CLOSED_TEXT, type Band } from "../../src/search/sessions.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
 import { PRIVATE_TEXT, type HistoryResult, type KeptPage, type TabInfo } from "../../src/mcp/bridge.js";
-import type { Watcher } from "../../src/search/watcher.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Outflow } from "../../src/outflow/outflow.js";
@@ -1541,14 +1540,14 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; watcher?: Watcher; withUserData?: boolean; history?: { results: HistoryResult[]; texts?: KeptPage[] }; sites?: Record<string, string[]>; bookmarks?: { title: string; url: string }[]; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; withUserData?: boolean; history?: { results: HistoryResult[]; texts?: KeptPage[] }; sites?: Record<string, string[]>; bookmarks?: { title: string; url: string }[]; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools } = {},
 ) {
   const principal = generateToken();
   const fake = new FakeBridge(opts.tabs ?? [github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: opts.history ?? { results: [] }, bookmarks: opts.bookmarks ?? [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}), ...(opts.sites ? { sites: opts.sites } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
-  const s = await startMcpServer({ locale: () => "fr", bridge: fake, policy, token: principal, search, ...(opts.watcher ? { watcher: () => opts.watcher } : {}), settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.outflow ? { outflow: opts.outflow } : {}), ...(opts.widgets ? { widgets: opts.widgets } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
+  const s = await startMcpServer({ locale: () => "fr", bridge: fake, policy, token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.outflow ? { outflow: opts.outflow } : {}), ...(opts.widgets ? { widgets: opts.widgets } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
     // search_web needs a goal: a test that does not care gets one.
@@ -2382,145 +2381,22 @@ test("hand_over drops path URLs longer than 500 characters", async () => {
   });
 });
 
-// --- the watcher ---
-
-/** A watcher that finds strange what `strange` says, and remembers what it was asked. */
-const fakeWatcher = (strange: (g: Gesture) => boolean) => {
-  const asked: { goal: string; past: readonly Gesture[]; next: Gesture }[] = [];
-  const watcher: Watcher = { judge: async (goal, past, next) => { asked.push({ goal, past: [...past], next }); return strange(next) ? "strange" : "ok"; } };
-  return { watcher, asked };
-};
-const BAND = (what: string, goal: string) => `Le surveillant a mis en pause : ${what} sans rapport avec « ${goal} »`;
-
-test("a strange search query is not run: the band goes to « yours »; Continuer runs it, Arrêter answers STOP_TEXT", async () => {
-  const { watcher } = fakeWatcher((g) => g.query === "adresse mail");
-  await withSearch(async ({ call, fake, search, bands }) => {
-    await call("search_web", { query: "vélo", goal: "trouver un vélo" });
-    const opens = () => fake.calls.filter((x) => x.method === "search.open").length;
-    const pending = call("search_web", { query: "adresse mail" });
-    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("recherche « adresse mail »", "trouver un vélo") }));
-    expect(opens()).toBe(1);
-    search.continue("search-1");
-    expect((await pending).text).toContain("Onglet : search-1");
-    expect(opens()).toBe(2);
-    const second = call("search_web", { query: "adresse mail" });
-    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
-    search.stop("search-1");
-    expect((await second).text).toBe(STOP_TEXT);
-    expect(opens()).toBe(2);
-  }, { watcher });
-});
-
-test("a strange first query pauses on the engine's empty page, then runs on Continuer; the goal is cut to 200 characters", async () => {
-  const { watcher } = fakeWatcher(() => true);
-  await withSearch(async ({ call, fake, search, bands }) => {
-    const pending = call("search_web", { query: "x".repeat(300), goal: "g".repeat(300) });
-    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
-    expect(bands.at(-1)![1]!.text).toBe(BAND(`recherche « ${"x".repeat(200)} »`, "g".repeat(200)));
-    expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[1])).toEqual([{ query: "" }]);
-    search.continue("search-1");
-    await pending;
-    expect(fake.calls.filter((x) => x.method === "search.open").map((x) => x.args[1])).toEqual([{ query: "" }, { query: "x".repeat(300) }]);
-    expect(search.current("main")).toMatchObject({ goal: "g".repeat(300), gestures: [{ tool: "search_web", query: "x".repeat(300) }] });
-  }, { watcher });
-});
-
-test("the first query is judged, with the goal, before its tab opens", async () => {
-  const { watcher, asked } = fakeWatcher(() => false);
-  await withSearch(async ({ call }) => {
-    await call("search_web", { query: "vélo", goal: "trouver un vélo" });
-    expect(asked).toEqual([{ goal: "trouver un vélo", past: [], next: { tool: "search_web", query: "vélo" } }]);
-  }, { watcher });
-});
-
-test("a composed address gets the watcher's opinion on its card, and the card still comes", async () => {
-  const { watcher } = fakeWatcher((g) => g.composed === true);
-  await withSearch(async ({ call, fake }) => {
-    await call("search_web", { query: "x", goal: "but" });
-    expect((await call("navigate", { id: "search-1", url: "https://ailleurs.fr/p", reason: "r" })).text).toBe("Onglet search-1 → https://ailleurs.fr/p");
-    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ opinion: "Sans rapport apparent avec le but annoncé." });
-  }, { watcher, address: true });
-  const ok = fakeWatcher(() => false);
-  await withSearch(async ({ call, fake }) => {
-    await call("search_web", { query: "x", goal: "but" });
-    await call("navigate", { id: "search-1", url: "https://ailleurs.fr/p", reason: "r" });
-    expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).not.toHaveProperty("opinion");
-  }, { watcher: ok.watcher, address: true });
-});
-
-test("search_history, search_bookmarks, read_history, read_tab and capture_screen on a user tab are judged while a search runs, and not without one", async () => {
-  const { watcher, asked } = fakeWatcher(() => false);
-  await withSearch(async ({ call }) => {
-    const user = async () => {
-      await call("search_history", { query: "h" });
-      await call("search_bookmarks", { query: "b" });
-      await call("read_history", { url: "https://a.fr/" });
-      await call("read_tab", { id: "github" });
-      await call("capture_screen", { id: "github" });
-    };
-    await user();
-    expect(asked).toHaveLength(0);
-    await call("search_web", { query: "x", goal: "but" });
-    asked.length = 0;
-    await user();
-    expect(asked.map((x) => x.next)).toEqual([
-      { tool: "search_history", query: "h" },
-      { tool: "search_bookmarks", query: "b" },
-      { tool: "read_history", url: "https://a.fr/" },
-      { tool: "read_tab", url: github.url },
-      { tool: "capture_screen", url: github.url },
-    ]);
-    expect(asked[3]!.past.map((x) => x.tool)).toEqual(["search_web", "search_history", "search_bookmarks", "read_history"]);
-  }, { watcher, withUserData: true, allow: true });
-});
-
-test("a strange history read is not run: the band names it; Continuer runs it", async () => {
-  const { watcher } = fakeWatcher((g) => g.tool === "search_history");
-  await withSearch(async ({ call, fake, search, bands }) => {
-    await call("search_web", { query: "x", goal: "but" });
-    const pending = call("search_history", { query: "h" });
-    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("lecture de l'historique", "but") }));
-    expect(fake.calls.some((x) => x.method === "history.find")).toBe(false);
-    // Judged before the card: a paused read never puts one up.
-    expect(fake.calls.some((x) => x.method === "askWidgetData")).toBe(false);
-    search.continue("search-1");
-    await pending;
-    expect(fake.calls.some((x) => x.method === "history.find")).toBe(true);
-  }, { watcher, withUserData: true });
-});
-
-test("a followed link is never judged", async () => {
-  const w = fakeWatcher(() => false);
-  await withSearch(async ({ call }) => {
-    await call("search_web", { query: "x", goal: "but" });
-    w.asked.length = 0;
-    await call("navigate", { id: "search-1", url: "https://exemple.fr/a" });
-    expect(w.asked).toHaveLength(0);
-  }, { watcher: w.watcher });
-});
-
-test("search_web needs a goal; a search read_pages starts takes its reason as goal; without one, the next search_web gives it and is judged", async () => {
-  const { watcher, asked } = fakeWatcher((g) => g.tool === "search_web");
-  await withSearch(async ({ call, fake, search, bands }) => {
+test("search_web needs a goal; a search read_pages starts takes its reason as goal; without one, the next search_web gives it", async () => {
+  await withSearch(async ({ call, fake, search }) => {
     for (const goal of [undefined, "   "]) expect((await call("search_web", { query: "x", goal })).isError).toBe(true);
     expect(fake.calls.filter((x) => x.method === "search.open")).toHaveLength(0);
     await call("read_pages", { urls: [a.url] });
     expect(search.current("main")?.goal).toBe("");
-    const pending = call("search_web", { query: "adresse mail", goal: "trouver un vélo" });
-    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("recherche « adresse mail »", "trouver un vélo") }));
+    expect((await call("search_web", { query: "vélo", goal: "trouver un vélo" })).text).toContain("Onglet : search-1");
     expect(search.current("main")?.goal).toBe("trouver un vélo");
-    expect(asked.map((x) => x.goal)).toEqual(["trouver un vélo"]);
-    search.continue("search-1");
-    expect((await pending).text).toContain("Onglet : search-1");
-  }, { watcher, withUserData: true, address: true });
+  }, { withUserData: true, address: true });
   await withSearch(async ({ call, search }) => {
     await call("read_pages", { urls: [a.url], reason: "  lire l'annonce " });
     expect(search.current("main")?.goal).toBe("lire l'annonce");
   }, { address: true });
 });
 
-test("a request dropped during a watcher pause puts the band back and the next search_web runs", async () => {
-  const { watcher } = fakeWatcher((g) => g.query === "adresse mail");
+test("a request dropped during an outflow pause puts the band back and the next search_web runs", async () => {
   await withSearch(async ({ call, token, s, bands }) => {
     await call("search_web", { query: "vélo", goal: "but" });
     const drop = new AbortController();
@@ -2528,26 +2404,14 @@ test("a request dropped during a watcher pause puts the band back and the next s
       method: "POST",
       signal: drop.signal,
       headers: { Authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search_web", arguments: { query: "adresse mail", goal: "but" } } }),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search_web", arguments: { query: `clé ${SECRET}`, goal: "but" } } }),
     }).catch(() => "aborted");
     await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
     drop.abort();
     await pending;
     await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("idle"));
     expect((await call("search_web", { query: "vélo pliant" })).text).toContain("Onglet : search-1");
-  }, { watcher });
-});
-
-test("the watcher is asked about composed read_pages addresses in parallel", async () => {
-  let running = 0;
-  let most = 0;
-  const watcher: Watcher = { judge: async () => { most = Math.max(most, ++running); await new Promise((ok) => setTimeout(ok, 50)); running--; return "ok"; } };
-  await withSearch(async ({ call }) => {
-    await call("search_web", { query: "x", goal: "but" });
-    most = 0;
-    await call("read_pages", { urls: ["https://a.fr/", "https://b.fr/", "https://c.fr/"] });
-    expect(most).toBe(3);
-  }, { watcher, address: true });
+  }, { outflow: new Outflow() });
 });
 
 // --- final fixes: the address rule, the hand-over, lifecycles ---
@@ -2661,30 +2525,10 @@ test("while a hand is open, the agent's tools refuse the search tab: nothing rea
     ];
     for (const [name, args] of tries) expect(await call(name, args)).toEqual({ text: HANDING, isError: true });
     expect(fake.calls.slice(before).filter((x) => ["readText", "navigate", "capture", "search.open", "search.openBackground"].includes(x.method))).toEqual([]);
-    expect(search.current("main")!.gestures.map((g) => g.tool)).toEqual(["search_web"]);
     search.continue("search-1");
     await pending;
     expect((await call("read_tab", { id: "search-1" })).isError).toBe(false);
   });
-});
-
-test("a watcher pause during an open hand waits for it, then shows its own message", async () => {
-  const { watcher } = fakeWatcher((g) => g.tool === "search_history");
-  await withSearch(async ({ call, fake, search, bands }) => {
-    await call("search_web", { query: "x", goal: "but" });
-    const handing = handOver(call);
-    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
-    const reading = call("search_history", { query: "h" });
-    await new Promise((ok) => setTimeout(ok, 100));
-    expect(bands.at(-1)![1]!.text).toBe("Bloqué par une vérification. À vous : Résolvez le captcha");
-    search.continue("search-1");
-    expect((await handing).text).toContain("La page est de nouveau à toi");
-    await vi.waitFor(() => expect(bands.at(-1)![1]).toMatchObject({ state: "yours", text: BAND("lecture de l'historique", "but") }));
-    expect(fake.calls.some((x) => x.method === "history.find")).toBe(false);
-    search.continue("search-1");
-    await reading;
-    expect(fake.calls.some((x) => x.method === "history.find")).toBe(true);
-  }, { watcher, withUserData: true });
 });
 
 test("hand_over on a call already cancelled hands the page back at once", async () => {
@@ -2740,25 +2584,6 @@ test("a dropped request takes its address card down and the window's chain goes 
 });
 
 // --- residuals: a hand opened while a tool waited ---
-
-test("a hand opened while the watcher judges a search_web: the search tab is not navigated", async () => {
-  let release!: () => void;
-  const judging = new Promise<void>((ok) => { release = ok; });
-  let first = true;
-  const watcher: Watcher = { judge: async () => { if (first) { first = false; return "ok"; } await judging; return "ok"; } };
-  await withSearch(async ({ call, fake, search }) => {
-    await call("search_web", { query: "x", goal: "but" });
-    const pending = call("search_web", { query: "y" });
-    await new Promise((ok) => setTimeout(ok, 100));
-    const hand = handOver(call);
-    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
-    release();
-    expect(await pending).toEqual({ text: HANDING, isError: true });
-    expect(fake.calls.filter((x) => x.method === "search.open")).toHaveLength(1);
-    search.continue("search-1");
-    await hand;
-  }, { watcher });
-});
 
 test("a hand opened while an address card is up: navigate and read_pages neither move nor read the search tab", async () => {
   await withSearch(async ({ call, fake, search }) => {
@@ -2883,7 +2708,7 @@ test("what list_tabs returned is a source, named « tes onglets »; without an o
   }
 });
 
-test("a composed address carrying read data gets a danger line, with or without the watcher; the card still decides", async () => {
+test("a composed address carrying read data gets a danger line, outside and during a search; the card still decides", async () => {
   const danger = OUTFLOW_DANGER("fr", { kind: "iban", masked: mask(IBAN), source: "mail.google.com" });
   await withSearch(async ({ call, fake, policy }) => {
     policy.grant(mailTab);
@@ -2893,7 +2718,6 @@ test("a composed address carrying read data gets a danger line, with or without 
     expect((await call("open_tab", { url: "https://ailleurs.fr/propre", reason: "r" })).text).toMatch(/^agent-/);
     expect(fake.calls.filter((x) => x.method === "askAddress")[1]!.args[0]).not.toHaveProperty("danger");
   }, { outflow: new Outflow(), tabs: [github, mailTab], address: true });
-  const { watcher } = fakeWatcher(() => false);
   await withSearch(async ({ call, fake, policy }) => {
     policy.grant(mailTab);
     await call("read_tab", { id: "gmail" });
@@ -2903,8 +2727,7 @@ test("a composed address carrying read data gets a danger line, with or without 
     const cards = fake.calls.filter((x) => x.method === "askAddress").map((x) => x.args[0]);
     expect(cards).toHaveLength(2);
     for (const card of cards) expect(card).toMatchObject({ danger });
-    expect(cards[0]).not.toHaveProperty("opinion");
-  }, { outflow: new Outflow(), tabs: [github, mailTab], address: true, watcher });
+  }, { outflow: new Outflow(), tabs: [github, mailTab], address: true });
 });
 
 test("a sensitive tab asks again once per search, and not outside one", async () => {
@@ -3118,43 +2941,6 @@ test("what the user browsed during a hand-over is a source, named in French", as
     search.continue("search-1");
     await pending;
   }, { outflow: new Outflow() });
-});
-
-test("a query both held and strange: the watcher's band shows it masked", async () => {
-  const { watcher } = fakeWatcher(() => true);
-  await withSearch(async ({ call, search, bands }) => {
-    const pending = call("search_web", { query: `clé ${SECRET}`, goal: "but" });
-    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toBe(OUTFLOW_PAUSE("fr", { kind: "api-key", masked: mask(SECRET) })));
-    search.continue("search-1");
-    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("sans rapport avec"));
-    expect(bands.at(-1)![1]!.text).toContain(mask(SECRET));
-    expect(bands.at(-1)![1]!.text).not.toContain(SECRET);
-    search.continue("search-1");
-    await pending;
-    const later = call("search_web", { query: `encore ${SECRET}` });
-    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("la recherche contient"));
-    search.continue("search-1");
-    await vi.waitFor(() => expect(bands.at(-1)![1]?.text).toContain("sans rapport avec"));
-    expect(bands.at(-1)![1]!.text).not.toContain(SECRET);
-    search.continue("search-1");
-    await later;
-  }, { outflow: new Outflow(), watcher });
-});
-
-test("the watcher judges against the user's last message, else the search goal", async () => {
-  const typed = fakeWatcher(() => false);
-  const outflow = new Outflow();
-  outflow.typed("main", "aspirateur robot pas cher\r");
-  await withSearch(async ({ call }) => {
-    await call("search_web", { query: "x", goal: "but de l'agent" });
-    await call("search_web", { query: "y" });
-    expect(typed.asked.map((x) => x.goal)).toEqual(["aspirateur robot pas cher", "aspirateur robot pas cher"]);
-  }, { watcher: typed.watcher, outflow });
-  const none = fakeWatcher(() => false);
-  await withSearch(async ({ call }) => {
-    await call("search_web", { query: "x", goal: "but de l'agent" });
-    expect(none.asked.map((x) => x.goal)).toEqual(["but de l'agent"]);
-  }, { watcher: none.watcher, outflow: new Outflow() });
 });
 
 describe("recaps", () => {

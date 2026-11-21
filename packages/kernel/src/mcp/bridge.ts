@@ -112,10 +112,10 @@ export interface BrowserBridge {
   /**
    * Shows the card for an address the agent wrote itself (not a link it read) in the window of the search; true if the
    * user allows it. `signal` raised: the card is removed and the answer is false. Absent: such an address is refused.
-   * `opinion`: the watcher's view, shown as one more line when present. `danger`: what the address carries that the agent
+   * `danger`: what the address carries that the agent
    * read from a private source or that looks like a secret, shown as a red line (it never blocks the card).
    */
-  askAddress?(o: { url: string; reason: string; agent: string; opinion?: string; danger?: string }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
+  askAddress?(o: { url: string; reason: string; agent: string; danger?: string }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
   /** The tab is in a private space: absent from listerOnglets, the agent has no access to it. */
   isPrivate?(id: string): boolean;
   /** The tab the user is looking at is in a private space (ongletActif then returns null). */
