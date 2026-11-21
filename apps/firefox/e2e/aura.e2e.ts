@@ -101,34 +101,40 @@ describe("the window's aura", () => {
     const m = await launch();
     const windowId = (await state(m)).windows[0]!.id;
     const open = async () => (await state(m)).windows[0]!.agentPanelOpen;
-    // The panel's left edge and the page's right margin, sampled every frame for 600 ms after the toggle.
+    // Toggles the panel, then reads the panel's left edge and the page's right margin at fixed points of the slide, its
+    // transition held still at each (frames sampled under load can all fall at its end).
     const slide = async () =>
-      m.execute<{ left: number; margin: number; hidden: boolean }[]>(`return (async () => {
-        const agent = document.getElementById("ressac-agent"), box = document.getElementById("tabbrowser-tabbox"), out = [];
-        const t0 = performance.now();
-        while (performance.now() - t0 < 600) {
-          out.push({ left: Math.round(agent.getBoundingClientRect().left), margin: Math.round(parseFloat(getComputedStyle(box).marginRight)), hidden: agent.hidden });
-          await new Promise((r) => requestAnimationFrame(r));
-        }
+      m.execute<{ left: number; margin: number; hidden: boolean }[]>(
+        `return (async () => {
+        await (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).dispatch(arguments[0]);
+        const t = document.documentElement.getAnimations().find((a) => a.transitionProperty === "--ressac-agent");
+        if (!t) throw new Error("no slide");
+        const agent = document.getElementById("ressac-agent"), box = document.getElementById("tabbrowser-tabbox");
+        const duration = t.effect.getComputedTiming().duration;
+        t.pause();
+        const out = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9].map((f) => {
+          t.currentTime = f * duration;
+          return { left: Math.round(agent.getBoundingClientRect().left), margin: Math.round(parseFloat(getComputedStyle(box).marginRight)), hidden: agent.hidden };
+        });
+        t.play();
         return out;
-      })();`);
+      })();`,
+        [{ type: "toggleAgentPanel", windowId }],
+      );
+    const sliding = "return document.documentElement.hasAttribute('ressac-agent-sliding')";
     if (!(await open())) {
       await dispatch(m, { type: "toggleAgentPanel", windowId });
-      await waitFor(m, "return !document.getElementById('ressac-agent').hidden", (v) => v === true);
-      await new Promise((r) => setTimeout(r, 600));
+      await waitFor(m, sliding, (v) => v === false, 2_000);
     }
     const width = await m.execute<number>(`return Math.round(document.getElementById("ressac-agent").getBoundingClientRect().width);`);
-    await dispatch(m, { type: "toggleAgentPanel", windowId });
     const closing = await slide();
-    // A hidden iframe measures 0: only the frames where it shows.
-    const lefts = closing.filter((x) => !x.hidden).map((x) => x.left);
     // Several intermediate positions, moving right; the margin shrinks with it; hidden only at the end.
+    const lefts = closing.map((x) => x.left);
     expect(new Set(lefts).size).toBeGreaterThan(3);
     expect(lefts.every((x, i) => i === 0 || x >= lefts[i - 1]!)).toBe(true);
     expect(closing.some((x) => x.margin > 8 && x.margin < width + 8)).toBe(true);
-    expect(closing[0]!.hidden).toBe(false);
+    expect(closing.every((x) => !x.hidden)).toBe(true);
     await waitFor(m, "return document.getElementById('ressac-agent').hidden", (v) => v === true, 2_000);
-    await dispatch(m, { type: "toggleAgentPanel", windowId });
     const opening = (await slide()).map((x) => x.left);
     expect(new Set(opening).size).toBeGreaterThan(3);
     expect(opening.every((x, i) => i === 0 || x <= opening[i - 1]!)).toBe(true);
