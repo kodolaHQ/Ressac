@@ -182,8 +182,9 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
   await harvest(m, "veille");
   await untilEqual(() => shown(m, "gmail"), '{"titre":"Court"}');
   await untilEqual(() => widgetRuns("veille").map((e) => e.status), ["succeeded"]);
-  const watch = JSON.parse((await shown(m, "veille")) || "null") as { titre: string; avis: string }[];
-  expect(watch.map((a) => [a.titre, a.avis])).toEqual([
+  // The run is written before its last live update reaches the display (it may still show the empty list).
+  const watch = async () => (JSON.parse((await shown(m, "veille")) || "null") as { titre: string; avis: string }[] | null)?.map((a) => [a.titre, a.avis]);
+  await untilEqual(watch, [
     ["Vélo de course", "Bonne affaire."],
     ["Vélo pliant", "Bonne affaire."],
   ]);
