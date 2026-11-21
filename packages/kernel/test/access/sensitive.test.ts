@@ -45,6 +45,14 @@ test.each([
   "https://mail.zoho.eu/zm/",
   "https://particuliers.sg.fr/icd/x",
   "about:reader?url=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2F0%2F",
+  // Encoded or parameterised segments load the same page on most servers.
+  "https://github.com/%73ettings/tokens",
+  "https://github.com/settings;a=1/tokens",
+  "https://github.com/x/settings%2Ftokens",
+  "https://example.com/%6Cogin",
+  "https://example.com/%256Cogin",
+  "https://example.com/ACCOUNT%2f",
+  "https://example.com/%E0%A4%A",
   // Nesting past what is unwrapped fails closed.
   "view-source:view-source:view-source:view-source:https://www.marmiton.org/x",
 ])("sensitive: %s", (url) => expect(isSensitive(url)).toBe(true));

