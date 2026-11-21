@@ -33,6 +33,7 @@ if (args[0] === "rm" && args[1] === "-f" && args[2] === "ressac-workshop") {
 }
 if (args[0] === "build") noteCall();
 // BuildKit plain progress goes to stderr; FAKE_DOCKER_BUILD_STEP_MS paces the lines (unset: instant, as before).
+// FAKE_DOCKER_BUILD_HOLD=1: the last step waits for <RESSAC_ROOT>/fake-docker-build-go (a test that has seen step 2 writes it).
 if (args[0] === "build" && Number(env.FAKE_DOCKER_BUILD_STEP_MS) > 0 && !failing) {
   const lines = [
     "#5 [1/3] FROM docker.io/library/node:22-bookworm",
@@ -40,6 +41,7 @@ if (args[0] === "build" && Number(env.FAKE_DOCKER_BUILD_STEP_MS) > 0 && !failing
     "#7 [3/3] RUN npm install -g @anthropic-ai/claude-code @openai/codex",
   ];
   const next = () => {
+    if (lines.length === 1 && env.FAKE_DOCKER_BUILD_HOLD === "1" && !existsSync(join(env.RESSAC_ROOT, "fake-docker-build-go"))) return void setTimeout(next, 50);
     const line = lines.shift();
     if (!line) return process.exit(0);
     process.stderr.write(`${line}\n`);
