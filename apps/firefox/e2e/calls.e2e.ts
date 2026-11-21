@@ -11,7 +11,9 @@ const CALL = `<title>Appel</title><video id="v" autoplay playsinline width="640"
 const video = v;
 navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((s) => {
   video.srcObject = new MediaStream(s.getVideoTracks());
-  document.title = "Appel en cours";
+  // Set once the video plays and was seen, after Firefox's own watch of it (an observer and an idle callback asked before
+  // ours): before that, leaving the tab floats nothing.
+  video.addEventListener("playing", () => new IntersectionObserver((e, o) => e.some((x) => x.isIntersecting) && (o.disconnect(), requestIdleCallback(() => (document.title = "Appel en cours")))).observe(video), { once: true });
   addEventListener("keydown", (e) => {
     const t = e.metaKey && e.key === "d" ? s.getAudioTracks()[0] : e.metaKey && e.key === "e" ? s.getVideoTracks()[0] : null;
     if (!t) return;
