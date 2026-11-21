@@ -30,6 +30,21 @@ Every visual change follows `docs/DESIGN.md`. New code, comments and identifiers
 - **The full suite**: before a release, not after each feature. A test that fails there and passes when its file is run alone is a load flake: say so, do not rerun the whole suite.
 - Do not run the suite during a `build:ui`: the binary disappears and everything fails with "build missing".
 
+### Writing e2e that hold under load
+
+Every rule below comes from a test that failed on a busy machine. A red must mean a bug.
+- **Wait for the final state, never read once.** After a click, load or message, `expect.poll` / `waitFor` / `waitUi` on what must end up true (a list that loads, a file written after the answer, a live update, a counter).
+- **No fixed sleep decides a pass.** A positive check waits on its condition. A "must not happen" check keeps a short window, started after the last thing that could cause it (an event, the end of retries), with a comment saying which.
+- **No wall-clock budget.** `toBeLessThan(ms)` on elapsed time fails on a loaded Mac. Bound well below the slow fallback it rules out (≥ 2×, say which), time it where the timer lives, use CPU time, or drop it when the result already proves the point.
+- **A two-step window the product allows (1 s, 300 ms) is done in one script**, in the process that owns the timer: Marionette round trips between the steps eat the window.
+- **A transient state the test must see** (« Lancement… », a build step, « 2 / 3 ») is held by the fake until the test has seen it (the fake waits for a file the test writes).
+- **Press only what can take the press:** `click` waits for armed buttons; wait for a frame's process to know its scroll position, for a page to have a size, for a window that steals focus to have taken it.
+- **Transitions:** no rAF sampling (hidden windows run few frames). Listen to `transitionrun`/`transitionend`, or pause and seek the animation.
+- **Each test passes alone with `-t`.** No snapshot of global state left by earlier tests (refusals, counters, files): scope checks to what this test causes.
+- **Handles can vanish** between listing and switching (`no such window`): keep polling. **Lazy getters lie:** an unloaded tab's `currentURI` is its page; wait on a loaded fact.
+- **Teardown waits for processes**, not a retry on `rm` (`launch.ts` waits for Firefox's process group).
+- **Reproduce a flake before fixing it:** 6-12 copies of the file or test at once (`-t`), plus `yes > /dev/null` hogs, count failures before and after; probes go to a file (vitest hides console). Copies collide on fixed port blocks: give each its own while measuring.
+
 ## Version and release
 
 - The Ressac version is `"version"` in `apps/firefox/package.json`. Sentry's release, Réglages › À propos, the DMG name and the Finder version all follow it.
