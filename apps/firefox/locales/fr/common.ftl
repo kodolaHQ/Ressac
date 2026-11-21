@@ -17,3 +17,6 @@ ai-asleep-widgets = Des widgets sur l'accueil, que l'IA tient à jour pour vous.
 ai-asleep-workflows = Les étapes d'un widget ou d'une action, écrites avec l'agent.
 ai-asleep-review = Ce que l'agent a changé dans un projet, à relire et commenter.
 ai-asleep-settings = L'agent, l'IA locale et l'atelier se règlent ici une fois l'IA activée.
+
+# A frame (widget, app home, component) whose process kept stopping: it stays empty.
+frame-stopped = Cet affichage s'est arrêté plusieurs fois : il reste vide.

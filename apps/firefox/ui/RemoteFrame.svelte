@@ -15,11 +15,14 @@
    * sandboxed like `<iframe sandbox="allow-scripts">`, out of the parent process. Its page's events come back through
    * the RessacFrame actor; `press` and `focus` are the user's own (trusted) events. Only a document whose address
    * `accept`s is the owner's: any other is sent back to `src` (bounded: frameReverter), sent nothing, and its events dropped.
+   * A document without a null principal is never the owner's either (frameSandboxed). When the frames' process dies the
+   * frame loads its copy again in a new one (remote-frame.ts); past a few deaths a minute it shows `stoppedText` instead.
    */
   let {
     src,
     accept,
     title,
+    stoppedText,
     testid,
     onmessage,
     onload,
@@ -30,6 +33,8 @@
     src: string | null;
     accept: (uri: string) => boolean;
     title: string;
+    /** Shown in place of a frame whose process kept dying (the owner's language). */
+    stoppedText: string;
     testid?: string;
     /** `open`: `{ url }`; `home` and `component`: their detail, parsed (a non-object or bad JSON never comes). */
     onmessage?: (name: string, data: Record<string, unknown>) => void;
@@ -43,6 +48,7 @@
   const frames: RemoteFrames = ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").remoteFrames;
 
   let host = $state<HTMLDivElement>();
+  let stopped = $state(false);
   let browser: Element | null = null;
   let off: (() => void) | null = null;
 
@@ -51,14 +57,19 @@
     const s = src;
     if (!s || !host) return;
     if (!browser) {
-      const b = frames.createFrameBrowser(document);
+      const b = frames.createFrameBrowser(document, (revived) => {
+        // Revived: a new browsing context in the same element, a new handle so the owner's per-context work (the home's guard) runs again.
+        if (revived) frame = handle();
+        // shortcut: a stopped frame stays so until its owner remounts (the page shown again), upgrade if a real use hits it.
+        else stopped = true;
+      });
       b.setAttribute("aria-label", untrack(() => title));
       host.append(b);
       browser = b;
       const reverter = frames.frameReverter(b);
       const ours = () => {
         const u = frames.frameUri(b);
-        return u !== null && accept(u);
+        return u !== null && accept(u) && frames.frameSandboxed(b);
       };
       off = frames.onFrameMessage(b, (name, data) => {
         if (name === "loaded") {
@@ -82,7 +93,8 @@
           if (typeof d === "object" && d !== null) onmessage?.(name, d as Record<string, unknown>);
         }
       });
-      frame = { send: async (d) => (ours() ? frames.sendFrame(b, d) : undefined), element: b };
+      const handle = (): RemoteFrameHandle => ({ send: async (d) => (ours() ? frames.sendFrame(b, d) : undefined), element: b });
+      frame = handle();
     }
     frames.loadFrame(browser, s);
   });
@@ -95,9 +107,13 @@
   });
 </script>
 
-<div class="remote-frame" bind:this={host} data-testid={testid}></div>
+<div class="remote-frame" bind:this={host} data-testid={testid} style:display={stopped ? "none" : null}></div>
+{#if stopped}
+  <p class="stopped" data-testid="frame-stopped">{stoppedText}</p>
+{/if}
 
 <style>
   .remote-frame { flex: 1; min-height: 0; display: flex; }
   .remote-frame :global(browser) { flex: 1; width: 100%; height: 100%; border: none; }
+  .stopped { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--text-muted); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
 </style>

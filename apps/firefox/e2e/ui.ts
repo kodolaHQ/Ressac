@@ -159,3 +159,18 @@ export async function startAgentSession(m: Marionette): Promise<void> {
   for (const end = Date.now() + 10_000; !(await m.execute<boolean>("return document.getElementById('ressac-agent').hidden")); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > end) throw new Error("the agent panel did not close");
 }
+
+/** The pid of the frames' web content process (chrome/window/remote-frame.ts), or null when none runs. */
+export const framesPid = (m: Marionette): Promise<number | null> =>
+  // A killed process stays listed a while, without a pid.
+  m.execute<number | null>(`return ChromeUtils.getAllDOMProcesses().find((p) => p.remoteType?.startsWith("webIsolated=resource://ressac-frames-") && p.osPid > 0)?.osPid ?? null;`);
+
+/** Kills the frames' process from outside (SIGKILL), as a crash or macOS's memory killer would; waits until it is gone. */
+export async function killFrames(m: Marionette): Promise<number> {
+  const pid = await framesPid(m);
+  if (!pid) throw new Error("no frames process");
+  process.kill(pid, "SIGKILL");
+  for (const deadline = Date.now() + 10_000; (await framesPid(m)) === pid; await new Promise((r) => setTimeout(r, 100)))
+    if (Date.now() > deadline) throw new Error("the frames' process did not go");
+  return pid;
+}

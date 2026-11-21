@@ -9,7 +9,8 @@ vi.stubGlobal("ChromeUtils", {
     },
   }),
 });
-const { frameReverter, loadFrame, onFrameMessage, setFrameActor } = await import("../chrome/window/remote-frame");
+const { framesToken } = await import("../chrome/window/frames-root");
+const { createFrameBrowser, frameReverter, frameSandboxed, loadFrame, onFrameMessage, REVIVES_PER_MINUTE, sendFrame, setFrameActor } = await import("../chrome/window/remote-frame");
 
 test("a frame subscribed before the store set the actor gets its messages once it does; a stopped one does not; a stop after the flush unsubscribes", () => {
   const early = {} as Element;
@@ -74,5 +75,66 @@ test("frameReverter: one revert per address until a kept load, at least a second
   expect(loads).toBe(2);
   vi.advanceTimersByTime(1000);
   expect(loads).toBe(3);
+  vi.useRealTimers();
+});
+
+test("a frame whose document has no null principal or is out of the frames' process is sent nothing, logged once; about:blank is not logged", async () => {
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
+  const sendQuery = vi.fn();
+  const ours = `webIsolated=resource://ressac-frames-${framesToken()}`;
+  const frame = (isNullPrincipal: boolean, spec: string, remoteType = ours) =>
+    ({ browsingContext: { currentWindowGlobal: { documentPrincipal: { isNullPrincipal }, documentURI: { spec }, domProcess: { remoteType }, getActor: () => ({ sendQuery }) } } }) as unknown as Element;
+  expect(frameSandboxed(frame(false, "about:blank"))).toBe(false);
+  expect(err).not.toHaveBeenCalled();
+  await sendFrame(frame(false, "resource://x/a.html"), { n: 1 });
+  await sendFrame(frame(false, "resource://x/a.html"), { n: 2 });
+  expect(sendQuery).not.toHaveBeenCalled();
+  expect(err).toHaveBeenCalledTimes(1);
+  await sendFrame(frame(true, "resource://x/a.html"), { n: 3 });
+  expect(sendQuery).toHaveBeenCalledWith("send", { data: { n: 3 } });
+  // A null principal in another process (a shared web one) is not ours either.
+  await sendFrame(frame(true, "resource://x/a.html", "web"), { n: 4 });
+  expect(sendQuery).toHaveBeenCalledTimes(1);
+  expect(frameSandboxed({ browsingContext: null } as unknown as Element)).toBe(false);
+  err.mockRestore();
+});
+
+test("a frame whose process dies is put back (a new frame loader) at most REVIVES_PER_MINUTE times a minute, then stays empty", () => {
+  vi.useFakeTimers();
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
+  let crash: (e: unknown) => void = () => {};
+  const parent = { insertBefore: vi.fn((b: { isConnected: boolean }) => (b.isConnected = true)) };
+  const el = {
+    isConnected: true,
+    parentNode: parent,
+    nextSibling: null,
+    setAttribute: vi.fn(),
+    removeAttribute: vi.fn(),
+    addEventListener: (type: string, fn: (e: unknown) => void) => type === "oop-browser-crashed" && (crash = fn),
+    remove() {
+      this.isConnected = false;
+    },
+  };
+  const got: boolean[] = [];
+  const b = createFrameBrowser({ createXULElement: () => el } as unknown as Document, (revived) => got.push(revived));
+  expect(el.setAttribute).toHaveBeenCalledWith("disablefullscreen", "true");
+  const event = (childID: number) => ({ isTrusted: true, isTopFrame: true, target: b, childID, stopPropagation: vi.fn() });
+  for (let i = 0; i <= REVIVES_PER_MINUTE; i++) {
+    const e = event(i);
+    crash(e);
+    expect(e.stopPropagation, "never Firefox's tab crash page").toHaveBeenCalled();
+    vi.runAllTimers();
+  }
+  expect(got).toEqual([...Array(REVIVES_PER_MINUTE).fill(true), false]);
+  expect(parent.insertBefore).toHaveBeenCalledTimes(REVIVES_PER_MINUTE);
+  expect(err).toHaveBeenCalledTimes(REVIVES_PER_MINUTE + 1);
+  // A minute later it comes back again; a second frame of the same crash logs nothing more.
+  vi.advanceTimersByTime(60_000);
+  crash(event(99));
+  crash(event(99));
+  vi.runAllTimers();
+  expect(got.slice(-2)).toEqual([true, true]);
+  expect(err).toHaveBeenCalledTimes(REVIVES_PER_MINUTE + 2);
+  err.mockRestore();
   vi.useRealTimers();
 });

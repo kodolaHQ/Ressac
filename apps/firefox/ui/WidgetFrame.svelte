@@ -73,6 +73,7 @@
       src={widget.src}
       {accept}
       title={widget.name}
+      stoppedText={t("frame-stopped")}
       bind:frame
       onload={send}
       onmessage={onMessage}

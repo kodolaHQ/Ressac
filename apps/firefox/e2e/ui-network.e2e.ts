@@ -200,6 +200,8 @@ describe("the UI's network", () => {
 
   const names = () => resolvedNames(logDir);
   /** A frame `<iframe sandbox="allow-scripts">` appended to the sidebar on `src`; resolves once its document is `src`. */
+  // The sidebar's CSP keeps `frame-src resource:` for these frames alone (no Ressac code frames resource: there since the
+  // remote frames): removing it refuses them before the net, and these net tests could no longer set up their page.
   const sidebarFrame = (id: string, src: string, sandbox: string | null = "allow-scripts") =>
     m.execute(
       `return (async () => { const sb = document.getElementById("ressac-sidebar").contentDocument;

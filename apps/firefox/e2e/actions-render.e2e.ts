@@ -10,7 +10,7 @@ import { BARS, EXECUTION, openActionPage, probe, startActionServers, tid, uiQuer
 import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inFrame, inUi, missingApi, waitUi } from "./ui";
+import { click, inFrame, inUi, killFrames, missingApi, waitUi } from "./ui";
 
 // An action's page and its built-in components: served from a result the
 // test writes, with no container and no Gemma. Reopening a page launches nothing. Result images go through the test hook
@@ -430,4 +430,21 @@ describe("action page rendering", () => {
       await closeTabs();
     }
   }, 30_000);
+
+  // Measured before the fix: after the kill, the component stays blank for good.
+  it("the frames' process killed: the component comes back, gets its props again and asks for its height", async () => {
+    await closeTabs();
+    try {
+      await openActionPage(m, "ecrit", "Ecrit");
+      await waitComponent("document.documentURI");
+      const own = await waitUi<number>(m, "const h = Math.round(doc.querySelector(arguments[0])?.getBoundingClientRect().height ?? 0); return h !== 150 && h;", [FRAME], 15_000);
+      await inFrame(m, FRAME, `window.dispatchEvent(new CustomEvent('ressac-component', { detail: JSON.stringify({ type: "height", px: 20 }) }))`);
+      await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 20;", [FRAME]);
+      await killFrames(m);
+      await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === arguments[1];", [FRAME, own], 20_000);
+      expect(await inComponent<string>("document.documentURI")).toMatch(COPY("ecrit"));
+    } finally {
+      await closeTabs();
+    }
+  }, 60_000);
 });

@@ -1,5 +1,6 @@
 <script lang="ts">
   import RemoteFrame, { type RemoteFrameHandle } from "./RemoteFrame.svelte";
+  import { t } from "./i18n.svelte";
 
   /**
    * An agent component in its isolated frame (RemoteFrame: out of the parent process, sandboxed, opaque origin),
@@ -86,6 +87,6 @@
 
 <div data-testid="block-{name}" bind:clientWidth={width}>
   <div class="pa-component" style:height="{height}px">
-    <RemoteFrame {src} {accept} title={name} testid="component-frame" bind:frame onload={send} onmessage={onMessage} />
+    <RemoteFrame {src} {accept} title={name} stoppedText={t("frame-stopped")} testid="component-frame" bind:frame onload={send} onmessage={onMessage} />
   </div>
 </div>

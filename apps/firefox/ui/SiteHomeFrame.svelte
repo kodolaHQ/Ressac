@@ -60,10 +60,11 @@
       );
   }
 
-  // The frame's <browser> is made on the first src: guarded once it exists.
-  let guarded: Element | null = null;
+  // The frame's <browser> is made on the first src: guarded once it exists, and again on each new handle (a new browsing
+  // context after its process died).
+  let guarded: RemoteFrameHandle | null = null;
   $effect(() => {
-    if (frame && frame.element !== guarded) controller.guardHome((guarded = frame.element));
+    if (frame && frame !== guarded) controller.guardHome((guarded = frame).element);
   });
 
   onMount(() => {
@@ -78,7 +79,7 @@
 </script>
 
 <section class="home" data-testid="site-home-zone">
-  <RemoteFrame {src} {accept} title={ts("chrome-site-home")} testid="site-home-frame" bind:frame onmessage={onMessage} onpress={() => controller.homeGesture()} />
+  <RemoteFrame {src} {accept} title={ts("chrome-site-home")} stoppedText={ts("frame-stopped")} testid="site-home-frame" bind:frame onmessage={onMessage} onpress={() => controller.homeGesture()} />
   {#if asked}
     <div class="ask" out:fade={{ duration: 150 }}>
       <SiteGrantCard grant={null} start={asked} onGrant={async (yes, hash) => controller.answerHomeAsk(yes, hash)} />

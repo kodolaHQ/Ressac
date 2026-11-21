@@ -1,5 +1,6 @@
 import type { WindowId, TabId, ProfileId } from "../../shared/model";
 import type { SitePermissions, SiteRequest } from "./site-permissions";
+import { FRAMES_GROUP } from "../window/frames-root";
 
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");
 
@@ -118,7 +119,15 @@ export function registerPermissionHooks(o: {
   // A link to another application: Firefox's own dialog never shows (spike P5).
   const { nsContentDispatchChooser } = ChromeUtils.importESModule("resource://gre/modules/ContentDispatchChooser.sys.mjs");
   const handleURI = nsContentDispatchChooser.prototype.handleURI;
+  let frameRefusalLogged = false;
   nsContentDispatchChooser.prototype.handleURI = function (handler: any, uri: any, principal: any, bc: any) {
+    // An agent-written frame (remote-frame.ts) never opens another application, whatever its principal says: its
+    // sandbox blocks this only for nested frames, and frames are top-level contexts of their own browser.
+    if (bc?.top?.embedderElement?.getAttribute?.("messagemanagergroup") === FRAMES_GROUP) {
+      if (!frameRefusalLogged) console.error("[frames] refused a link to another application from a frame");
+      frameRefusalLogged = true;
+      return;
+    }
     // Typed in the address bar (no principal, or the system one): asked in the name of the site the tab shows.
     if (!principal || principal.isSystemPrincipal) principal = bc?.top?.currentWindowGlobal?.documentPrincipal;
     if (principal)

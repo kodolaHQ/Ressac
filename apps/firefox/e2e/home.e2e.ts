@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { click, inFrame, inUi, waitUi } from "./ui";
+import { click, framesPid, inFrame, inUi, killFrames, waitUi } from "./ui";
 
 // The home page in the sidebar: folder widgets, free placement, the agent's theme, isolated frame and links,
 // then grants, harvests (manual, failed, workshop stopped), notifications, removal and host stopped.
@@ -562,6 +562,17 @@ describe("the home page", () => {
     expect(lines).toContainEqual({ title: "Veille", text: "2 nouveaux éléments" });
   });
 
+  // Measured before the fix: after the kill, every widget stays blank for good.
+  it("the frames' process killed: every widget comes back with its display and its data", async () => {
+    await wait(() => dataText(m, "retrait"), (t) => t === '{"old":"compte"}', "retrait's data", 15_000);
+    await killFrames(m);
+    await wait(() => dataText(m, "retrait"), (t) => t === '{"old":"compte"}', "retrait's data again", 20_000);
+    expect(await wait(() => frameText(m, "alpha"), (t) => t.includes("alpha"), "alpha's display again", 15_000)).toContain("alpha");
+    expect(await inUi<number>(m, `return doc.querySelectorAll('[data-testid="frame-stopped"]').length;`)).toBe(0);
+    const procs = await inUi<[number, string, number][]>(m, `return [...doc.querySelectorAll('[data-testid^="widget-"] browser')].map((b) => { const g = b.browsingContext?.currentWindowGlobal; return [g?.osPid ?? 0, g?.domProcess?.remoteType ?? "", b.browsingContext?.group?.id ?? 0]; });`);
+    expect(new Set(procs.map((p) => p[0])).size, "one process for every widget again").toBe(1);
+  }, 60_000);
+
   it("Retirer: the folder goes into .corbeille, the grant and the data are erased", async () => {
     // The widget has a grant and data before the removal.
     expect(existsSync(path.join(HOME(dataDir), "widgets", "retrait"))).toBe(true);
@@ -598,6 +609,20 @@ describe("the home page", () => {
     expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="widget-title"]')].map((e) => e.textContent);`)).toContain("Veille");
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-veille"] browser');`);
   });
+
+  it("a frames' process that keeps dying: past three deaths a minute the widgets stay empty, with a message", async () => {
+    // One death already (the test above), maybe out of the minute by now: at most four more, the last one stays.
+    const stopped = () => inUi<string>(m, `return doc.querySelector('[data-testid="widget-alpha"] [data-testid="frame-stopped"]')?.textContent ?? "";`);
+    let text = "";
+    for (let i = 0; i < 4 && !text; i++) {
+      await killFrames(m);
+      const r = await wait(async () => ({ stop: await stopped(), back: await frameText(m, "alpha") }), (v) => !!v.stop || v.back.includes("alpha"), `alpha after kill ${i + 2}`, 20_000);
+      text = r.stop;
+    }
+    expect(text).toBe("Cet affichage s'est arrêté plusieurs fois : il reste vide.");
+    await new Promise((r) => setTimeout(r, 2000));
+    expect(await framesPid(m), "no new process").toBeNull();
+  }, 90_000);
 
 });
 

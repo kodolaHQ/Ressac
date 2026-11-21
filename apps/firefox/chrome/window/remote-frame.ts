@@ -8,7 +8,7 @@ const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 export const SANDBOX_ALLOW_SCRIPTS = 1048191;
 
 let actor = "";
-/** The group every frame browser joins; Firefox makes it again under the same id if its last browser went. */
+/** The group every frame browser joins; Firefox makes it again under the same id if its last browser went, a crash starts a new one (revive). */
 let groupId: number | null = null;
 
 /** Frames mounted before setFrameActor (the home's widgets at startup): subscribed once it runs. */
@@ -21,15 +21,72 @@ export function setFrameActor(uri: string): void {
   waiting.clear();
 }
 
-/** A frame <browser> for `doc`, not inserted yet: the caller appends it, then calls loadFrame. */
-export function createFrameBrowser(doc: Document): Element {
+/**
+ * A frame <browser> for `doc`, not inserted yet: the caller appends it, then calls loadFrame. `onCrash` runs when its
+ * process died: `true` once it is a new browsing context loading its copy again, `false` when it stays empty.
+ */
+export function createFrameBrowser(doc: Document, onCrash?: (revived: boolean) => void): Element {
   const b = (doc as any).createXULElement("browser") as Element;
+  setFrameAttributes(b);
+  b.addEventListener("oop-browser-crashed", (e) => revive(b, e, onCrash));
+  return b;
+}
+
+/** Before each insertion: Firefox drops `remoteType` once the remote browser is up, and without it a new one goes to a shared web process. */
+function setFrameAttributes(b: Element): void {
   // No maychangeremoteness: the frame stays in its webIsolated process whatever it navigates to.
   // `transparent`: else the remote page paints an opaque canvas over what is behind it (BrowserParent reads it once).
-  const attrs = { type: "content", remote: "true", remoteType: `webIsolated=${framesOrigin()}`, messagemanagergroup: FRAMES_GROUP, transparent: "true" };
+  // `disablefullscreen`: a XUL browser allows fullscreen to its page otherwise (BrowsingContext::FullscreenAllowed).
+  const attrs = { type: "content", remote: "true", remoteType: `webIsolated=${framesOrigin()}`, messagemanagergroup: FRAMES_GROUP, transparent: "true", disablefullscreen: "true" };
   for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v);
   if (groupId !== null) b.setAttribute("initialBrowsingContextGroupId", String(groupId));
-  return b;
+  else b.removeAttribute("initialBrowsingContextGroupId");
+}
+
+/** Revivals a frame gets in a minute; past them it stays empty, so a page that kills its process cannot loop it. */
+export const REVIVES_PER_MINUTE = 3;
+/** The address each frame browser last loaded: what a revival loads again. */
+const sources = new WeakMap<Element, string>();
+const revivals = new WeakMap<Element, number[]>();
+/** The crashes already logged, by child id: every frame of the process gets the event. */
+const loggedCrashes = new Set<number>();
+
+/**
+ * The frames' process died (a crash, memory exhausted): every frame browser gets this event. A dead remote browser
+ * without maychangeremoteness cannot load again, so it is taken out and put back (a new frame loader and browsing
+ * context, same element), then loads its last address; the owner's `loaded` and reverter feed it again.
+ */
+function revive(b: Element, e: any, onCrash?: (revived: boolean) => void): void {
+  if (!e.isTrusted || !e.isTopFrame || e.target !== b) return;
+  // Ours alone: never Firefox's tab crash page, nor a tab's handler (chrome/window/tabs.ts).
+  e.stopPropagation();
+  const now = Date.now();
+  const recent = (revivals.get(b) ?? []).filter((t) => now - t < 60_000);
+  const src = sources.get(b);
+  const again = recent.length < REVIVES_PER_MINUTE;
+  if (!loggedCrashes.has(e.childID)) {
+    loggedCrashes.add(e.childID);
+    // A new group for the revived frames: the dead one may linger with its dead host, and frames joining it while it
+    // does each pick a process of their own (dom.ipc.processCount.webIsolated is 4; measured: two processes).
+    groupId = null;
+    console.error(`[frames] the frames' process stopped: ${again ? "frames load again" : "frames left empty"}`);
+  }
+  if (!again) return onCrash?.(false);
+  revivals.set(b, [...recent, now]);
+  // After the event: the frame loader is still being torn down while it is dispatched.
+  setTimeout(() => {
+    const parent = b.parentNode;
+    if (!parent || !b.isConnected) return;
+    const next = b.nextSibling;
+    b.remove();
+    setFrameAttributes(b);
+    parent.insertBefore(b, next);
+    // The first revived frame makes the new group, the next ones join it (their timeouts run after this one).
+    groupId ??= (b as any).browsingContext?.group?.id ?? null;
+    onCrash?.(true);
+    // No address yet (it crashed before its first load): its owner's first loadFrame or revert loads it.
+    if (src) loadFrame(b, src);
+  });
 }
 
 /**
@@ -55,6 +112,7 @@ export function loadFrame(browser: Element, src: string): boolean {
   }
   bc.sandboxFlags = SANDBOX_ALLOW_SCRIPTS;
   groupId ??= bc.group.id;
+  sources.set(browser, src);
   ensureFramesSubstitution();
   (browser as any).loadURI(Services.io.newURI(src), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
   return true;
@@ -120,8 +178,30 @@ export function onFrameMessage(browser: Element, cb: (name: string, data: any) =
   };
 }
 
-/** Posts `data` into the frame's page; a frame gone or between documents drops it. */
+let unsandboxedLogged = false;
+/**
+ * The frame's current document has a null principal (opaque origin) and runs in the frames' process. Both are set
+ * indirectly: SANDBOX_ALLOW_SCRIPTS follows Firefox's flag numbering, the process its `remoteType` attribute. Should
+ * either drift, the frame is sent nothing and is not its owner's (RemoteFrame): it fails closed, logged once. The
+ * initial about:blank is not ours anyway: not logged.
+ */
+export function frameSandboxed(browser: Element): boolean {
+  let wg: any = null;
+  try {
+    wg = (browser as any).browsingContext?.currentWindowGlobal;
+  } catch {}
+  if (!wg) return false;
+  if (wg.documentPrincipal?.isNullPrincipal && wg.domProcess?.remoteType === `webIsolated=${framesOrigin()}`) return true;
+  if (!unsandboxedLogged && wg.documentURI?.spec !== "about:blank") {
+    unsandboxedLogged = true;
+    console.error("[frames] a frame's document is not sandboxed (a null principal in the frames' process): it is sent nothing");
+  }
+  return false;
+}
+
+/** Posts `data` into the frame's page; a frame gone, between documents or not sandboxed drops it. */
 export async function sendFrame(browser: Element, data: unknown): Promise<void> {
+  if (!frameSandboxed(browser)) return;
   try {
     await (browser as any).browsingContext?.currentWindowGlobal?.getActor("RessacFrame").sendQuery("send", { data });
   } catch {

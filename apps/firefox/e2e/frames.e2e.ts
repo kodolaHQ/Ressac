@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
-import { inFrame, inUi, waitUi } from "./ui";
+import { framesPid, inFrame, inUi, killFrames, waitUi } from "./ui";
 import { consoleWith, NET_PREFS, netEnv, resolvedNames, SFX, startNetWitness } from "./ui-network";
 
 // The remote frame <browser>s (chrome/window/remote-frame.ts, chrome/agent/frame-actor.ts) on their own, before any
@@ -183,4 +183,110 @@ describe("remote frames", () => {
     await expect.poll(() => inFrame<string>(w.marionette, "#frames-a browser", `document.getElementById("rtc").textContent`), { timeout: 5000 }).toMatch(/^err /);
     expect(await consoleWith(w.marionette, "[ui-network] refused webrtc from a frame")).toHaveLength(1);
   });
+
+  it("refuse a full screen: no fullscreenEnabled, a request under a real click is rejected, the window stays as it is", async () => {
+    expect(await inFrame(w.marionette, "#frames-b browser", "document.fullscreenEnabled")).toBe(false);
+    await inFrame(
+      w.marionette,
+      "#frames-b browser",
+      `(addEventListener("click", (e) => { e.preventDefault(); document.documentElement.requestFullscreen().then(() => (document.title = "ok"), (er) => (document.title = "err " + er.name)); }, true), true)`,
+    );
+    await inUi(
+      w.marionette,
+      `const r = doc.querySelector("#frames-b browser").getBoundingClientRect();
+       for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1 });`,
+    );
+    await expect.poll(() => inFrame<string>(w.marionette, "#frames-b browser", "document.title"), { timeout: 5000 }).toMatch(/^err /);
+    expect(await w.marionette.execute<boolean>("return window.fullScreen || !!document.fullscreenElement || document.documentElement.hasAttribute('inDOMFullscreen');")).toBe(false);
+  });
+
+  it("refuse a link to another application (mailto:, a custom scheme): no handler runs, refused as a frame's", async () => {
+    // Firefox hands an external protocol load to nsContentDispatchChooser.handleURI (hooked in permission-hooks.ts): recorded around the hook.
+    await w.marionette.execute(
+      `const { nsContentDispatchChooser: C } = ChromeUtils.importESModule("resource://gre/modules/ContentDispatchChooser.sys.mjs");
+       const hook = C.prototype.handleURI;
+       window.__ext = { reached: [], launched: [], hook };
+       C.prototype.handleURI = function (handler, uri, principal, bc) {
+         window.__ext.reached.push(uri.spec);
+         const h = new Proxy(handler, {
+           get: (t, k) => (k === "launchWithURI" ? () => window.__ext.launched.push(uri.spec) : typeof t[k] === "function" ? t[k].bind(t) : t[k]),
+           set: (t, k, v) => ((t[k] = v), true),
+         });
+         return hook.call(this, h, uri, principal, bc);
+       };`,
+    );
+    try {
+      for (const url of ["mailto:x@example.invalid", "ressac-frames-test-scheme:x"]) await inFrame(w.marionette, "#frames-a browser", `(location.href = ${JSON.stringify(url)}, true)`);
+      // A scheme no application claims never reaches the chooser (measured): only mailto: does.
+      await expect.poll(() => w.marionette.execute<string[]>("return window.__ext.reached;"), { timeout: 5000 }).toEqual(["mailto:x@example.invalid"]);
+      await new Promise((r) => setTimeout(r, 500));
+      expect(await w.marionette.execute<string[]>("return window.__ext.launched;")).toEqual([]);
+      expect(await consoleWith(w.marionette, "[frames] refused a link to another application")).toHaveLength(1);
+      expect(await inFrame(w.marionette, "#frames-a browser", `document.getElementById("t").textContent`), "the frame stays on its copy").toBe("cadre");
+    } finally {
+      await w.marionette.execute(`ChromeUtils.importESModule("resource://gre/modules/ContentDispatchChooser.sys.mjs").nsContentDispatchChooser.prototype.handleURI = window.__ext.hook;`);
+    }
+  });
+
+  it("a frame whose document is not sandboxed (no null principal) is sent nothing, logged once", async () => {
+    const r = await inUi<{ isNull: boolean }>(
+      w.marionette,
+      `const store = ChromeUtils.importESModule(${JSON.stringify(STORE)});
+       const src = "resource://ressac-frames-" + store.framesToken() + "/widgets/frames-test/display.html";
+       const host = doc.body.appendChild(doc.createElement("div"));
+       host.id = "frames-c";
+       host.style.cssText = "position: fixed; left: 0; top: 360px; width: 200px; height: 100px; display: flex";
+       const b = store.remoteFrames.createFrameBrowser(doc);
+       b.style.flex = "1";
+       host.append(b);
+       // As loadFrame without its sandbox flags: what a Firefox whose flag numbering moved would give.
+       b.loadURI(Services.io.newURI(src), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
+       for (let i = 0; i < 100 && b.browsingContext.currentWindowGlobal?.documentURI?.spec !== src; i++) await new Promise((ok) => ui.setTimeout(ok, 100));
+       const g = b.browsingContext.currentWindowGlobal;
+       await store.remoteFrames.sendFrame(b, { n: 1 });
+       await store.remoteFrames.sendFrame(b, { n: 2 });
+       return { isNull: g.documentPrincipal.isNullPrincipal };`,
+    );
+    try {
+      expect(r.isNull).toBe(false);
+      await new Promise((ok) => setTimeout(ok, 500));
+      expect(await inFrame(w.marionette, "#frames-c browser", `document.getElementById("got").textContent`)).toBe("…");
+      expect(await consoleWith(w.marionette, "[frames] a frame's document is not sandboxed")).toHaveLength(1);
+    } finally {
+      await inUi(w.marionette, `doc.getElementById("frames-c").remove();`);
+    }
+  });
+
+  // Measured before the fix: after the kill, both frames stay without a document (no new process) for good.
+  it("their process killed: every frame comes back with its copy and its messages, no tab crash page anywhere", async () => {
+    const old = await killFrames(w.marionette);
+    await expect.poll(() => framesPid(w.marionette), { timeout: 15_000 }).not.toBeNull();
+    expect(await framesPid(w.marionette)).not.toBe(old);
+    for (const id of ["frames-a", "frames-b"])
+      await expect.poll(() => inFrame<string>(w.marionette, `#${id} browser`, `document.getElementById("t")?.textContent`).catch(() => null), { timeout: 15_000 }).toBe("cadre");
+    await inUi(w.marionette, `await ChromeUtils.importESModule(${JSON.stringify(STORE)}).remoteFrames.sendFrame(doc.querySelector("#frames-a browser"), { type: "widget", n: 2 });`);
+    await expect.poll(() => inFrame(w.marionette, "#frames-a browser", `document.getElementById("got").textContent`), { timeout: 5000 }).toBe('{"type":"widget","n":2}');
+    // Firefox drops a remote browser's remoteType attribute once it is up: put back without it, a frame went to a web process (measured).
+    const r = await inUi<{ same: boolean; sandboxed: boolean[]; types: string[] }>(
+      w.marionette,
+      `const wgs = ["frames-a", "frames-b"].map((id) => doc.querySelector("#" + id + " browser").browsingContext.currentWindowGlobal);
+       return { same: wgs[0].osPid === wgs[1].osPid, sandboxed: wgs.map((g) => g.documentPrincipal.isNullPrincipal), types: wgs.map((g) => g.domProcess.remoteType) };`,
+    );
+    expect(r.same).toBe(true);
+    expect(r.sandboxed).toEqual([true, true]);
+    for (const t of r.types) expect(t).toMatch(/^webIsolated=resource:\/\/ressac-frames-[0-9a-f]{16}$/);
+    expect(await w.marionette.execute<string[]>("return gBrowser.browsers.map((b) => b.currentURI?.spec ?? '').filter((u) => u.startsWith('about:tabcrashed'));")).toEqual([]);
+    expect(Object.values((await state(w.marionette)).tabs).filter((t) => t.crashed)).toEqual([]);
+    expect(await consoleWith(w.marionette, "[frames] the frames' process stopped")).toHaveLength(1);
+  }, 60_000);
+
+  it("a tab's process killed leaves the frames alone", async () => {
+    const before = await framesPid(w.marionette);
+    const pid = await w.marionette.execute<number>("return gBrowser.selectedBrowser.frameLoader.remoteTab.osPid;");
+    expect(pid).not.toBe(before);
+    process.kill(pid, "SIGKILL");
+    await expect.poll(async () => Object.values((await state(w.marionette)).tabs).some((t) => t.crashed), { timeout: 15_000 }).toBe(true);
+    expect(await framesPid(w.marionette)).toBe(before);
+    expect(await inFrame(w.marionette, "#frames-a browser", `document.getElementById("t").textContent`)).toBe("cadre");
+  }, 30_000);
 });

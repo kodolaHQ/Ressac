@@ -8,7 +8,7 @@ import { waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { HOME_COPY, SITE_HOME, acceptHomeCard, homePoint, inBrowser, inHomeFrame, inSiteBar, inSiteView, resolveLocalHosts, siteHomeBrowser, siteWindowExpr, startSitesServer, writeSite } from "./sites";
-import { inFrame, missingApi } from "./ui";
+import { inFrame, killFrames, missingApi } from "./ui";
 
 // Plan 31 Task 5: the site app's home screen and its messages. The home is the test
 // home (SITE_HOME) as is, plus a probe script the test drives by
@@ -485,4 +485,17 @@ describe("site app home screen", () => {
     expect(loads).toBeLessThanOrEqual(3);
     expect(await inFrame<unknown[]>(m, { browser: siteHomeBrowser("routeur") }, "JSON.parse(JSON.stringify(window.wrappedJSObject.recus))")).toEqual([]);
   });
+
+  // Measured before the fix: after the kill, the home stays blank for good.
+  it("the frames' process killed: the home comes back with its memory, still guarded", async () => {
+    await openHome();
+    await killFrames(m);
+    await expect.poll(() => inHome("vidola", `return document.getElementById("series").textContent;`).catch(() => null), { timeout: 20_000 }).toBe("encours.the-bear : The Bear /serie/the-bear?e=4");
+    expect(await homeUri("vidola")).toMatch(HOME_COPY);
+    // guardHome watches the new browsing context: a load put there by the chrome is still stopped as it starts.
+    await inHome("vidola", "fw.marque = 7; return true;");
+    await m.execute(`const b = ${siteHomeBrowser("vidola")}; b.loadURI(Services.io.newURI(new URL("x.svg", b.currentURI.spec).href), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() }); return 1;`);
+    await sleep(800);
+    expect(await inHome("vidola", "return fw.marque ?? null;")).toBe(7);
+  }, 60_000);
 });
