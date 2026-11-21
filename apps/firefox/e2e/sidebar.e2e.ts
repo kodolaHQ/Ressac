@@ -272,6 +272,9 @@ describe("Ressac sidebar", () => {
     await dispatch(m, { type: "pinTab", id: a });
     const b = await open("/b.html");
     await dispatch(m, { type: "addEssential", id: b });
+    // Loaded first: a page's title or icon arriving later sets its own live icon (none here) over the test's.
+    await waitTitle(b, "Page B");
+    for (const id of [a, b]) await waitFor(m, `return gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === ${JSON.stringify(id)})?.hasAttribute("busy")`, (v) => v === false);
     const ICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E";
     for (const id of [a, b]) await dispatch(m, { type: "updateTab", id, fields: { favicon: ICON } });
     await waitUi(m, `return ['[data-testid="pinned"]', '[data-testid="essentials"]'].every((zone) => doc.querySelector(zone + ' [data-testid^="favorite-"] img')?.getAttribute("src") === arguments[0])`, [ICON]);
