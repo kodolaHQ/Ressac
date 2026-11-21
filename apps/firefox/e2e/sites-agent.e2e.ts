@@ -236,12 +236,16 @@ describe("the agent on a site app window", () => {
     await expect.poll(() => siteWindowCount(m, "vidola"), { timeout: 10_000 }).toBe(1);
     expect((await call("tweak_errors", { id: "vidola" })).text).toContain("Erreurs de console des retouches");
     expect(await shown(CARD)).toBe(false);
-    // A read lights the agent's halo around the app's view, as in the main window.
-    const working = `return ${siteWindowExpr("vidola")}?.document.documentElement.hasAttribute("ressac-agent-working");`;
-    const reading = call("read_tab", { id: "site:vidola" });
-    await waitFor(m, working, (v) => v === true, 2_000);
-    await reading;
-    await waitFor(m, working, (v) => v === false, 5_000);
+    // A read lights the agent's halo around the app's view, as in the main window. Under load the halo comes on seconds
+    // late and its 1.5 s hold runs late too (measured: on 2.6 s after the call, off up to 11 s after the read): an
+    // observer notes that it came on, then the test waits for it to go off.
+    const win = siteWindowExpr("vidola");
+    await m.execute(`const w = ${win}; w.ressacTestHaloSeen = false;
+      (w.ressacTestHaloObserver = new w.MutationObserver(() => { if (w.document.documentElement.hasAttribute("ressac-agent-working")) w.ressacTestHaloSeen = true; }))
+        .observe(w.document.documentElement, { attributes: true, attributeFilter: ["ressac-agent-working"] });`);
+    await call("read_tab", { id: "site:vidola" });
+    await waitFor(m, `return ${win}.ressacTestHaloSeen;`, (v) => v === true, 20_000);
+    await waitFor(m, `return ${win}.document.documentElement.hasAttribute("ressac-agent-working");`, (v) => v === false, 20_000);
     // The agent quits the app: its window closes, the list says so.
     expect((await call("close_site", { id: "vidola" })).text).toBe("Appli de site vidola fermée.");
     await expect.poll(() => siteWindowCount(m, "vidola"), { timeout: 10_000 }).toBe(0);
