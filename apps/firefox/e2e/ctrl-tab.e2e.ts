@@ -48,6 +48,15 @@ async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean,
 const waitActive = (id: string) => waitState((s) => s.windows[0]!.active[s.windows[0]!.activeSpace], (a) => a === id);
 const waitTitle = (id: string, title: string) => waitState((s) => s.tabs[id]?.title, (t) => t === title);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/**
+ * A brief ⌃Tab, pressed and released in one task (trusted keys, as ui.ts's keyDown/keyUp): pressKeys spends a round trip
+ * per key, and on a loaded machine the two between Tab and the release of ⌃ outlast the panel's 200 ms delay.
+ */
+const briefCtrlTab = () =>
+  m.execute(`const tip = (window.ressacTestTip ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor));
+    tip.beginInputTransactionForTests(window);
+    const control = new KeyboardEvent("", { key: "Control", code: "ControlLeft" }), tab = new KeyboardEvent("", { key: "Tab", code: "Tab" });
+    tip.keydown(control); tip.keydown(tab); tip.keyup(tab); tip.keyup(control);`);
 const PANEL = '[data-testid="tabs-panel"]';
 const panelShown = () => inUi<boolean>(m, `return !!doc.querySelector('${PANEL}')`);
 const waitPanel = (shown: boolean) => waitUi(m, `return !!doc.querySelector('${PANEL}') === arguments[0]`, [shown]);
@@ -77,7 +86,7 @@ describe("⌃Tab", () => {
   it("a brief ⌃Tab goes back to the previous tab, one step only, without a panel", async () => {
     const [, b] = await threeTabs();
     await focusPage();
-    await pressKeys(m, "Control+Tab");
+    await briefCtrlTab();
     await waitActive(b);
     await sleep(300);
     expect(await panelShown()).toBe(false);
@@ -121,7 +130,7 @@ describe("⌃Tab", () => {
     // raccourcis.spec.ts:145, brief press: the UI never took the keyboard, so it gives nothing back.
     await m.execute(`window.ressacTestUiFocus = 0;
       document.getElementById("ressac-sidebar").addEventListener("focus", () => window.ressacTestUiFocus++);`);
-    await pressKeys(m, "Control+Tab");
+    await briefCtrlTab();
     await waitActive(c);
     await sleep(300);
     expect(await m.execute("return window.ressacTestUiFocus")).toBe(0);
