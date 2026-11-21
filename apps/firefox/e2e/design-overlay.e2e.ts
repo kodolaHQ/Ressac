@@ -154,9 +154,13 @@ describe("design overlay", () => {
       `for (const id of ["ressac-design-calque", "ressac-design-volet"]) { const d = document.getElementById(id).contentDocument, i = d.createElement("img");
          i.style.cssText = "position:absolute;width:1px;height:1px"; i.src = "http://127.0.0.1:${PORT}/ui-net-probe.png?" + id; d.body.append(i); }`,
     );
+    // A refusal is logged when the load is judged: poll for both, then a window for a request that would still go out.
+    const missing = async () => {
+      const refusals = (await uiRefusals(m)).join("\n");
+      return ["ressac-design-calque", "ressac-design-volet"].filter((id) => !refusals.includes(`ui-net-probe.png?${id}`));
+    };
+    await expect.poll(missing, { timeout: 15_000 }).toEqual([]);
     await sleep(3000);
-    const refusals = (await uiRefusals(m)).join("\n");
-    for (const id of ["ressac-design-calque", "ressac-design-volet"]) expect(refusals, id).toContain(`ui-net-probe.png?${id}`);
     expect(servers.paths.filter((p) => p.includes("ui-net-probe"))).toEqual([]);
   });
 
