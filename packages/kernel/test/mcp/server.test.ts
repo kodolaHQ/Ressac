@@ -2778,6 +2778,48 @@ test("a composed address carrying read data gets a danger line, outside and duri
   }, { outflow: new Outflow(), tabs: [github, mailTab], address: true });
 });
 
+test("links followed in a code's order on a grid of one-character links get the red-lined card, on the search tab and elsewhere", async () => {
+  const codeMail: TabInfo = { ...gmail, title: "Gmail — Votre code de vérification est 381 624" };
+  const grid = [..."0123456789"].map((d) => ({ text: d, url: `https://grille.acces-verif.test/k/${d}` }));
+  /** The index of the link labelled `label` in a read's numbered list. */
+  const at = (read: string, label: string) => Number(new RegExp(`^(\\d+)\\. ${label} — `, "m").exec(read)![1]);
+  const danger = OUTFLOW_DANGER("fr", { kind: "clicks", masked: "3 · 8 · 1" });
+  for (const tab of ["search-1", "github"]) {
+    await withSearch(async ({ call, fake, policy }) => {
+      fake.linkSequence = [grid];
+      policy.grant(codeMail);
+      policy.grant(github);
+      await call("read_tab", { id: "gmail" });
+      await call("search_web", { query: "piscine annecy", goal: "but" });
+      let read = (await call("read_tab", { id: tab, links: true })).text;
+      for (const d of "38") {
+        expect((await call("navigate", { id: tab, link: at(read, d) })).text).toContain(`${tab} → https://grille.acces-verif.test/k/${d}`);
+        read = (await call("read_tab", { id: tab, links: true })).text;
+      }
+      expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+      // The third: refused on its card (the fake answers no), and nothing loads.
+      const navigations = fake.calls.filter((x) => x.method === "navigate").length;
+      expect((await call("navigate", { id: tab, link: at(read, "1") })).text).toBe(DENIAL_TEXT);
+      expect(fake.calls.filter((x) => x.method === "askAddress").map((x) => x.args[0])).toEqual([expect.objectContaining({ url: "https://grille.acces-verif.test/k/1", danger })]);
+      expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(navigations);
+      // The other tab's permission card (it left github) is answered yes: only the address card says no.
+    }, { outflow: new Outflow(), tabs: [github, codeMail], address: false, allow: true });
+  }
+  // The same page after the same read: a pager climbing « 2 3 4 » never asks.
+  await withSearch(async ({ call, fake, policy }) => {
+    fake.linkSequence = [grid];
+    policy.grant(codeMail);
+    await call("read_tab", { id: "gmail" });
+    await call("search_web", { query: "piscine annecy", goal: "but" });
+    let read = (await call("read_tab", { id: "search-1", links: true })).text;
+    for (const d of "234") {
+      expect((await call("navigate", { id: "search-1", link: at(read, d) })).text).toContain("search-1 →");
+      read = (await call("read_tab", { id: "search-1", links: true })).text;
+    }
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+  }, { outflow: new Outflow(), tabs: [github, codeMail], address: false });
+});
+
 test("a sensitive tab asks again once per search, and not before any search", async () => {
   await withSearch(async ({ call, fake, search, policy }) => {
     const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;

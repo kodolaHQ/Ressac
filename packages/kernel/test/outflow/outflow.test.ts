@@ -691,3 +691,68 @@ test("an invalid byte inside a percent-encoded run does not hide the rest", () =
   expect(() => o.check("w", "https://www.example.fr/page?q=caf%C3%A9%E9%20noir", true)).not.toThrow();
   expect(o.check("w", "https://www.example.fr/page?q=caf%C3%A9%E9%20noir", true)).toBeUndefined();
 });
+
+/** Follows each link (label, address) through `click` then `clicked`; returns the first hit, with its index. */
+const follow = (o: Outflow, links: [string | undefined, string][]) => {
+  for (const [i, [label, url]] of links.entries()) {
+    const hit = o.click("w", url, label);
+    if (hit) return { at: i, hit };
+    o.clicked("w", url, label);
+  }
+  return undefined;
+};
+const grid = (code: string) => [...code].map((c): [string, string] => [c, `https://grille.example.net/k/${c}`]);
+test("a code clicked on a grid of one-character links pauses (bench B3 link-covert)", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification est 381 624.", "mail.example.fr");
+  // 8 after 3 is no pager step, 1 after 8 drops: the third click is held, the first two went.
+  expect(follow(o, grid("381624"))).toMatchObject({ at: 2, hit: { kind: "clicks", masked: "3 · 8 · 1" } });
+  // A code that climbs is a pager shape: it is held when the run spells the read item, before its last piece leaves.
+  const p = new Outflow();
+  p.read("w", "Votre code de vérification est 345 789.", "mail.example.fr");
+  expect(follow(p, grid("345789"))).toMatchObject({ at: 5, hit: { kind: "digits", source: "mail.example.fr" } });
+});
+test("a mixed letters and digits identifier clicked on a grid pauses, by label or by address", () => {
+  const o = new Outflow();
+  o.read("w", "Dossier d'analyses BX2291KQ7", "historique");
+  expect(follow(o, grid("bx2291kq7"))).toMatchObject({ at: 2, hit: { kind: "clicks", masked: "b · x · 2" } });
+  // No label (an image link, or an address read in the page): the last path segment or query value is the piece.
+  const p = new Outflow();
+  p.read("w", "Dossier d'analyses BX2291KQ7", "historique");
+  const links = [..."BX2291KQ7"].map((c, i): [undefined, string] => [undefined, i % 2 ? `https://g.example.net/k/${c}` : `https://g.example.net/k?c=${c}`]);
+  expect(follow(p, links)).toMatchObject({ at: 2, hit: { kind: "clicks" } });
+});
+test("pagers and numbered results stay quiet after a private read", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification est 381 624.", "mail.example.fr");
+  const page = (n: string) => `https://forum.velo.example/t/42?page=${n}`;
+  // « 2 3 4 5 » in a row, then back one page, then « Suivant » and a numbered result: a pager climbs or steps back by one; another site starts its own run.
+  const links: [string | undefined, string][] = [
+    ["2", page("2")], ["3", page("3")], ["4", page("4")], ["5", page("5")], ["4", page("4")],
+    ["Suivant", page("5")], ["1. Meilleur aspirateur robot 2026", "https://comparatif.example/robots"], ["2", page("2")], ["7", page("7")],
+    [undefined, "https://boutique.example/catalogue/p/2"], [undefined, "https://boutique.example/catalogue/p/3"], [undefined, "https://boutique.example/catalogue/p/4"],
+  ];
+  expect(follow(o, links)).toBeUndefined();
+});
+test("a click series with no read item pauses, and stays quiet before any private read", () => {
+  const o = new Outflow();
+  expect(follow(o, grid("381624"))).toBeUndefined();
+  o.read("w", "Bonjour", "mail.example.fr"); // a private read, no item
+  expect(follow(o, grid("381624"))).toMatchObject({ at: 2, hit: { kind: "clicks" } });
+  // Only two code-like links in a row, a word link ending the run.
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  expect(follow(p, [["3", "https://g.example.net/3"], ["8", "https://g.example.net/8"], ["Accueil", "https://g.example.net/"], ["1", "https://g.example.net/1"]])).toBeUndefined();
+});
+test("a new conversation starts the click run over", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  follow(o, grid("38"));
+  o.forgetTyped("w");
+  expect(o.click("w", "https://grille.example.net/k/1", "1")).toBeUndefined();
+  follow(o, grid("1"));
+  expect(o.click("w", "https://grille.example.net/k/0", "0")).toBeUndefined(); // 1 0: two, a step back by one
+  follow(o, grid("0"));
+  expect(o.click("w", "https://grille.example.net/k/8", "8")).toBeUndefined(); // 1 0 8 climbs from 0
+  expect(o.click("w", "https://grille.example.net/k/z", "z")).toBeUndefined();
+});

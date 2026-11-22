@@ -3,7 +3,7 @@ import { digitWord, rewrite, spelled } from "./spelled.js";
 import { findSecrets, mask, opaque, plain, urlDecoded, variants, type SecretKind } from "./detect.js";
 
 export interface OutflowHit {
-  kind: SecretKind | "email" | "phone" | "digits" | "token" | "series";
+  kind: SecretKind | "email" | "phone" | "digits" | "token" | "series" | "clicks";
   masked: string;
   source?: string;
 }
@@ -45,6 +45,9 @@ interface Win {
   privateRead: boolean;
   /** Searches that went to the engine, lowercased with spaces collapsed, oldest first. */
   sent: string[];
+  /** One-character pieces of the links followed in a row on `clickSite` since the private read (`clickPiece`), oldest first. */
+  clicks: string[];
+  clickSite: string;
 }
 
 // Memory follows the indexed pieces: measured 21.6 MB of heap for 160 000 distinct pieces (Node 22), so 140 000
@@ -204,6 +207,8 @@ export class Outflow {
         carry: "",
         privateRead: false,
         sent: [],
+        clicks: [],
+        clickSite: "",
       };
       this.wins.set(id, w);
     }
@@ -427,6 +432,39 @@ export class Outflow {
     if (w.sent.length > SERIES_MAX) w.sent.shift();
   }
 
+  /**
+   * A link the agent is about to follow (`label`: its text in the numbered list, if known), judged with the code-like links
+   * it followed just before, as bare search pieces are: a page's grid of links labelled « 0 »… « 9 » clicked in a code's
+   * order sends the code to the page's server one request at a time.
+   */
+  click(win: string, url: string, label?: string): OutflowHit | undefined {
+    const w = this.wins.get(win);
+    const piece = clickPiece(url, label);
+    if (!w?.privateRead || !piece) return undefined;
+    const run = [...(clickSite(url) === w.clickSite ? w.clicks : []), piece];
+    // The pieces joined, scanned as an address is (rule 2): a run that spells a read item is that item.
+    const spelt = w.read.size ? this.check(win, run.join(" "), true) : undefined;
+    if (spelt) return spelt;
+    // shortcut: a run that never drops by more than one (« 2 3 4 », « 4 3 », « 2 3 5 ») is read as a pager and passes when
+    // it spells no read item, so a code shaped that way (123 456, 135 799) leaves when it was read in another shape;
+    // upgrade if a bench shows codes sent that way.
+    if (run.length < 3 || run.every((c, i) => !i || c.codePointAt(0)! >= run[i - 1]!.codePointAt(0)! - 1)) return undefined;
+    // `masked` shows the pieces in clear, as for a series of searches: they already left, one per request.
+    return { kind: "clicks", masked: run.join(" · ").slice(0, 40) };
+  }
+
+  /** A link the agent followed: a code-like one joins the run `click` judges, any other ends it. */
+  clicked(win: string, url: string, label?: string): void {
+    const w = this.wins.get(win);
+    if (!w?.privateRead) return;
+    const piece = clickPiece(url, label);
+    const site = clickSite(url);
+    // Another site's links are another run: a forum's pager, then a shop's, are not one series.
+    if (!piece || site !== w.clickSite) w.clicks = [];
+    w.clickSite = site;
+    if (piece && w.clicks.push(piece) > SERIES_MAX) w.clicks.shift();
+  }
+
   /** `check` against what every window read: for a caller tied to no window (the main token), which could otherwise
    *  send what a window read. */
   checkAll(out: string, address = false): OutflowHit | undefined {
@@ -446,6 +484,8 @@ export class Outflow {
     w.typedText = w.typedWords = w.buffer = w.carry = "";
     w.paste = false;
     w.sent = [];
+    w.clicks = [];
+    w.clickSite = "";
   }
 
   forget(win: string): void {
@@ -455,6 +495,36 @@ export class Outflow {
 
 /** `s` as words: lowercased, letters, digits and `@` only, single spaces. */
 const words = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}@]+/gu, " ").trim();
+
+/**
+ * What a followed link tells its server, when that is one character: its label, or without one the last query value or
+ * else the last path segment of its address (« /k/3 », « ?p=3 »). Undefined for anything longer.
+ */
+function clickPiece(url: string, label?: string): string | undefined {
+  let piece = label?.trim();
+  if (!piece)
+    try {
+      const u = new URL(url);
+      piece = [...u.searchParams.values()].at(-1) ?? decodeURIComponent(u.pathname.split("/").filter(Boolean).at(-1) ?? "");
+    } catch {
+      return undefined;
+    }
+  const n = norm(piece);
+  return [...n].length === 1 ? n : undefined;
+}
+
+/**
+ * The site a followed link goes to, as its host's last two labels: the subdomains of one server (a.grille.net, b.grille.net)
+ * are one site. shortcut: under a two-label suffix (co.uk) every site is one, so runs join more and pause more; use the
+ * public suffix list if that shows.
+ */
+function clickSite(url: string): string {
+  try {
+    return new URL(url).hostname.split(".").slice(-2).join(".");
+  } catch {
+    return "";
+  }
+}
 
 /** A query as kept for a series: lowercased, words split on whitespace. */
 const series = (q: string) => q.normalize("NFKC").toLowerCase().trim().split(/\s+/).join(" ");

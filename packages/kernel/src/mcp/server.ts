@@ -50,7 +50,7 @@ const READ_PAGES_PAGE_MAX = 3_000;
 const reducedNote = (shown: number, total: number) => `(Page réduite : ${shown} passages sur ${total} ; read_tab avec full: true donne toute la page.)`;
 export const LINKS_HEADER = 'Liens (numérotés, les plus utiles d\'abord ; navigate accepte {"link": n}) :';
 /** A tab's last printed links, and whether they came from a page the agent writes (a local page, a site app). */
-type LinkList = { urls: string[]; written: boolean };
+type LinkList = { urls: string[]; labels: string[]; written: boolean };
 const unknownLink = (n: number) => `Lien ${n} inconnu : relis l'onglet avec links: true.`;
 /** Every address a read makes free to follow: each link as read, and the target of an engine redirect. */
 const readUrls = (links: readonly { url: string }[] = []) => links.flatMap((l) => [l.url, unwrapLink(l.url)]);
@@ -541,7 +541,7 @@ function createToolsServer(
     const top = full ? ranked : ranked.slice(0, LINKS_SHOWN);
     if (withLinks) {
       listed.delete(o.id);
-      listed.set(o.id, { urls: top.map((l) => l.url), written: !linksFollowable(o) });
+      listed.set(o.id, { urls: top.map((l) => l.url), labels: top.map((l) => l.text), written: !linksFollowable(o) });
       // Closed tabs leave their list: only the most recent are kept.
       if (listed.size > LISTS_KEPT) listed.delete(listed.keys().next().value!);
     }
@@ -671,9 +671,10 @@ function createToolsServer(
     return CLOSED_TEXT;
   }
 
-  /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks). */
-  function danger(url: string): { danger?: string } {
-    const hit = checkOutflow(url, true);
+  /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks);
+   *  `clicks`: what the link followed spells with the ones before it, judged first. */
+  function danger(url: string, clicks?: OutflowHit): { danger?: string } {
+    const hit = clicks ?? checkOutflow(url, true);
     return hit ? { danger: OUTFLOW_DANGER(locale(), hit) } : {};
   }
 
@@ -718,14 +719,15 @@ function createToolsServer(
   /**
    * Outside a search, a web address is free when it is local, was read (a page, its links, a search's results), is the address
    * of a tab the agent may read, or was approved in this conversation. Otherwise the user decides on the « agent-address » card.
+   * `clicks`: a link that spells something with the ones followed before it is never free (`Outflow.click`).
    * Returns the refusal's text, null when it may open.
    */
-  async function composedRefusal(tool: "open_tab" | "navigate", url: string, reason: string | undefined, signal?: AbortSignal): Promise<string | null> {
-    if (isLocal(url) || seen.has(url) || policy.addressGranted(url)) return null;
-    if ((await bridge.listTabs()).some((t) => t.url === url && policy.canRead(t))) return null;
+  async function composedRefusal(tool: "open_tab" | "navigate", url: string, reason: string | undefined, signal?: AbortSignal, clicks?: OutflowHit): Promise<string | null> {
+    if (!clicks && (isLocal(url) || seen.has(url) || policy.addressGranted(url))) return null;
+    if (!clicks && (await bridge.listTabs()).some((t) => t.url === url && policy.canRead(t))) return null;
     if (url.length > URL_MAX) return TOO_LONG_TEXT;
     if (!bridge.askAddress) return DENIAL_TEXT;
-    const card = { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(url) };
+    const card = { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(url, clicks) };
     const yes = await askAddressCard(bridge, policy, requests, card, `address:${url}`, win ?? undefined, () => () => {}, signal);
     if (!yes) return DENIAL_TEXT;
     policy.grantAddress(url);
@@ -821,26 +823,28 @@ function createToolsServer(
       const key = win ?? MAIN_WINDOW;
       const cur = searching?.sessions.current(key);
       let target = url;
+      const clicks = isLocal(url) ? undefined : outflow?.click(key, url);
       // During a search, the link rule of the search tab: a web address not read in it asks its card.
       if (searching && cur && !isLocal(url)) {
         const { sessions } = searching;
         if (url.length > URL_MAX) return text(TOO_LONG_TEXT);
         const free = sessions.freeAs(cur.tabId, url);
         if (free) target = free;
-        else {
+        if (!free || clicks) {
           if (!bridge.askAddress) return text(UNREAD_ADDRESS_TEXT);
           const yes = await sessions.step(cur.tabId, l10n("kernel-search-address-step"), () =>
-            askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(url) }, `address:${cur.tabId}:${url}`, win ?? undefined, (f) => sessions.onEnd(cur.tabId, f), extra?.signal),
+            askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(url, clicks) }, `address:${cur.tabId}:${url}`, win ?? undefined, (f) => sessions.onEnd(cur.tabId, f), extra?.signal),
           );
           if (!sessions.owns(cur.tabId)) return text(sessions.takeStop(key, cur.tabId) ? STOP_TEXT : CLOSED_TEXT);
           if (!yes) return text(DENIAL_TEXT);
         }
       } else {
-        const refusal = await composedRefusal("open_tab", url, reason, extra?.signal);
+        const refusal = await composedRefusal("open_tab", url, reason, extra?.signal, clicks);
         if (refusal) return text(refusal);
       }
       const o = await bridge.openTab(target, space);
       policy.tabOpenedByAgent(o);
+      if (!isLocal(url)) outflow?.clicked(key, url);
       return text(o.id);
     }),
   );
@@ -865,6 +869,11 @@ function createToolsServer(
       if (handing(id)) return text(HANDING_TEXT, true);
       if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, id)) return text(STOP_TEXT);
       const o = await tab(id);
+      // A link that spells something with the ones followed before it is never free: its card shows what (rule 2).
+      const label = link === undefined ? undefined : list?.labels[link];
+      const clicks = isLocal(url) ? undefined : outflow?.click(key, url, label);
+      /** The link went: it joins the run of followed links (or ends it). */
+      const gone = () => { if (!isLocal(url)) outflow?.clicked(key, url, label); };
       if (searching?.sessions.owns(id)) {
         const { sessions } = searching;
         // Longer than the search remembers: it could be allowed but never freed.
@@ -872,11 +881,11 @@ function createToolsServer(
         // The search tab follows links only: an address read on a page of this search (an added fragment is dropped).
         const free = sessions.freeAs(id, url);
         const target = free ?? url;
-        if (!free) {
+        if (!free || clicks) {
           // An address the agent composed: the user decides, on a card showing it whole.
           if (!bridge.askAddress) return text(UNREAD_ADDRESS_TEXT);
           const yes = await sessions.step(id, l10n("kernel-search-address-step"), () =>
-            askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(url) }, `address:${id}:${url}`, win ?? undefined, (f) => sessions.onEnd(id, f), extra?.signal),
+            askAddressCard(bridge, policy, requests, { url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(url, clicks) }, `address:${id}:${url}`, win ?? undefined, (f) => sessions.onEnd(id, f), extra?.signal),
           );
           if (!sessions.owns(id)) return text(sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
           // The user took the page while the card was up.
@@ -885,6 +894,7 @@ function createToolsServer(
           sessions.allow(id, url);
         }
         await sessions.step(id, l10n("kernel-search-opening", { url: target }), () => working(id, () => bridge.navigate(id, target), l10n("kernel-activity-goes-to", { site: siteOf(target) })));
+        gone();
         return text(`Onglet ${id} → ${target}`);
       }
       if (o.site !== undefined) {
@@ -894,26 +904,30 @@ function createToolsServer(
         if (!bridge.siteUrlAllowed?.(o.site, url)) return text(navigationOutsideSite(url), true);
         // Inside the app's domains too, an address the agent wrote can carry data there: the same card as elsewhere. A
         // link counts as written too: the app's tweaks put it in the page, as for a local page.
-        const refusal = await composedRefusal("navigate", url, reason, extra?.signal);
+        const refusal = await composedRefusal("navigate", url, reason, extra?.signal, clicks);
         if (refusal) return text(refusal);
-        if ((await working(id, () => bridge.navigate(id, url), l10n("kernel-activity-goes-to", { site: siteOf(url) }))) === "pending") return text(PENDING_SITE_NAVIGATION);
+        const loaded = await working(id, () => bridge.navigate(id, url), l10n("kernel-activity-goes-to", { site: siteOf(url) }));
+        if (loaded === "pending") return text(PENDING_SITE_NAVIGATION);
+        gone();
         return text(`Appli de site ${id} → ${url}`);
       }
       if (!(await access(o))) return text(DENIAL_TEXT);
       // A link of a local page is the agent's own writing: it counts as composed, also once the tab has left that page.
-      const refusal = link === undefined || list?.written || isLocal(o.url) ? await composedRefusal("navigate", url, reason, extra?.signal) : null;
+      const refusal = clicks || link === undefined || list?.written || isLocal(o.url) ? await composedRefusal("navigate", url, reason, extra?.signal, clicks) : null;
       if (refusal) return text(refusal);
       // An app's window never leaves its origin (it has no address bar): another site opens
       // in a tab, as with open_tab, and the agent keeps access to the window.
       if (o.app && originOf(url) !== originOf(o.url)) {
         const fresh = await bridge.openTab(url);
         policy.tabOpenedByAgent(fresh);
+        gone();
         return text(`L'application ne quitte pas son adresse : ${url} ouvert dans l'onglet ${fresh.id}.`);
       }
       // Before bridge.navigate: the browser may report the navigation (tabNavigated) before it
       // ends, and the agent must not lose access to its own demo.
       policy.navigationByAgent(id, url);
       await working(id, () => bridge.navigate(id, url), l10n("kernel-activity-goes-to", { site: siteOf(url) }));
+      gone();
       return text(`Onglet ${id} → ${url}`);
     }),
   );
