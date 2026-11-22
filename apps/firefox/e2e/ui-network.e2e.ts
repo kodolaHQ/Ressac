@@ -207,9 +207,7 @@ describe("the UI's network", () => {
   // The UI's refusals logged since `from`, less the leaking widgets' own: they navigate 1.5 s after each load of theirs (at
   // startup, and again when the home comes back after a tab), so they land inside whichever test runs then.
   const refusalsSince = async (from: number) => (await uiRefusals(m)).slice(from).filter((r) => !/\/\/fuite[-.]/.test(r));
-  /** A frame `<iframe sandbox="allow-scripts">` appended to the sidebar on `src`; resolves once its document is `src`. */
-  // The sidebar's CSP keeps `frame-src resource:` for these frames alone (no Ressac code frames resource: there since the
-  // remote frames): removing it refuses them before the net, and these net tests could no longer set up their page.
+  /** A frame `<iframe sandbox="allow-scripts">` appended to the sidebar on `src`; resolves with its document's address once it is `src`, or after 5 s. */
   const sidebarFrame = (id: string, src: string, sandbox: string | null = "allow-scripts") =>
     m.execute(
       `return (async () => { const sb = document.getElementById("ressac-sidebar").contentDocument;
@@ -336,21 +334,24 @@ describe("the UI's network", () => {
     expect(net.udp.length, "UDP packets to the fake STUN").toBe(0);
   });
 
-  // accueil.spec.ts:781
-  it("the net: a UI document without the widget guard reaches no server by WebRTC", { timeout: 120_000 }, async () => {
-    const tcp0 = net.tcp.length;
+  // The sidebar frames no resource: page (its frames run out of process since the remote frames): its CSP refuses one
+  // before it loads, even under the frames' own origin, so an unguarded page there can neither run nor reach a server.
+  it("the sidebar's CSP refuses a resource: frame before it loads, under the frames' origin too; nothing it holds reaches a server", { timeout: 120_000 }, async () => {
     const udp0 = net.udp.length;
-    expect(await sidebarFrame("rtc-net", "resource://ressac-test-net/rtc.html")).toBe("resource://ressac-test-net/rtc.html");
-    const result = () => m.execute<string | null>(`return document.getElementById("ressac-sidebar").contentDocument.getElementById("rtc-net")?.contentDocument?.getElementById("r")?.textContent ?? null;`);
-    await expect.poll(result, { timeout: 30_000 }).toMatch(/^\[/);
-    await sleep(3000);
-    const [main, blank] = JSON.parse((await result())!) as { result?: string; ms?: number; error?: string }[];
-    expect(main!.result, JSON.stringify(main)).toBe("NotAllowedError");
-    expect(main!.ms, "refused at once").toBeLessThan(1000);
-    expect(blank!.result ?? blank!.error, JSON.stringify(blank)).toMatch(/SecurityError|NotAllowedError/);
-    expect(net.tcp.length - tcp0, "TCP connections to the fake TURN").toBe(0);
-    expect(net.udp.length - udp0, "UDP packets to the fake STUN").toBe(0);
-    expect((await names()).filter((n) => /^(turn|stun)-rtcp/.test(n))).toEqual([]);
+    const tcp0 = net.tcp.length;
+    const origin = await m.execute<string>(
+      `return (async () => { const store = ChromeUtils.importESModule("${STORE}");
+       const dir = PathUtils.join(PathUtils.profileDir, "chrome", "ressac-frames", "test-net");
+       await IOUtils.makeDirectory(dir);
+       for (const f of ["wt.html", "worker.html", "worker.js"]) await IOUtils.copy(PathUtils.join(arguments[0], f), PathUtils.join(dir, f));
+       return "resource://ressac-frames-" + store.framesToken() + "/test-net/"; })();`,
+      [pages],
+    );
+    const srcs = ["resource://ressac-test-net/rtc.html", "resource://ressac-test-net/loads.html", `${origin}wt.html`, `${origin}worker.html`];
+    // sidebarFrame waits up to 5 s for the page: none of them becomes the frame's document.
+    for (const [i, src] of srcs.entries()) expect(await sidebarFrame(`csp-${i}`, src, i === 3 ? null : "allow-scripts"), src).not.toBe(src);
+    expect(net.hits.filter((h) => /^(sb|ag|tp|rtcp)-/.test(h.label) || /\/(sb|ag)-/.test(h.path)).map((h) => `${h.label} ${h.path}`)).toEqual([]);
+    expect({ names: (await names()).filter((n) => /^(sb|ag|tp|rtcp)-/.test(n)), udp: net.udp.length - udp0, tcp: net.tcp.length - tcp0 }).toEqual({ names: [], udp: 0, tcp: 0 });
   });
 
   it("the sidebar and the agent panel load nothing from the web: an <img> and a background-image in http, https or ws, even 127.0.0.1, are refused; a data: image shows", { timeout: 120_000 }, async () => {
@@ -379,30 +380,6 @@ describe("the UI's network", () => {
     expect((await names()).filter((n) => /^(sb|ag)-/.test(n))).toEqual([]);
   });
 
-  it("an unguarded opaque page in the sidebar loads nothing: fetch, WebSocket, sendBeacon, img, font, frame, a worker's fetch and WebSocket, WebTransport", { timeout: 120_000 }, async () => {
-    const udp0 = net.udp.length;
-    expect(await sidebarFrame("loads-net", "resource://ressac-test-net/loads.html")).toBe("resource://ressac-test-net/loads.html");
-    // WebTransport and, in the parent process, a worker's fetch have no context: they are judged by their principal, so
-    // their pages are served under a UI prefix (still unguarded, no CSP).
-    const origin = await m.execute<string>(
-      `return (async () => { const store = ChromeUtils.importESModule("${STORE}");
-       const dir = PathUtils.join(PathUtils.profileDir, "chrome", "ressac-frames", "test-net");
-       await IOUtils.makeDirectory(dir);
-       for (const f of ["wt.html", "worker.html", "worker.js"]) await IOUtils.copy(PathUtils.join(arguments[0], f), PathUtils.join(dir, f));
-       return "resource://ressac-frames-" + store.framesToken() + "/test-net/"; })();`,
-      [pages],
-    );
-    expect(await sidebarFrame("wt-net", `${origin}wt.html`)).toBe(`${origin}wt.html`);
-    expect(await sidebarFrame("worker-net", `${origin}worker.html`, null)).toBe(`${origin}worker.html`);
-    const title = (id: string) => m.execute<string>(`return document.getElementById("ressac-sidebar").contentDocument.getElementById(arguments[0]).contentDocument.title;`, [id]);
-    await expect.poll(() => title("worker-net"), { timeout: 10_000 }).toBe("worker ran");
-    expect(await title("wt-net")).toBe("function");
-    await expect.poll(() => missingRefusals(m, ["tp-wfetch.", "tp-wws.", "tp-wt."]), { timeout: 15_000 }).toEqual([]);
-    await sleep(3000);
-    expect(net.hits.filter((h) => h.label.startsWith("tp-")).map((h) => `${h.label} ${h.method} ${h.path}`)).toEqual([]);
-    // The policy refuses before the DNS (S2 p1).
-    expect({ names: (await names()).filter((n) => n.startsWith("tp-")), udp: net.udp.length - udp0 }).toEqual({ names: [], udp: 0 });
-  });
 
   // accueil.spec.ts:810
   it("a widget display resolves no name (dns-prefetch, preconnect, x-dns-prefetch-control, image), nor does the sidebar through a link; a tab's navigation does", { timeout: 120_000 }, async () => {
