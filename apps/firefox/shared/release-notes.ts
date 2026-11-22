@@ -7,7 +7,7 @@ export const RELEASE_NOTES: { version: string; date: string; items: string[] }[]
       "La barre d'adresse affiche un cadenas pour les sites sécurisés (https), et un cadenas ouvert pour ceux qui ne le sont pas.",
       "Le juge local des recherches est retiré : il arrêtait trop souvent des recherches honnêtes. Les autres protections des recherches restent en place.",
       "Sécurité : plusieurs protections renforcées après un banc d'essai de toutes nos promesses de sécurité : pages servies par l'agent, mode Navigateur, accès de l'agent à vos onglets pendant une recherche, actions qui lisent le web, et rapports d'erreurs mieux nettoyés (noms de dossiers, adresses e-mail…).",
-      "Sécurité : une page intégrée dans un widget ou un accueil d'appli ne peut plus atteindre la caméra, le micro ni ouvrir une connexion d'appel, même par un chemin détourné.",
+      "Sécurité : les pages intégrées dans un widget ou un accueil d'appli n'ont aucun accès à la caméra, au micro ni aux appels.",
       "Un appel dans un onglet pouvait se figer quand un widget de l'accueil contenait des cadres imbriqués ; c'est corrigé, et les widgets ne se rechargent plus à chaque mise à jour de l'accueil.",
       "L'agent ne reprend plus le clavier quand vous l'avez quitté pendant son démarrage (pour ⌘T ou une autre zone).",
       "Une lecture de page par l'agent ne reste plus bloquée jusqu'à la fermeture de Ressac, et une page qui lance un téléchargement est lue aussitôt au lieu d'attendre 30 secondes.",
