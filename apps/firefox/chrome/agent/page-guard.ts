@@ -53,12 +53,13 @@ function blocked(ch: any, range: [number, number]): boolean {
   const li = ch.loadInfo;
   if (!li) return false;
   const document = li.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_DOCUMENT;
-  if (li.triggeringPrincipal?.isSystemPrincipal) {
-    // What Ressac loads is not judged, but where a redirect sends it is the server's choice: an agent page's server
-    // must not send an address the user typed (or a reload) to the web. Each hop is judged as if it were the page.
-    const to = ch.URI.spec as string;
-    return li.redirectChain.some((e: any) => agentPageDecision({ from: principalSpec(e.principal), to, document, gesture: false, method: ch.requestMethod ?? "GET" }, range) === "cancel");
-  }
+  const system = !!li.triggeringPrincipal?.isSystemPrincipal;
+  const o = { to: ch.URI.spec as string, document, gesture: !system && li.hasValidUserGestureActivation, method: ch.requestMethod ?? "GET" };
+  // Where a redirect sends a load is the server's choice: an agent page's server must not send to the web a load that
+  // something else started (an address typed or reloaded, a link on a web page). Each hop is judged as if it were the page.
+  if (li.redirectChain.some((e: any) => agentPageDecision({ ...o, from: principalSpec(e.principal) }, range) === "cancel")) return true;
+  // What Ressac loads itself is judged only past such a hop.
+  if (system) return false;
   const top = (li.browsingContext ?? li.workerAssociatedBrowsingContext)?.top;
   const froms: string[] = document
     ? [principalSpec(li.triggeringPrincipal)]
@@ -68,7 +69,6 @@ function blocked(ch: any, range: [number, number]): boolean {
         top?.currentURI?.spec ?? "",
         principalSpec(top?.currentWindowGlobal?.documentPrincipal),
       ];
-  const o = { to: ch.URI.spec as string, document, gesture: li.hasValidUserGestureActivation, method: ch.requestMethod ?? "GET" };
   return !froms.every((from) => agentPageDecision({ ...o, from }, range) === "allow");
 }
 

@@ -22,7 +22,14 @@ let m: Marionette;
 let logDir: string;
 beforeAll(async () => {
   logDir = await mkdtemp(path.join(os.tmpdir(), "ressac-dnslog-"));
-  web = await startServer({ routes: { "/arrive": html("<title>arrive</title>") } });
+  web = await startServer({
+    routes: {
+      "/arrive": html("<title>arrive</title>"),
+      // A web page that navigates through the agent's server, which redirects it to the web.
+      "/via-agent": (req, res) =>
+        html(`<title>via</title><script>location = "http://localhost:${agent.port}/r?to=" + encodeURIComponent("${web.url}/via-agent-leak?d=secret")</script>`)(req, res),
+    },
+  });
   const to = web.url;
   agent = await startServer({
     routes: {
@@ -114,4 +121,14 @@ it("a typed address of an agent page that redirects to the web does not leave; o
   expect(web.paths.slice(before)).toEqual([]);
   await typed(`http://localhost:${agent.port}/r?to=${encodeURIComponent(`http://localhost:${agent.port}/link?after`)}`);
   await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v) => v === `http://localhost:${agent.port}/link?after`);
+});
+
+it("a web page's navigation that the agent's server redirects to the web does not leave", async () => {
+  const before = web.paths.length;
+  const asked = agent.paths.length;
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${web.url}/via-agent`, activate: true });
+  // The agent's server answered the redirect and the load is over (blocked: an error page; let through: the web).
+  await expect.poll(() => agent.paths.slice(asked)).toContain("/r");
+  await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument", (v) => v === true);
+  expect(web.paths.slice(before).filter((p) => p.startsWith("/via-agent-leak"))).toEqual([]);
 });
