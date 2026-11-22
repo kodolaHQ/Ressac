@@ -833,6 +833,14 @@ test("a grid address listed again under a word keeps its piece; an address shown
   // A grid labelled with words only is not judged (written as a limit): honest titled links end in digits too.
   expect(plain.map((u) => p.click("w", u)).every((h) => h === undefined)).toBe(true);
 });
+test("a grid address shown under a word first and under one character later is a piece from then on", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  const urls = [..."381"].map((d) => `https://g.example.net/k/q${d}x`);
+  o.links("w", urls.map((url) => ({ text: "voir", url })));
+  o.links("w", urls.map((url, i) => ({ text: "381"[i]!, url })));
+  expect(urls.map((u) => o.click("w", u)).at(-1)).toMatchObject({ kind: "clicks", masked: "3 · 8 · 1" });
+});
 test("honest links titled with words stay free even when their address ends in one character", () => {
   const sets: [string, string][][] = [
     [["Voir", "https://shop.example/p/3"], ["Voir", "https://shop.example/p/1"], ["Voir", "https://shop.example/p/7"]],
