@@ -428,7 +428,8 @@ function createToolsServer(
   beatMs?: number,
   searching?: {
     sessions: SearchSessions; notes?: BrowsingNotes; settleMs: number; emptySpanMs: number; readPageMs: number; chains: Map<string, Promise<unknown>>;
-    /** Cards already answered yes in a running search (rule 3), by key; a key goes when its search ends. */
+    /** Rule 3's state: cards answered yes in a running search (a key goes when its search ends), searches that ran in
+     *  a conversation (`ran:<conversation>:<tab>`) and cards answered after them (kept until the conversation ends). */
     asked: Set<string>;
   },
   /** Per tab, the addresses of the last numbered list printed (`navigate { link }`); outlives a request's server. */
@@ -675,18 +676,23 @@ function createToolsServer(
   /**
    * Rule 3: during a search, a sensitive source asks its card again once per search, even if granted in the conversation.
    * Any window's search counts, whatever the token: another window's token (readable in the container) must not read around
-   * it. `ask` puts the card up under the key it is given. No search: true, nothing asked.
+   * it. Once a search has ended (a recap, the idle delay, a stop), the page that steered it may still steer the agent: the
+   * card comes once more after each search, until the conversation ends. `ask` puts the card up under the key it is given.
+   * No search in this conversation: true, nothing asked.
    */
   async function oncePerSearch(name: (searchTabId: string) => string, ask: (key: string) => Promise<boolean>): Promise<boolean> {
-    const tabs = searching?.sessions.runningTabs() ?? [];
-    const keys = tabs.map(name).filter((k) => !searching!.asked.has(k));
+    if (!searching) return true;
+    const running = searching.sessions.runningTabs();
+    const ran = `ran:${policy.conversation}:`;
+    const tabs = running.length ? running : [...searching.asked].filter((k) => k.startsWith(ran)).map((k) => `after:${k.slice(ran.length)}`);
+    const keys = tabs.map(name).filter((k) => !searching.asked.has(k));
     if (keys.length === 0) return true;
     if (!(await ask(keys[0]!))) return false;
     tabs.forEach((t) => {
       const k = name(t);
-      if (searching!.asked.has(k)) return;
-      searching!.asked.add(k);
-      searching!.sessions.onEnd(t, () => searching!.asked.delete(k));
+      if (searching.asked.has(k)) return;
+      searching.asked.add(k);
+      if (running.length) searching.sessions.onEnd(t, () => searching.asked.delete(k));
     });
     return true;
   }
@@ -1006,6 +1012,7 @@ function createToolsServer(
             // The first query is checked before it goes to the engine; a held one pauses on the engine's empty page.
             o = await search.open(win ?? undefined, hit ? { query: "" } : { query });
             sessions.start(key, o.id, goal);
+            searching!.asked.add(`ran:${policy.conversation}:${o.id}`);
             if (hit) {
               const stop = await pause(o.id, OUTFLOW_PAUSE(locale(), hit), extra?.signal);
               if (stop) return text(stop);
@@ -1062,6 +1069,7 @@ function createToolsServer(
             first = await search.open(win ?? undefined, { url: ok[0]![1] });
             // Its reason is the search's goal (none: a later search_web gives one).
             sessions.start(key, first.id, reason?.trim() ?? "");
+            searching!.asked.add(`ran:${policy.conversation}:${first.id}`);
             sessions.allow(first.id, ok[0]![1]);
             tabId = first.id;
           }
@@ -1199,7 +1207,7 @@ function createToolsServer(
       ? Promise.resolve(true)
       : askDataCard(bridge, policy, requests, { id: "history", name: "", agent: dev?.agent ?? "L'agent", kind: "history" }, () => policy.grantHistory(), () => policy.historyGranted(), "history:");
 
-  /** `historyAccess`, then rule 3: during a search the card comes again, once per search (a card just answered counts). */
+  /** `historyAccess`, then rule 3: the card comes again once per search, and once after it (a card just answered counts). */
   async function userDataAccess(): Promise<boolean> {
     const had = policy.historyGranted();
     if (!(await historyAccess())) return false;
