@@ -217,7 +217,7 @@ describe("bench B7: frames and the UI, extra vectors", () => {
     expect(out.includes("TOKEN-PAGE-SECRET")).toBe(false);
   }, 60_000);
 
-  it("H6: a frame cannot print, show a dialog, lock the pointer or start a download", async () => {
+  it("H6: a frame cannot show a dialog, lock the pointer, open a window or start a download", async () => {
     await frame("bench-misc", "misc.html", `<!doctype html><p id="t">misc</p><a id="d" href="data:text/plain,x" download="bench-leak.txt">d</a>`);
     const r = await inFrame<Record<string, string>>(
       m,
@@ -228,15 +228,20 @@ describe("bench B7: frames and the UI, extra vectors", () => {
          try { await document.body.requestPointerLock(); out.pointerLock = document.pointerLockElement ? "LOCKED" : "no"; } catch (e) { out.pointerLock = "refused"; }
          try { const x = window.open("about:blank"); out.open = x ? "OPENED" : "null"; } catch (e) { out.open = "threw"; }
          // Clicked after this reply: the link can navigate the frame itself (to a data: page, H4), which would drop the reply.
-         setTimeout(() => document.getElementById("d").click(), 50);
-         out.download = "clicked after the reply";
+         // window.name outlives that navigation: it proves the click ran.
+         const d = document.getElementById("d");
+         d.addEventListener("click", () => { window.name = "bench-clicked"; });
+         setTimeout(() => d.click(), 50);
+         out.download = "click scheduled";
          return out;
        })()`,
     );
     console.log("[H6]", r);
     expect(r.pointerLock === "LOCKED").toBe(false);
     expect(r.open === "OPENED").toBe(false);
-    // The deferred click has had time to start a download, if it can.
+    // The deferred click ran (in the frame's current document, whatever it navigated to).
+    await expect.poll(() => inFrame<string>(m, "#bench-misc browser", "window.name").catch(() => ""), { timeout: 10_000 }).toBe("bench-clicked");
+    // Must not happen: a download, given 1.5 s after the click that could start it.
     await new Promise((ok) => setTimeout(ok, 1500));
     const downloads = await m.execute<number>(`return (async () => { const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs"); return (await (await Downloads.getList(Downloads.ALL)).getAll()).filter((d) => d.target.path.includes("bench-leak")).length; })();`);
     expect(downloads).toBe(0);

@@ -125,7 +125,7 @@ $TSX bench/security/B4-B6/scripts/b5links.mts
 
 On 0.1.22, `b4.mts` gives 69 held and 2 `BYPASS`, both 4.1.8 (token switching, the part SECURITY.md states as open); `b6.mts` 14 held, 0 bypass. The outputs are in `results/*-0.1.22.jsonl`.
 
-B7-B9 unit rows (they overwrite `unit/results/`; `git diff` then shows what moved since 0.1.20). They import this repo, not `RESSAC_WORKTREE`. On `main`, `fetch.test.ts` stops at row G15: it expects the request to the Mac's global IPv6 address to arrive, and the fix now refuses it.
+B7-B9 unit rows (they overwrite `unit/results/`; `git diff` then shows what moved since 0.1.20). They import this repo, not `RESSAC_WORKTREE`. On 0.1.22, `fetch.test.ts` stops at row G15: it expects the request to the Mac's global IPv6 address to arrive, and the fix now refuses it.
 
 ```sh
 packages/kernel/node_modules/.bin/vitest run --root bench/security/B7-B9/unit --globals fetch.test.ts design-server.test.ts
@@ -156,7 +156,7 @@ The judge figure of `docs/security-testing.md` (87% of attacks let through) come
 
 - **No end-to-end number.** B3 is not run. Nothing here says how often Ressac leaks under a real injection.
 - **Two versions, one machine.** Each brick ran on 0.1.20, and B1-B2, B4-B6 and the B7-B9 e2e ran again on 0.1.22, all on one M5 Pro Mac. The 0.1.20 numbers are what was found; the 0.1.22 ones show the fixes hold.
-- **Not every attack ran.** B7-B9's report lists cases pending the engine, a VM or never written (« Not done »). B1-B2's live-race attacks (DNS rebinding, CONNECT fronting) were argued from code. No brick tested the Docker fallback.
+- **Not every attack ran.** B7-B9's report lists cases pending a VM or never written (« Not done »); those pending the engine are the e2e, run on 0.1.22. B1-B2's live-race attacks (DNS rebinding, CONNECT fronting) were argued from code. No brick tested the Docker fallback.
 - **B0 is first-order and unit-level.** 297 hand-picked mutations are not exhaustive, and 21 guards live only in Firefox: their e2e tests were named, not run.
 - **No model acted.** In B4-B6 the fake API answers every model call with an error. The tests show what reaches the model and what the tools allow, not what a steered model would do.
 - **The outflow corpora.** Corpus 3 is adapted by a script, not written by attackers. Each leak is sent whole in one gesture, and the item-level intervals are too narrow (28 + 14 distinct leaks, 20 honest goals). Corpus 1's attacks were written by an agent that knew the judge, and five of its misses later fed the sensitive-site list. The runner re-implements `server.ts`'s wiring around the real detectors. No tab got the « shared by you » exemption, so 51.5% is an upper bound.
