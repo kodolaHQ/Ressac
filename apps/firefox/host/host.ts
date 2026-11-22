@@ -1043,12 +1043,12 @@ const rpc = createRpc({
 });
 // Errors go to Firefox, which reports them (chrome/store/telemetry.ts), on top of the stderr log.
 const reportError = (e: unknown) => {
+  console.error("[ressac] uncaught:", e);
   const err = e instanceof Error ? e : new Error(String(e));
   rpc.notify("telemetryError", { source: "host", type: err.name, message: err.message, stack: err.stack });
 };
 process.on("unhandledRejection", reportError);
 process.on("uncaughtException", (e) => {
-  console.error("[ressac] uncaught exception:", e);
   reportError(e);
   // Exit once the notification is flushed: stdout is an asynchronous pipe on macOS.
   writeStdout("", () => process.exit(1));
