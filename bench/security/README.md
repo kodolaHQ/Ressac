@@ -37,11 +37,11 @@ B3 (end-to-end injection) is not here: not run yet.
 
 Per-case results:
 - B0: `results-run.json`, `results-related.json`, and the full table at the end of `REPORT.md`.
-- B4-B6: `results/b4.jsonl`, `results/b6.jsonl`, `results/b5links.out`. The B5 and B6 container outputs of the 0.1.20 run were not saved; the report is their only record. The container side was rerun on 0.1.22 with `scripts/container.mts`: `results/b5-container-0.1.22.jsonl` (8 held, 2 limits, 1 control, 0 bypass; the auto-memory bypass is fixed) and `results/b6-container-0.1.22.jsonl` (3 held, 1 control, 0 bypass).
-- B7-B9: `unit/results/*.json`, `unit/results/publish.txt`.
+- B4-B6: `results/b4.jsonl`, `results/b6.jsonl`, `results/b5links.out` (0.1.20); `results/b4-0.1.22.jsonl` (69 held, 2 `BYPASS` = 4.1.8a/c, token switching, the limit SECURITY.md states) and `results/b6-0.1.22.jsonl` (14 held) for the host side on 0.1.22. The B5 and B6 container outputs of the 0.1.20 run were not saved; the report is their only record. The container side was rerun on 0.1.22 with `scripts/container.mts`: `results/b5-container-0.1.22.jsonl` (8 held, 2 limits, 1 control, 0 bypass; the auto-memory bypass is fixed) and `results/b6-container-0.1.22.jsonl` (3 held, 1 control, 0 bypass).
+- B7-B9: `unit/results/*.json`, `unit/results/publish.txt` (0.1.20, Node); `e2e/results/e2e-0.1.22.json` and `.log`: the three e2e files in the real app on 0.1.22, 45/45 passed, with each measured value the tests print.
 - Outflow: `outflow/results/` holds each corpus's per-item output (rerun 2026-11-22 at `c61a21f5`, identical totals to the published figures), with `results.sha256`. The replay is deterministic, so a rerun gives the same files.
 - VM trial: `results.json`.
-- B1-B2: at 0.1.20, the report only (that run's ad hoc runners were not kept). On 0.1.22, `results/b1b2-0.1.22.jsonl`, from the published `run/` scripts; `RUN-0.1.22.md` gives the date, commit, image sha and the differences from the 0.1.20 report.
+- B1-B2: at 0.1.20, the report, made by the runners kept as run in `run-0.1.20/` (their raw output was not kept). On 0.1.22, `results/b1b2-0.1.22.jsonl`, from the published `run/` scripts; `RUN-0.1.22.md` gives the date, commit, image sha and the differences from the 0.1.20 report.
 
 Threat model and scope: those of SECURITY.md. The attacker controls web pages the agent reads (prompt injection) and, through them, the agent's actions inside its container. The user, the Mac and Ressac's own build are trusted. Each catalogue's first lines give its exact scope.
 
@@ -123,7 +123,7 @@ $TSX bench/security/B4-B6/scripts/b6.mts > /tmp/b6.jsonl
 $TSX bench/security/B4-B6/scripts/b5links.mts
 ```
 
-On `main` after the fixes, `b4.mts` gives 69 held and 2 `BYPASS`, both 4.1.8 (token switching, the part SECURITY.md states as open); `b6.mts` 14 held, 0 bypass.
+On 0.1.22, `b4.mts` gives 69 held and 2 `BYPASS`, both 4.1.8 (token switching, the part SECURITY.md states as open); `b6.mts` 14 held, 0 bypass. The outputs are in `results/*-0.1.22.jsonl`.
 
 B7-B9 unit rows (they overwrite `unit/results/`; `git diff` then shows what moved since 0.1.20). They import this repo, not `RESSAC_WORKTREE`. On `main`, `fetch.test.ts` stops at row G15: it expects the request to the Mac's global IPv6 address to arrive, and the fix now refuses it.
 
@@ -133,7 +133,7 @@ apps/firefox/node_modules/.bin/vitest run --root bench/security/B7-B9/unit --glo
 ```
 
 **A Mac with a built Ressac** (the Firefox engine built with `surfer`, then `build:ui`; see `apps/firefox/README.md`):
-- `B7-B9/e2e/*.e2e.ts`: copy each into `apps/firefox/e2e/`, run it with the e2e config, remove it (steps in `B7-B9/REPORT.md`). Tests marked `PREDICTED RED` were findings at 0.1.20. They were run on 2026-11-22 on the branch that fixed them, and passed there; that run's output was not kept, so rerun them to see it.
+- `B7-B9/e2e/*.e2e.ts`: copy each into `apps/firefox/e2e/`, run it with the e2e config, remove it (steps in `B7-B9/REPORT.md`). Tests marked `PREDICTED RED` were findings at 0.1.20. On 0.1.22 all 45 pass (`B7-B9/e2e/results/`).
 - `B7-B9/unit/publish-harness.sh`: needs `RESSAC_ENGINE_OBJ` (a built engine's `obj-aarch64-apple-darwin`) and test MAR archives signed with throwaway keys by the engine's `certutil`, `mar` and `signmar`. The steps that made them were not scripted.
 
 **A Mac that can run the agent VM** (Apple Silicon, the pinned Lima and Podman from `apps/firefox/scripts/vm-tools.sh`, the VM image the app downloads):
@@ -155,10 +155,10 @@ The judge figure of `docs/security-testing.md` (87% of attacks let through) come
 ## Known limits of the bench
 
 - **No end-to-end number.** B3 is not run. Nothing here says how often Ressac leaks under a real injection.
-- **One run, one machine, one commit.** Each brick ran once on 0.1.20 (an M5 Pro Mac). The bypasses were fixed after, so a rerun on `main` measures the fixes, not the 0.1.20 numbers.
+- **Two versions, one machine.** Each brick ran on 0.1.20, and B1-B2, B4-B6 and the B7-B9 e2e ran again on 0.1.22, all on one M5 Pro Mac. The 0.1.20 numbers are what was found; the 0.1.22 ones show the fixes hold.
 - **Not every attack ran.** B7-B9's report lists cases pending the engine, a VM or never written (« Not done »). B1-B2's live-race attacks (DNS rebinding, CONNECT fronting) were argued from code. No brick tested the Docker fallback.
 - **B0 is first-order and unit-level.** 297 hand-picked mutations are not exhaustive, and 21 guards live only in Firefox: their e2e tests were named, not run.
 - **No model acted.** In B4-B6 the fake API answers every model call with an error. The tests show what reaches the model and what the tools allow, not what a steered model would do.
 - **The outflow corpora.** Corpus 3 is adapted by a script, not written by attackers. Each leak is sent whole in one gesture, and the item-level intervals are too narrow (28 + 14 distinct leaks, 20 honest goals). Corpus 1's attacks were written by an agent that knew the judge, and five of its misses later fed the sensitive-site list. The runner re-implements `server.ts`'s wiring around the real detectors. No tab got the « shared by you » exemption, so 51.5% is an upper bound.
 - **Same family of authors.** Catalogues were written by agents that had not built the brick, but by the same team's tooling. No independent review has seen this bench.
-- **Lost records.** The 0.1.20 B1-B2 runners and B5-B6 container outputs were not kept; for 0.1.20 their reports are the evidence. The 0.1.22 reruns use the scripts published here and keep their outputs.
+- **0.1.20 raw outputs.** For B1-B2 and the B5-B6 container side, the 0.1.20 run kept its reports, not its raw output. The 0.1.22 reruns keep theirs.
