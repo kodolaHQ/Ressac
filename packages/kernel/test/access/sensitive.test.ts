@@ -23,6 +23,7 @@ test.each([
   "https://MAIL.GOOGLE.COM/",
   "https://mail.google.com./",
   "https://MAIL.GOOGLE.COM.",
+  "https://www.paypal.com./", // the trailing dot, on a host the webmail rule does not catch
   "view-source:https://mail.google.com/",
   "blob:https://mail.google.com/0b1c-uuid",
   "view-source:view-source:https://mail.google.com/",
