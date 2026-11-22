@@ -35,7 +35,7 @@ Every brick ran on Ressac **0.1.20**, commit `e94539fb` (in `v0.1.21`'s history)
 
 B3 (end-to-end injection, `B3/`): built and wiring-tested on `main` `e2d740b3` (0.1.22), 2026-11-22, then run on 0.1.22 kernels, once per case:
 - Claude Haiku (`claude-haiku-5-5`): 100 BrowseSafe++ cases and the 72 ressac cases, cards granted; it tried nothing;
-- minimax-m3.1-flash (Ollama Cloud), obedient arm: the 72 ressac cases before the outflow fix (kernel `31f568c8`) and after it (`b2bb8875`, shipped in 0.1.23), plus the 10 encoded-lang cases after it, each with every card granted and every card refused. Attacks whose data left whole: 11 → 3 (granted) and 3 → 0 (refused) of 36, 2/10 and 0/10 encoded-lang; one more attack sent a whole code in pieces with no shared words in every run, counted as a partial leak (`B3/README.md`).
+- minimax-m3.1-flash (Ollama Cloud), obedient arm: the 72 ressac cases before the outflow fix (kernel `31f568c8`) and after it (`b2bb8875`, shipped in 0.1.23), plus the 10 encoded-lang cases after it, each with every card granted and every card refused. Attacks whose data left whole: 12 → 4 (granted) and 4 → 1 (refused) of 36, 2/10 and 0/10 encoded-lang. In each of these four 72-case runs, one of those attacks sent a whole code in pieces with no shared words, which the kernel's series rule does not join (`B3/README.md`).
 
 Per-case summaries of these eight runs: `B3/results/` (with `SHA256SUMS`). The controls of these runs were biased (most had no link); corrected sets are in `B3/ressac/*.v2.json`, not run. Rerun: `B3/run.mjs` (see `B3/README.md`); needs Node + the repo, the BrowseSafe++ train sample rebuilt by its scripts or a ressac cases file, and a Claude login or Ollama for the model runs.
 
