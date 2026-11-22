@@ -1,0 +1,122 @@
+[
+ {
+  "id": "I1",
+  "input": "http://x/",
+  "outcome": "blocked"
+ },
+ {
+  "id": "I1",
+  "input": "https://x/",
+  "outcome": "blocked"
+ },
+ {
+  "id": "I1",
+  "input": "HTTPS://x/",
+  "outcome": "blocked"
+ },
+ {
+  "id": "I1",
+  "input": "ws://x/",
+  "outcome": "blocked"
+ },
+ {
+  "id": "I1",
+  "input": "wss://x/",
+  "outcome": "blocked"
+ },
+ {
+  "id": "I1",
+  "input": "view-source:https://x/",
+  "outcome": "blocked"
+ },
+ {
+  "id": "I1",
+  "input": "view-source:view-source:http://x/",
+  "outcome": "blocked"
+ },
+ {
+  "id": "I1",
+  "input": "VIEW-SOURCE:https://x/",
+  "outcome": "blocked"
+ },
+ {
+  "id": "I1",
+  "input": "jar:https://x/a.zip!/b",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "moz-remote-image://?url=https%3A%2F%2Fx%2F",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "about:reader?url=https%3A%2F%2Fx%2F",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "page-icon:https://x/",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "moz-page-thumb://thumbnails/?url=https%3A%2F%2Fx",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "cached-favicon:https://x/favicon.ico",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "blob:https://x/uuid",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "data:text/html,<img src=https://x/>",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "ftp://x/",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "file:///etc/hosts",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "mailto:a@b.c",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "resource://gre/",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "chrome://browser/content/",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "moz-extension://uuid/x",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": " https://x/",
+  "outcome": "passes"
+ },
+ {
+  "id": "I1",
+  "input": "feed:https://x/",
+  "outcome": "passes"
+ }
+]
