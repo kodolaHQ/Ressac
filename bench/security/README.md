@@ -25,9 +25,9 @@ Every brick ran on Ressac **0.1.20**, commit `e94539fb` (in `v0.1.21`'s history)
 | Brick | Folder | Catalogue sha256 | Rerun | Needs | Result at 0.1.20 |
 |---|---|---|---|---|---|
 | B0 Do the tests test? | `B0/` | `mutations.md` `0a1f5655…3b25`, `muts.mjs` `1669b83f…99c3` | `run.mjs` | Node + the repo at `e94539fb` | 297 mutations: 223 caught, 21 e2e-only (not run), 53 survived (about 11 equivalent, 42 + P4 real holes) |
-| B1 Agent network, B2 VM and container isolation | `B1-B2/` | frozen `61bdd858…d3c6`, published `145b2d10…4d92` (below) | not scripted | macOS, Lima + Podman (pinned), the agent VM image | 0 bypass |
+| B1 Agent network, B2 VM and container isolation | `B1-B2/` | frozen 2026-11-21: `61bdd858…d3c6`, published `145b2d10…4d92` (below) | `run/run.sh` (written for the 0.1.22 rerun) | macOS on Apple Silicon, Lima + Podman (pinned), the agent VM image (downloaded by the run) | 0 bypass at 0.1.20 (report only); rerun on 0.1.22: 34 holds, 1 limit, 3 not tested, 0 bypass (`RUN-0.1.22.md`) |
 | B4 MCP server | `B4-B6/` | `de6427b3…025e` | `scripts/b4.mts` | Node + the repo | report bypasses 1-3: token switching (fixed in part), stale link list, encoded paths |
-| B5 The agent's own rules | `B4-B6/` | same | `scripts/drv.mts`, `plant.sh`, `cx.sh`, `b5links.mts` | the agent VM (macOS); `b5links.mts` Node only | 1 bypass (auto-memory file) |
+| B5 The agent's own rules | `B4-B6/` | same | `scripts/drv.mts` + `container.mts` (runs `plant.sh`, `cx.sh`), `b5links.mts` | the agent VM (macOS); `b5links.mts` Node only | 1 bypass (auto-memory file); container side rerun on 0.1.22: 0 bypass |
 | B6 Keys and relay | `B4-B6/` | same | `scripts/b6.mts` (host side), `drv.mts` (container side) | Node + the repo; the agent VM for the container side | 0 bypass, 1 limit written |
 | B7 Agent pages and apps, B8 UI, B9 updates and telemetry | `B7-B9/` | `842f8379…90c2` | `unit/*.test.ts`, `unit/publish-harness.sh`, `e2e/*.e2e.ts` | unit: Node + the repo; publish harness: a built engine; e2e: a built Ressac | 2 bypasses reproduced (kernel fetch, error scrub), 2 predicted from code (redirects, CDN documents), 1 limit widened (CDN in clear text); the e2e were pending when the report was written; the redirect and CDN fixes were then checked in `vm-trial/` |
 | Outflow rules (replay) | `outflow/` | corpora below | `runner-outflow.mts` | Node + the repo at `c61a21f5`; corpus 3 needs two public git clones | caught the data in 1001/1944 = **51.5%** [49.3–53.7] of adapted attacks; paused 7/398 honest gestures |
@@ -37,11 +37,11 @@ B3 (end-to-end injection) is not here: not run yet.
 
 Per-case results:
 - B0: `results-run.json`, `results-related.json`, and the full table at the end of `REPORT.md`.
-- B4-B6: `results/b4.jsonl`, `results/b6.jsonl`, `results/b5links.out`. The B5 and B6 container outputs were not saved; the report is their only record.
+- B4-B6: `results/b4.jsonl`, `results/b6.jsonl`, `results/b5links.out`. The B5 and B6 container outputs of the 0.1.20 run were not saved; the report is their only record. The container side was rerun on 0.1.22 with `scripts/container.mts`: `results/b5-container-0.1.22.jsonl` (8 held, 2 limits, 1 control, 0 bypass; the auto-memory bypass is fixed) and `results/b6-container-0.1.22.jsonl` (3 held, 1 control, 0 bypass).
 - B7-B9: `unit/results/*.json`, `unit/results/publish.txt`.
 - Outflow: `outflow/results/` holds each corpus's per-item output (rerun 2026-11-22 at `c61a21f5`, identical totals to the published figures), with `results.sha256`. The replay is deterministic, so a rerun gives the same files.
 - VM trial: `results.json`.
-- B1-B2: the report only. Its runners were kept in a temporary folder and lost.
+- B1-B2: at 0.1.20, the report only (that run's ad hoc runners were not kept). On 0.1.22, `results/b1b2-0.1.22.jsonl`, from the published `run/` scripts; `RUN-0.1.22.md` gives the date, commit, image sha and the differences from the 0.1.20 report.
 
 Threat model and scope: those of SECURITY.md. The attacker controls web pages the agent reads (prompt injection) and, through them, the agent's actions inside its container. The user, the Mac and Ressac's own build are trusted. Each catalogue's first lines give its exact scope.
 
@@ -137,8 +137,8 @@ apps/firefox/node_modules/.bin/vitest run --root bench/security/B7-B9/unit --glo
 - `B7-B9/unit/publish-harness.sh`: needs `RESSAC_ENGINE_OBJ` (a built engine's `obj-aarch64-apple-darwin`) and test MAR archives signed with throwaway keys by the engine's `certutil`, `mar` and `signmar`. The steps that made them were not scripted.
 
 **A Mac that can run the agent VM** (Apple Silicon, the pinned Lima and Podman from `apps/firefox/scripts/vm-tools.sh`, the VM image the app downloads):
-- B5 and B6 container side: start `drv.mts` with `BENCH_TMP`, `LIMA_HOME`, `RESSAC_ROOT`, `RESSAC_LIMACTL`, `RESSAC_PODMAN` and `RESSAC_VM_TEMPLATE` pointing into a throwaway folder; then `source env.sh` and run `plant.sh` and `cx.sh` in the container.
-- B1-B2: the catalogue says what to try; there is no script to rerun.
+- B5 and B6 container side: start `drv.mts` with `BENCH_TMP`, `LIMA_HOME` (a short path such as `/private/tmp/rsc.*`), `RESSAC_ROOT`, `RESSAC_LIMACTL`, `RESSAC_PODMAN`, `RESSAC_VM_TEMPLATE` (`scripts/lima.yaml`) and `RESSAC_CONTAINER_PORTS=5340-5359`, all pointing into a throwaway folder. Once it prints `READY`, run `$TSX bench/security/B4-B6/scripts/container.mts b5 > b5.jsonl` and `… b6 > b6.jsonl` with the same environment. They run `plant.sh` and `cx.sh` and every check through the driver, one JSON line per case. Stop the driver with SIGTERM, then `limactl delete --force ressac` in that `LIMA_HOME`.
+- B1-B2: `bench/security/B1-B2/run/run.sh > b1b2.jsonl` (about 2 min plus the image download; the Mac's 127.0.0.1:5340-5359 and 5400-5401 TCP and 5402 UDP must be free; it makes and deletes its own throwaway instance). Progress and a tally go to stderr; it exits 1 on any `BYPASS`.
 
 **A Tart macOS VM and a signed, notarized DMG:** `vm-trial/README.md`. The DMG we used is not published; build your own with `package` (signing identity and notary profile required).
 
@@ -161,4 +161,4 @@ The judge figure of `docs/security-testing.md` (87% of attacks let through) come
 - **No model acted.** In B4-B6 the fake API answers every model call with an error. The tests show what reaches the model and what the tools allow, not what a steered model would do.
 - **The outflow corpora.** Corpus 3 is adapted by a script, not written by attackers. Each leak is sent whole in one gesture, and the item-level intervals are too narrow (28 + 14 distinct leaks, 20 honest goals). Corpus 1's attacks were written by an agent that knew the judge, and five of its misses later fed the sensitive-site list. The runner re-implements `server.ts`'s wiring around the real detectors. No tab got the « shared by you » exemption, so 51.5% is an upper bound.
 - **Same family of authors.** Catalogues were written by agents that had not built the brick, but by the same team's tooling. No independent review has seen this bench.
-- **Lost records.** B1-B2's runners and B5-B6's container outputs were not kept; their reports are the evidence.
+- **Lost records.** The 0.1.20 B1-B2 runners and B5-B6 container outputs were not kept; for 0.1.20 their reports are the evidence. The 0.1.22 reruns use the scripts published here and keep their outputs.
