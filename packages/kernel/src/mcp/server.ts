@@ -96,7 +96,11 @@ const outflowWhat = (locale: string, hit: OutflowHit) => {
   return hit.source ? say(locale, "kernel-outflow-read-in", { what, source: hit.source }) : what;
 };
 /** The band of a search paused because its query carries a secret or private data the agent read. */
-export const OUTFLOW_PAUSE = (locale: string, hit: OutflowHit) => say(locale, "kernel-outflow-pause", { what: outflowWhat(locale, hit), masked: hit.masked });
+export const OUTFLOW_PAUSE = (locale: string, hit: OutflowHit) =>
+  // A series is many searches, not one that contains something: it has its own sentence.
+  hit.kind === "series"
+    ? say(locale, "kernel-outflow-pause-series", { masked: hit.masked })
+    : say(locale, "kernel-outflow-pause", { what: outflowWhat(locale, hit), masked: hit.masked });
 /** The red line of an address card whose address carries such data. */
 export const OUTFLOW_DANGER = (locale: string, hit: OutflowHit) => say(locale, "kernel-outflow-danger", { what: outflowWhat(locale, hit), masked: hit.masked });
 /**
@@ -1019,6 +1023,8 @@ function createToolsServer(
               o = await search.open(win ?? undefined, { query }, o.id);
             }
           }
+          // Gone to the engine: the next searches are judged with it, as a series.
+          outflow?.sent(key, query);
           // A search's first search_web (the one that gives its goal) brings the notebook: given by the kernel, framed as data.
           const notes = current?.goal ? "" : ((await searching.notes?.shown()) ?? "");
           return readSearch(key, o, true, l10n("kernel-search-query", { query }), [`Onglet : ${o.id}`, ...(notes ? [`${NOTES_PREFIX}\n${notes}`] : [])], { extra });

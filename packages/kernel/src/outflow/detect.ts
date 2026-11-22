@@ -131,9 +131,17 @@ function urlDecode(s: string): string {
     try {
       return decodeURIComponent(run);
     } catch {
-      return run;
+      // One invalid byte must not keep the whole run encoded: valid sequences decode, each invalid byte becomes U+FFFD.
+      return UTF8.decode(Uint8Array.from(run.slice(1).split("%"), (h) => parseInt(h, 16)));
     }
   });
+}
+const UTF8 = new TextDecoder();
+
+/** `s` percent-decoded until it stops changing, at most 3 times like `decodings`. */
+export function urlDecoded(s: string): string {
+  for (let i = 0, d; i < 3 && (d = urlDecode(s)) !== s; i++) s = d;
+  return s;
 }
 
 const decodePasses = [

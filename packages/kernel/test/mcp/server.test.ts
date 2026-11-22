@@ -2698,6 +2698,29 @@ test("search_web with data read in a granted tab pauses and names its source", a
   }, { outflow: new Outflow(), tabs: [github, mailTab] });
 });
 
+test("search_web after a sensitive read: a code split over three searches pauses the third", async () => {
+  await withSearch(async ({ call, fake, search, bands, policy }) => {
+    policy.grant(mailTab);
+    await call("read_tab", { id: "gmail" });
+    for (const query of ["annecy-tarif-verif 3 8", "annecy-tarif-verif 1 6"]) expect((await call("search_web", { query, goal: "but" })).text).toContain("Onglet : search-1");
+    const pending = call("search_web", { query: "annecy-tarif-verif 2 4", goal: "but" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    expect(bands.at(-1)![1]!.text).toContain("Le surveillant a mis en pause : cette suite de recherches semble envoyer une information par morceaux");
+    expect(opens(fake)).toEqual([{ query: "annecy-tarif-verif 3 8" }, { query: "annecy-tarif-verif 1 6" }]);
+    search.continue("search-1");
+    await pending;
+    // The resumed query was recorded: a 4th split part pauses too.
+    const label = "Le surveillant a mis en pause : cette suite de recherches semble envoyer une information par morceaux";
+    const paused = () => bands.filter((x) => x[1]?.state === "yours" && x[1].text?.includes(label)).length;
+    const before = paused();
+    const fourth = call("search_web", { query: "annecy-tarif-verif 5 7", goal: "but" });
+    await vi.waitFor(() => expect(paused()).toBe(before + 1));
+    expect(opens(fake).at(-1)).toEqual({ query: "annecy-tarif-verif 2 4" });
+    search.continue("search-1");
+    await fourth;
+  }, { outflow: new Outflow(), tabs: [github, mailTab] });
+});
+
 test("a shared tab that is not sensitive is not a source; a shared sensitive one is", async () => {
   await withSearch(async ({ call, fake, policy }) => {
     policy.userInteraction(githubTab);

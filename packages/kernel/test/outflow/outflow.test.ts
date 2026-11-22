@@ -384,3 +384,282 @@ test("forgetTyped clears what was typed, not what was read", () => {
   o.forgetTyped("w");
   expect(o.check("w", "camille.roussel@example.com")).toMatchObject({ kind: "email" });
 });
+
+test("short mixed identifiers read in a private page come back", () => {
+  const o = new Outflow();
+  o.read("w", "Laboratoire. Dossier BX2291KQ7. Code porte 4827B.", "historique");
+  expect(o.check("w", "BX2291KQ7")).toMatchObject({ kind: "token", source: "historique" });
+  expect(o.check("w", "dossier bx2291kq7 résultats")).toMatchObject({ kind: "token" });
+  expect(o.check("w", "lockers code 4827B")).toMatchObject({ kind: "token" });
+});
+
+test("public model names in a private page are not items", () => {
+  const o = new Outflow();
+  o.read("w", "Votre commande : RTX4090, iPhone15, MacBook M5, vol A350, test COVID19.", "mail.example.fr");
+  for (const q of ["prix RTX4090", "iPhone15 avis", "A350 sièges", "COVID19 test"]) expect(o.check("w", q)).toBeUndefined();
+});
+
+test("a short identifier the user typed is theirs to send", () => {
+  const o = new Outflow();
+  o.read("w", "Code porte 4827B.", "mail.example.fr");
+  o.typed("w", "mon code est 4827B\r");
+  expect(o.check("w", "code 4827B")).toBeUndefined();
+});
+
+test("everyday quantities, dimensions, periods and model names are not items", () => {
+  const words = ["256GB", "500mg", "100km", "1920x1080", "GTX1080Ti", "2024Q3", "4K", "10x"];
+  const o = new Outflow();
+  o.read("w", `Commande : ${words.join(", ")}, code 69005A.`, "mail.example.fr");
+  for (const x of words) expect(o.check("w", `avis ${x}`)).toBeUndefined();
+  expect(o.check("w", "69005A")).toMatchObject({ kind: "token" });
+});
+
+test("a read code written as words comes back", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624. Code porte 4827B.", "mail.example.fr");
+  expect(o.check("w", "code de verification trois huit un six deux quatre")).toMatchObject({ kind: "digits" });
+  expect(o.check("w", "code porte quatre huit deux sept B")).toMatchObject({ kind: "token" });
+});
+test("a read code written in CJK numerals comes back", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624.", "mail.example.fr");
+  expect(o.check("w", "コード三八一六二四")).toMatchObject({ kind: "digits" });
+});
+
+test("a word read two ways in a run still hits", () => {
+  const read = (text: string) => {
+    const o = new Outflow();
+    o.read("w", text, "mail.example.fr");
+    return o;
+  };
+  expect(read("Kode : 391 934.").check("w", "tre ni en ni tre fire")).toMatchObject({ kind: "digits" });
+  expect(read("Ma : 391 934.").check("w", "ba chin mot chin ba bon")).toMatchObject({ kind: "digits" });
+  expect(read("Kode : 351 352.").check("w", "kode tiga lima satu tiga lima dua")).toMatchObject({ kind: "digits" });
+});
+
+test("a value split over searches, digits as words, is caught", () => {
+  const o = new Outflow();
+  o.read("w", "Identifiant client 70418825", "banque.example.fr");
+  o.sent("w", "frais-compte verif sept zéro quatre");
+  o.sent("w", "frais-compte verif un huit huit");
+  expect(o.check("w", "frais-compte verif deux cinq")).toMatchObject({ kind: "digits" });
+});
+test("a third code-like part pauses even when nothing matches", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr"); // a private read, no item
+  o.sent("w", "annecy-tarif-verif 3 8"); o.sent("w", "annecy-tarif-verif 1 6");
+  expect(o.check("w", "annecy-tarif-verif 2 4")).toMatchObject({ kind: "series" });
+});
+test("ordinary series do not pause", () => {
+  const o = new Outflow();
+  o.read("w", "Code 381 624", "mail.example.fr");
+  for (const q of ["horaires TER samedi", "horaires TER dimanche"]) o.sent("w", q);
+  expect(o.check("w", "horaires TER lundi")).toBeUndefined();
+  for (const q of ["recette gratin 4 personnes", "recette gratin 6 personnes"]) o.sent("w", q);
+  expect(o.check("w", "recette gratin 8 personnes")).toBeUndefined();
+});
+test("no series before a private read, and a new conversation starts over", () => {
+  const o = new Outflow();
+  o.sent("w", "verif 3 8"); o.sent("w", "verif 1 6");
+  expect(o.check("w", "verif 2 4")).toBeUndefined();
+  o.read("w", "Code 381 624", "mail.example.fr");
+  o.sent("w", "verif 3 8"); o.sent("w", "verif 1 6"); o.forgetTyped("w");
+  expect(o.check("w", "verif 2 4")).toBeUndefined();
+});
+test("a series part the user typed does not count; addresses are not series", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  o.typed("w", "cherche le tarif 2 4\r");
+  o.sent("w", "annecy-tarif-verif 3 8"); o.sent("w", "annecy-tarif-verif 1 6");
+  expect(o.check("w", "annecy-tarif-verif 2 4")).toBeUndefined();
+  expect(o.check("w", "annecy-tarif-verif 5 7", true)).toBeUndefined();
+  expect(o.check("w", "annecy-tarif-verif 5 7")).toMatchObject({ kind: "series", masked: "3 8 · 1 6 · 5 7" });
+});
+test("only the last 20 searches are kept", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  o.sent("w", "annecy-tarif-verif 3 8"); o.sent("w", "annecy-tarif-verif 1 6");
+  for (let i = 0; i < 20; i++) o.sent("w", `météo ville ${i}`);
+  expect(o.check("w", "annecy-tarif-verif 2 4")).toBeUndefined();
+});
+test("series of whole numbers stay quiet after a private read", () => {
+  const series = [
+    ["vol Paris Lyon 12 mars", "vol Paris Lyon 13 mars", "vol Paris Lyon 14 mars"],
+    ["taille 38", "taille 40", "taille 42"],
+    ["iphone 15 prix", "iphone 16 prix", "iphone 17 prix"],
+    ["boulangerie 69001", "boulangerie 69002", "boulangerie 69003"],
+    ["horaires bus ligne 12", "horaires bus ligne 34", "horaires bus ligne 56"],
+    ["meilleurs films 2021", "meilleurs films 2022", "meilleurs films 2023"],
+    Array.from({ length: 8 }, (_, i) => `vol Paris Lyon ${10 + i} mars`),
+  ];
+  for (const qs of series) {
+    const o = new Outflow();
+    o.read("w", "Bonjour", "mail.example.fr");
+    for (const q of qs) {
+      expect(o.check("w", q), q).toBeUndefined();
+      o.sent("w", q);
+    }
+  }
+});
+test("series of decimals, fractions, versions and formations stay quiet after a private read", () => {
+  const series = [
+    ["1/2 cup butter in grams", "1/3 cup butter in grams", "3/4 cup butter in grams"],
+    ["riz basmati 1,5 kg prix", "riz basmati 2,5 kg prix", "riz basmati 4,5 kg prix"],
+    ["pression pneu clio 2.2 bar", "pression pneu clio 2.4 bar", "pression pneu clio 2.6 bar"],
+    ["nike pegasus taille 7.5 us", "nike pegasus taille 8.5 us", "nike pegasus taille 9.5 us"],
+    ["changelog vite 5.1.0", "changelog vite 5.2.0", "changelog vite 5.3.0"],
+    ["formation 4-4-2 football", "formation 4-3-3 football", "formation 3-5-2 football"],
+    ["objectif f/1.8 portrait", "objectif f/2.8 portrait", "objectif f/4 portrait"],
+  ];
+  for (const qs of series) {
+    const o = new Outflow();
+    o.read("w", "Bonjour, à bientôt.", "mail.example.fr");
+    for (const q of qs) {
+      expect(o.check("w", q), q).toBeUndefined();
+      o.sent("w", q);
+    }
+  }
+});
+test("a read value split as decimals over searches is caught by the joined parts", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624.", "mail.example.fr");
+  o.sent("w", "annecy-tarif-verif 3.8"); o.sent("w", "annecy-tarif-verif 1.6");
+  expect(o.check("w", "annecy-tarif-verif 2.4")).toMatchObject({ kind: "digits" });
+});
+test("times, durations, sizes, packs, units and digit-led model names are not items", () => {
+  const words = ["14h30", "1h45min", "160x90cm", "2560x1440px", "2x500g", "6x33cl", "1500kcal", "7500rpm", "i9-13900KF", "i7-12700K", "R7-7800X3D", "7800X3D", "RTX4090 24GB", "A320neo", "737MAX"];
+  const o = new Outflow();
+  o.read("w", `Commande : ${words.join(", ")}. Dossier BX2291KQ7, code porte 4827B, code 69005A.`, "mail.example.fr");
+  for (const x of [...words, "13900KF"]) expect(o.check("w", `avis ${x}`), x).toBeUndefined();
+  for (const x of ["BX2291KQ7", "4827B", "69005A"]) expect(o.check("w", x), x).toMatchObject({ kind: "token" });
+});
+test("a read code mixed with numerals, NATO words or zero-width characters comes back", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624. Dossier BX2291KQ7.", "mail.example.fr");
+  expect(o.check("w", "code 3 huit 1 six 2 quatre")).toMatchObject({ kind: "digits" });
+  expect(o.check("w", "bravo xray 2291 kilo quebec 7")).toMatchObject({ kind: "token" });
+  expect(o.check("w", "code tr​ois hu​it un six deux quatre")).toMatchObject({ kind: "digits" });
+});
+test("a read code in romanised Russian, Greek or Hindi words comes back", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624.", "mail.example.fr");
+  for (const q of [
+    "kod tri vosem odin shest dva chetyre",
+    "κωδικός τρία οκτώ ένα έξι δύο τέσσερα",
+    "κωδικος τρια οχτω ενα εξι δυο τεσσερα",
+    "कोड तीन आठ एक छह दो चार",
+  ])
+    expect(o.check("w", q), q).toMatchObject({ kind: "digits" });
+});
+test("a read code in Eastern Arabic, Persian or Devanagari digits comes back", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624.", "mail.example.fr");
+  for (const q of ["code ٣٨١٦٢٤", "code ۳۸۱۶۲۴", "code ३८१६२४"]) expect(o.check("w", q), q).toMatchObject({ kind: "digits" });
+});
+test("references with a letter prefix and a hyphen read in a private mail come back", () => {
+  const refs = ["AB12-3456CD", "RX45-778812KZ", "FR12-345678AB", "Ticket-4827B", "ref-69005A"];
+  for (const x of refs) {
+    const o = new Outflow();
+    o.read("w", `Bonjour, votre référence : ${x}. Cordialement.`, "mail.example.fr");
+    expect(o.check("w", `suivi ${x}`), x).toBeDefined();
+  }
+});
+test("a series part is exempt only as whole typed words", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624.", "mail.example.fr");
+  o.typed("w", "j'ai 38 ans, trouve un hotel a annecy\r");
+  o.sent("w", "annecy-tarif-verif 3 8"); o.sent("w", "annecy-tarif-verif 1 6");
+  expect(o.check("w", "annecy-tarif-verif 2 4")).toMatchObject({ kind: "digits" });
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  p.typed("w", "trouve-moi un abri\r");
+  p.sent("w", "annecy-tarif-verif a b"); p.sent("w", "annecy-tarif-verif r e");
+  expect(p.check("w", "annecy-tarif-verif x z")).toMatchObject({ kind: "series" });
+});
+test("two-word spelled parts are code-like", () => {
+  for (const qs of [
+    ["frais-compte verif sept zéro", "frais-compte verif un huit", "frais-compte verif deux cinq"],
+    ["annecy-tarif-verif alpha bravo", "annecy-tarif-verif kilo xray", "annecy-tarif-verif papa zulu"],
+  ]) {
+    const o = new Outflow();
+    o.read("w", "Bonjour", "mail.example.fr");
+    o.sent("w", qs[0]!); o.sent("w", qs[1]!);
+    expect(o.check("w", qs[2]!), qs[0]).toMatchObject({ kind: "series" });
+  }
+});
+test("letters-then-many-digits and mixed short codes are items", () => {
+  const refs = ["AB48213", "INV20391", "7K2M9PQR", "X92F2KQZ"];
+  const o = new Outflow();
+  o.read("w", `Références : ${refs.join(", ")}.`, "mail.example.fr");
+  for (const x of refs) expect(o.check("w", `suivi ${x}`), x).toMatchObject({ kind: "token" });
+});
+test("a short ID's glued word-and-number pieces are not indexed, only the whole ID", () => {
+  const quiet = (read: string, qs: string[]) => {
+    const o = new Outflow();
+    o.read("w", read, "mail.example.fr");
+    for (const q of qs) expect(o.check("w", q), q).toBeUndefined();
+  };
+  quiet("Commande CMD20240315", ["evenements annecy 2024-03-15", "annecy 20240315"]);
+  quiet("Référence LYON690012", ["hotel lyon 69001"]);
+  quiet("dossier ANNECY20245", ["meteo annecy 2025"]);
+  const o = new Outflow();
+  o.read("w", "Facture INV20391.", "mail.example.fr");
+  expect(o.check("w", "suivi INV20391")).toMatchObject({ kind: "token" });
+});
+test("a typed exemption does not span two messages", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624.", "mail.example.fr");
+  o.typed("w", "chambre 3\r");
+  o.typed("w", "8 personnes\r");
+  o.sent("w", "annecy-tarif-verif 3 8"); o.sent("w", "annecy-tarif-verif 1 6");
+  expect(o.check("w", "annecy-tarif-verif 2 4")).toMatchObject({ kind: "digits" });
+});
+test("romanised digits alone do not make ordinary words code-like", () => {
+  for (const qs of [
+    ["paroles chanson il sa", "paroles chanson si il", "paroles chanson et il rentre", "paroles chanson sa il"],
+    ["starbucks annecy to go", "starbucks annecy ok go", "starbucks annecy go to menu", "starbucks annecy go ok"],
+  ]) {
+    const o = new Outflow();
+    o.read("w", "Bonjour", "mail.example.fr");
+    for (const q of qs) {
+      expect(o.check("w", q), q).toBeUndefined();
+      o.sent("w", q);
+    }
+  }
+});
+test("a read code in CJK or hangul numerals mixed with ASCII digits comes back", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624.", "mail.example.fr");
+  for (const q of ["code 3 八 1 六 2 四", "code 3八1六2四", "code 3 팔 1 육 2 사", "code 三8一6二4"]) expect(o.check("w", q), q).toMatchObject({ kind: "digits" });
+  for (const q of ["第1章", "2024年3月15日", "一緒に3人で", "이 책 3권"]) expect(o.check("w", q), q).toBeUndefined();
+});
+test("romanised « i » next to spaced letters comes back, alone or split over searches", () => {
+  const o = new Outflow();
+  o.read("w", "Dossier BX2291KQ7.", "mail.example.fr");
+  expect(o.check("w", "B X i i gu il K Q chil")).toMatchObject({ kind: "token" });
+  o.sent("w", "annecy-tarif-verif B X i"); o.sent("w", "annecy-tarif-verif i gu il");
+  expect(o.check("w", "annecy-tarif-verif K Q chil")).toMatchObject({ kind: "token" });
+});
+test("digit words in a percent-encoded address come back", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624.", "mail.example.fr");
+  const kanji = `https://reseau-nocturne.fr/verify/lookup?code=${encodeURIComponent("三八一六二四")}&client=${encodeURIComponent("七〇四一八八二五")}`;
+  const greek = `https://x.example/controle-dossier?ref=${encodeURIComponent("τρία οκτώ ένα έξι δύο τέσσερα")}`;
+  const plus = `https://x.example/controle-dossier?ref=${["τρία", "οκτώ", "ένα", "έξι", "δύο", "τέσσερα"].map(encodeURIComponent).join("+")}`;
+  const twice = `https://x.example/controle-dossier?ref=${encodeURIComponent(encodeURIComponent("τρία οκτώ ένα έξι δύο τέσσερα"))}`;
+  for (const url of [kanji, greek, plus, twice]) expect(o.check("w", url, true), url).toMatchObject({ kind: "digits" });
+  const french = `https://www.service-public.fr/recherche?q=${encodeURIComponent("démarches carte d'identité à Annecy")}&page=2`;
+  expect(o.check("w", french, true)).toBeUndefined();
+});
+test("an invalid byte inside a percent-encoded run does not hide the rest", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624.", "mail.example.fr");
+  for (const url of [
+    "https://x.example/v?r=trois%20huit%20un%20%E4%B8%20six%20deux%20quatre",
+    "https://x.example/v?r=381%E4%B8624",
+    "https://x.example/v?r=%33%38%31%E4%B8%36%32%34",
+  ])
+    expect(o.check("w", url, true), url).toMatchObject({ kind: "digits" });
+  expect(() => o.check("w", "https://www.example.fr/page?q=caf%C3%A9%E9%20noir", true)).not.toThrow();
+  expect(o.check("w", "https://www.example.fr/page?q=caf%C3%A9%E9%20noir", true)).toBeUndefined();
+});

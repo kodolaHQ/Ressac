@@ -253,3 +253,6 @@ test("mask shows at most half of a value", () => {
     expect(shown, v).toBeLessThanOrEqual(Math.floor(v.length / 2));
   }
 });
+test("variants: a run with an invalid byte still decodes its valid parts", () => {
+  expect(variants("q=caf%C3%A9%E9%20noir")).toContain("q=café� noir");
+});

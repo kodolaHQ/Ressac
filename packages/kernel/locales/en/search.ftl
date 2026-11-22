@@ -15,6 +15,7 @@ kernel-search-hand-lost = I can't find my way. Your turn: { $reason }
 
 # The outflow rules: what a held query or address carries, and where the agent read it.
 kernel-outflow-pause = The watcher paused: the search contains { $what } ({ $masked })
+kernel-outflow-pause-series = The watcher paused: this series of searches seems to send something piece by piece ({ $masked })
 kernel-outflow-danger = Contains { $what }: { $masked }
 kernel-outflow-refused = Search refused: it contains { $what } ({ $masked }).
 kernel-outflow-read-in = { $what }, from { $source }
@@ -29,6 +30,7 @@ kernel-outflow-kind-email = an email address
 kernel-outflow-kind-phone = a phone number
 kernel-outflow-kind-digits = a number
 kernel-outflow-kind-token = an identifier
+kernel-outflow-kind-series = a series of searches sending something piece by piece
 kernel-outflow-source-history = your history
 kernel-outflow-source-bookmarks = your bookmarks
 kernel-outflow-source-sites = your site apps

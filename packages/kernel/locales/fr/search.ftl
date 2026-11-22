@@ -18,6 +18,7 @@ kernel-search-hand-lost = Je ne trouve pas mon chemin. À vous : { $reason }
 
 # The outflow rules: what a held query or address carries, and where the agent read it.
 kernel-outflow-pause = Le surveillant a mis en pause : la recherche contient { $what } ({ $masked })
+kernel-outflow-pause-series = Le surveillant a mis en pause : cette suite de recherches semble envoyer une information par morceaux ({ $masked })
 kernel-outflow-danger = Contient { $what } : { $masked }
 kernel-outflow-refused = Recherche refusée : elle contient { $what } ({ $masked }).
 kernel-outflow-read-in = { $what }, lu dans { $source }
@@ -32,6 +33,7 @@ kernel-outflow-kind-email = une adresse e-mail
 kernel-outflow-kind-phone = un numéro de téléphone
 kernel-outflow-kind-digits = un numéro
 kernel-outflow-kind-token = un identifiant
+kernel-outflow-kind-series = une suite de recherches qui envoie une information par morceaux
 kernel-outflow-source-history = votre historique
 kernel-outflow-source-bookmarks = vos favoris
 kernel-outflow-source-sites = vos applis de site

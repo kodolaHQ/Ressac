@@ -36,4 +36,9 @@ test("the search band and the outflow speak the user's language", async () => {
   expect(OUTFLOW_PAUSE("fr", { ...hit, source: say("fr", "kernel-outflow-source-history") })).toBe(
     "Le surveillant a mis en pause : la recherche contient un IBAN, lu dans votre historique (FR76••••89)",
   );
+  const series = { kind: "series", masked: "3 8 · 1 6 · 2 4" } as const;
+  expect(OUTFLOW_PAUSE("en", series)).toBe("The watcher paused: this series of searches seems to send something piece by piece (3 8 · 1 6 · 2 4)");
+  expect(OUTFLOW_PAUSE("fr", series)).toBe(
+    "Le surveillant a mis en pause : cette suite de recherches semble envoyer une information par morceaux (3 8 · 1 6 · 2 4)",
+  );
 });

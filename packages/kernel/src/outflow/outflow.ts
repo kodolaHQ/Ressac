@@ -1,8 +1,9 @@
 import { say } from "../i18n.js";
-import { findSecrets, mask, opaque, plain, variants, type SecretKind } from "./detect.js";
+import { digitWord, rewrite, spelled } from "./spelled.js";
+import { findSecrets, mask, opaque, plain, urlDecoded, variants, type SecretKind } from "./detect.js";
 
 export interface OutflowHit {
-  kind: SecretKind | "email" | "phone" | "digits" | "token";
+  kind: SecretKind | "email" | "phone" | "digits" | "token" | "series";
   masked: string;
   source?: string;
 }
@@ -34,10 +35,16 @@ interface Win {
   typedItems: Set<string>;
   /** Normalised submitted messages, newest last. */
   typedText: string;
+  /** Submitted messages as words (lowercased, single spaces), newest last: a series part is exempt only as whole words. */
+  typedWords: string;
   buffer: string;
   paste: boolean;
   /** Start of an escape sequence cut at the end of the previous chunk. */
   carry: string;
+  /** A private read happened (even one with no item): searches from then on are kept to judge them as a series. */
+  privateRead: boolean;
+  /** Searches that went to the engine, lowercased with spaces collapsed, oldest first. */
+  sent: string[];
 }
 
 // Memory follows the indexed pieces: measured 21.6 MB of heap for 160 000 distinct pieces (Node 22), so 140 000
@@ -58,6 +65,11 @@ const CARRY_MAX = 4096;
 // Addresses over 500 characters are refused by the tools, so they are not kept: 5 000 stay under 5 MB.
 const URLS_MAX = 5000;
 const URL_LENGTH_MAX = 500;
+// A series long enough to spell a code takes a few searches; the oldest of 20 is far past any split value, and
+// comparing a query with 20 kept ones stays linear in its length.
+const SERIES_MAX = 20;
+// A query is kept up to 500 characters: longer is prose, not a frame around a code.
+const SENT_LENGTH_MAX = 500;
 const DIGIT_CHUNK = 6;
 const TEXT_CHUNK = 8;
 
@@ -66,6 +78,16 @@ const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:
 const PHONE = /(?<!\d)0[1-9](?:[ .-]?\d{2}){4}(?!\d)|\+[1-9](?:[ .-]?\d){7,14}(?!\d)/g;
 const DIGITS = /\d+(?:[ .-]\d+)*/g;
 const TOKEN = /[A-Za-z0-9_-]{12,}/g;
+const SHORT_ID = /(?<![A-Za-z0-9])[A-Za-z0-9]{5,11}(?![A-Za-z0-9])/g;
+// Public short words: quantities (256GB, 4x), times and durations (14h30, 1h45min), dimensions and packs (160x90cm,
+// 6x33cl), year+quarter, model names (RTX4090, GTX1080Ti, A320neo, 737MAX, 7800X3D,
+// 13900KF). Plain "b" is left out so 4827B stays an item.
+const PUBLIC_SHORT = new RegExp(
+  "^(?:\\d+(?:kb|mb|gb|tb|ko|mo|go|to|mg|g|kg|ml|cl|l|mm|cm|m|km|hz|khz|mhz|ghz|mah|wh|kwh|w|kw|v|ms|s|h|min|px|dpi|fps|mp|p|k|x|kcal|rpm)" +
+    "|\\d{1,2}h\\d{2}(?:min)?|\\d+h\\d+min|(?:\\d+x)+\\d+(?:kb|mb|gb|tb|ko|mo|go|to|mg|g|kg|ml|cl|l|mm|cm|m|km|px)?" +
+    "|(?:19|20)\\d\\d(?:Q[1-4]|H[12])|[a-z]{2,}\\d{1,4}(?:[a-z]{1,2})?|[a-z]?\\d+[a-z]{3,}|\\d{4}x3d|\\d{4,5}(?:kf|ks|hx))$",
+  "i",
+);
 // Dates are public, and pages are full of them: YYYY-MM-DD, YYYYMMDD, DD.MM.YYYY (DD/MM/YYYY never forms one run).
 const [Y, M, D, S] = ["(?:19|20)\\d{2}", "(?:0[1-9]|1[0-2])", "(?:0[1-9]|[12]\\d|3[01])", "[ .-]"];
 const DATE = new RegExp(`^(?:${Y}${S}?${M}${S}?${D}|${D}${S}${M}${S}${Y})$`);
@@ -102,6 +124,9 @@ function extract(raw: string): Omit<Item, "source">[] {
   for (const m of text.matchAll(EMAIL)) others.push({ at: m.index, kind: "email", value: m[0] });
   for (const m of text.matchAll(PHONE)) others.push({ at: m.index, kind: "phone", value: m[0].replace(/\D/g, "") });
   for (const m of text.matchAll(DIGITS)) {
+    // A run glued to letters on both sides that starts with one digit (i9-13900KF) or is spaced is a model name: the
+    // short-ID rule judges its parts. AB12-3456CD keeps its digits item.
+    if (/^\d[ .-]|\d \d/.test(m[0]) && /\p{L}/u.test(text[m.index - 1] ?? "") && /\p{L}/u.test(text[m.index + m[0].length] ?? "")) continue;
     let run = m[0];
     for (let date; (date = DATE_PREFIX.exec(run)); ) run = run.slice(date[0].length + 1);
     if (run.replace(/\D/g, "").length >= DIGIT_CHUNK && !DATE.test(run))
@@ -111,6 +136,12 @@ function extract(raw: string): Omit<Item, "source">[] {
     // Judged without its word parts: a slug with a model name in it (air-m5-announcement) is not an identifier.
     const o = opaque(m[0]);
     if (o.length >= TEXT_CHUNK && /[a-z]/i.test(o) && /\d/.test(o)) others.push({ at: m.index, kind: "token", value: m[0] });
+  }
+  for (const m of text.matchAll(SHORT_ID)) {
+    // B3: BX2291KQ7 and 4827B are identifiers; letters-then-digits (RTX4090, iPhone15) are public model names.
+    const w = m[0];
+    if ((w.match(/\d/g)?.length ?? 0) >= 3 && /[a-z]/i.test(w) && !PUBLIC_SHORT.test(w))
+      others.push({ at: m.index, kind: "token", value: w });
   }
   others.sort((a, b) => a.at - b.at);
   const found = [...findSecrets(text), ...others].map(({ kind, value }) => ({ kind, value, norm: norm(value) }));
@@ -140,8 +171,9 @@ function* indexed(item: Pick<Item, "kind" | "norm">) {
   const seen = new Set<string>();
   for (const p of pieces(item.norm, size)) {
     if (i++ > lastStart || seen.size >= ITEM_PIECES_MAX) break;
-    // A word glued to a number (release2024) has one letter/digit switch; a random token's piece has more.
-    if (item.kind === "token" && alternations(p) < 2) continue;
+    // A word glued to a number (release2024) has one letter/digit switch; a random token's piece has more. A short ID
+    // whole (INV20391) was already judged by PUBLIC_SHORT, so it is kept; its pieces (cmd20240, 20240315) are not.
+    if (item.kind === "token" && p !== item.norm && alternations(p) < 2) continue;
     if (seen.has(p)) continue;
     seen.add(p);
     yield p;
@@ -166,9 +198,12 @@ export class Outflow {
         urls: new Set(),
         typedItems: new Set(),
         typedText: "",
+        typedWords: "",
         buffer: "",
         paste: false,
         carry: "",
+        privateRead: false,
+        sent: [],
       };
       this.wins.set(id, w);
     }
@@ -182,6 +217,7 @@ export class Outflow {
    */
   read(win: string, text: string, source: string, links: boolean | readonly string[] = false): void {
     const w = this.win(win);
+    w.privateRead = true;
     // Punctuation of the sentence around it is not part of the address.
     const found = Array.isArray(links) ? links : links ? [...text.matchAll(URL_IN_TEXT)].map((m) => m[0].replace(/[).,;:!?»\]]+$/, "")) : [];
     for (const raw of found) {
@@ -275,6 +311,8 @@ export class Outflow {
     w.buffer = "";
     if (!message) return;
     w.typedText = (w.typedText + "\n" + norm(message)).slice(-TYPED_MAX);
+    // Messages apart by " \n ": an exemption never spans two messages (« chambre 3 », « 8 personnes »).
+    w.typedWords = (w.typedWords + " \n " + words(message)).slice(-TYPED_MAX);
     for (const item of extract(message)) {
       w.typedItems.delete(item.norm);
       w.typedItems.add(item.norm);
@@ -297,7 +335,7 @@ export class Outflow {
       const source = w?.read.get(n)?.source;
       return { kind: s.kind, masked: mask(s.value), ...(source ? { source } : {}) };
     }
-    if (!w?.read.size) return undefined;
+    if (!w) return undefined;
     // An address a private read showed whole is a link followed: it tells its site nothing the link did not already hold.
     if (address && w.urls.has(sameAddress(out) ?? "")) return undefined;
 
@@ -310,25 +348,75 @@ export class Outflow {
       for (const item of at instanceof Set ? at : at ? [at] : []) if (keep(item) && !typed(item.norm)) return item;
     };
     const sizes = new Set([DIGIT_CHUNK, TEXT_CHUNK, ...w.shortLengths.keys()]);
-    for (const soft of new Set(variants(out).map(softNorm))) {
-      for (const segment of new Set(soft.split("/")))
-        for (const size of sizes)
-          for (const p of pieces(segment, size)) {
-            const item = found(p);
-            if (item) return hit(item);
-          }
-      const glued = soft.replaceAll("/", "");
-      if (glued === soft) continue;
-      // Across segments only 8-char pieces count, and no date, or /2024/11/ would match a 202411. Accepted trade-off:
-      // a digit item under 8 digits split by slashes (/482/1397) is missed, so URL paths stay quiet.
-      for (const p of pieces(glued, TEXT_CHUNK)) {
-        const digits = /^\d+$/.test(p);
-        if (digits && GLUED_DATE.test(p)) continue;
-        const item = found(p) ?? (digits ? found(p.slice(0, DIGIT_CHUNK), (i) => i.norm.includes(p)) : undefined);
-        if (item) return hit(item);
+    const scan = (out: string): OutflowHit | undefined => {
+      // Digits written as words are checked as the digits they spell, read in the percent-decoded text (an address
+      // carries 三八一 as %E4%B8%89…); one reading, so the variant bound is unchanged.
+      const words = spelled(urlDecoded(out));
+      for (const soft of new Set([...variants(out), ...(words ? variants(words) : [])].map(softNorm))) {
+        for (const segment of new Set(soft.split("/")))
+          for (const size of sizes)
+            for (const p of pieces(segment, size)) {
+              const item = found(p);
+              if (item) return hit(item);
+            }
+        const glued = soft.replaceAll("/", "");
+        if (glued === soft) continue;
+        // Across segments only 8-char pieces count, and no date, or /2024/11/ would match a 202411. Accepted trade-off:
+        // a digit item under 8 digits split by slashes (/482/1397) is missed, so URL paths stay quiet.
+        for (const p of pieces(glued, TEXT_CHUNK)) {
+          const digits = /^\d+$/.test(p);
+          if (digits && GLUED_DATE.test(p)) continue;
+          const item = found(p) ?? (digits ? found(p.slice(0, DIGIT_CHUNK), (i) => i.norm.includes(p)) : undefined);
+          if (item) return hit(item);
+        }
       }
+      return undefined;
+    };
+    const direct = w.read.size ? scan(out) : undefined;
+    if (direct || address || !w.privateRead) return direct;
+
+    // shortcut: a frame that changes between queries, or one under 6 characters, evades the series rule; matching parts
+    // without a frame would close it, if a bench shows such splits.
+    // shortcut: a part the user typed as whole words anywhere is exempt (« 2 4 » once typed), whatever its context;
+    // tie typed words to their context if that is abused.
+    // A series: earlier searches sharing this query's frame (common leading and trailing words) are judged with it, so
+    // a value split over several searches is caught. Frame = whole lowercased words, so it never eats into the code.
+    const terms = series(out).split(" ");
+    let pre = Infinity;
+    let suf = Infinity;
+    const members: string[][] = [];
+    // Whole words only: with spaces dropped, « 38 ans » would exempt the part « 3 8 ».
+    const typedWords = ` ${w.typedWords} \n ${words(w.buffer)} `;
+    for (const q of w.sent) {
+      const other = q.split(" ");
+      const [p, x] = frame(terms, other);
+      const chars = (ws: string[]) => ws.join(" ").length;
+      const shorter = Math.min(chars(terms), chars(other));
+      const framed = chars(terms.slice(0, p)) + chars(terms.slice(terms.length - x));
+      // Frame thresholds: at least 6 characters and more than half of the shorter query, with a part left on both sides.
+      if (framed < 6 || framed * 2 <= shorter || p + x >= Math.min(terms.length, other.length)) continue;
+      pre = Math.min(pre, p);
+      suf = Math.min(suf, x);
+      members.push(other);
     }
-    return undefined;
+    if (!members.length) return undefined;
+    const parts = [...members, terms]
+      .map((ws) => ws.slice(pre, ws.length - suf).join(" "))
+      .filter((part) => norm(part) && !typedWords.includes(" " + words(part) + " "));
+    const joined = parts.join(" ");
+    const pieced = w.read.size ? scan(joined) : undefined;
+    if (pieced) return pieced;
+    if (parts.filter(codeLike).length < 3) return undefined;
+    // `masked` shows the parts in clear: the band is seen by the user only, and these parts already went out.
+    return { kind: "series", masked: parts.join(" · ").slice(0, 40) };
+  }
+
+  /** A search that went to the engine: kept, once the window read private data, to judge the next ones as a series. */
+  sent(win: string, query: string): void {
+    const w = this.wins.get(win);
+    if (!w?.privateRead) return;
+    w.sent.push(series(query.slice(0, SENT_LENGTH_MAX)));
+    if (w.sent.length > SERIES_MAX) w.sent.shift();
   }
 
   /** `check` against what every window read: for a caller tied to no window (the main token), which could otherwise
@@ -347,13 +435,49 @@ export class Outflow {
     const w = this.wins.get(win);
     if (!w) return;
     w.typedItems.clear();
-    w.typedText = w.buffer = w.carry = "";
+    w.typedText = w.typedWords = w.buffer = w.carry = "";
     w.paste = false;
+    w.sent = [];
   }
 
   forget(win: string): void {
     this.wins.delete(win);
   }
+}
+
+/** `s` as words: lowercased, letters, digits and `@` only, single spaces. */
+const words = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}@]+/gu, " ").trim();
+
+/** A query as kept for a series: lowercased, words split on whitespace. */
+const series = (q: string) => q.normalize("NFKC").toLowerCase().trim().split(/\s+/).join(" ");
+
+/** Counts of leading and trailing words `a` and `b` share, not overlapping. */
+function frame(a: string[], b: string[]): [number, number] {
+  const n = Math.min(a.length, b.length);
+  let p = 0;
+  while (p < n && a[p] === b[p]) p++;
+  let x = 0;
+  while (x < n - p && a[a.length - 1 - x] === b[b.length - 1 - x]) x++;
+  return [p, x];
+}
+
+/**
+ * A part that looks like a piece of a code: rewritten by `rewrite` (one reading of `spelled`: digit words, spaced
+ * letters, NATO) to at most 12 characters, or a part of at most 12 characters holding at least 2 single digits or
+ * letters, digit words or NATO words (« 3 8 », « a b », « sept zéro », « kilo xray »), each counted as one
+ * character, that make more than half of it. A whole number (« 38 », « 2023 », « 69001 ») is an ordinary refinement, not a piece; a
+ * code sent as whole numbers is still caught by the joined-parts scan when it was read.
+ */
+function codeLike(part: string): boolean {
+  const once = rewrite(part, true);
+  if (once !== undefined) return norm(once).length <= 12;
+  // Split on whitespace only: 2.4, 1/2 and 4-4-2 are one number each, not separate code pieces.
+  const tokens = part.split(/\s+/).map((t) => t.replace(/[^\p{L}\p{N}]/gu, "")).filter(Boolean);
+  // A digit or NATO word (sept, kilo) stands for one character.
+  const one = tokens.map((t) => /^[\p{L}\p{N}]$/u.test(t) || digitWord(t));
+  const total = tokens.reduce((n, t, i) => n + (one[i] ? 1 : t.length), 0);
+  const code = one.filter(Boolean).length;
+  return total <= 12 && code >= 2 && code * 2 > total;
 }
 
 /** Index just past the escape sequence starting at `i`, or undefined if it is cut at the end of `s`. */
