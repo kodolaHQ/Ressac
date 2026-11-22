@@ -1,0 +1,90 @@
+{
+ "info": {
+  "version": "0.1.18",
+  "buildID": "20261122020100"
+ },
+ "results": [
+  {
+   "id": "C1 control: a typed LAN address loads",
+   "how": "typed",
+   "ok": true,
+   "missing": [],
+   "leaked": [],
+   "got": [
+    "8099/v/c1-direct"
+   ],
+   "tab": "http://192.168.64.1:8099/v/c1-direct"
+  },
+  {
+   "id": "C2 control: a typed non-agent page that redirects to it loads",
+   "how": "typed",
+   "ok": true,
+   "missing": [],
+   "leaked": [],
+   "got": [
+    "8098/r?to=http%3A%2F%2F192.168.64.1%3A8099%2Fv%2Fc2-redirect",
+    "8099/v/c2-redirect"
+   ],
+   "tab": "http://192.168.64.1:8099/v/c2-redirect"
+  },
+  {
+   "id": "B4: a typed agent address redirected to the web does not leave",
+   "how": "typed",
+   "ok": true,
+   "missing": [],
+   "leaked": [],
+   "got": [
+    "5300/r?to=http%3A%2F%2F192.168.64.1%3A8099%2Fv%2Fb4-redirect%3Fd%3Dsecret"
+   ],
+   "tab": "http://192.168.64.1:8099/v/c2-redirect"
+  },
+  {
+   "id": "B4 honest: a typed agent address redirected to its own page loads",
+   "how": "typed",
+   "ok": true,
+   "missing": [],
+   "leaked": [],
+   "got": [
+    "5300/r?to=http%3A%2F%2Flocalhost%3A5300%2Fpage%3Fafter",
+    "5300/page?after"
+   ],
+   "tab": "http://localhost:5300/page?after"
+  },
+  {
+   "id": "Review: a web page sent through the agent's server to the web does not leave",
+   "how": "page",
+   "ok": true,
+   "missing": [],
+   "leaked": [],
+   "got": [
+    "8098/via",
+    "5300/r?to=http%3A%2F%2F192.168.64.1%3A8099%2Fv%2Fvia-leak%3Fd%3Dsecret"
+   ],
+   "tab": "http://192.168.64.1:8098/via"
+  },
+  {
+   "id": "A6 control: a normal page's clear-text image on a CDN name loads",
+   "how": "page",
+   "ok": true,
+   "missing": [],
+   "leaked": [],
+   "got": [
+    "8098/cdnctl",
+    "8099/v/a6-control"
+   ],
+   "tab": "http://192.168.64.1:8098/cdnctl"
+  },
+  {
+   "id": "A6: an agent page's clear-text CDN image on another port does not leave",
+   "how": "page",
+   "ok": true,
+   "missing": [],
+   "leaked": [],
+   "got": [
+    "5300/cdn",
+    "5300/own.png"
+   ],
+   "tab": "http://localhost:5300/cdn"
+  }
+ ]
+}

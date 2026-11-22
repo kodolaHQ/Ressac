@@ -1,0 +1,7 @@
+#!/usr/bin/expect -f
+# vtunnel <vm-ip>: forward host 127.0.0.1:28280 to the VM's Marionette (127.0.0.1:2828), and the VM's localhost:5300
+# back to the host's servers.mjs (VM_HOST_IP, default Tart's 192.168.64.1), until killed. Tart's default login: admin/admin.
+set timeout -1
+if {[info exists env(VM_HOST_IP)]} { set host $env(VM_HOST_IP) } else { set host 192.168.64.1 }
+spawn ssh -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -L 28280:127.0.0.1:2828 -R 5300:$host:5300 admin@[lindex $argv 0]
+expect { -re "assword:" { send "admin\r"; exp_continue } eof }

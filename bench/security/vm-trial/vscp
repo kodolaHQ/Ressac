@@ -1,0 +1,6 @@
+#!/usr/bin/expect -f
+set timeout 900
+spawn scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR [lindex $argv 0] admin@[lindex $argv 1]:[lindex $argv 2]
+expect { -re "assword:" { send "admin\r"; exp_continue } eof }
+catch wait result
+exit [lindex $result 3]
