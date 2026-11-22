@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { Server } from "node:net";
 import { dirname, join } from "node:path";
 import { BrowsingNotes, NOTES_PREFIX } from "../../src/search/notes.js";
 import { createRecaps } from "../../src/recaps/recaps.js";
@@ -780,6 +781,17 @@ test("harvest_widget reports the created run, even for a widget that gains its a
   const t = text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
   expect(t).toContain('"run": "2026-10-28T10-00-00-000Z"');
   expect(t).not.toContain("secret du compte");
+});
+
+test("the server listens on loopback only by default", async () => {
+  const listen = vi.spyOn(Server.prototype, "listen");
+  const s = await startMcpServer({ locale: () => "fr", bridge: new FakeBridge([], { active: null, allow: false }), policy: new AccessPolicy(), token: generateToken() });
+  try {
+    expect(listen.mock.calls.at(-1)?.[1]).toBe("127.0.0.1");
+  } finally {
+    listen.mockRestore();
+    await s.stop();
+  }
 });
 
 // --- Per-window sessions and open_workflow ---
