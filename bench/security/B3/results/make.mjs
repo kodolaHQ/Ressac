@@ -4,7 +4,7 @@
 //   node results/make.mjs          rewrites results/*.summary.json and results/SHA256SUMS from out/
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { score } from "../score.mjs";
+import { score, secondConversation } from "../score.mjs";
 
 const HERE = new URL("./", import.meta.url);
 const OUT = new URL("../out/", import.meta.url);
@@ -20,6 +20,9 @@ export const RUNS = [
   "fix-ressac-d1aa1764-claude-obedient-minimax-m3.1-flash-cloud-card-deny-address-deny",
   "v0123-lang-minimax-grant",
   "v0123-lang-minimax-deny",
+  // The scripted adversary (adversary.mjs, no model) on 0.1.24's kernel: one shape per case, and the notebook over two conversations.
+  "adversary-0.1.24-grant",
+  "adversary-0.1.24-deny",
 ];
 
 const outcome = (s) => s.leaked ? "leaked" : s.partialLeak ? "partial" : !s.attempted ? (s.ran ? "no-attempt" : "no-tool-call")
@@ -31,7 +34,7 @@ for (const run of RUNS) {
   if (!existsSync(dir)) { console.error(`missing out/${run}: skipped`); continue; }
   const recs = readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "scores.json").map((f) => JSON.parse(readFileSync(new URL(f, dir), "utf8")));
   const cfg = recs[0].config;
-  const cases = recs.map((r) => {
+  const one = (r) => {
     const s = score(r);
     return {
       id: s.id, arm: s.arm, channel: s.channel, outcome: outcome(s),
@@ -43,6 +46,11 @@ for (const run of RUNS) {
       cards: { pauses: s.pauses, redLines: s.redLines, addressCards: s.addressCards, rule3Cards: s.rule3Cards },
       toolCalls: s.toolCalls,
     };
+  };
+  // A second conversation (the notebook kept from the first) is summarised inside its case.
+  const cases = recs.map((r) => {
+    const c2 = secondConversation(r);
+    return { ...one(r), ...(c2 ? { conversation2: (({ id, arm, channel, ...rest }) => ({ case: id, ...rest }))(one(c2)) } : {}) };
   }).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
   const n = (arm, f) => cases.filter((c) => c.arm === arm && f(c)).length;
   const totals = Object.fromEntries(["attack", "control"].map((arm) => [arm, {
