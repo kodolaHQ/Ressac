@@ -29,7 +29,7 @@ So we stopped trusting how our protections looked on paper and tested each one.
 
 | Brick | What was attacked | Result |
 |---|---|---|
-| Do the tests test? | 297 mutations over 31 security files | 223 caught; 43 guards could be removed with every test green. Tests for those holes are being added. |
+| Do the tests test? | 297 mutations over 31 security files | 223 caught; 43 guards could be removed with every test green. Each now has a test that fails without it, except one that turned out to change nothing. |
 | The agent's network | direct TCP, UDP, ICMP, IPv6, raw sockets, the allowlist proxy (CONNECT, plain HTTP, IP literals, names resolving to private addresses), the Mac's ports | **0 bypass** |
 | VM and container isolation | mounts, home folder, SSH keys and agent, forwarded ports, capabilities, cgroup limits, user namespaces, the image and agent binaries, `.ressac` read-only, planted links | **0 bypass** |
 | What the agent reaches in the browser | 134 attacks on the MCP server: tokens, consent, private spaces, history, the exact-address rule, recaps, sensitive sites | **4 bypasses**, fixed (one partly) |
