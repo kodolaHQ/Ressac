@@ -1,6 +1,15 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.23",
+    date: "novembre 2026",
+    items: [
+      "Sécurité : une recherche de l'agent se met aussi en pause quand elle cache une donnée lue dans vos onglets sous une autre forme : chiffres écrits en toutes lettres (dans une cinquantaine de langues, en chinois, japonais, coréen, grec, hindi…), lettres espacées, alphabet radio, ou adresse encodée.",
+      "Sécurité : une suite de recherches qui envoie une information morceau par morceau est mise en pause à la troisième, avec une explication. Les codes courts lus dans vos mails (code de porte, numéro de dossier ou de commande) sont désormais reconnus.",
+      "Sécurité : les jetons GitLab, Shopify et DigitalOcean sont reconnus comme des secrets dans les recherches et les adresses de l'agent.",
+    ],
+  },
+  {
     version: "0.1.22",
     date: "novembre 2026",
     items: [
