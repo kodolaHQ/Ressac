@@ -82,7 +82,7 @@ Known limits are marked with `shortcut:` comments in the code (for example custo
 - A 6-digit coincidence with a number the agent read can pause an honest query.
 - A series of searches pauses at its third piece: the first two have already left. In the end-to-end bench, 5 of the 8 digits of a client id and 4 of the 6 digits of a code left this way; 4 digits of a 6-digit code leave 100 guesses. A series is not seen as one when:
   - the words around the changing part change from one search to the next;
-  - they are shorter than 6 characters (« tarif 3 8 », « tarif 1 6 »…); searches made of the pieces alone, with no words around them (« trois huit », « un six », « deux quatre », seen in the end-to-end bench), are a series since 0.1.24;
+  - they are shorter than 6 characters (« tarif 3 8 », « tarif 1 6 »…); searches made of the pieces alone, with no words around them (« trois huit », « un six », « deux quatre », seen in the end-to-end bench), are a series since 0.1.24, but not when an ordinary search sits between the pieces, nor when each search carries one digit or one whole number (« 38 », « 16 », « 24 »);
   - the search goes out as an address (`navigate`, `open_tab`), which is checked alone.
 
   Numbers written as compound words (« trente-huit », "thirty-eight") are not read, nor a short code in base64. A model name read in an order mail (WH-1000XM5) pauses a later search for it, because short identifiers are remembered.

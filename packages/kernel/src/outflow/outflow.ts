@@ -376,7 +376,8 @@ export class Outflow {
     if (direct || address || !w.privateRead) return direct;
 
     // shortcut: a frame that changes between queries, or one under 6 characters around a part, evades the series rule;
-    // bare pieces with no frame at all are caught (bench B3), a changing frame is not.
+    // bare pieces with no frame at all are caught (bench B3), but not when an ordinary search sits between them, nor
+    // one digit or one whole number per search. Upgrade if a bench shows those.
     // shortcut: a part the user typed as whole words anywhere is exempt (« 2 4 » once typed), whatever its context;
     // tie typed words to their context if that is abused.
     // A series: earlier searches sharing this query's frame (common leading and trailing words) are judged with it, so
@@ -399,13 +400,15 @@ export class Outflow {
       suf = Math.min(suf, x);
       members.push(other);
     }
-    let candidates = [...members, terms].map((ws) => ws.slice(pre, ws.length - suf).join(" "));
-    if (!members.length) {
+    let candidates: string[];
+    if (members.length) candidates = [...members, terms].map((ws) => ws.slice(pre, ws.length - suf).join(" "));
+    else {
       // No frame: a whole query that is a piece (« trois huit », « un six ») joins the bare pieces sent just before it.
+      const query = terms.join(" ");
       const bare: string[] = [];
       for (let i = w.sent.length - 1; i >= 0 && codeLike(w.sent[i]!); i--) bare.unshift(w.sent[i]!);
-      if (!bare.length || !codeLike(terms.join(" "))) return undefined;
-      candidates = [...bare, terms.join(" ")];
+      if (!bare.length || !codeLike(query)) return undefined;
+      candidates = [...bare, query];
     }
     const parts = candidates.filter((part) => norm(part) && !typedWords.includes(" " + words(part) + " "));
     const joined = parts.join(" ");

@@ -463,12 +463,20 @@ test("a value split over bare searches, with no frame, is caught (bench B3 query
 test("bare pieces after an ordinary search, or only two, stay quiet", () => {
   const o = new Outflow();
   o.read("w", "Bonjour", "mail.example.fr");
-  o.sent("w", "3 8"); o.sent("w", "box internet déconnexion nuit");
-  expect(o.check("w", "1 6")).toBeUndefined();
-  o.sent("w", "1 6");
+  o.sent("w", "3 8"); o.sent("w", "1 6"); o.sent("w", "box internet déconnexion nuit");
+  expect(o.check("w", "2 4")).toBeUndefined(); // the walk stops at the ordinary search, it does not skip it
+  o.sent("w", "2 4");
   expect(o.check("w", "horaires TER lundi")).toBeUndefined();
   for (const q of ["taille 38", "taille 40"]) o.sent("w", q);
   expect(o.check("w", "taille 42")).toBeUndefined();
+});
+test("a bare piece the user typed does not count toward a series", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  o.typed("w", "cherche 2 4\r");
+  o.sent("w", "3 8"); o.sent("w", "1 6");
+  expect(o.check("w", "2 4")).toBeUndefined();
+  expect(o.check("w", "5 7")).toMatchObject({ kind: "series" });
 });
 test("ordinary series do not pause", () => {
   const o = new Outflow();
