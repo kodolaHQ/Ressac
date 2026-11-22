@@ -1,0 +1,42 @@
+{
+ "linkFree real/sub (control true)": true,
+ "linkFree lnk": false,
+ "linkFree real/mid": false,
+ "linkFree real/up/real/sub": false,
+ "linkFree real/../../outside": true,
+ "inFolder real/sub read ok.txt (control)": {
+  "files": [
+   {
+    "text": "ok",
+    "mtime": 1795291623350.8523
+   }
+  ],
+  "skipped": {}
+ },
+ "inFolder real/sub read leaf.txt (symlink leaf)": {
+  "failed": 0,
+  "why": "refused"
+ },
+ "inFolder real/sub read hard.txt (hardlink: same volume only)": {
+  "files": [
+   {
+    "text": "HOST-SECRET",
+    "mtime": 1795291623350.745
+   }
+  ],
+  "skipped": {}
+ },
+ "inFolder lnk read secret.txt": null,
+ "inFolder real/mid read secret.txt": null,
+ "inFolder names ['..','outside']": null,
+ "inFolder names ['real/../../outside']": null,
+ "readFiles ['../../outside/secret.txt'] from real/sub": {
+  "failed": 0,
+  "why": "refused"
+ },
+ "writeEntries through lnk": null,
+ "writeEntries onto symlink leaf": "done",
+ "outside secret after writes": "HOST-SECRET",
+ "outside/w.txt exists": false,
+ "race folder<->symlink: runs / outside reads": "29 / 0"
+}

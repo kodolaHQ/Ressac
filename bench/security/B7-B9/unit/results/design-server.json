@@ -1,0 +1,367 @@
+[
+ {
+  "id": "J0",
+  "input": "control: valid token, valid Host, no Origin",
+  "outcome": "HTTP/1.1 200 OK"
+ },
+ {
+  "id": "J1",
+  "input": "connect to ::1",
+  "outcome": "socket error ECONNREFUSED"
+ },
+ {
+  "id": "J1",
+  "input": "connect to <mac-v6>",
+  "outcome": "timeout"
+ },
+ {
+  "id": "J1",
+  "input": "connect to <mac-v6>",
+  "outcome": "timeout"
+ },
+ {
+  "id": "J1",
+  "input": "connect to <mac-v6>",
+  "outcome": "timeout"
+ },
+ {
+  "id": "J2",
+  "input": "Origin: \"https://evil.example\" + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J2",
+  "input": "Origin: \"null\" + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J2",
+  "input": "Origin: \"\" + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J2",
+  "input": "Origin: \"http://127.0.0.1:65156\" + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J2",
+  "input": "Origin: \"http://localhost\" + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J2",
+  "input": "Origin: \"moz-extension://abc\" + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J2",
+  "input": "lowercase header name origin:",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "Host: evil.example + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "Host: evil.example:<port> + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "Host: 127.0.0.1 + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "Host: 127.0.0.1:<port+1> + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "Host: LOCALHOST:<port> + valid token",
+  "outcome": "HTTP/1.1 200 OK"
+ },
+ {
+  "id": "J3",
+  "input": "Host: localhost:<port> + valid token",
+  "outcome": "HTTP/1.1 200 OK"
+ },
+ {
+  "id": "J3",
+  "input": "Host: 127.0.0.1:<port>. + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "Host: [::1]:<port> + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "Host: 127.0.0.1.nip.io:<port> + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "Host: 127.0.0.1:<port>@evil.example + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "Host: 2130706433:<port> + valid token",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "Host:  127.0.0.1:<port> + valid token",
+  "outcome": "HTTP/1.1 200 OK"
+ },
+ {
+  "id": "J3",
+  "input": "no Host header (HTTP/1.1)",
+  "outcome": "HTTP/1.1 400 Bad Request"
+ },
+ {
+  "id": "J3",
+  "input": "no Host header (HTTP/1.0)",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J3",
+  "input": "two Host headers (good then evil)",
+  "outcome": "HTTP/1.1 200 OK"
+ },
+ {
+  "id": "J3",
+  "input": "absolute-URI request line to evil.example, Host good",
+  "outcome": "HTTP/1.1 200 OK"
+ },
+ {
+  "id": "J3",
+  "input": "absolute-URI request line, Host evil",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J4",
+  "input": "token: none",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token: wrong",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token: Basic",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token: lowercase bearer",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token: trailing space",
+  "outcome": "HTTP/1.1 200 OK"
+ },
+ {
+  "id": "J4",
+  "input": "token: two tokens",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token: prefix of token",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token: token + suffix",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token: stored hash as token",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token: uppercase token",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token: empty bearer",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token in the query string only",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J4",
+  "input": "token in a cookie only",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J5",
+  "input": "wrong token, unknown path (401 expected, not 404)",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J5",
+  "input": "valid token, unknown path",
+  "outcome": "HTTP/1.1 404 Not Found"
+ },
+ {
+  "id": "J5",
+  "input": "valid token, path with dot segments /x/../mcp-external",
+  "outcome": "HTTP/1.1 200 OK"
+ },
+ {
+  "id": "J5",
+  "input": "valid token, //mcp-external",
+  "outcome": "HTTP/1.1 404 Not Found"
+ },
+ {
+  "id": "J6",
+  "input": "GET, no Origin, no token (an <img>)",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ },
+ {
+  "id": "J6",
+  "input": "POST text/plain, Origin (a form or fetch no-cors)",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J6",
+  "input": "OPTIONS preflight",
+  "outcome": "HTTP/1.1 403 Forbidden"
+ },
+ {
+  "id": "J7",
+  "input": "A declares projA port 3000",
+  "outcome": "Projet projA déclaré (id 58c2e3b5547f84ef), ports 3000."
+ },
+ {
+  "id": "J7",
+  "input": "B reads A's folder",
+  "outcome": "Ce dossier n'est pas un projet déclaré par ce client : <tmp>/home/projA. Appelle declare_project avec ton dossier de travail."
+ },
+ {
+  "id": "J7",
+  "input": "B reads A's folder through a symlink",
+  "outcome": "Ce dossier n'est pas un projet déclaré par ce client : <tmp>/home/linkA. Appelle declare_project avec ton dossier de travail."
+ },
+ {
+  "id": "J7",
+  "input": "B reads projB/../projA",
+  "outcome": "Ce dossier n'est pas un projet déclaré par ce client : <tmp>/home/projA. Appelle declare_project avec ton dossier de travail."
+ },
+ {
+  "id": "J7",
+  "input": "B marks A's remark handled",
+  "outcome": "Ce dossier n'est pas un projet déclaré par ce client : <tmp>/home/projA. Appelle declare_project avec ton dossier de travail."
+ },
+ {
+  "id": "J7",
+  "input": "B declares A's folder itself (takes it over?)",
+  "outcome": "Projet projA déclaré (id 58c2e3b5547f84ef), ports 3001."
+ },
+ {
+  "id": "J7",
+  "input": "after that, A reads its own folder",
+  "outcome": "Ce dossier n'est pas un projet déclaré par ce client : <tmp>/home/projA. Appelle declare_project avec ton dossier de travail."
+ },
+ {
+  "id": "J7",
+  "input": "B declares A's port 3000 on projB (port taken over?)",
+  "outcome": "Projet projB déclaré (id 129f96189ec8c5c5), ports 3000."
+ },
+ {
+  "id": "J7",
+  "input": "registry after",
+  "outcome": "[{\"folder\":\"<tmp>/home/projA\",\"ports\":[3001],\"client\":\"B\"},{\"folder\":\"<tmp>/home/projB\",\"ports\":[3000],\"client\":\"B\"}]"
+ },
+ {
+  "id": "J8",
+  "input": "agent port 5300",
+  "outcome": "Port 5300 refusé : entre 1024 et 65535, hors des ports du conteneur de Ressac (5280–5299 et ceux des applis). (isError)"
+ },
+ {
+  "id": "J8",
+  "input": "port 80",
+  "outcome": "Port 80 refusé : entre 1024 et 65535, hors des ports du conteneur de Ressac (5280–5299 et ceux des applis). (isError)"
+ },
+ {
+  "id": "J8",
+  "input": "port 70000",
+  "outcome": "Port 70000 refusé : entre 1024 et 65535, hors des ports du conteneur de Ressac (5280–5299 et ceux des applis). (isError)"
+ },
+ {
+  "id": "J8",
+  "input": "11 ports",
+  "outcome": "Entre 1 et 10 ports. (isError)"
+ },
+ {
+  "id": "J8",
+  "input": "no port",
+  "outcome": "Entre 1 et 10 ports. (isError)"
+ },
+ {
+  "id": "J8",
+  "input": "folder = home",
+  "outcome": "Ce dossier est trop large : ni /, ni le dossier personnel. (isError)"
+ },
+ {
+  "id": "J8",
+  "input": "folder = /",
+  "outcome": "Ce dossier est trop large : ni /, ni le dossier personnel. (isError)"
+ },
+ {
+  "id": "J8",
+  "input": "folder outside home (/tmp)",
+  "outcome": "Projet T déclaré (id 75f86c3f9fb48b8c), ports 3002."
+ },
+ {
+  "id": "J8",
+  "input": "folder in the Ressac space",
+  "outcome": "Ce dossier est dans l'espace de Ressac : ses applis se relisent depuis la page Applications. (isError)"
+ },
+ {
+  "id": "J8",
+  "input": "relative folder",
+  "outcome": "Le dossier doit être un chemin absolu. (isError)"
+ },
+ {
+  "id": "J8",
+  "input": "folder missing",
+  "outcome": "Ce dossier n'existe pas sur le Mac. (isError)"
+ },
+ {
+  "id": "J8",
+  "input": "port 5279 (the server's own default)",
+  "outcome": "Projet projB déclaré (id 129f96189ec8c5c5), ports 5279."
+ },
+ {
+  "id": "J8",
+  "input": "port 11434 (Ollama)",
+  "outcome": "Projet projB déclaré (id 129f96189ec8c5c5), ports 11434."
+ },
+ {
+  "id": "J10",
+  "input": "token shape",
+  "outcome": "64 hex chars (256 bits), stored as sha256: 64 hex chars"
+ },
+ {
+  "id": "J4",
+  "input": "token after revoke",
+  "outcome": "HTTP/1.1 401 Unauthorized"
+ }
+]

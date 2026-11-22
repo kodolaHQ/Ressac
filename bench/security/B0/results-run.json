@@ -1,0 +1,3398 @@
+{
+ "A1": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/seen.test.ts › a fragment is dropped when added, never when checked",
+   "K:test/mcp/seen.test.ts › only http(s) addresses of at most 2000 characters",
+   "K:test/mcp/seen.test.ts › beyond the limit the oldest goes, unless has touched it",
+   "K:test/mcp/server.test.ts › navigate to https://pub.example: navigationOutsideSite, no tab opened; to /film/2 of the site: done"
+  ],
+  "ran": [
+   "K:3 files/239 tests"
+  ],
+  "count": 17,
+  "s": 9
+ },
+ "A5": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/seen.test.ts › beyond the limit the oldest goes, unless has touched it"
+  ],
+  "ran": [
+   "K:3 files/239 tests"
+  ],
+  "count": 1,
+  "s": 9
+ },
+ "Q1": {
+  "red": true,
+  "failed": [
+   "F:test/page-guard.test.ts › an agent page's image to the web is cancelled",
+   "F:test/page-guard.test.ts › other local services are not: Ollama, a dev server, the LAN",
+   "F:test/page-guard.test.ts › an IPv4-mapped or NAT64 IPv6 address is any IPv4 host, never local",
+   "F:test/page-guard.test.ts › known CDNs are reachable with GET only"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 6,
+  "s": 1
+ },
+ "A2": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/seen.test.ts › a fragment is dropped when added, never when checked"
+  ],
+  "ran": [
+   "K:3 files/239 tests"
+  ],
+  "count": 1,
+  "s": 8
+ },
+ "A3": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/seen.test.ts › only http(s) addresses of at most 2000 characters"
+  ],
+  "ran": [
+   "K:3 files/239 tests"
+  ],
+  "count": 1,
+  "s": 9
+ },
+ "A4": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/seen.test.ts › only http(s) addresses of at most 2000 characters"
+  ],
+  "ran": [
+   "K:3 files/239 tests"
+  ],
+  "count": 1,
+  "s": 9
+ },
+ "B1": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › navigate to https://pub.example: navigationOutsideSite, no tab opened; to /film/2 of the site: done",
+   "K:test/mcp/server.test.ts › site app: a link read in its view counts as written (its tweaks put it there): navigate by link asks, nothing becomes free",
+   "K:test/mcp/server.test.ts › outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free",
+   "K:test/mcp/server.test.ts › read_pages of a local page in a search does not make its links seen: outside the search, they still ask the card"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 10,
+  "s": 10
+ },
+ "B2": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 1,
+  "s": 8
+ },
+ "B3": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › site app: a link read in its view counts as written (its tweaks put it there): navigate by link asks, nothing becomes free",
+   "K:test/mcp/server.test.ts › outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 2,
+  "s": 8
+ },
+ "B4": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 1,
+  "s": 8
+ },
+ "B5": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › navigate to https://pub.example: navigationOutsideSite, no tab opened; to /film/2 of the site: done",
+   "K:test/mcp/server.test.ts › site app: a link read in its view counts as written (its tweaks put it there): navigate by link asks, nothing becomes free"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 2,
+  "s": 9
+ },
+ "B6": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › navigate to https://pub.example: navigationOutsideSite, no tab opened; to /film/2 of the site: done",
+   "K:test/mcp/server.test.ts › navigate in a site app without a browser to check the address: refused"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 2,
+  "s": 9
+ },
+ "B7": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › open_tab during a search asks the card for an address not read (with its reason); local and read addresses ask nothing"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 1,
+  "s": 10
+ },
+ "B8": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › navigate on the search tab to a link read is done; to another address it is refused",
+   "K:test/mcp/server.test.ts › navigate on the search tab to a composed address asks the card with the full address and the reason; accepted: it navigates and that address is free",
+   "K:test/mcp/server.test.ts › navigate on the search tab to a composed address, refused: DENIAL_TEXT and nothing loads",
+   "K:test/mcp/server.test.ts › one card per address at a time: both calls get its answer"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 13,
+  "s": 74
+ },
+ "B9": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › read_pages: a composed address among them asks its card; refused, the others are still read",
+   "K:test/mcp/server.test.ts › read_pages: with no search running it starts one, the first address opens in the search tab (after its card), the others in the background",
+   "K:test/mcp/server.test.ts › read_pages without askAddress: a non-free address has its own error section",
+   "K:test/mcp/server.test.ts › read_pages with no search running and every address refused: no search, no tab"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 10,
+  "s": 13
+ },
+ "B10": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › navigate on the search tab to a composed address, refused: DENIAL_TEXT and nothing loads",
+   "K:test/mcp/server.test.ts › one card per address at a time: both calls get its answer",
+   "K:test/mcp/server.test.ts › a new conversation takes the address card down (false)",
+   "K:test/mcp/server.test.ts › an address the agent composes on the engine is not free: it asks its card (no laundering through a redirect page)"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 4,
+  "s": 10
+ },
+ "B11": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › open_tab and navigate refuse non-http(s) URLs",
+   "K:test/mcp/server.test.ts › read_pages refuses file: and about: addresses before any card; the others are read"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 2,
+  "s": 10
+ },
+ "B12": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 1,
+  "s": 10
+ },
+ "B13": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › a request dropped during an outflow pause puts the band back and the next search_web runs",
+   "K:test/mcp/server.test.ts › search_web with a secret pauses before the engine, first query and a later one; Continuer sends it unchanged",
+   "K:test/mcp/server.test.ts › search_web with data read in a granted tab pauses and names its source",
+   "K:test/mcp/server.test.ts › a shared tab that is not sensitive is not a source; a shared sensitive one is"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 9,
+  "s": 18
+ },
+ "B14": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › a composed address carrying read data gets a danger line, outside and during a search; the card still decides",
+   "K:test/mcp/server.test.ts › an address shown by a page the agent writes (local page) is not a followed link: its card keeps the red line",
+   "K:test/mcp/server.test.ts › a history entry of a page the agent wrote (local page) is not a followed link, whatever its title or text holds",
+   "K:test/mcp/server.test.ts › a history entry on an open site app's domains is not a followed link (the app's tweaks write there)"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 5,
+  "s": 9
+ },
+ "B15": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › a sensitive tab asks again once per search, and not outside one"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 1,
+  "s": 14
+ },
+ "B16": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › history asks again once per search"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 1,
+  "s": 9
+ },
+ "B17": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/history.test.ts › history is read only after the card: refused → nothing read; accepted → one card for the conversation, asked again in the next"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 1,
+  "s": 9
+ },
+ "B18": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › current_page without interaction → request, refusal → normal answer",
+   "K:test/mcp/server.test.ts › read_tab on Gmail: request, refusal → normal answer",
+   "K:test/mcp/server.test.ts › read_tab marks the tab running while it reads, not after (the window's halo)",
+   "K:test/mcp/server.test.ts › request accepted → access remembered (no second request)"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 21,
+  "s": 12
+ },
+ "B19": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › private space during the question: « Autoriser » does not deliver the tab",
+   "K:test/mcp/server.test.ts › tab moved to another site during the question: « Autoriser » does not deliver the new site"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 2,
+  "s": 8
+ },
+ "B20": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › search_web with data read in a granted tab pauses and names its source",
+   "K:test/mcp/server.test.ts › a shared tab that is not sensitive is not a source; a shared sensitive one is",
+   "K:test/mcp/server.test.ts › a composed address carrying read data gets a danger line, outside and during a search; the card still decides",
+   "K:test/mcp/server.test.ts › a shared tab gone to another site is a source there"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 8,
+  "s": 11
+ },
+ "B21": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › a shared tab that is not sensitive is not a source; a shared sensitive one is"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 1,
+  "s": 9
+ },
+ "B22": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › without a token or with a wrong token → 401",
+   "K:test/mcp/server.test.ts › two sessions of two windows each see their own",
+   "K:test/mcp/server.test.ts › a closed session's token is refused (401)",
+   "K:test/mcp/server.test.ts › search_web from a private space answers the error; a search in window A does not stop one in window B"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 4,
+  "s": 9
+ },
+ "B23": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 0,
+  "s": 9
+ },
+ "B24": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 0,
+  "s": 8
+ },
+ "B25": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › a sensitive page on the search tab (a sign-in the user did) is a source"
+  ],
+  "ran": [
+   "K:2 files/232 tests"
+  ],
+  "count": 1,
+  "s": 9
+ },
+ "C1": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › a second search_web reuses the tab (navigate, no new tab) and keeps the search",
+   "K:test/mcp/server.test.ts › navigate on the search tab to a link read is done; to another address it is refused",
+   "K:test/mcp/server.test.ts › navigate on the search tab to a composed address asks the card with the full address and the reason; accepted: it navigates and that address is free",
+   "K:test/mcp/server.test.ts › navigate on the search tab to a composed address, refused: DENIAL_TEXT and nothing loads"
+  ],
+  "ran": [
+   "K:2 files/246 tests"
+  ],
+  "count": 23,
+  "s": 71
+ },
+ "C2": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › a fragment the agent adds to a link read is dropped: navigate and read_pages open the address read, and say so",
+   "K:test/mcp/server.test.ts › open_tab during a search asks the card for an address not read (with its reason); local and read addresses ask nothing",
+   "K:test/search/sessions.test.ts › SearchSessions freeAs: an address read exactly opens as is; one that matches only without its fragment opens without it; over 500 characters, nothing"
+  ],
+  "ran": [
+   "K:2 files/246 tests"
+  ],
+  "count": 3,
+  "s": 21
+ },
+ "D1": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › recaps show_recap publishes, opens in the session window and updates in place",
+   "K:test/mcp/server.test.ts › recaps a read shows each link's photo, and the photo counts as seen",
+   "K:test/recaps/recaps.test.ts › publish without id creates the file; links never seen and local addresses are not allowed",
+   "K:test/recaps/recaps.test.ts › republish with the id keeps a link seen before, even with an empty seen list"
+  ],
+  "ran": [
+   "K:2 files/235 tests"
+  ],
+  "count": 4,
+  "s": 22
+ },
+ "D2": {
+  "red": true,
+  "failed": [
+   "K:test/recaps/recaps.test.ts › publish without id creates the file; links never seen and local addresses are not allowed"
+  ],
+  "ran": [
+   "K:2 files/235 tests"
+  ],
+  "count": 1,
+  "s": 25
+ },
+ "D3": {
+  "red": true,
+  "failed": [
+   "K:test/recaps/recaps.test.ts › publish without id creates the file; links never seen and local addresses are not allowed"
+  ],
+  "ran": [
+   "K:2 files/235 tests"
+  ],
+  "count": 1,
+  "s": 11
+ },
+ "D4": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/235 tests"
+  ],
+  "count": 0,
+  "s": 12
+ },
+ "E1": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › a request dropped during an outflow pause puts the band back and the next search_web runs",
+   "K:test/mcp/server.test.ts › search_web with a secret pauses before the engine, first query and a later one; Continuer sends it unchanged",
+   "K:test/mcp/server.test.ts › a composed address carrying read data gets a danger line, outside and during a search; the card still decides",
+   "K:test/outflow/detect.test.ts › api keys, private keys and JWTs"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 22,
+  "s": 13
+ },
+ "E2": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › encoded secrets are found",
+   "K:test/outflow/detect.test.ts › nested encodings"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 2,
+  "s": 8
+ },
+ "E3": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › card: Luhn-valid only"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 1,
+  "s": 9
+ },
+ "E4": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › card: Luhn-valid only",
+   "K:test/outflow/detect.test.ts › encoded secrets are found",
+   "K:test/outflow/detect.test.ts › card next to other digits: expiry, CVV, a number before it",
+   "K:test/outflow/detect.test.ts › numbers spaced as French pages print them are still found"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 4,
+  "s": 9
+ },
+ "E5": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › iban: valid check digits only",
+   "K:test/outflow/detect.test.ts › encoded secrets are found",
+   "K:test/outflow/detect.test.ts › iban next to a BIC, a city or a year",
+   "K:test/outflow/detect.test.ts › lowercase iban and nir"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 9,
+  "s": 9
+ },
+ "E6": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › nir: valid key only",
+   "K:test/outflow/detect.test.ts › lowercase iban and nir",
+   "K:test/outflow/detect.test.ts › numbers spaced as French pages print them are still found"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 3,
+  "s": 9
+ },
+ "E7": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › api keys, private keys and JWTs"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 1,
+  "s": 10
+ },
+ "E8": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › api keys, private keys and JWTs",
+   "K:test/outflow/detect.test.ts › 1 MB of private key headers without an end stays fast",
+   "K:test/outflow/detect.test.ts › 256 KB of Google Docs host names stays fast"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 3,
+  "s": 11
+ },
+ "E9": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › search_web with a secret pauses before the engine, first query and a later one; Continuer sends it unchanged",
+   "K:test/outflow/detect.test.ts › api keys, private keys and JWTs",
+   "K:test/outflow/detect.test.ts › encoded secrets are found",
+   "K:test/outflow/detect.test.ts › nested encodings"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 7,
+  "s": 14
+ },
+ "E10": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › random: long, mixed and high-entropy",
+   "K:test/outflow/detect.test.ts › a readable slug is not a random secret, a secret padded into one still is",
+   "K:test/outflow/detect.test.ts › a separator in a random string does not shorten it"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 3,
+  "s": 8
+ },
+ "E11": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › numbers spaced as French pages print them are still found"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 1,
+  "s": 11
+ },
+ "E12": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › encoded secrets are found",
+   "K:test/outflow/detect.test.ts › nested encodings"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 2,
+  "s": 10
+ },
+ "E13": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › encoded secrets are found",
+   "K:test/outflow/detect.test.ts › nested encodings",
+   "K:test/outflow/outflow.test.ts › read e-mail comes back encoded"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 3,
+  "s": 9
+ },
+ "E14": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › encoded secrets are found",
+   "K:test/outflow/detect.test.ts › variants: decodings, lowercased, plus a copy without separators, at most 32",
+   "K:test/outflow/detect.test.ts › nested encodings"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 3,
+  "s": 12
+ },
+ "E15": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › nested encodings"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 1,
+  "s": 9
+ },
+ "E16": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › mask",
+   "K:test/outflow/detect.test.ts › mask shows at most half of a value",
+   "K:test/outflow/outflow.test.ts › rule 1 without a read",
+   "K:test/outflow/outflow.test.ts › rule 1 hit carries the source when the secret was read"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 4,
+  "s": 10
+ },
+ "E17": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › iban: valid check digits only"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 1,
+  "s": 12
+ },
+ "E18": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/detect.test.ts › nir: valid key only"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 1,
+  "s": 17
+ },
+ "F1": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › a request dropped during an outflow pause puts the band back and the next search_web runs",
+   "K:test/mcp/server.test.ts › search_web with a secret pauses before the engine, first query and a later one; Continuer sends it unchanged",
+   "K:test/mcp/server.test.ts › search_web with data read in a granted tab pauses and names its source",
+   "K:test/mcp/server.test.ts › a shared tab that is not sensitive is not a source; a shared sensitive one is"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 47,
+  "s": 25
+ },
+ "F2": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › search_web with data read in a granted tab pauses and names its source",
+   "K:test/mcp/server.test.ts › a shared tab that is not sensitive is not a source; a shared sensitive one is",
+   "K:test/mcp/server.test.ts › what list_tabs returned is a source, named « tes onglets »; without an outflow nothing pauses",
+   "K:test/mcp/server.test.ts › a shared tab gone to another site is a source there"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 40,
+  "s": 17
+ },
+ "F3": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/outflow.test.ts › forgetTyped clears what was typed, not what was read"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 1,
+  "s": 10
+ },
+ "F4": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › an address shown by a page the agent writes (local page) is not a followed link: its card keeps the red line",
+   "K:test/outflow/outflow.test.ts › an address the agent wrote itself into a tool's output is not a followed link"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 2,
+  "s": 10
+ },
+ "F5": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/outflow.test.ts › read e-mail comes back encoded"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 1,
+  "s": 10
+ },
+ "F6": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/outflow.test.ts › any separator between digits is ignored",
+   "K:test/outflow/outflow.test.ts › a match glued across slashes must cover 8 digits",
+   "K:test/outflow/outflow.test.ts › slashes between characters do not hide an e-mail or a token"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 3,
+  "s": 9
+ },
+ "F7": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › search_web with data read in a granted tab pauses and names its source",
+   "K:test/mcp/server.test.ts › a shared tab that is not sensitive is not a source; a shared sensitive one is",
+   "K:test/mcp/server.test.ts › an address shown by a page the agent writes (local page) is not a followed link: its card keeps the red line",
+   "K:test/mcp/server.test.ts › a history entry of a page the agent wrote (local page) is not a followed link, whatever its title or text holds"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 18,
+  "s": 11
+ },
+ "F8": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/outflow.test.ts › read phone numbers come back without separators",
+   "K:test/outflow/outflow.test.ts › any separator between digits is ignored",
+   "K:test/outflow/outflow.test.ts › padding of two kinds does not hide items of the other kinds",
+   "K:test/outflow/outflow.test.ts › a number read with no-break spaces or full-width digits comes back"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 4,
+  "s": 9
+ },
+ "F9": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › what list_tabs returned is a source, named « tes onglets »; without an outflow nothing pauses",
+   "K:test/mcp/server.test.ts › a shared tab gone to another site is a source there",
+   "K:test/mcp/server.test.ts › a sensitive page on the search tab (a sign-in the user did) is a source",
+   "K:test/mcp/server.test.ts › any tool's text is a source (widget_runs); a status the agent caused (navigate) is not"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 16,
+  "s": 13
+ },
+ "F10": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/outflow.test.ts › a word glued to a number from a read token does not hit, a mixed chunk does",
+   "K:test/outflow/outflow.test.ts › slashes between characters do not hide an e-mail or a token",
+   "K:test/outflow/outflow.test.ts › padding of two kinds does not hide items of the other kinds",
+   "K:test/outflow/outflow.test.ts › one read padded with every kind cannot flush the memory"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 7,
+  "s": 8
+ },
+ "F11": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 0,
+  "s": 9
+ },
+ "F12": {
+  "red": true,
+  "failed": [
+   "K:test/outflow/outflow.test.ts › read item comes back",
+   "K:test/outflow/outflow.test.ts › windows are separate",
+   "K:test/outflow/outflow.test.ts › an address read whole in a private source is a followed link, not a leak; rule 1 and queries are unchanged",
+   "K:test/mcp/server.test.ts › a composed address carrying read data gets a danger line, outside and during a search; the card still decides"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 4,
+  "s": 8
+ },
+ "F13": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › an address shown by a page the agent writes (local page) is not a followed link: its card keeps the red line",
+   "K:test/mcp/server.test.ts › a history entry of a page the agent wrote (local page) is not a followed link, whatever its title or text holds",
+   "K:test/mcp/server.test.ts › a history entry on an open site app's domains is not a followed link (the app's tweaks write there)",
+   "K:test/mcp/server.test.ts › an address inside a history or bookmark title is not a followed link, even on a site that is not local"
+  ],
+  "ran": [
+   "K:3 files/284 tests"
+  ],
+  "count": 8,
+  "s": 9
+ },
+ "G1": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › no access by default",
+   "K:test/access/policy.test.ts › interaction from a tab → access to that tab only",
+   "K:test/access/policy.test.ts › The user changes site → authorization lapsed, even if they come back",
+   "K:test/access/policy.test.ts › the current URL counts even without a navigation event"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 25,
+  "s": 9
+ },
+ "G2": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › the current URL counts even without a navigation event",
+   "K:test/mcp/server.test.ts › tab moved to another site during the question: « Autoriser » does not deliver the new site"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 2,
+  "s": 9
+ },
+ "G3": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › accorderLectureSite(\"vidola\") : peutLire de site:vidola vrai, de site:youtube faux ; nouvelle conversation : faux",
+   "K:test/access/policy.test.ts › reading of a site app tied to the hash of its declaration: another hash does not count",
+   "K:test/mcp/devtools.test.ts › read_console with the site's grant but without a dev right: refused",
+   "K:test/mcp/devtools.test.ts › read_console on a site app whose site.json was rewritten (other hash): the app's card comes back first"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 14,
+  "s": 8
+ },
+ "G4": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 0,
+  "s": 9
+ },
+ "G5": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › The user changes site → authorization lapsed, even if they come back"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 1,
+  "s": 12
+ },
+ "G6": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › the agent navigates its demo to an outside site → access lost",
+   "K:test/access/policy.test.ts › a local port the agent does not serve (the user's dev server) is not readable without a grant"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 2,
+  "s": 11
+ },
+ "G7": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › the agent opens Gmail itself → no access without a request",
+   "K:test/access/policy.test.ts › a local port the agent does not serve (the user's dev server) is not readable without a grant",
+   "K:test/mcp/server.test.ts › open_tab on an outside site then read_tab → authorization request"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 3,
+  "s": 12
+ },
+ "G8": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › built: app:<folder> and localhost:5285 opened by the agent have the four rights; localhost:3000 has none",
+   "K:test/access/policy.test.ts › a local port the agent does not serve (the user's dev server) is not readable without a grant",
+   "K:test/access/policy.test.ts › built: the default demo range follows RESSAC_CONTAINER_PORTS"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 3,
+  "s": 10
+ },
+ "G9": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › reinitialiser removes everything; tabClosed removes the tab"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 1,
+  "s": 11
+ },
+ "G10": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/history.test.ts › history is read only after the card: refused → nothing read; accepted → one card for the conversation, asked again in the next",
+   "K:test/mcp/server.test.ts › widget_data on a widget with an account asks for the card; refusal → no data; grant valid until the new conversation",
+   "K:test/mcp/server.test.ts › granting the data of the action « courrier » does not grant that of the widget « courrier »",
+   "K:test/mcp/server.test.ts › outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 4,
+  "s": 11
+ },
+ "G11": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › accorderLectureSite(\"vidola\") : peutLire de site:vidola vrai, de site:youtube faux ; nouvelle conversation : faux",
+   "K:test/mcp/devtools.test.ts › read_console on a site app: both grants → the messages, URLs masked (the site is not built by the agent)",
+   "K:test/mcp/server.test.ts › read_tab on a site app: grant → the text, and capture_screen without a second card",
+   "K:test/mcp/server.test.ts › site_memory: a new conversation asks for the card again"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 4,
+  "s": 11
+ },
+ "G12": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › reading of a site app tied to the hash of its declaration: another hash does not count",
+   "K:test/mcp/devtools.test.ts › read_console on a site app whose site.json was rewritten (other hash): the app's card comes back first",
+   "K:test/mcp/devtools.test.ts › read_console: site.json rewritten during the app's card (other hash): nothing is read",
+   "K:test/mcp/server.test.ts › site.json rewritten with a new domain (other hash): a new card before any read; unchanged: none"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 7,
+  "s": 10
+ },
+ "G13": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › accorderDev: only the checked rights; they drop on site change, on close, on reinitialiser",
+   "K:test/mcp/devtools.test.ts › site change during memory_snapshot: « L'onglet a changé de site : accès retiré. »"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 2,
+  "s": 18
+ },
+ "G14": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 0,
+  "s": 11
+ },
+ "G15": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › site app: its dev rights are only valid with its grant; a new conversation removes both",
+   "K:test/access/policy.test.ts › reading of a site app tied to the hash of its declaration: another hash does not count",
+   "K:test/mcp/devtools.test.ts › read_console on a site app whose site.json was rewritten (other hash): the app's card comes back first"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 3,
+  "s": 11
+ },
+ "G16": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › couper(id, \"agir\") removes that right only; couper(id) removes everything, reading included; a built one that is cut stays so until reinitialiser"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 1,
+  "s": 11
+ },
+ "G17": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 0,
+  "s": 10
+ },
+ "G18": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 0,
+  "s": 10
+ },
+ "G19": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › retirerLectureSite (app deleted): the grant drops, the badge follows; pending cards see it (siteReadWithdrawals)",
+   "K:test/mcp/server.test.ts › app deleted then recreated with the same id (same declaration): the grant is removed, a new card"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 2,
+  "s": 10
+ },
+ "G20": {
+  "red": true,
+  "failed": [
+   "K:test/mcp/server.test.ts › navigate to https://pub.example: navigationOutsideSite, no tab opened; to /film/2 of the site: done",
+   "K:test/mcp/server.test.ts › site app: a link read in its view counts as written (its tweaks put it there): navigate by link asks, nothing becomes free",
+   "K:test/mcp/server.test.ts › outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free",
+   "K:test/mcp/server.test.ts › read_pages of a local page in a search does not make its links seen: outside the search, they still ask the card"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 10,
+  "s": 10
+ },
+ "G21": {
+  "red": true,
+  "failed": [
+   "K:test/access/policy.test.ts › built: leaving the origin removes the rights; navigating back to it (agent) restores them"
+  ],
+  "ran": [
+   "K:5 files/321 tests"
+  ],
+  "count": 1,
+  "s": 10
+ },
+ "H1": {
+  "red": true,
+  "failed": [
+   "K:test/access/sensitive.test.ts › sensitive: https://outlook.live.com/mail/",
+   "K:test/access/sensitive.test.ts › sensitive: https://www.labanquepostale.fr/particuliers",
+   "K:test/access/sensitive.test.ts › sensitive: https://particuliers.societegenerale.fr/x",
+   "K:test/access/sensitive.test.ts › sensitive: https://app.qonto.com/organizations"
+  ],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 14,
+  "s": 10
+ },
+ "H2": {
+  "red": true,
+  "failed": [
+   "K:test/access/sensitive.test.ts › sensitive: https://www.labanquepostale.fr/particuliers",
+   "K:test/access/sensitive.test.ts › sensitive: https://particuliers.societegenerale.fr/x",
+   "K:test/access/sensitive.test.ts › sensitive: https://app.qonto.com/organizations",
+   "K:test/access/sensitive.test.ts › sensitive: https://app.payfit.com/payslips"
+  ],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 8,
+  "s": 10
+ },
+ "H3": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 0,
+  "s": 11
+ },
+ "H4": {
+  "red": true,
+  "failed": [
+   "K:test/access/sensitive.test.ts › sensitive: view-source:https://mail.google.com/",
+   "K:test/access/sensitive.test.ts › sensitive: blob:https://mail.google.com/0b1c-uuid",
+   "K:test/access/sensitive.test.ts › sensitive: view-source:view-source:https://mail.google.com/",
+   "K:test/access/sensitive.test.ts › sensitive: about:reader?url=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2F0%2F"
+  ],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 5,
+  "s": 12
+ },
+ "H5": {
+  "red": true,
+  "failed": [
+   "K:test/access/sensitive.test.ts › sensitive: view-source:view-source:view-source:view-source:https://www.marmiton.org/x"
+  ],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 1,
+  "s": 12
+ },
+ "H6": {
+  "red": true,
+  "failed": [
+   "K:test/access/sensitive.test.ts › sensitive: https://github.com/settings/tokens"
+  ],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 1,
+  "s": 12
+ },
+ "H7": {
+  "red": true,
+  "failed": [
+   "K:test/access/sensitive.test.ts › sensitive: https://mail.ovh.net/owa/",
+   "K:test/access/sensitive.test.ts › sensitive: https://mail.infomaniak.com/",
+   "K:test/access/sensitive.test.ts › sensitive: https://webmail.gandi.net/",
+   "K:test/access/sensitive.test.ts › sensitive: https://mail.zoho.eu/zm/"
+  ],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 4,
+  "s": 13
+ },
+ "H8": {
+  "red": true,
+  "failed": [
+   "K:test/access/sensitive.test.ts › sensitive: about:logins",
+   "K:test/access/sensitive.test.ts › sensitive: about:preferences#privacy",
+   "K:test/access/sensitive.test.ts › sensitive: ABOUT:LOGINS",
+   "K:test/access/sensitive.test.ts › sensitive: about:logins?x"
+  ],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 5,
+  "s": 14
+ },
+ "H9": {
+  "red": true,
+  "failed": [
+   "K:test/access/sensitive.test.ts › sensitive: https://app.slack.com/client/T04KQ2M7H/C05RT9XPL",
+   "K:test/access/sensitive.test.ts › sensitive: https://novalis.slack.com/archives/C05RT9XPL"
+  ],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 2,
+  "s": 13
+ },
+ "H10": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 0,
+  "s": 14
+ },
+ "H11": {
+  "red": true,
+  "failed": [
+   "K:test/access/sensitive.test.ts › not sensitive: not a url",
+   "K:test/access/sensitive.test.ts › not sensitive: "
+  ],
+  "ran": [
+   "K:2 files/280 tests"
+  ],
+  "count": 2,
+  "s": 14
+ },
+ "I1": {
+  "red": true,
+  "failed": [
+   "K:test/profiles/config-mcp.test.ts › writeMcpConfig never follows a link planted by the agent: the target file stays as it was"
+  ],
+  "ran": [
+   "K:7 files/164 tests"
+  ],
+  "count": 1,
+  "s": 13
+ },
+ "I2": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:7 files/164 tests",
+   "F:2 files/42 tests"
+  ],
+  "count": 0,
+  "s": 20
+ },
+ "J1": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › stageHarvest copies the code files into .ressac, and refuses a widget folder swapped for a link",
+   "K:test/design/remarks.test.ts › Remarks remarques folder, of a project or of a batch set as a symbolic link (the container writes there): nothing is written at the end of the link",
+   "K:test/design/remarks.test.ts › Remarks a project folder swapped for a link once used: nothing written nor renamed at the end of the link",
+   "K:test/design/remarks.test.ts › Remarks a project or batch folder that is a link: nothing read, deleted or purged at its end"
+  ],
+  "ran": [
+   "K:9 files/180 tests"
+  ],
+  "count": 11,
+  "s": 12
+ },
+ "J2": {
+  "red": true,
+  "failed": [
+   "K:test/workspace/confined.test.ts › a folder swapped for a link between its lstat and the chdir is refused: by enter, by readFiles, before a write"
+  ],
+  "ran": [
+   "K:9 files/180 tests"
+  ],
+  "count": 1,
+  "s": 13
+ },
+ "J3": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:9 files/180 tests",
+   "F:2 files/42 tests"
+  ],
+  "count": 0,
+  "s": 19
+ },
+ "J4": {
+  "red": true,
+  "failed": [
+   "K:test/workspace/confined.test.ts › readFiles: reads by bare names; absent, link, .., over a file's or the total cap are reported"
+  ],
+  "ran": [
+   "K:9 files/180 tests"
+  ],
+  "count": 1,
+  "s": 12
+ },
+ "J5": {
+  "red": true,
+  "failed": [
+   "K:test/design/remarks.test.ts › Remarks remarques folder, of a project or of a batch set as a symbolic link (the container writes there): nothing is written at the end of the link",
+   "K:test/sites/read.test.ts › readTweaks: a retouches/ folder that is a link outside the site is refused",
+   "K:test/sites/read.test.ts › readTweaks: a folder swapped for a link after the site was read is refused",
+   "K:test/sites/read.test.ts › readTweaks: a subfolder of retouches/ linking to the outside is refused"
+  ],
+  "ran": [
+   "K:9 files/180 tests"
+  ],
+  "count": 6,
+  "s": 13
+ },
+ "J6": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › stageHarvest copies the code files into .ressac, and refuses a widget folder swapped for a link",
+   "K:test/sites/read.test.ts › readTweaks: missing file, symbolic link to /etc/hosts, 300 KB file, total > 1 MB",
+   "K:test/workspace/confined.test.ts › readFiles: reads by bare names; absent, link, .., over a file's or the total cap are reported"
+  ],
+  "ran": [
+   "K:9 files/180 tests"
+  ],
+  "count": 3,
+  "s": 13
+ },
+ "J7": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:9 files/180 tests",
+   "F:2 files/42 tests"
+  ],
+  "count": 0,
+  "s": 19
+ },
+ "J8": {
+  "red": true,
+  "failed": [
+   "K:test/applications/manifest.test.ts › a linked manifest is never followed: no read, no write, no endless read of a device",
+   "K:test/container/workshop.test.ts › stageHarvest copies the code files into .ressac, and refuses a widget folder swapped for a link",
+   "K:test/sites/read.test.ts › readTweaks: missing file, symbolic link to /etc/hosts, 300 KB file, total > 1 MB",
+   "K:test/workflows/edit.test.ts › readCodeFile / storeCode refuse ../x.mjs, x.js, an outgoing link, over 256 KB; a missing file returns absent"
+  ],
+  "ran": [
+   "K:9 files/180 tests"
+  ],
+  "count": 5,
+  "s": 12
+ },
+ "J9": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:9 files/180 tests",
+   "F:2 files/42 tests"
+  ],
+  "count": 0,
+  "s": 19
+ },
+ "J10": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:9 files/180 tests",
+   "F:2 files/42 tests"
+  ],
+  "count": 0,
+  "s": 19
+ },
+ "J11": {
+  "red": true,
+  "failed": [
+   "K:test/design/remarks.test.ts › Remarks a project or batch folder that is a link: nothing read, deleted or purged at its end"
+  ],
+  "ran": [
+   "K:9 files/180 tests"
+  ],
+  "count": 1,
+  "s": 12
+ },
+ "J12": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:9 files/180 tests",
+   "F:2 files/42 tests"
+  ],
+  "count": 0,
+  "s": 19
+ },
+ "J13": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:9 files/180 tests",
+   "F:2 files/42 tests"
+  ],
+  "count": 0,
+  "s": 18
+ },
+ "K1": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › allowed base, wildcard, refusal, trailing dot",
+   "K:test/container/network-module.test.ts › proxy refused host and refused port get 403; a reset client does not kill the proxy"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 2,
+  "s": 6
+ },
+ "K2": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › allowed base, wildcard, refusal, trailing dot"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 6
+ },
+ "K3": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 0,
+  "s": 6
+ },
+ "K4": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 0,
+  "s": 6
+ },
+ "K5": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 0,
+  "s": 6
+ },
+ "K6": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 0,
+  "s": 6
+ },
+ "K7": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › rules"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 6
+ },
+ "K8": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › rules"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 6
+ },
+ "K9": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › proxy an allowed name that resolves to a local address is refused, by CONNECT and by plain HTTP"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 6
+ },
+ "K10": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › proxy localAddress: private, loopback, link-local and mapped ones; public ones pass"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 6
+ },
+ "K11": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › proxy localAddress: private, loopback, link-local and mapped ones; public ones pass"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 6
+ },
+ "K12": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 0,
+  "s": 6
+ },
+ "K13": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 0,
+  "s": 6
+ },
+ "K14": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › proxy localAddress: private, loopback, link-local and mapped ones; public ones pass"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 6
+ },
+ "K15": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › proxy refused host and refused port get 403; a reset client does not kill the proxy"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 16
+ },
+ "K16": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › proxy refused host and refused port get 403; a reset client does not kill the proxy"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 6
+ },
+ "K17": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 0,
+  "s": 7
+ },
+ "K18": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › proxy plain-HTTP forward: non-80 port and relative URI get 403"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 7
+ },
+ "K19": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › validDomain refuses \"1.2.3.4\"",
+   "K:test/container/network-module.test.ts › validDomain agreement (image, kernel) \"1.2.3.4\"",
+   "K:test/container/network-module.test.ts › validDomain agreement (image, kernel) \"*.1.2\"",
+   "K:test/container/workshop.test.ts › agent network the kernel's domain validator agrees with the image's"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 4,
+  "s": 7
+ },
+ "K20": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › validDomain refuses \"example\"",
+   "K:test/container/network-module.test.ts › validDomain refuses \"*.com\"",
+   "K:test/container/network-module.test.ts › validDomain agreement (image, kernel) \"example\"",
+   "K:test/container/network-module.test.ts › validDomain agreement (image, kernel) \"*.com\""
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 5,
+  "s": 7
+ },
+ "K21": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 0,
+  "s": 7
+ },
+ "K22": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › proxy localAddress: private, loopback, link-local and mapped ones; public ones pass"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 7
+ },
+ "K23": {
+  "red": true,
+  "failed": [
+   "K:test/container/network-module.test.ts › allowed base, wildcard, refusal, trailing dot"
+  ],
+  "ran": [
+   "K:2 files/119 tests"
+  ],
+  "count": 1,
+  "s": 7
+ },
+ "L1": {
+  "red": true,
+  "failed": [
+   "K:test/recaps/recaps.test.ts › publish without id creates the file; links never seen and local addresses are not allowed",
+   "K:test/sites/urls.test.ts › urlOnDomain a current one in numeric notation of a local address keeps the start's host",
+   "K:test/sites/urls.test.ts › urlOnDomain non-local http refused even in test; invalid current: start's host",
+   "K:test/workflows/run.test.ts › executerWorkflow: web search and open reads chercherWeb drops results to a local address, then cuts to nombre"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 6,
+  "s": 17
+ },
+ "L2": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 16
+ },
+ "L3": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 16
+ },
+ "L4": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 16
+ },
+ "L5": {
+  "red": true,
+  "failed": [
+   "K:test/workflows/run.test.ts › executerWorkflow: web search and open reads chercherWeb drops results to a local address, then cuts to nombre"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 1,
+  "s": 15
+ },
+ "L6": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 17
+ },
+ "L7": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 16
+ },
+ "L8": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 16
+ },
+ "L9": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 16
+ },
+ "L10": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 17
+ },
+ "L11": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 17
+ },
+ "L12": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 18
+ },
+ "L13": {
+  "red": true,
+  "failed": [
+   "K:test/workflows/run.test.ts › executerWorkflow: web search and open reads chercherWeb drops results to a local address, then cuts to nombre"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 1,
+  "s": 15
+ },
+ "L14": {
+  "red": true,
+  "failed": [
+   "F:test/local-guard.test.ts › literal 127.0.0.1, [::1], localhost., box.local are local without resolving"
+  ],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 1,
+  "s": 16
+ },
+ "L15": {
+  "red": true,
+  "failed": [
+   "K:test/workflows/run.test.ts › executerWorkflow: web search and open reads chercherWeb drops results to a local address, then cuts to nombre"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 1,
+  "s": 15
+ },
+ "L16": {
+  "red": true,
+  "failed": [
+   "K:test/widgets/harvest.test.ts › runHarvest recuperer: « localhost. » (trailing dot) is a local address, refused",
+   "K:test/workflows/run.test.ts › executerWorkflow: web search and open reads chercherWeb drops results to a local address, then cuts to nombre"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 2,
+  "s": 13
+ },
+ "L17": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 16
+ },
+ "L18": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 16
+ },
+ "L19": {
+  "red": true,
+  "failed": [
+   "K:test/widgets/harvest.test.ts › runHarvest recuperer: http(s) only, without credentials in the URL"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 1,
+  "s": 15
+ },
+ "L20": {
+  "red": true,
+  "failed": [
+   "K:test/widgets/harvest.test.ts › runHarvest widget without an account: lirePage with an account is refused",
+   "K:test/widgets/harvest.test.ts › runHarvest, widget with an account lirePage compte to a domain not declared as account is refused",
+   "K:test/widgets/harvest.test.ts › runHarvest, widget with an account widget with an account: recuperer to an undeclared domain is refused",
+   "K:test/widgets/harvest.test.ts › runHarvest, widget with an account widget with an account: a redirect to an undeclared domain is refused"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 11,
+  "s": 11
+ },
+ "L21": {
+  "red": true,
+  "failed": [
+   "K:test/widgets/harvest.test.ts › runHarvest recuperer: a local address is refused by default",
+   "K:test/widgets/harvest.test.ts › runHarvest recuperer: « localhost. » (trailing dot) is a local address, refused"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 2,
+  "s": 11
+ },
+ "L22": {
+  "red": true,
+  "failed": [
+   "K:test/workflows/run.test.ts › executerWorkflow: web search and open reads recuperer: a name that resolves to the machine is refused at connection, without a request"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 1,
+  "s": 11
+ },
+ "L23": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 12
+ },
+ "L24": {
+  "red": true,
+  "failed": [
+   "K:test/workflows/run.test.ts › executerWorkflow: web search and open reads recuperer: a name that resolves to the machine is refused at connection, without a request"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 1,
+  "s": 11
+ },
+ "L25": {
+  "red": true,
+  "failed": [
+   "K:test/widgets/harvest.test.ts › runHarvest, widget with an account widget with an account: a redirect to an undeclared domain is refused"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 1,
+  "s": 11
+ },
+ "L26": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 11
+ },
+ "L27": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 12
+ },
+ "L28": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:6 files/300 tests",
+   "F:3 files/24 tests"
+  ],
+  "count": 0,
+  "s": 12
+ },
+ "L29": {
+  "red": true,
+  "failed": [
+   "K:test/widgets/harvest.test.ts › runHarvest, widget with an account lirePage compte redirected outside the account domains: refused, the text does not leave",
+   "K:test/widgets/harvest.test.ts › runHarvest, widget with an account public lirePage of a widget with an account: public domains passed to the bridge, redirect outside the list refused"
+  ],
+  "ran": [
+   "K:6 files/300 tests"
+  ],
+  "count": 2,
+  "s": 11
+ },
+ "L30": {
+  "red": true,
+  "failed": [
+   "K:test/workflows/run.test.ts › executerWorkflow: web search and open reads widget without web: the 101st fetch throws TOO_MANY_READS too",
+   "K:test/workflows/run.test.ts › executerWorkflow: web search and open reads web widget: the 101st open read (pages and feeds) throws TOO_MANY_READS",
+   "K:test/workflows/run.test.ts › executerWorkflow: web search and open reads widget without web: 100 reads go through with no throttle wait, the 101st is refused"
+  ],
+  "ran": [
+   "K:3 files/240 tests"
+  ],
+  "count": 3,
+  "s": 11
+ },
+ "M1": {
+  "red": true,
+  "failed": [
+   "K:test/design/external-server.test.ts › serveur MCP externe Origin: http://evil.example → 403; Host: host.docker.internal:<port> → 403; Host: localhost:<port> accepted; /mcp → 404"
+  ],
+  "ran": [
+   "K:2 files/29 tests"
+  ],
+  "count": 1,
+  "s": 3
+ },
+ "M2": {
+  "red": true,
+  "failed": [
+   "K:test/design/external-server.test.ts › serveur MCP externe Origin: http://evil.example → 403; Host: host.docker.internal:<port> → 403; Host: localhost:<port> accepted; /mcp → 404"
+  ],
+  "ran": [
+   "K:2 files/29 tests"
+  ],
+  "count": 1,
+  "s": 3
+ },
+ "M3": {
+  "red": true,
+  "failed": [
+   "K:test/design/external-server.test.ts › serveur MCP externe no token, wrong token, revoked token → 401; the main token of a startMcpServer server → 401 here, and an external token → 401 on startMcpServer",
+   "K:test/design/external-server.test.ts › serveur MCP externe client B calls read_remarks with A's folder → undeclaredProject; B's mark_handled on an id of A → undeclaredProject, nothing changes",
+   "K:test/design/external.test.ts › ExternalRegistry brancher creates a client of which only the sha256 of the token is written; clientDuJeton returns it"
+  ],
+  "ran": [
+   "K:2 files/29 tests"
+  ],
+  "count": 3,
+  "s": 3
+ },
+ "M4": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/29 tests"
+  ],
+  "count": 0,
+  "s": 3
+ },
+ "M5": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/29 tests"
+  ],
+  "count": 0,
+  "s": 3
+ },
+ "M6": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:2 files/29 tests"
+  ],
+  "count": 0,
+  "s": 3
+ },
+ "M7": {
+  "red": true,
+  "failed": [
+   "K:test/design/external-server.test.ts › serveur MCP externe no token, wrong token, revoked token → 401; the main token of a startMcpServer server → 401 here, and an external token → 401 on startMcpServer"
+  ],
+  "ran": [
+   "K:2 files/29 tests"
+  ],
+  "count": 1,
+  "s": 3
+ },
+ "N1": {
+  "red": true,
+  "failed": [
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session a changed AGENTS.md is reviewed before the CLI starts",
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session keep accepts only the shown snapshot: a later change shows a new card",
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session revert writes the reference back, then the session starts",
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session a rejected review starts no session and leaves no session config"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 22,
+  "s": 4
+ },
+ "N2": {
+  "red": true,
+  "failed": [
+   "K:test/workspace/instructions.test.ts › Codex's own config.toml is watched for codex, not for claude",
+   "K:test/workspace/instructions.test.ts › config.toml lines Codex writes itself pass silently; any other key, a quoted key or a profile shows the card"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 2,
+  "s": 3
+ },
+ "N3": {
+  "red": true,
+  "failed": [
+   "K:test/workspace/instructions.test.ts › Codex's own config.toml is watched for codex, not for claude"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 1,
+  "s": 3
+ },
+ "N4": {
+  "red": true,
+  "failed": [
+   "K:test/workspace/instructions.test.ts › Codex's own config.toml is watched for codex, not for claude",
+   "K:test/workspace/instructions.test.ts › config.toml lines Codex writes itself pass silently; any other key, a quoted key or a profile shows the card"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 2,
+  "s": 3
+ },
+ "N5": {
+  "red": true,
+  "failed": [
+   "K:test/workspace/instructions.test.ts › a change names its marker kind: link target, binary, unreadable"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 1,
+  "s": 3
+ },
+ "N6": {
+  "red": true,
+  "failed": [
+   "K:test/workspace/instructions.test.ts › a file added under a watched tree shows as created; one removed shows as deleted",
+   "K:test/workspace/instructions.test.ts › revert writes the reference back: changed restored, created deleted, deleted recreated",
+   "K:test/workspace/instructions.test.ts › revert of an entry whose reference is a marker deletes it",
+   "K:test/workspace/instructions.test.ts › revert deletes before it writes: a folder the agent replaced by a link goes before the files beneath it"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 10,
+  "s": 3
+ },
+ "N7": {
+  "red": true,
+  "failed": [
+   "K:test/workspace/instructions.test.ts › Codex's own .system skills are accepted silently while the reference has none, then changes there show",
+   "K:test/workspace/instructions.test.ts › the silent .system intake happens once: deleting it, keeping, then planting a skill there shows a card"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 2,
+  "s": 3
+ },
+ "N8": {
+  "red": true,
+  "failed": [
+   "K:test/workspace/instructions.test.ts › acceptedAgents writes nothing for a marker: no unread text reaches Claude"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 1,
+  "s": 3
+ },
+ "N9": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:3 files/88 tests",
+   "F:1 files/2 tests"
+  ],
+  "count": 0,
+  "s": 3
+ },
+ "N10": {
+  "red": true,
+  "failed": [
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session a changed AGENTS.md is reviewed before the CLI starts",
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session keep accepts only the shown snapshot: a later change shows a new card",
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session revert writes the reference back, then the session starts",
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session a rejected review starts no session and leaves no session config"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 8,
+  "s": 3
+ },
+ "N11": {
+  "red": true,
+  "failed": [
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session no review callback and a change: the open fails",
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session a change on every round fails after three cards"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 2,
+  "s": 2
+ },
+ "N12": {
+  "red": true,
+  "failed": [
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session a changed AGENTS.md is reviewed before the CLI starts"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 1,
+  "s": 3
+ },
+ "N13": {
+  "red": true,
+  "failed": [
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session revert writes the reference back, then the session starts"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "N14": {
+  "red": true,
+  "failed": [
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session revert writes the reference back, then the session starts",
+   "K:test/kernel.test.ts › the instruction review before a Navigateur session a revert whose write fails fails the open, no session"
+  ],
+  "ran": [
+   "K:3 files/88 tests"
+  ],
+  "count": 2,
+  "s": 3
+ },
+ "O1": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › scrub replaces home and web urls",
+   "F:test/telemetry.test.ts › scrub hides every private scheme but keeps chrome and resource",
+   "F:test/telemetry.test.ts › scrub hardening matches url schemes case-insensitively",
+   "F:test/telemetry.test.ts › errorEnvelope has three JSON lines and the expected fields"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 4,
+  "s": 0
+ },
+ "O2": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › scrub replaces home and web urls",
+   "F:test/telemetry.test.ts › scrub hardening replaces home only at a path boundary, trailing slash ignored",
+   "F:test/telemetry.test.ts › errorEnvelope has three JSON lines and the expected fields",
+   "F:test/telemetry.test.ts › errorEnvelope is anonymous"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 4,
+  "s": 0
+ },
+ "O3": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › errorEnvelope hides quoted content replaces every quoted span"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "O4": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › errorEnvelope has three JSON lines and the expected fields",
+   "F:test/telemetry.test.ts › errorEnvelope is anonymous"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 2,
+  "s": 0
+ },
+ "O5": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › createReporter sends nothing when disabled or without dsn"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "O6": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › session counting keeps the same did across launches, a new one after off then on",
+   "F:test/telemetry.test.ts › session counting posts nothing when off or without dsn"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 2,
+  "s": 1
+ },
+ "O7": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › scrub hides every private scheme but keeps chrome and resource",
+   "F:test/telemetry.test.ts › scrub hardening matches url schemes case-insensitively"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 2,
+  "s": 1
+ },
+ "O8": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › scrub hides every private scheme but keeps chrome and resource"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "O9": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › errorEnvelope has three JSON lines and the expected fields"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "O10": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › errorEnvelope has three JSON lines and the expected fields"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "O11": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "O12": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › errorEnvelope caps caps the value to 300 chars and the stack to the 50 most recent frames",
+   "F:test/telemetry.test.ts › errorEnvelope hides quoted content caps the value at 300 chars and leaves an unquoted message alone"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 2,
+  "s": 0
+ },
+ "O13": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › scrub hardening replaces home only at a path boundary, trailing slash ignored"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "O14": {
+  "red": true,
+  "failed": [
+   "F:test/telemetry.test.ts › session counting builds an anonymous session envelope"
+  ],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "O15": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "O16": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 0,
+  "s": 0
+ },
+ "O17": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:1 files/23 tests"
+  ],
+  "count": 0,
+  "s": 0
+ },
+ "P1": {
+  "red": true,
+  "failed": [
+   "F:test/update.test.ts › isStaleUpdate an offered update no newer than the running Ressac, while downloading or ready",
+   "F:test/update.test.ts › installUpdates an update no newer than the running Ressac is never shown and is dropped (an unpublished build)"
+  ],
+  "ran": [
+   "F:5 files/64 tests"
+  ],
+  "count": 2,
+  "s": 2
+ },
+ "P2": {
+  "red": true,
+  "failed": [
+   "F:test/update.test.ts › isStaleUpdate an offered update no newer than the running Ressac, while downloading or ready",
+   "F:test/update.test.ts › isStaleUpdate the staged app's own version unmasks an old signed build offered as 9.9.9",
+   "F:test/update.test.ts › installUpdates an update no newer than the running Ressac is never shown and is dropped (an unpublished build)"
+  ],
+  "ran": [
+   "F:5 files/64 tests"
+  ],
+  "count": 3,
+  "s": 2
+ },
+ "P3": {
+  "red": true,
+  "failed": [
+   "F:test/update.test.ts › isStaleUpdate an offered update no newer than the running Ressac, while downloading or ready",
+   "F:test/update.test.ts › isStaleUpdate the staged app's own version unmasks an old signed build offered as 9.9.9",
+   "F:test/update.test.ts › installUpdates an update no newer than the running Ressac is never shown and is dropped (an unpublished build)"
+  ],
+  "ran": [
+   "F:5 files/64 tests"
+  ],
+  "count": 3,
+  "s": 2
+ },
+ "P4": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:5 files/64 tests"
+  ],
+  "count": 0,
+  "s": 2
+ },
+ "P5": {
+  "red": true,
+  "failed": [
+   "F:test/update.test.ts › isStaleUpdate the staged app's own version unmasks an old signed build offered as 9.9.9"
+  ],
+  "ran": [
+   "F:5 files/64 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "P6": {
+  "red": true,
+  "failed": [
+   "F:test/publish.test.ts › publish.sh refuses when the MAR's signature does not verify"
+  ],
+  "ran": [
+   "F:5 files/64 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "P7": {
+  "red": true,
+  "failed": [
+   "F:test/publish.test.ts › publish.sh refuses a version older than the live feed's; the same or a newer one goes on"
+  ],
+  "ran": [
+   "F:5 files/64 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "P8": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:5 files/64 tests"
+  ],
+  "count": 0,
+  "s": 2
+ },
+ "P9": {
+  "red": true,
+  "failed": [
+   "F:test/publish.test.ts › publish.sh ignores the test variables outside a dry run: the Apple checks still run, nothing is uploaded"
+  ],
+  "ran": [
+   "F:5 files/64 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "P10": {
+  "red": true,
+  "failed": [
+   "F:test/publish.test.ts › publish.sh refuses when the version is already published with another MAR"
+  ],
+  "ran": [
+   "F:5 files/64 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "Q2": {
+  "red": true,
+  "failed": [
+   "F:test/page-guard.test.ts › other local services are not: Ollama, a dev server, the LAN",
+   "F:test/page-guard.test.ts › an IPv4-mapped or NAT64 IPv6 address is any IPv4 host, never local"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 2,
+  "s": 1
+ },
+ "Q3": {
+  "red": true,
+  "failed": [
+   "F:test/page-guard.test.ts › other local services are not: Ollama, a dev server, the LAN"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "Q4": {
+  "red": true,
+  "failed": [
+   "F:test/page-guard.test.ts › a top-level navigation leaves only on a user gesture"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "Q5": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "Q6": {
+  "red": true,
+  "failed": [
+   "F:test/page-guard.test.ts › known CDNs are reachable with GET only"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "Q7": {
+  "red": true,
+  "failed": [
+   "F:test/page-guard.test.ts › an agent page's image to the web is cancelled",
+   "F:test/page-guard.test.ts › other local services are not: Ollama, a dev server, the LAN",
+   "F:test/page-guard.test.ts › a top-level navigation leaves only on a user gesture",
+   "F:test/page-guard.test.ts › an agent port under a public name is an agent page too"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 4,
+  "s": 1
+ },
+ "Q8": {
+  "red": true,
+  "failed": [
+   "F:test/page-guard.test.ts › an agent port under a public name is an agent page too"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "Q9": {
+  "red": true,
+  "failed": [
+   "F:test/page-guard.test.ts › other local services are not: Ollama, a dev server, the LAN",
+   "F:test/page-guard.test.ts › an IPv4-mapped or NAT64 IPv6 address is any IPv4 host, never local"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 2,
+  "s": 1
+ },
+ "Q10": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "Q11": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "Q12": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "Q13": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "Q14": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "Q15": {
+  "red": true,
+  "failed": [
+   "F:test/page-guard.test.ts › a top-level navigation leaves only on a user gesture"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "R1": {
+  "red": true,
+  "failed": [
+   "F:test/local-guard.test.ts › public name resolving to ::1 is local",
+   "F:test/local-guard.test.ts › RESSAC_TEST_PUBLIC_ADDRESSES makes 127.0.0.1 public",
+   "F:test/local-guard.test.ts › a failed or empty resolution is refused (fail closed)"
+  ],
+  "ran": [
+   "F:4 files/16 tests"
+  ],
+  "count": 3,
+  "s": 1
+ },
+ "R2": {
+  "red": true,
+  "failed": [
+   "F:test/local-guard.test.ts › a failed or empty resolution is refused (fail closed)"
+  ],
+  "ran": [
+   "F:4 files/16 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "R3": {
+  "red": true,
+  "failed": [
+   "F:test/local-guard.test.ts › public name resolving to ::1 is local"
+  ],
+  "ran": [
+   "F:4 files/16 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "R4": {
+  "red": true,
+  "failed": [
+   "F:test/local-guard.test.ts › literal 127.0.0.1, [::1], localhost., box.local are local without resolving"
+  ],
+  "ran": [
+   "F:4 files/16 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "R5": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:4 files/16 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "R6": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:4 files/16 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "R7": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:4 files/16 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "R8": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:4 files/16 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "R9": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:4 files/16 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "R10": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:4 files/16 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "S1": {
+  "red": true,
+  "failed": [
+   "F:test/sites/navigation.test.ts › main frame: the site and its subdomains are followed, the rest blocked",
+   "F:test/sites/navigation.test.ts › main frame: a sign-in domain is followed"
+  ],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 2,
+  "s": 1
+ },
+ "S2": {
+  "red": true,
+  "failed": [
+   "F:test/sites/navigation.test.ts › openings: the site in the app, sign-in in a small window, the rest blocked",
+   "F:test/sites/navigation.test.ts › test mode: a local host's http allowed; a public host's http always refused"
+  ],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 2,
+  "s": 1
+ },
+ "S3": {
+  "red": true,
+  "failed": [
+   "F:test/sites/navigation.test.ts › credentials in the address: always blocked, even toward the site",
+   "F:test/sites/navigation.test.ts › test mode: a local host's http allowed; a public host's http always refused"
+  ],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 2,
+  "s": 1
+ },
+ "S4": {
+  "red": true,
+  "failed": [
+   "F:test/sites/navigation.test.ts › http: never outside test mode, even toward the site",
+   "F:test/sites/navigation.test.ts › test mode: a local host's http allowed; a public host's http always refused"
+  ],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 2,
+  "s": 1
+ },
+ "S5": {
+  "red": true,
+  "failed": [
+   "F:test/sites/navigation.test.ts › local addresses: refused outside test mode, even if a list contains them"
+  ],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "S6": {
+  "red": true,
+  "failed": [
+   "K:test/sites/urls.test.ts › hostInSite exact, subdomain, case-insensitive, trailing dot"
+  ],
+  "ran": [
+   "K:1 files/24 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "S7": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "S8": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "S9": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "S10": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "S11": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "S12": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "K:1 files/24 tests",
+   "F:2 files/13 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "T1": {
+  "red": true,
+  "failed": [
+   "F:test/site-frames.test.ts › frameMemory refused to a sub-frame, the sign-in window, a page off the site, without the grant, and a non-object request"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "T2": {
+  "red": true,
+  "failed": [
+   "F:test/site-frames.test.ts › frameMemory refused to a sub-frame, the sign-in window, a page off the site, without the grant, and a non-object request"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "T3": {
+  "red": true,
+  "failed": [
+   "F:test/site-frames.test.ts › frameMemory the view's main page: relayed with the app's id and the page's relative address",
+   "F:test/site-frames.test.ts › frameMemory refused to a sub-frame, the sign-in window, a page off the site, without the grant, and a non-object request"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 2,
+  "s": 3
+ },
+ "T4": {
+  "red": true,
+  "failed": [
+   "F:test/site-frames.test.ts › frameInjection without the grant: null; about:blank and about:srcdoc get nothing; a page off the site gives its frames nothing"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "T5": {
+  "red": true,
+  "failed": [
+   "F:test/site-frames.test.ts › frameInjection the sign-in window (same container, another <browser>) and an ordinary tab get nothing",
+   "F:test/site-frames.test.ts › frameInjection an app essential's tab is found by its <browser> beside the window's view; an unregistered browser is not",
+   "F:test/site-frames.test.ts › the tweaks' console keeps the app's tweak errors relayed from its view, never another app's nor the sign-in window's"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 3,
+  "s": 2
+ },
+ "T6": {
+  "red": true,
+  "failed": [
+   "F:test/site-frames.test.ts › the tweaks' console keeps the app's tweak errors relayed from its view, never another app's nor the sign-in window's"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "T7": {
+  "red": true,
+  "failed": [
+   "F:test/site-frames.test.ts › inheritedProfile an app essential's container only for the app's own pages; other profiles and about:blank are kept"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "T8": {
+  "red": true,
+  "failed": [
+   "F:(hang: killed after 60 s)"
+  ],
+  "ran": [
+   "F:? files/? tests"
+  ],
+  "count": 1,
+  "s": 60
+ },
+ "T9": {
+  "red": true,
+  "failed": [
+   "F:test/site-frames.test.ts › framePosition and frameResume refused without grant, for a frame the resume does not go into, outside the view, off the site, or a malformed message"
+  ],
+  "ran": [
+   "F:2 files/31 tests"
+  ],
+  "count": 1,
+  "s": 2
+ },
+ "U1": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network the UI's loads: http, https, ws and wss are refused whatever the host, 127.0.0.1 and localhost included; nothing escapes the net"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U2": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network chrome:, resource:, moz-extension:, data:, blob:, page-icon:, moz-remote-image: pass; a nested view-source: is judged by its inner URI"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U3": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network the UI's loads: http, https, ws and wss are refused whatever the host, 127.0.0.1 and localhost included; nothing escapes the net"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U4": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network a chain of UI-less chrome documents deeper than the walk's bound counts as the UI's (fails closed)"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U5": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network the policy rejects a UI load to the web and accepts the rest"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U6": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network the opening-request observer cancels a UI channel to the web, never another; the WebRTC refusal answers only the UI"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U7": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network a remote frame's load (content context) is the UI's by its top embedder's group or by a frames principal; a tab's is not"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U8": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network UI_PREFIXES holds the frames origin and none of the old per-frame prefixes",
+   "F:test/ui-network.test.ts › ui-network a dedicated worker's load is judged by its associated context; a load without any context by its principal (system too for WebTransport)"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 2,
+  "s": 0
+ },
+ "U9": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network the opening-request observer cancels a UI channel to the web, never another; the WebRTC refusal answers only the UI"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U10": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network a remote frame's WebRTC is denied through Firefox's peer connection blockers; a tab's is left alone"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U11": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network UI_PREFIXES holds the frames origin and none of the old per-frame prefixes"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U12": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network a frame's navigation, with neither loading document nor node, is the UI's by its target context's embedder, not its parent's",
+   "F:test/ui-network.test.ts › ui-network a dedicated worker's load is judged by its associated context; a load without any context by its principal (system too for WebTransport)"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 2,
+  "s": 0
+ },
+ "U13": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network a document is the UI's by its own address or an in-process ancestor's; browser.xhtml, a tab (even on a frames address) and a document-less chrome channel are not",
+   "F:test/ui-network.test.ts › ui-network a frame's navigation, with neither loading document nor node, is the UI's by its target context's embedder, not its parent's",
+   "F:test/ui-network.test.ts › ui-network a dedicated worker's load is judged by its associated context; a load without any context by its principal (system too for WebTransport)",
+   "F:test/ui-network.test.ts › ui-network the policy rejects a UI load to the web and accepts the rest"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 5,
+  "s": 0
+ },
+ "U14": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network the opening-request observer cancels a UI channel to the web, never another; the WebRTC refusal answers only the UI"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "U15": {
+  "red": true,
+  "failed": [
+   "F:test/ui-network.test.ts › ui-network the net failing to install: the policy refused, frames still load; the observer refused, no UI frame gets its src",
+   "F:test/ui-network.test.ts › ui-network the opening-request observer cancels a UI channel to the web, never another; the WebRTC refusal answers only the UI"
+  ],
+  "ran": [
+   "F:3 files/26 tests"
+  ],
+  "count": 2,
+  "s": 0
+ },
+ "V1": {
+  "red": true,
+  "failed": [
+   "F:test/relay.test.ts › relay only POST, and a non-ASCII bearer is a 401",
+   "F:test/relay.test.ts › relay token",
+   "F:test/relay.test.ts › relay the target is the one the session opened with",
+   "F:test/relay.test.ts › relay masks the key in errors"
+  ],
+  "ran": [
+   "F:1 files/14 tests"
+  ],
+  "count": 5,
+  "s": 1
+ },
+ "V2": {
+  "red": true,
+  "failed": [
+   "F:test/relay.test.ts › relay paths",
+   "F:test/relay.test.ts › relay claude: its own key in both headers, on its own paths",
+   "F:test/relay.test.ts › relay ollama: no key, no auth headers, inference paths only"
+  ],
+  "ran": [
+   "F:1 files/14 tests"
+  ],
+  "count": 3,
+  "s": 0
+ },
+ "V3": {
+  "red": true,
+  "failed": [
+   "F:test/relay.test.ts › relay only POST, and a non-ASCII bearer is a 401"
+  ],
+  "ran": [
+   "F:1 files/14 tests"
+  ],
+  "count": 1,
+  "s": 0
+ },
+ "V4": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:1 files/14 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "V5": {
+  "red": true,
+  "failed": [
+   "F:test/relay.test.ts › relay ollama: no key, no auth headers, inference paths only"
+  ],
+  "ran": [
+   "F:1 files/14 tests"
+  ],
+  "count": 1,
+  "s": 1
+ },
+ "W1": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:1 files/33 tests"
+  ],
+  "count": 0,
+  "s": 0
+ },
+ "W2": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:1 files/33 tests"
+  ],
+  "count": 0,
+  "s": 0
+ },
+ "W3": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:1 files/33 tests"
+  ],
+  "count": 0,
+  "s": 0
+ },
+ "W4": {
+  "red": false,
+  "failed": [],
+  "ran": [
+   "F:1 files/33 tests"
+  ],
+  "count": 0,
+  "s": 1
+ },
+ "X1": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › agent network secureNetwork fails closed: apply error, or a reachable probe"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 1,
+  "s": 5
+ },
+ "X2": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › agent network secureNetwork fails closed: apply error, or a reachable probe",
+   "K:test/container/workshop.test.ts › agent network a failed re-apply (domain removed) makes exec apply the rules again before it runs",
+   "K:test/container/workshop.test.ts › agent network exec secures the network first; a failed apply refuses the command"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 3,
+  "s": 5
+ },
+ "X3": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › agent network docker run carries the network, memory and proxy flags once each",
+   "K:test/container/workshop.test.ts › agent network the image hash covers the network module and the run flags version"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 2,
+  "s": 5
+ },
+ "X4": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › agent network docker run carries the network, memory and proxy flags once each",
+   "K:test/container/workshop.test.ts › agent network the image hash covers the network module and the run flags version"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 2,
+  "s": 5
+ },
+ "X5": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › agent network docker run carries the network, memory and proxy flags once each",
+   "K:test/container/workshop.test.ts › agent network the image hash covers the network module and the run flags version"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 2,
+  "s": 5
+ },
+ "X6": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › ensureStarted on absent: build if the image is missing then run with the right arguments"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 1,
+  "s": 5
+ },
+ "X7": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › ensureStarted on absent: build if the image is missing then run with the right arguments",
+   "K:test/container/workshop.test.ts › the published ports avoid Vite's (5173…): 5280-5299",
+   "K:test/container/workshop.test.ts › RESSAC_CONTAINER_PORTS gives the published range and tells it to the container; invalid falls back to 5280-5299"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 3,
+  "s": 5
+ },
+ "X8": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › agent network docker run carries the network, memory and proxy flags once each",
+   "K:test/container/workshop.test.ts › agent network the image hash covers the network module and the run flags version"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 2,
+  "s": 5
+ },
+ "X9": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › agent network docker run carries the network, memory and proxy flags once each",
+   "K:test/container/workshop.test.ts › agent network the image hash covers the network module and the run flags version"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 2,
+  "s": 5
+ },
+ "X10": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › agent network docker run carries the network, memory and proxy flags once each",
+   "K:test/container/workshop.test.ts › container engine the workshop's memory cap: 2.5 GiB under Docker, the engine's own on Ressac's machine"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 2,
+  "s": 5
+ },
+ "X11": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › agent network secureNetwork applies the rules with valid domains only, then probes"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 1,
+  "s": 5
+ },
+ "X12": {
+  "red": true,
+  "failed": [
+   "K:test/container/workshop.test.ts › agent network docker run carries the network, memory and proxy flags once each",
+   "K:test/container/workshop.test.ts › agent network the image hash covers the network module and the run flags version"
+  ],
+  "ran": [
+   "K:1 files/84 tests"
+  ],
+  "count": 2,
+  "s": 5
+ }
+}

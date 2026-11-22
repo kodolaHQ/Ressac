@@ -1,0 +1,131 @@
+
+ RUN  v5.1.0 <repo>/apps/firefox
+
+stdout | e2e/bench-b9-telemetry-capture.e2e.ts > P11–P14: first launch sends nothing until the notice; then errors; the second launch one session; the switch stops all of it
+[P12] error raised while the notice is still unanswered: SENT
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > I3: the sidebar (a UI document of the parent process) reaches no server through a wrapping scheme, but the stated moz-remote-image: limit
+[I3] sidebar hits: [ 'ui-remoteimage /x/img' ]
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H4: a frame navigating itself to a chrome:// page stays sandboxed, out of the parent, and unprivileged
+[H4] a chrome:// page: now at resource://ressac-frames-928054f653c2e2ef/widgets/bench/bench-nav-achromepage.ht (null principal true, webIsolated=resource://ressac-frames-928054f653c2e2ef)
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H4: a frame navigating itself to about:config stays sandboxed, out of the parent, and unprivileged
+[H4] about:config: now at resource://ressac-frames-928054f653c2e2ef/widgets/bench/bench-nav-aboutconfig.ht (null principal true, webIsolated=resource://ressac-frames-928054f653c2e2ef)
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H4: a frame navigating itself to about:preferences stays sandboxed, out of the parent, and unprivileged
+[H4] about:preferences: now at resource://ressac-frames-928054f653c2e2ef/widgets/bench/bench-nav-aboutprefere.h (null principal true, webIsolated=resource://ressac-frames-928054f653c2e2ef)
+
+stdout | e2e/bench-b9-telemetry-capture.e2e.ts > P2–P4 in the real app: what a scrubbed error still carries (each case reported; the first four are the claim)
+┌─────────┬───────────────────────────────────────────┬────────┬──────────────────────────────────────────────────────────┬──────────────┐
+│ (index) │ id                                        │ leaked │ value                                                    │ predictedRed │
+├─────────┼───────────────────────────────────────────┼────────┼──────────────────────────────────────────────────────────┼──────────────┤
+│ 0       │ 'https address'                           │ false  │ '[case 0] Error: load of <url> failed'                   │ false        │
+│ 1       │ 'file address'                            │ false  │ '[case 1] Error: cannot read <url>'                      │ false        │
+│ 2       │ 'home path'                               │ false  │ '[case 2] Error: ENOENT ~/…'                             │ false        │
+│ 3       │ 'quoted span'                             │ false  │ '[case 3] Error: unexpected "…" here'                    │ false        │
+│ 4       │ 'home path, lowercase'                    │ false  │ '[case 4] Error: ENOENT ~/…'                             │ true         │
+│ 5       │ 'address without a scheme'                │ false  │ '[case 5] Error: Domaine non déclaré : <host>'           │ true         │
+│ 6       │ 'address percent-encoded in about:reader' │ false  │ '[case 6] Error: <url> failed'                           │ true         │
+│ 7       │ 'e-mail address'                          │ false  │ '[case 7] Error: session of <email> expired'             │ true         │
+│ 8       │ 'LAN address'                             │ false  │ '[case 8] Error: Adresse locale refusée : <host> (<ip>)' │ true         │
+│ 9       │ 'quoted span after a French apostrophe'   │ false  │ `[case 9] Error: Impossible d'ouvrir "…"`                │ true         │
+│ 10      │ 'folder names under the home'             │ false  │ '[case 10] Error: ENOENT ~/…'                            │ true         │
+└─────────┴───────────────────────────────────────────┴────────┴──────────────────────────────────────────────────────────┴──────────────┘
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H4: a frame navigating itself to a resource:// file of Firefox stays sandboxed, out of the parent, and unprivileged
+[H4] a resource:// file of Firefox: now at resource://ressac-frames-928054f653c2e2ef/widgets/bench/bench-nav-aresourcefil.h (null principal true, webIsolated=resource://ressac-frames-928054f653c2e2ef)
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H4: a frame navigating itself to a file: address stays sandboxed, out of the parent, and unprivileged
+[H4] a file: address: now at resource://ressac-frames-928054f653c2e2ef/widgets/bench/bench-nav-afileaddress.h (null principal true, webIsolated=resource://ressac-frames-928054f653c2e2ef)
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H4: a frame navigating itself to a javascript: address stays sandboxed, out of the parent, and unprivileged
+[H4] a javascript: address: now at resource://ressac-frames-928054f653c2e2ef/widgets/bench/bench-nav-ajavascripta.h (null principal true, webIsolated=resource://ressac-frames-928054f653c2e2ef)
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H4: a frame navigating itself to a blob: document it made stays sandboxed, out of the parent, and unprivileged
+[H4] a blob: document it made: now at blob:null/4fe66db3-bf1d-4c05-a9fc-efcd594d9abe (null principal true, webIsolated=resource://ressac-frames-928054f653c2e2ef)
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H4: a frame cannot read another widget's copy, nor Ressac's own files, by fetch or XHR
+[H4] reads from a frame: [ 'refused', 'refused', 'refused', 'refused' ]
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H5 (measured): a web page that knows the token — can it embed or read a frame copy?
+[H5] actor in a web tab: no frame actor in a web tab (Error: javascript error: NotSupportedError: WindowGlobalPare)
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H5 (measured): a web page that knows the token — can it embed or read a frame copy?
+[H5] a web page holding the token: fetch refused | iframe error | script loaded
+
+stdout | e2e/bench-b7-frames-ui.e2e.ts > bench B7: frames and the UI, extra vectors > H6: a frame cannot show a dialog, lock the pointer, open a window or start a download
+[H6] {
+  alert: 'returned at once',
+  pointerLock: 'refused',
+  open: 'threw',
+  download: 'click scheduled'
+}
+
+ ✓ e2e/bench-b7-frames-ui.e2e.ts (13 tests) 32370ms
+   ✓ bench B7: frames and the UI, extra vectors (13)
+     ✓ I3: an agent-written frame reaches no server through a wrapping scheme (jar:, moz-remote-image:, view-source:, page-icon:, about:reader…), WebTransport or a data: document 3258ms
+     ✓ I3: the sidebar (a UI document of the parent process) reaches no server through a wrapping scheme, but the stated moz-remote-image: limit 3093ms
+     ✓ I3: a web page whose icon is a moz-remote-image: address wrapping the web makes the UI fetch nothing 3127ms
+     ✓ H4: a frame navigating itself to a chrome:// page stays sandboxed, out of the parent, and unprivileged 2507ms
+     ✓ H4: a frame navigating itself to about:config stays sandboxed, out of the parent, and unprivileged 2507ms
+     ✓ H4: a frame navigating itself to about:preferences stays sandboxed, out of the parent, and unprivileged 2509ms
+     ✓ H4: a frame navigating itself to a resource:// file of Firefox stays sandboxed, out of the parent, and unprivileged 2507ms
+     ✓ H4: a frame navigating itself to a file: address stays sandboxed, out of the parent, and unprivileged 2509ms
+     ✓ H4: a frame navigating itself to a javascript: address stays sandboxed, out of the parent, and unprivileged 2611ms
+     ✓ H4: a frame navigating itself to a blob: document it made stays sandboxed, out of the parent, and unprivileged 2507ms
+     ✓ H6: a frame cannot show a dialog, lock the pointer, open a window or start a download 1663ms
+stdout | e2e/bench-b7-agent-page.e2e.ts > B3: a navigation by script 1000 ms after one click (measured: leaves or not)
+[B3] 1000 ms after a click: LEFT
+
+stdout | e2e/bench-b7-agent-page.e2e.ts > B3: a navigation by script 4000 ms after one click (measured: leaves or not)
+[B3] 4000 ms after a click: LEFT
+
+stdout | e2e/bench-b9-telemetry-capture.e2e.ts > P17 (measured, not judged): the names a first launch resolves in 40 s
+[P17] names resolved by an idle first launch: [ 'firefox.settings.services.mozilla.com' ]
+
+ ✓ e2e/bench-b9-telemetry-capture.e2e.ts (5 tests) 67485ms
+   ✓ P11–P14: first launch sends nothing until the notice; then errors; the second launch one session; the switch stops all of it 18915ms
+   ✓ P13, P15: every field of a real error event; crash reports are off by default 1412ms
+   ✓ P2–P4 in the real app: what a scrubbed error still carries (each case reported; the first four are the claim) 1469ms
+   ✓ P16: an error from a web page, or from an actor running inside pages, is not reported 4391ms
+   ✓ P17 (measured, not judged): the names a first launch resolves in 40 s 41294ms
+stdout | e2e/bench-b7-agent-page.e2e.ts > B3: a navigation by script 7000 ms after one click does not leave
+[B3] 7000 ms after a click: stayed
+
+stdout | e2e/bench-b7-agent-page.e2e.ts > B3: one click lets a form POST leave at top level (measured: the stated click limit covers a body, not only an address)
+[B3] POST under a click: LEFT
+
+ ✓ e2e/bench-b7-agent-page.e2e.ts (27 tests) 100573ms
+   ✓ A10–A29: no subresource, script API, form, worker, hint header or window of an agent page reaches the web 8453ms
+   ✓ A2: an agent page reaches no other local service (a port outside the agent's range) 2123ms
+   ✓ A21: a redirect from the agent's own server to the web is not followed (image, frame, fetch; 301–308) 3120ms
+   ✓ B2: with no gesture, a top-level navigation by location does not leave 2620ms
+   ✓ B2: with no gesture, a top-level navigation by replace does not leave 2619ms
+   ✓ B2: with no gesture, a top-level navigation by assign does not leave 2622ms
+   ✓ B2: with no gesture, a top-level navigation by anchor does not leave 2616ms
+   ✓ B2: with no gesture, a top-level navigation by blank does not leave 2622ms
+   ✓ B2: with no gesture, a top-level navigation by form does not leave 2618ms
+   ✓ B2: with no gesture, a top-level navigation by redirect does not leave 2618ms
+   ✓ B2: with no gesture, a top-level navigation by meta does not leave 2618ms
+   ✓ A20: <meta refresh> and a Refresh response header to the web do not leave 6254ms
+   ✓ B5: a tab the agent opens on its own server, which answers 302 to the web, does not leave 3017ms
+   ✓ B4: an address-bar load of the agent's server, which answers 302 to the web, does not leave [PREDICTED RED] 3135ms
+   ✓ B3: a navigation by script 1000 ms after one click (measured: leaves or not) 3568ms
+   ✓ B3: a navigation by script 4000 ms after one click (measured: leaves or not) 6554ms
+   ✓ B3: a navigation by script 7000 ms after one click does not leave 9561ms
+   ✓ B3: one click lets a form POST leave at top level (measured: the stated click limit covers a body, not only an address) 2579ms
+   ✓ A27: a window the agent page opens (under a click) and writes into is still an agent page: its image and fetch do not leave 9689ms
+   ✓ A6: a clear-text GET to a CDN's name on another port does not leave [PREDICTED RED] 2648ms
+   ✓ A28: a CDN-hosted frame's own fetch and image do not leave 2640ms
+   ✓ A28: a CDN-hosted frame cannot navigate the tab to the web with no gesture (top) [PREDICTED RED] 3144ms
+   ✓ A28: a CDN-hosted frame cannot navigate the tab to the web with no gesture (anchor) [PREDICTED RED] 3140ms
+   ✓ A28: a CDN-hosted frame cannot navigate the tab to the web with no gesture (form) [PREDICTED RED] 3144ms
+   ✓ A31: no secret put in a host name is resolved (dns-prefetch, preconnect, prefetch, css, video, frame, beacon, EventSource, WebTransport, wss, POST, worker) 3671ms
+
+ Test Files  3 passed (3)
+      Tests  45 passed (45)
+   Start at  11:50:43
+   Duration  100.86s (tests 100%)
+
+JSON report written to <out>/bench-e2e4.json

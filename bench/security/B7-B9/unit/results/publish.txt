@@ -1,0 +1,25 @@
+publish.sh copy is byte-identical (69a292bc664ae3fa)
+setup:2: no matches found: <scratch>/pub/app/dist/*
+S0 control: signed MAR, nothing live -> rc=0: ==> Ressac 9.9.1 published. A tester's download link: pnpm run release:invite [uploads printed: 4]
+N1 unsigned MAR -> rc=1: publish: the MAR is not signed by our key [uploads printed: 0]
+N1 MAR signed by the backup certificate's key (dep2 in this harness) -> rc=0: ==> Ressac 9.9.1 published. A tester's download link: pnpm run release:invite [uploads printed: 4]
+N1 MAR signed by a key that is neither certificate -> rc=1: publish: the MAR is not signed by our key [uploads printed: 0]
+N1 signed MAR, one content byte flipped -> rc=1: publish: the MAR is not signed by our key [uploads printed: 0]
+N1 signed MAR, one signature byte flipped -> rc=1: publish: the MAR is not signed by our key [uploads printed: 0]
+N1 MAR with two signatures (ours + foreign) -> rc=1: publish: the MAR is not signed by our key [uploads printed: 0]
+N2 live feed 9.9.2, publishing 9.9.1 -> rc=1: publish: 9.9.2 is live, newer than 9.9.1: bump the version [uploads printed: 0]
+N2 live feed 9.9.1, publishing 9.9.1 (same version, feed only) -> rc=0: ==> Ressac 9.9.1 published. A tester's download link: pnpm run release:invite [uploads printed: 4]
+N2 live feed 9.9.0, publishing 9.9.1 -> rc=0: ==> Ressac 9.9.1 published. A tester's download link: pnpm run release:invite [uploads printed: 4]
+N2 live feed 0.1.9, publishing 0.1.10 -> rc=0: ==> Ressac 0.1.10 published. A tester's download link: pnpm run release:invite [uploads printed: 4]
+N2 live feed 0.1.10, publishing 0.1.9 -> rc=1: publish: 0.1.10 is live, newer than 0.1.9: bump the version [uploads printed: 0]
+N2 live feed with no version -> rc=1: publish: the live update.xml has no version (<host>/updates/benchbenchbenchbenchbench000/browser/Darwin_aarch64-gcc3/ressac/update.xml) [uploads printed: 0]
+N3 9.9.1 already up with another MAR -> rc=1: publish: 9.9.1 is already published with another MAR (<host>/updates/benchbenchbenchbenchbench000/releases/9.9.1/Ressac-9.9.1.mar): bump the version [uploads printed: 0]
+N3 9.9.1 already up with the same MAR -> rc=0: ==> Ressac 9.9.1 published. A tester's download link: pnpm run release:invite [uploads printed: 4]
+N4 update.xml for another version -> rc=1: publish: dist/update.xml is not for 9.9.1, run package again [uploads printed: 0]
+N4 update.xml for another key -> rc=1: publish: dist/update.xml was packaged with another RESSAC_UPDATE_KEY [uploads printed: 0]
+N4 update.xml whose hash and size are another file's -> rc=0: ==> Ressac 9.9.1 published. A tester's download link: pnpm run release:invite [uploads printed: 4]
+N4 release notes for another version -> rc=1: publish: the top entry of shared/release-notes.ts is not 9.9.1 [uploads printed: 0]
+N6 host answers 500 -> rc=1: publish: cannot tell whether 9.9.1 is already published (HTTP 500 on <host>/updates/benchbenchbenchbenchbench000/releases/9.9.1/Ressac-9.9.1.mar) [uploads printed: 0]
+N6 host unreachable -> rc=1: publish: cannot tell whether 9.9.1 is already published (HTTP 000 on http://127.0.0.1:9/updates/benchbenchbenchbenchbench000/releases/9.9.1/Ressac-9.9.1.mar)
+N4 bad key shape -> rc=1: publish: RESSAC_UPDATE_KEY must be 24 to 64 lowercase letters or digits
+N5 hooks exported, no dry-run, dummy DMG -> rc=1: publish: the DMG is not notarized (package with RESSAC_SIGN_IDENTITY and RESSAC_NOTARY_PROFILE) 

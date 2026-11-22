@@ -1,0 +1,1062 @@
+[
+ {
+  "id": "A1",
+  "input": "GET https://evil.example/?d=x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A1",
+  "input": "POST https://evil.example/?d=x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A2",
+  "input": "http://127.0.0.1:5301/x",
+  "outcome": "allow"
+ },
+ {
+  "id": "A2",
+  "input": "http://localhost:5319/x",
+  "outcome": "allow"
+ },
+ {
+  "id": "A2",
+  "input": "http://[::1]:5300/x",
+  "outcome": "allow"
+ },
+ {
+  "id": "A2",
+  "input": "http://127.9.9.9:5300/x",
+  "outcome": "allow"
+ },
+ {
+  "id": "A2",
+  "input": "http://127.0.0.1:5320/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A2",
+  "input": "http://127.0.0.1:5299/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A2",
+  "input": "http://127.0.0.1:11434/api/pull",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A2",
+  "input": "http://127.0.0.1:5279/mcp-external",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A2",
+  "input": "http://127.0.0.1/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A2",
+  "input": "https://127.0.0.1:5300/x",
+  "outcome": "allow"
+ },
+ {
+  "id": "A3",
+  "input": "http://127.0.0.1.nip.io:5300/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A3",
+  "input": "http://0.0.0.0:5300/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A3",
+  "input": "http://[::ffff:127.0.0.1]:5300/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A3",
+  "input": "http://2130706433:5300/",
+  "outcome": "allow"
+ },
+ {
+  "id": "A3",
+  "input": "http://0x7f.1:5300/",
+  "outcome": "allow"
+ },
+ {
+  "id": "A3",
+  "input": "http://localhost.:5300/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A3",
+  "input": "http://127.0.0.1:5300@evil.example/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A3",
+  "input": "http://192.168.1.10:5300/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A3",
+  "input": "http://evil.example:5300/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A3",
+  "input": "http://x.localhost:5300/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A3",
+  "input": "http://[::]:5300/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A4",
+  "input": "https://cdn.jsdelivr.net/npm/x",
+  "outcome": "allow"
+ },
+ {
+  "id": "A4",
+  "input": "https://unpkg.com/x",
+  "outcome": "allow"
+ },
+ {
+  "id": "A4",
+  "input": "https://cdnjs.cloudflare.com/x",
+  "outcome": "allow"
+ },
+ {
+  "id": "A4",
+  "input": "https://fonts.googleapis.com/css",
+  "outcome": "allow"
+ },
+ {
+  "id": "A4",
+  "input": "https://fonts.gstatic.com/x",
+  "outcome": "allow"
+ },
+ {
+  "id": "A4",
+  "input": "https://cdn.jsdelivr.net.evil.example/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A4",
+  "input": "https://evil.example/cdn.jsdelivr.net",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A4",
+  "input": "https://cdn.jsdelivr.net@evil.example/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A4",
+  "input": "https://unpkg.com./x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A4",
+  "input": "https://UNPKG.COM/x",
+  "outcome": "allow"
+ },
+ {
+  "id": "A4",
+  "input": "https://x.unpkg.com/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A4",
+  "input": "https://unpkg.com\\@evil.example/",
+  "outcome": "allow"
+ },
+ {
+  "id": "A4",
+  "input": "https://data.jsdelivr.com/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A4",
+  "input": "https://www.jsdelivr.net/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A5",
+  "input": "POST https://unpkg.com/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A5",
+  "input": "PUT https://unpkg.com/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A5",
+  "input": "HEAD https://unpkg.com/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A5",
+  "input": "OPTIONS https://unpkg.com/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A5",
+  "input": "get https://unpkg.com/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A5",
+  "input": "DELETE https://unpkg.com/x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A6",
+  "input": "GET http://unpkg.com/?d=secret",
+  "outcome": "allow"
+ },
+ {
+  "id": "A6",
+  "input": "GET http://unpkg.com:8080/?d=secret",
+  "outcome": "allow"
+ },
+ {
+  "id": "A6",
+  "input": "GET https://unpkg.com:8443/?d=secret",
+  "outcome": "allow"
+ },
+ {
+  "id": "A6",
+  "input": "GET http://cdn.jsdelivr.net/?d=secret",
+  "outcome": "allow"
+ },
+ {
+  "id": "A7",
+  "input": "ws://evil.example/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "wss://evil.example/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "ws://127.0.0.1:5300/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "wss://unpkg.com/",
+  "outcome": "allow"
+ },
+ {
+  "id": "A7",
+  "input": "ftp://evil.example/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "file:///etc/passwd",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "data:text/html,x",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "blob:http://127.0.0.1:5300/uuid",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "mailto:a@b.c?body=secret",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "slack://open?x=secret",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "about:blank",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "javascript:1",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A7",
+  "input": "not a url",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A8",
+  "input": "from \"https://evil.example:5300/\" -> GET https://evil.example/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A8",
+  "input": "from \"http://evil.example:5310/\" -> GET https://evil.example/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A8",
+  "input": "from \"http://127.0.0.1:5320/\" -> GET https://evil.example/",
+  "outcome": "allow"
+ },
+ {
+  "id": "A8",
+  "input": "from \"http://127.0.0.1/\" -> GET https://evil.example/",
+  "outcome": "allow"
+ },
+ {
+  "id": "A8",
+  "input": "from \"https://127.0.0.1:5300/\" -> GET https://evil.example/",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A8",
+  "input": "from \"about:blank\" -> GET https://evil.example/",
+  "outcome": "allow"
+ },
+ {
+  "id": "A8",
+  "input": "from \"\" -> GET https://evil.example/",
+  "outcome": "allow"
+ },
+ {
+  "id": "A8",
+  "input": "from \"null\" -> GET https://evil.example/",
+  "outcome": "allow"
+ },
+ {
+  "id": "A8",
+  "input": "from \"moz-nullprincipal:{x}?http://127.0.0.1:5300\" -> GET https://evil.example/",
+  "outcome": "allow"
+ },
+ {
+  "id": "B1",
+  "input": "top-level, no gesture, to the web",
+  "outcome": "cancel"
+ },
+ {
+  "id": "B1",
+  "input": "top-level, gesture, GET to the web",
+  "outcome": "allow"
+ },
+ {
+  "id": "B1",
+  "input": "top-level, gesture, POST to the web",
+  "outcome": "allow"
+ },
+ {
+  "id": "B1",
+  "input": "top-level, gesture, to another local port (Ollama)",
+  "outcome": "allow"
+ },
+ {
+  "id": "B1",
+  "input": "top-level, gesture, to a custom scheme",
+  "outcome": "allow"
+ },
+ {
+  "id": "B1",
+  "input": "subresource with gesture flag, to the web",
+  "outcome": "cancel"
+ },
+ {
+  "id": "A28",
+  "input": "top-level, no gesture, started by a CDN-hosted document (from = https://unpkg.com)",
+  "outcome": "allow"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://app.example/",
+  "outcome": "follow / open: in-app"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://sub.app.example/x",
+  "outcome": "follow / open: in-app"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://APP.EXAMPLE./",
+  "outcome": "follow / open: in-app"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://app.example:8443/",
+  "outcome": "follow / open: in-app"
+ },
+ {
+  "id": "E1-3",
+  "input": "http://app.example/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://app.example.evil.test/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://evilapp.example/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://app.example@evil.test/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://evil.test/app.example",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://evil.test#app.example",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://evil.test\\@app.example/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://app.example\\@evil.test/x",
+  "outcome": "follow / open: in-app"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://аpp.example/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://xn--pp-6kc.example/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://login.example/oauth",
+  "outcome": "follow / open: small-window"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://x.login.example/",
+  "outcome": "follow / open: small-window"
+ },
+ {
+  "id": "E1-3",
+  "input": "ftp://app.example/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "javascript:alert(1)",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "data:text/html,x",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "blob:https://app.example/uuid",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "view-source:https://app.example/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "about:blank",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "file:///etc/hosts",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://user:pw@app.example/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://127.0.0.1/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E1-3",
+  "input": "https://app.example%2eevil.test/",
+  "outcome": "block / open: block"
+ },
+ {
+  "id": "E4",
+  "input": "declared \"github.io\" -> https://attacker.github.io/",
+  "outcome": "follow"
+ },
+ {
+  "id": "E4",
+  "input": "declared \"co.uk\" -> https://evil.co.uk/",
+  "outcome": "follow"
+ },
+ {
+  "id": "E4",
+  "input": "declared \"com\" -> https://evil.com/",
+  "outcome": "follow"
+ },
+ {
+  "id": "E4",
+  "input": "declared \"\" -> https://evil.com/",
+  "outcome": "block"
+ },
+ {
+  "id": "E4",
+  "input": "declared \"*\" -> https://evil.com/",
+  "outcome": "block"
+ },
+ {
+  "id": "E4",
+  "input": "declared \"app.example/\" -> https://evil.com/",
+  "outcome": "block"
+ },
+ {
+  "id": "E4",
+  "input": "declared \".example\" -> https://evil.example/",
+  "outcome": "block"
+ },
+ {
+  "id": "I1",
+  "input": "import",
+  "outcome": "ReferenceError: Components is not defined"
+ },
+ {
+  "id": "H1",
+  "input": "CSP_WIDGET",
+  "outcome": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; require-trusted-types-for 'script'; trusted-types default"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered \"0.1.18\" in phase ready",
+  "outcome": "stale: dropped"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered \"0.1.17\" in phase ready",
+  "outcome": "stale: dropped"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered \"0.1.9\" in phase ready",
+  "outcome": "stale: dropped"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered \"0.1.19\" in phase ready",
+  "outcome": "kept"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered \"0.1.100\" in phase ready",
+  "outcome": "kept"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered null in phase ready",
+  "outcome": "kept"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered \"\" in phase ready",
+  "outcome": "kept"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered \"0.1.17\" in phase downloading",
+  "outcome": "stale: dropped"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered \"0.1.17\" in phase idle",
+  "outcome": "kept"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered \"0.1.17\" in phase checking",
+  "outcome": "kept"
+ },
+ {
+  "id": "L1",
+  "input": "running 0.1.18, offered \"0.1.17\" in phase failed",
+  "outcome": "kept"
+ },
+ {
+  "id": "L1",
+  "input": "plist 0.1.17",
+  "outcome": "0.1.17"
+ },
+ {
+  "id": "L1",
+  "input": "empty plist (no Updated.app)",
+  "outcome": "null"
+ },
+ {
+  "id": "L1",
+  "input": "plist with two version keys",
+  "outcome": "9.9.9"
+ },
+ {
+  "id": "L1",
+  "input": "binary plist (bplist00…)",
+  "outcome": "null"
+ },
+ {
+  "id": "L1",
+  "input": "signature error codes 16..24",
+  "outcome": "16:false 17:true 19:true 23:true 24:false"
+ },
+ {
+  "id": "P1",
+  "input": "error envelope (3 lines)",
+  "outcome": "{\"event_id\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"sent_at\":\"2026-11-21T00:00:00.000Z\"}\n{\"type\":\"event\"}\n{\"event_id\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"timestamp\":\"2026-11-21T00:00:00.000Z\",\"release\":\"0.1.18\",\"environment\":\"beta\",\"platform\":\"node\",\"sdk\":{\"name\":\"ressac\",\"version\":\"0.1.18\",\"settings\":{\"infer_ip\":\"never\"}},\"user\":{\"ip_address\":\"0.0.0.0\"},\"tags\":{\"source\":\"chrome\"},\"exception\":{\"values\":[{\"type\":\"TypeError\",\"value\":\"x is undefined\",\"stacktrace\":{\"frames\":[{\"function\":\"f\",\"filename\":\"chrome://browser/content/ressac/store.sys.mjs\",\"lineno\":10,\"colno\":5}]}}]}}"
+ },
+ {
+  "id": "P1",
+  "input": "session envelope (3 lines)",
+  "outcome": "{\"sent_at\":\"2026-11-21T00:00:00.000Z\"}\n{\"type\":\"session\"}\n{\"sid\":\"SESSION-UUID\",\"did\":\"INSTALL-UUID\",\"init\":true,\"started\":\"2026-11-21T00:00:00.000Z\",\"timestamp\":\"2026-11-21T00:00:00.000Z\",\"status\":\"exited\",\"duration\":0,\"errors\":0,\"attrs\":{\"release\":\"0.1.18\",\"environment\":\"beta\",\"ip_address\":\"0.0.0.0\"}}"
+ },
+ {
+  "id": "P1",
+  "input": "endpoints",
+  "outcome": "{\"envelopeUrl\":\"https://sentry.invalid/api/42/envelope/?sentry_key=publickey&sentry_version=7\",\"minidumpUrl\":\"https://sentry.invalid/api/42/minidump/?sentry_key=publickey\"}"
+ },
+ {
+  "id": "P2",
+  "input": "failed https://mail.example.com/inbox?user=marie#x",
+  "outcome": "failed <url>"
+ },
+ {
+  "id": "P2",
+  "input": "failed http://192.168.1.12:8080/admin",
+  "outcome": "failed <url>"
+ },
+ {
+  "id": "P2",
+  "input": "ws://chat.example/room/42",
+  "outcome": "<url>"
+ },
+ {
+  "id": "P2",
+  "input": "WSS://CHAT.EXAMPLE/room",
+  "outcome": "<url>"
+ },
+ {
+  "id": "P2",
+  "input": "file:///Users/marie/Documents/impots.pdf",
+  "outcome": "<url>"
+ },
+ {
+  "id": "P2",
+  "input": "blob:https://bank.example/uuid",
+  "outcome": "<url>"
+ },
+ {
+  "id": "P2",
+  "input": "data:text/plain;base64,c2VjcmV0",
+  "outcome": "<url>"
+ },
+ {
+  "id": "P2",
+  "input": "view-source:https://bank.example/compte",
+  "outcome": "view-source:<url>"
+ },
+ {
+  "id": "P2",
+  "input": "ftp://files.example/secret.txt",
+  "outcome": "ftp://files.example/secret.txt"
+ },
+ {
+  "id": "P2",
+  "input": "moz-extension://1b2c/popup.html?tab=bank",
+  "outcome": "moz-extension://1b2c/popup.html?tab=bank"
+ },
+ {
+  "id": "P2",
+  "input": "about:reader?url=https%3A%2F%2Fbank.example%2Fcompte%2F12345",
+  "outcome": "about:reader?url=https%3A%2F%2Fbank.example%2Fcompte%2F12345"
+ },
+ {
+  "id": "P2",
+  "input": "https%3A%2F%2Fbank.example%2Fcompte%2F12345",
+  "outcome": "https%3A%2F%2Fbank.example%2Fcompte%2F12345"
+ },
+ {
+  "id": "P2",
+  "input": "bank.example/compte/12345?iban=FR76",
+  "outcome": "bank.example/compte/12345?iban=FR76"
+ },
+ {
+  "id": "P2",
+  "input": "host bank.example refused",
+  "outcome": "host bank.example refused"
+ },
+ {
+  "id": "P2",
+  "input": "192.168.1.12:8080",
+  "outcome": "192.168.1.12:8080"
+ },
+ {
+  "id": "P2",
+  "input": "marie.dupont@example.fr",
+  "outcome": "marie.dupont@example.fr"
+ },
+ {
+  "id": "P2",
+  "input": "mailto:marie.dupont@example.fr",
+  "outcome": "mailto:marie.dupont@example.fr"
+ },
+ {
+  "id": "P2",
+  "input": "url_https://bank.example/x",
+  "outcome": "url_https://bank.example/x"
+ },
+ {
+  "id": "P2",
+  "input": "x=https://bank.example/x",
+  "outcome": "x=<url>"
+ },
+ {
+  "id": "P2",
+  "input": "https://bank.example/mes comptes/12345",
+  "outcome": "<url> comptes/12345"
+ },
+ {
+  "id": "P2",
+  "input": "https://fr.wiki.example/Compte_(marie)/secret",
+  "outcome": "<url>)/secret"
+ },
+ {
+  "id": "P2",
+  "input": "{\"url\":\"https:\\/\\/bank.example\\/compte\"}",
+  "outcome": "{\"url\":\"https:\\/\\/bank.example\\/compte\"}"
+ },
+ {
+  "id": "P2",
+  "input": "chrome://browser/content/ressac/x.js",
+  "outcome": "chrome://browser/content/ressac/x.js"
+ },
+ {
+  "id": "P2",
+  "input": "resource://ressac-frames-abcdef0123456789/widgets/meteo/index.html",
+  "outcome": "resource://ressac-frames-abcdef0123456789/widgets/meteo/index.html"
+ },
+ {
+  "id": "P2",
+  "input": "sftp://marie@nas.local/prive",
+  "outcome": "sftp://marie@nas.local/prive"
+ },
+ {
+  "id": "P2",
+  "input": "tel:+33612345678",
+  "outcome": "tel:+33612345678"
+ },
+ {
+  "id": "P2",
+  "input": "magnet:?xt=urn:btih:abc",
+  "outcome": "magnet:?xt=urn:btih:abc"
+ },
+ {
+  "id": "P2",
+  "input": "Domaine non déclaré : intranet.client-secret.example",
+  "outcome": "Domaine non déclaré : intranet.client-secret.example"
+ },
+ {
+  "id": "P2",
+  "input": "Adresse locale refusée : nas.local (192.168.1.12)",
+  "outcome": "Adresse locale refusée : nas.local (192.168.1.12)"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /Users/marie/Ressac/x.ts",
+  "outcome": "~/Ressac/x.ts"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /Users/marie",
+  "outcome": "~"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie/\"  /Users/marie/x",
+  "outcome": "~/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /Users/marieX/x",
+  "outcome": "/Users/marieX/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /Users/marie.bak/x",
+  "outcome": "/Users/marie.bak/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /Users/marie-pro/x",
+  "outcome": "/Users/marie-pro/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /users/marie/x",
+  "outcome": "/users/marie/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /USERS/MARIE/x",
+  "outcome": "/USERS/MARIE/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/andré\"  /Users/andré/x (decomposed accent)",
+  "outcome": "/Users/andré/x (decomposed accent)"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie dupont\"  /Users/marie%20dupont/x",
+  "outcome": "/Users/marie%20dupont/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  \\/Users\\/marie\\/x",
+  "outcome": "\\/Users\\/marie\\/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /Volumes/Data/Users/marie/x",
+  "outcome": "/Volumes/Data~/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /System/Volumes/Data/Users/marie/x",
+  "outcome": "/System/Volumes/Data~/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  user marie logged",
+  "outcome": "user marie logged"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /Volumes/ClientSecret/contrat-acme.pdf",
+  "outcome": "/Volumes/ClientSecret/contrat-acme.pdf"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /Users/marie/Ressac/Espace Banque/projet-divorce/app.js",
+  "outcome": "~/Ressac/Espace Banque/projet-divorce/app.js"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /private/var/folders/ab/cd/T/ressac-marie/x",
+  "outcome": "/private/var/folders/ab/cd/T/ressac-marie/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  ~marie/x",
+  "outcome": "~marie/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"/Users/marie\"  /Users/Shared/marie/x",
+  "outcome": "/Users/Shared/marie/x"
+ },
+ {
+  "id": "P3",
+  "input": "home=\"\"  /Users/marie/x (home unknown)",
+  "outcome": "/Users/marie/x (home unknown)"
+ },
+ {
+  "id": "P4",
+  "input": "unexpected \"motdepasse123\" here",
+  "outcome": "unexpected \"…\" here"
+ },
+ {
+  "id": "P4",
+  "input": "open 'secret.pdf' failed",
+  "outcome": "open \"…\" failed"
+ },
+ {
+  "id": "P4",
+  "input": "bad `token-abc`",
+  "outcome": "bad \"…\""
+ },
+ {
+  "id": "P4",
+  "input": "refus de « dossier-secret »",
+  "outcome": "refus de \"…\""
+ },
+ {
+  "id": "P4",
+  "input": "Impossible d'ouvrir 'contrat-acme.pdf'",
+  "outcome": "Impossible d\"…\"contrat-acme.pdf'"
+ },
+ {
+  "id": "P4",
+  "input": "can't read 'contrat-acme.pdf'",
+  "outcome": "can\"…\"contrat-acme.pdf'"
+ },
+ {
+  "id": "P4",
+  "input": "l'utilisateur n'a pas accès à 'contrat-acme.pdf'",
+  "outcome": "l\"…\"a pas accès à \"…\""
+ },
+ {
+  "id": "P4",
+  "input": "bad “contrat-acme” value",
+  "outcome": "bad “contrat-acme” value"
+ },
+ {
+  "id": "P4",
+  "input": "bad ‘contrat-acme’ value",
+  "outcome": "bad ‘contrat-acme’ value"
+ },
+ {
+  "id": "P4",
+  "input": "bad \"contrat\nacme\" value",
+  "outcome": "bad \"contrat\nacme\" value"
+ },
+ {
+  "id": "P4",
+  "input": "bad \"contrat-acme value",
+  "outcome": "bad \"contrat-acme value"
+ },
+ {
+  "id": "P4",
+  "input": "bad (contrat-acme) value",
+  "outcome": "bad (contrat-acme) value"
+ },
+ {
+  "id": "P4",
+  "input": "bad <contrat-acme> value",
+  "outcome": "bad <contrat-acme> value"
+ },
+ {
+  "id": "P4",
+  "input": "bad contrat-acme value",
+  "outcome": "bad contrat-acme value"
+ },
+ {
+  "id": "P4",
+  "input": "Unexpected token 'h', \"hello wor\"... is not valid JSON",
+  "outcome": "Unexpected token \"…\", \"…\"... is not valid JSON"
+ },
+ {
+  "id": "P4",
+  "input": "ENOENT: no such file or directory, open '/Users/marie/Ressac/Banque/releve.csv'",
+  "outcome": "ENOENT: no such file or directory, open \"…\""
+ },
+ {
+  "id": "P4",
+  "input": "ENOENT: no such file or directory, open /Users/marie/Ressac/Banque/releve.csv",
+  "outcome": "ENOENT: no such file or directory, open ~/Ressac/Banque/releve.csv"
+ },
+ {
+  "id": "P4",
+  "input": "xxxxxxxxxxxxxxxxxxxx…(307 chars)",
+  "outcome": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx SECRET-AF"
+ },
+ {
+  "id": "P5",
+  "input": "frames kept",
+  "outcome": "[{\"function\":\"async secretFunctionName\",\"filename\":\"webpack://marie-projet/./src/secret.ts\",\"lineno\":1,\"colno\":1},{\"function\":\"Object.<anonymous>\",\"filename\":\"node:internal/x\",\"lineno\":1,\"colno\":1},{\"function\":\"m\",\"filename\":\"bank.example/app.js\",\"lineno\":1,\"colno\":1},{\"function\":\"anonymous\",\"filename\":\"moz-extension://1b2c/bg.js line 3 > eval\",\"lineno\":1,\"colno\":1},{\"function\":\"k\",\"filename\":\"/users/marie/x.js\",\"lineno\":1,\"colno\":1},{\"function\":\"?\",\"filename\":\"/Volumes/ClientSecret/x.js\",\"lineno\":7,\"colno\":8},{\"function\":\"lireReleveDeMarie\",\"filename\":\"~/Ressac/Banque/releve.js\",\"lineno\":5,\"colno\":6},{\"function\":\"h\",\"filename\":\"<url>\",\"lineno\":3,\"colno\":4},{\"function\":\"g\",\"filename\":\"<url>\",\"lineno\":1,\"colno\":2},{\"function\":\"f\",\"filename\":\"chrome://browser/content/ressac/store.sys.mjs\",\"lineno\":10,\"colno\":5}]"
+ },
+ {
+  "id": "P5",
+  "input": "60 frames in -> frames out",
+  "outcome": "50"
+ },
+ {
+  "id": "P6",
+  "input": "type holding private text",
+  "outcome": "Error in 'contrat-acme.pdf' at <url> for marie.dupont@example.fr"
+ },
+ {
+  "id": "P7",
+  "input": "not consented: one error + the launch session",
+  "outcome": "posts=0, install id=undefined"
+ },
+ {
+  "id": "P7",
+  "input": "consent given later: the SAME early error reported again",
+  "outcome": "posts=1 (the refused report was not remembered as seen: true)"
+ },
+ {
+  "id": "P9",
+  "input": "session after consent",
+  "outcome": "{\"sid\":\"NEW-ID\",\"did\":\"NEW-ID\",\"init\":true,\"started\":\"2026-11-21T19:53:16.239Z\",\"timestamp\":\"2026-11-21T19:53:16.239Z\",\"status\":\"exited\",\"duration\":0,\"errors\":0,\"attrs\":{\"release\":\"0.1.18\",\"environment\":\"beta\",\"ip_address\":\"0.0.0.0\"}}"
+ },
+ {
+  "id": "P9",
+  "input": "session URL",
+  "outcome": "https://sentry.invalid/api/42/envelope/?sentry_key=publickey&sentry_version=7"
+ },
+ {
+  "id": "P8",
+  "input": "switch off mid-session: next error",
+  "outcome": "posts added=0"
+ },
+ {
+  "id": "P8",
+  "input": "100 distinct errors in one launch",
+  "outcome": "posts added=29"
+ },
+ {
+  "id": "P10",
+  "input": "no DSN",
+  "outcome": "posts added=0"
+ },
+ {
+  "id": "P10",
+  "input": "DSN https://k@evil.example/1",
+  "outcome": "{\"envelopeUrl\":\"https://evil.example/api/1/envelope/?sentry_key=k&sentry_version=7\",\"minidumpUrl\":\"https://evil.example/api/1/minidump/?sentry_key=k\"}"
+ },
+ {
+  "id": "P10",
+  "input": "DSN http://k@127.0.0.1:9000/1",
+  "outcome": "{\"envelopeUrl\":\"http://127.0.0.1:9000/api/1/envelope/?sentry_key=k&sentry_version=7\",\"minidumpUrl\":\"http://127.0.0.1:9000/api/1/minidump/?sentry_key=k\"}"
+ },
+ {
+  "id": "P10",
+  "input": "DSN https://k@sentry.invalid/1/extra",
+  "outcome": "rejected"
+ },
+ {
+  "id": "P10",
+  "input": "DSN https://sentry.invalid/1",
+  "outcome": "rejected"
+ },
+ {
+  "id": "P10",
+  "input": "DSN javascript://k@x/1",
+  "outcome": "rejected"
+ }
+]

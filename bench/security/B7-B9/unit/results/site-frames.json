@@ -1,0 +1,92 @@
+[
+ {
+  "id": "F5",
+  "input": "main document on the app's domain, granted",
+  "outcome": "passed to the host: {\"id\":\"app\",\"url\":\"/page\",\"op\":\"set\",\"key\":\"k\",\"value\":\"v\"}"
+ },
+ {
+  "id": "F5",
+  "input": "an iframe of the app page (same domain)",
+  "outcome": "denied ({\"ok\":false,\"error\":\"Mémoire de l'appli : seulement depuis l)"
+ },
+ {
+  "id": "F5",
+  "input": "an iframe on another domain",
+  "outcome": "denied ({\"ok\":false,\"error\":\"Mémoire de l'appli : seulement depuis l)"
+ },
+ {
+  "id": "F5",
+  "input": "main document off the domains (a sign-in page)",
+  "outcome": "denied ({\"ok\":false,\"error\":\"Mémoire de l'appli : seulement depuis l)"
+ },
+ {
+  "id": "F5",
+  "input": "main document, look-alike domain",
+  "outcome": "denied ({\"ok\":false,\"error\":\"Mémoire de l'appli : seulement depuis l)"
+ },
+ {
+  "id": "F5",
+  "input": "main document, grant still required",
+  "outcome": "denied ({\"ok\":false,\"error\":\"Mémoire de l'appli : seulement depuis l)"
+ },
+ {
+  "id": "F5",
+  "input": "no open app for this frame (a tab, a sign-in window)",
+  "outcome": "denied ({\"ok\":false,\"error\":\"Mémoire de l'appli : seulement depuis l)"
+ },
+ {
+  "id": "F5",
+  "input": "main document, about:blank",
+  "outcome": "denied ({\"ok\":false,\"error\":\"Mémoire de l'appli : seulement depuis l)"
+ },
+ {
+  "id": "F5",
+  "input": "main document, data: document",
+  "outcome": "denied ({\"ok\":false,\"error\":\"Mémoire de l'appli : seulement depuis l)"
+ },
+ {
+  "id": "F5",
+  "input": "request that names another app's id and address",
+  "outcome": "passed to the host: {\"id\":\"app\",\"url\":\"/page\",\"op\":\"set\",\"key\":\"k\",\"value\":\"v\"}"
+ },
+ {
+  "id": "F5",
+  "input": "request not an object",
+  "outcome": "denied ({\"ok\":false,\"error\":\"Mémoire de l'appli : seulement depuis l)"
+ },
+ {
+  "id": "F2",
+  "input": "siteOfFrame: a frame whose top <browser> is not the app's view",
+  "outcome": "no app"
+ },
+ {
+  "id": "F2",
+  "input": "siteOfFrame: a throwing WindowGlobalParent",
+  "outcome": "no app"
+ },
+ {
+  "id": "F4",
+  "input": "console message from own tweak source",
+  "outcome": "kept (4 chars)"
+ },
+ {
+  "id": "F4",
+  "input": "console message from another app's tweak source",
+  "outcome": "dropped"
+ },
+ {
+  "id": "F4",
+  "input": "console message from a look-alike id (app2)",
+  "outcome": "dropped"
+ },
+ {
+  "id": "F4",
+  "input": "console message from a web source",
+  "outcome": "dropped"
+ },
+ {
+  "id": "F4",
+  "input": "console message from a 1 MB text",
+  "outcome": "kept (2000 chars)"
+ }
+]
