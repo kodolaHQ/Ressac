@@ -3,7 +3,7 @@ import dns from "node:dns";
 import { networkInterfaces, type NetworkInterfaceInfo } from "node:os";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { checkUrl, fetch, localUrl, onOwnNetwork } from "../../src/workflows/access.js";
+import { checkUrl, fetch, localUrl, lookupWithoutLocal, onOwnNetwork } from "../../src/workflows/access.js";
 
 test.each([
   "198.18.0.1", "198.19.249.3", // benchmarking range, OrbStack's machines
@@ -11,6 +11,8 @@ test.each([
   "[2002:7f00:1::]", "[2002:c0a8:101::1]", // 6to4: a v4 address inside
   "[2001:0:4136:e378:8000:63bf:3fff:fdd2]", // Teredo
   "10.1.2.3", "172.16.0.1", "169.254.1.1", "100.64.0.1", "0.0.0.0", "224.0.0.1", "[fd12::1]", "[fe80::1]",
+  "[::ffff:127.0.0.1]", "[64:ff9b::7f00:1]", // v4-mapped, NAT64 of a v4
+  "LOCALHOST", // a caller that did not lowercase
 ])("local by its text: %s", (host) => expect(localUrl(host)).toBe(true));
 
 test.each(["198.20.0.1", "8.8.8.8", "[2a00:1450:4007:80e::200e]", "[2001:db8::1]", "example.com"])("not local by its text: %s", (host) =>
@@ -69,6 +71,59 @@ test("a name that resolves to this machine's own global IPv6 address is refused 
     await expect(fetch(`http://piege.example:${(server.address() as AddressInfo).port}/`, "text", null, false)).rejects.toThrow("Adresse locale refusée");
   } finally {
     resolution.mockRestore();
+    server.close();
+  }
+});
+
+test("checkUrl allows http(s) only", () => {
+  for (const raw of ["file:///etc/passwd", "ftp://example.com/x"]) expect(() => checkUrl(raw, null, false)).toThrow("Seules les URL http(s)");
+});
+
+test("a name with one public and one local address is refused", async () => {
+  const resolution = vi.spyOn(dns, "lookup").mockImplementation(((_h: string, _o: unknown, callback: (e: null, a: dns.LookupAddress[]) => void) =>
+    callback(null, [{ address: "93.184.216.34", family: 4 }, { address: "127.0.0.1", family: 4 }])) as unknown as typeof dns.lookup);
+  try {
+    const err = await new Promise((ok) => lookupWithoutLocal("piege.example", { all: true }, ok));
+    expect(String(err)).toContain("Adresse locale refusée");
+  } finally {
+    resolution.mockRestore();
+  }
+});
+
+async function serve(handler: Parameters<typeof createServer>[1]) {
+  const server = createServer(handler);
+  await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+  return { server, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+}
+
+test("a sixth redirect is refused", async () => {
+  // /0 → /1 … /6 → 200: six redirects, one more than allowed.
+  const { server, url } = await serve((q, res) => {
+    const n = Number(q.url!.slice(1));
+    if (n < 6) res.writeHead(302, { location: `/${n + 1}` }).end();
+    else res.end("ANSWER");
+  });
+  try {
+    await expect(fetch(`${url}/0`, "text", null, true)).rejects.toThrow("Trop de redirections");
+  } finally {
+    server.close();
+  }
+});
+
+test("a body over 5 MB is refused, streamed without content-length or announced by it", async () => {
+  const big = Buffer.alloc(5 * 1024 * 1024 + 1);
+  const { server, url } = await serve((q, res) => {
+    // Announced: the headers alone, the body never comes (only the early refusal answers).
+    if (q.url === "/announced") return res.writeHead(200, { "content-length": String(big.length) }).flushHeaders();
+    res.writeHead(200, { "transfer-encoding": "chunked" });
+    res.end(big);
+  });
+  try {
+    await expect(fetch(`${url}/streamed`, "text", null, true)).rejects.toThrow("Réponse trop grande");
+    // The stop only bounds a regression (the read would wait for the 20 s delay).
+    await expect(fetch(`${url}/announced`, "text", null, true, AbortSignal.timeout(3000))).rejects.toThrow("Réponse trop grande");
+  } finally {
+    server.closeAllConnections();
     server.close();
   }
 });
