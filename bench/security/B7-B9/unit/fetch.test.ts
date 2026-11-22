@@ -15,7 +15,7 @@ let lookups: string[] = [];
 
 // The machine's own global IPv6 address: the only non-private address a local test server can bind.
 const gua = Object.values(os.networkInterfaces()).flat().find((a) => a && a.family === "IPv6" && !a.internal && /^[23]/.test(a.address))?.address;
-const mask = (s: string) => (gua ? s.split(gua).join("<mac-global-v6>") : s);
+const mask = (s: string | undefined) => (gua && s ? s.split(gua).join("<mac-global-v6>") : String(s));
 
 const table: Record<string, () => { address: string; family: number }[]> = {};
 (dns as any).lookup = (host: string, options: any, cb: any) => {

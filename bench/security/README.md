@@ -133,7 +133,7 @@ apps/firefox/node_modules/.bin/vitest run --root bench/security/B7-B9/unit --glo
 ```
 
 **A Mac with a built Ressac** (the Firefox engine built with `surfer`, then `build:ui`; see `apps/firefox/README.md`):
-- `B7-B9/e2e/*.e2e.ts`: copy each into `apps/firefox/e2e/`, run it with the e2e config, remove it (steps in `B7-B9/REPORT.md`). Tests marked `PREDICTED RED` were findings at 0.1.20.
+- `B7-B9/e2e/*.e2e.ts`: copy each into `apps/firefox/e2e/`, run it with the e2e config, remove it (steps in `B7-B9/REPORT.md`). Tests marked `PREDICTED RED` were findings at 0.1.20. They were run on 2026-11-22 on the branch that fixed them, and passed there; that run's output was not kept, so rerun them to see it.
 - `B7-B9/unit/publish-harness.sh`: needs `RESSAC_ENGINE_OBJ` (a built engine's `obj-aarch64-apple-darwin`) and test MAR archives signed with throwaway keys by the engine's `certutil`, `mar` and `signmar`. The steps that made them were not scripted.
 
 **A Mac that can run the agent VM** (Apple Silicon, the pinned Lima and Podman from `apps/firefox/scripts/vm-tools.sh`, the VM image the app downloads):

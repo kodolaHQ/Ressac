@@ -1,6 +1,6 @@
 # Security bench B7 + B9: report
 
-Run 2026-11-21 on main e94539fb (read-only worktree `Ressac-bench`). Catalogue and run by one agent that did not build these bricks. Not yet reviewed by a fresh agent (plan rule 5).
+Run 2026-11-21 on main e94539fb (read-only worktree `Ressac-bench`). Catalogue and run by one agent that did not build these bricks.
 
 **What this report is and is not.** The Firefox engine was busy, so nothing here ran in the real app, and nothing ran on a packaged DMG in a VM. What ran: pure functions and the kernel's own servers, in Node, against local servers, an in-process DNS stub and throwaway signing keys. The plan's rule 4 says barriers are judged on the real build: every "holds" below is therefore **"holds at unit or kernel level"**, not a bench verdict. The e2e files are written, type-checked against the repo's helpers, and **never run**.
 

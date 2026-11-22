@@ -2,7 +2,7 @@
 
 [SECURITY.md](../SECURITY.md) lists what Ressac promises: what the agent can reach, what stops it from sending your data out, and how updates and telemetry behave. In November 2026 we checked every one of those promises, brick by brick, before testers or attackers would. This page explains how, what held, what broke and what is still untested.
 
-In short: the bench found 9 bypasses, all fixed (one in part, with what stays open written in SECURITY.md). It ran on Ressac 0.1.20, on the 21st and 22nd of November 2026; the fixes ship in 0.1.21.
+In short: the bench found 8 bypasses, all fixed (one in part, with what stays open written in SECURITY.md). It ran on Ressac 0.1.20, on the 21st and 22nd of November 2026; the fixes ship in 0.1.21.
 
 ## Why
 
@@ -27,17 +27,17 @@ So we stopped trusting how our protections looked on paper and tested each one.
 
 ## Results, measured on 0.1.20
 
-We removed each guard on purpose to check that our tests would catch it: 43 were not caught, and each now has a test that fails without it. Attacking each brick found 9 bypasses, all fixed.
+We removed each guard on purpose to check that our tests would catch it: 43 were not caught, and each now has a test that fails without it. Attacking each brick found 8 bypasses, all fixed; the reviews of the fixes found 2 more of the same kind, fixed too.
 
 | Brick | What was attacked | Result |
 |---|---|---|
 | Do the tests test? | 297 mutations over 31 security files | 223 caught; 43 guards could be removed with every test green. Each now has a test that fails without it, except one that turned out to change nothing. |
 | The agent's network | direct TCP, UDP, ICMP, IPv6, raw sockets, the allowlist proxy (CONNECT, plain HTTP, IP literals, names resolving to private addresses), the Mac's ports | **0 bypass** |
 | VM and container isolation | mounts, home folder, SSH keys and agent, forwarded ports, capabilities, cgroup limits, user namespaces, the image and agent binaries, `.ressac` read-only, planted links | **0 bypass** |
-| What the agent reaches in the browser | 134 attacks on the MCP server: tokens, consent, private spaces, history, the exact-address rule, recaps, sensitive sites | **4 bypasses**, fixed (one partly) |
+| What the agent reaches in the browser | attacks on the MCP server (134 written for this row and the next two): tokens, consent, private spaces, history, the exact-address rule, recaps, sensitive sites | **3 bypasses**, fixed (one partly) |
 | The agent cannot change its own rules | managed settings, instruction files, skills, hooks, auto-memory, npm scripts, in Claude and Codex | **1 bypass**, fixed |
 | Keys and relay | key exposure, token swap, paths, methods, engines | **0 bypass**, 1 limit written |
-| Pages and apps the agent builds; Ressac's interface | 152 attacks: agent pages, site apps, widget frames, the kernel's fetch, the design server | **3 bypasses**, fixed |
+| Pages and apps the agent builds; Ressac's interface | 152 attacks written for this row and the next, about 69 run in Node, the rest in the real app after the fixes: agent pages, site apps, widget frames, the kernel's fetch, the design server | **3 bypasses**, fixed |
 | Updates and telemetry | signing with throwaway keys, version checks, publishing, the error scrub in the real app | **1 bypass** (the scrub), fixed; limits written |
 
 ## What broke, and what we did (found on 0.1.20, fixed in 0.1.21)
