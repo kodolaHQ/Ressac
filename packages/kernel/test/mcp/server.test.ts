@@ -2755,7 +2755,7 @@ test("a composed address carrying read data gets a danger line, outside and duri
   }, { outflow: new Outflow(), tabs: [github, mailTab], address: true });
 });
 
-test("a sensitive tab asks again once per search, and not outside one", async () => {
+test("a sensitive tab asks again once per search, and not before any search", async () => {
   await withSearch(async ({ call, fake, search, policy }) => {
     const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;
     policy.grant(gmail);
@@ -3180,4 +3180,52 @@ test("a sensitive tab and the history ask again during another window's search, 
     await call("search_history", { query: "h" });
     expect(cards()).toBe(1);
   }, { withUserData: true });
+});
+
+test("after a search ends (a final recap, the idle delay), a sensitive tab and the history ask again once, until the conversation ends", async () => {
+  const plan = { blocks: [{ component: "cards", props: { items: "items", title: "name", link: "url" } }] };
+  await withSearch(async ({ call, fake, policy, search }) => {
+    const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;
+    policy.grant(gmail);
+    await call("search_web", { query: "x" });
+    await call("read_tab", { id: "gmail" });
+    expect(asks()).toBe(1);
+    await call("show_recap", { title: "Vélos", results: { items: [{ name: "A", url: "https://exemple.fr/a" }] }, plan });
+    // The final recap closed the search tab; the browser reports it (the fake bridge does not).
+    expect(fake.calls.some((x) => x.method === "search.close")).toBe(true);
+    search.tabClosed("search-1");
+    expect(search.runningTabs()).toEqual([]);
+    await call("read_tab", { id: "gmail" });
+    expect(asks()).toBe(2);
+    // Once after that search, not at every read.
+    await call("read_tab", { id: "gmail" });
+    expect(asks()).toBe(2);
+    // A new search asks again during it, and after it.
+    await call("search_web", { query: "y" });
+    await call("read_tab", { id: "gmail" });
+    expect(asks()).toBe(3);
+    search.stop("search-2");
+    await call("read_tab", { id: "gmail" });
+    expect(asks()).toBe(4);
+  }, { allow: true, tabs: [github, gmail], recaps: true });
+  await withSearch(async ({ call, fake, policy, search }) => {
+    const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;
+    const cards = () => fake.calls.filter((x) => x.method === "askWidgetData").length;
+    policy.grant(gmail);
+    policy.grantHistory();
+    await call("search_web", { query: "x" });
+    await vi.waitFor(() => expect(search.runningTabs()).toEqual([]), { timeout: 2000 });
+    await call("search_history", { query: "h" });
+    expect([asks(), cards()]).toEqual([0, 1]);
+    // A new conversation forgets the search: the tab, granted again, reads with no card.
+    policy.reset();
+    policy.grant(gmail);
+    await call("read_tab", { id: "gmail" });
+    expect(asks()).toBe(0);
+    // In the old one it would have asked.
+    await call("search_web", { query: "z" });
+    await vi.waitFor(() => expect(search.runningTabs()).toEqual([]), { timeout: 2000 });
+    await call("read_tab", { id: "gmail" });
+    expect(asks()).toBe(1);
+  }, { allow: true, tabs: [github, gmail], withUserData: true, idleMs: 50 });
 });

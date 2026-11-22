@@ -1,6 +1,13 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.22",
+    date: "novembre 2026",
+    items: [
+      "Sécurité : après une recherche de l'agent, vos sites sensibles (messagerie, banque, impôts, santé…), votre historique et vos favoris redemandent votre accord une fois de plus, jusqu'à la fin de la conversation, comme pendant la recherche.",
+    ],
+  },
+  {
     version: "0.1.21",
     date: "novembre 2026",
     items: [
