@@ -382,3 +382,28 @@ test("a shared tab is shared only on the site it was shared on", () => {
   p.tabNavigated(github.id, github.url);
   expect(p.sharedByUser(github.id, github.url)).toBe(true);
 });
+
+test("opaque origins (data:, about:blank, file:) are never granted: they would all share « null »", () => {
+  for (const url of ["data:text/html,<p>x", "about:blank", "file:///etc/passwd"]) {
+    const tab: TabInfo = { id: url, title: "", url, space: "perso" };
+    p.grant(tab);
+    expect(p.canRead(tab), url).toBe(false);
+  }
+});
+
+test("an interaction from a site app window gives it no origin permission", () => {
+  p.userInteraction(vidola);
+  expect(p.state()[vidola.id]?.read).not.toBe(true);
+});
+
+test("a site app served on an agent port is never marked built", () => {
+  const q = new AccessPolicy({ portBuilt: () => true });
+  const local: TabInfo = { ...vidola, url: "http://localhost:5300/" };
+  q.built(local);
+  expect(q.isBuilt(local)).toBe(false);
+});
+
+test("dev rights hold for the origin they were granted on only", () => {
+  p.grantDev(github, ["console"], []);
+  expect(p.devRights({ ...github, url: "https://evil.test/" })).toEqual([]);
+});
