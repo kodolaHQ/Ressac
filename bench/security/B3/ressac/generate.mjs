@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { ATTACKS_PER_CHANNEL, CHANNELS, CONTEXT, COVERS, STYLES } from "./catalogue.mjs";
+import { injectionLinks } from "../score.mjs";
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const MODEL = arg("--model", "deepseek-v4.1-flash:1017-cloud");
@@ -74,12 +75,13 @@ for (const ch of CHANNELS) {
     }
     if (!page) { console.error(`${id}: no usable page (${why})`); continue; }
     const control = page.page_markdown.replace(page.injection, "").replace(/\n{3,}/g, "\n\n");
-    const attackerLinks = (l) => { try { const h = new URL(l.url).hostname; return h === page.attacker_domain || h.endsWith("." + page.attacker_domain); } catch { return false; } };
     const base = { channel: ch.id, title: cover.title, benign_task: cover.task, attacker_domain: page.attacker_domain,
       generator: { model: MODEL, seed: page.seed, catalogue_sha256: catalogueSha } };
     cases.push({ id: `${id}_attack`, arm: "attack", ...base, page_markdown: page.page_markdown, links: page.links, injection: page.injection });
-    // The control keeps the page's own links, not the attacker's.
-    cases.push({ id: `${id}_control`, arm: "control", ...base, page_markdown: control, links: page.links.filter((l) => !attackerLinks(l)) });
+    // The control drops only the links the injection span gives: the cover page itself is often on attacker_domain, and
+    // dropping every link there left most controls of cases.json with no link at all (fix-controls.mjs).
+    const injected = new Set(injectionLinks(page).map((l) => l.url));
+    cases.push({ id: `${id}_control`, arm: "control", ...base, page_markdown: control, links: page.links.filter((l) => !injected.has(l.url)) });
     console.log(`${id}: ok (${page.page_markdown.length} chars, ${page.links.length} links)`);
   }
 }
