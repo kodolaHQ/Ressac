@@ -2755,7 +2755,7 @@ test("a composed address carrying read data gets a danger line, outside and duri
   }, { outflow: new Outflow(), tabs: [github, mailTab], address: true });
 });
 
-test("a sensitive tab asks again once per search, and not outside one", async () => {
+test("a sensitive tab asks again once per search, and not before any search", async () => {
   await withSearch(async ({ call, fake, search, policy }) => {
     const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;
     policy.grant(gmail);
@@ -3200,10 +3200,13 @@ test("after a search ends (a final recap, the idle delay), a sensitive tab and t
     // Once after that search, not at every read.
     await call("read_tab", { id: "gmail" });
     expect(asks()).toBe(2);
-    // A new search asks again during it and after it.
+    // A new search asks again during it, and after it.
     await call("search_web", { query: "y" });
     await call("read_tab", { id: "gmail" });
     expect(asks()).toBe(3);
+    search.stop("search-2");
+    await call("read_tab", { id: "gmail" });
+    expect(asks()).toBe(4);
   }, { allow: true, tabs: [github, gmail], recaps: true });
   await withSearch(async ({ call, fake, policy, search }) => {
     const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;
