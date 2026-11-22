@@ -37,9 +37,18 @@ test("api keys, private keys and JWTs", () => {
     "xoxb-1234-5678-abcd",
     "AKIAIOSFODNN7EXAMPLE",
     "AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY",
+    // Built at run time, like the keys above: a push-protection scanner must not take the fixtures for real keys.
+    "glpat" + "-xK9mQ2rT7vW4yZ1bN6cD",
+    "shpat" + "_" + "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    "dop" + "_v1_" + "4f6e2a9c1b8d7e3f5a0c2b4d6e8f1a3c5b7d9e0f2a4c6b8d0e1f3a5c7b9d2e4f",
+    "shpss" + "_" + "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    "dor" + "_v1_" + "4f6e2a9c1b8d7e3f5a0c2b4d6e8f1a3c5b7d9e0f2a4c6b8d0e1f3a5c7b9d2e4f",
   ]) {
     expect(findSecrets(`ma clé ${key} merci`), key).toEqual([{ kind: "api-key", value: key }]);
   }
+  // A sentence's final dot is not part of the token.
+  const gl = "glpat" + "-xK9mQ2rT7vW4yZ1bN6cD";
+  expect(findSecrets(`voici ${gl}.`)).toEqual([{ kind: "api-key", value: gl }]);
   expect(kinds("-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----")).toEqual(["private-key"]);
   const jwt =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
