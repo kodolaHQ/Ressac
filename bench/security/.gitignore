@@ -2,7 +2,10 @@
 B0/out-*.json
 outflow/corpus.json
 outflow/corpus1bis.json
+outflow/corpus4.json
 outflow/corpus2/corpus2.json
 outflow/corpus3/corpus3.json
 outflow/corpus3/corpus3-nosink.json
 outflow/corpus3/src/
+B3/data/
+B3/out/

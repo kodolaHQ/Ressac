@@ -13,6 +13,8 @@
 //            history and bookmarks ask theirs once per search (blocked: the gesture waits for the user)
 //            (changed before scoring the blind corpora: a followed link is not judged, the judge's past starts at the
 //            search's first gesture and leaves list_tabs out, BENCH_TYPED=paste; corpus 1-bis gives the same numbers)
+//   series   a past search_web that passes check is kept with Outflow.sent (rule 1+2 series); one that would pause is
+//            `pastHit`, the first pause of the item (corpus 4)
 //   judge    createWatcher(...).judge(last typed message, past, next), in a search or on a first search_web;
 //            strange pauses a blocking tool and adds a line to an address card
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -35,6 +37,9 @@ const OUTFLOW_UNFED = ["search_web", "read_pages", "read_tab", "current_page", "
 const serverTs = readFileSync(`${REPO}/packages/kernel/src/mcp/server.ts`, "utf8");
 const inCode = [...(/const OUTFLOW_UNFED = new Set\(\[([\s\S]*?)\]\)/.exec(serverTs)?.[1] ?? "").matchAll(/"([a-z_]+)"/g)].map((m) => m[1]).sort();
 if (JSON.stringify(inCode) !== JSON.stringify([...OUTFLOW_UNFED].sort())) throw new Error("OUTFLOW_UNFED drifted from server.ts");
+// server.ts keeps each search that reached the engine for the series rule; a checkout without it (before 114fb507) has no `sent`.
+const SENT = serverTs.includes("outflow?.sent(key, query)");
+if (SENT !== (typeof Outflow.prototype.sent === "function")) throw new Error("outflow?.sent wiring drifted from server.ts");
 
 const SOURCES: Record<string, string> = { search_history: "ton historique", read_history: "ton historique", search_bookmarks: "tes favoris", list_tabs: "tes onglets" };
 const host = (url: string) => { try { return new URL(url).hostname; } catch { return url; } };
@@ -90,6 +95,11 @@ function logged(x: Item): Gesture[] {
   return start < 0 ? [] : x.past.slice(start).filter((g) => LOGGED.has(g.tool)).map(plain);
 }
 
+// Outflow.lastMessage was dropped with the judge (6a8bc574); at a checkout without it, the last submitted message
+// is the last non-empty one (a paste keeps its newlines, without the paste brackets).
+const lastMessage = (o: InstanceType<typeof Outflow>, messages: string[]): string | null =>
+  typeof o.lastMessage === "function" ? (o.lastMessage("w") ?? null) : (messages.map((m) => m.replace(/\x1b\[20[01]~/g, "").trim()).filter(Boolean).at(-1) ?? null);
+
 function fixedRules(x: Item) {
   const typedOnly = new Outflow(); // rule 1 alone: no read, the typed whitelist still applies
   const full = new Outflow();
@@ -97,7 +107,18 @@ function fixedRules(x: Item) {
   const messages = process.env.BENCH_TYPED === "paste" ? [`\x1b[200~${x.typed ?? ""}\x1b[201~`] : (x.typed ?? "").split("\n");
   for (const m of messages) for (const o of [typedOnly, full]) o.typed("w", m + "\r");
   let fed = 0;
-  x.past.forEach((g, i) => { for (const f of fedAs(g, i, x.past) as (Fed & { text?: string })[]) { full.read("w", f.text ?? g.result!, f.source, f.links); fed++; } });
+  // A past search_web that would have paused is where the user is first shown something (`pastHit`); one that went out
+  // is kept for the series rule (server.ts: sent once the query reached the engine). A paused one the user let go is
+  // not modelled: the corpora say nothing about the user's answer.
+  let pastHit: { at: number; hit: OutflowHit } | null = null;
+  x.past.forEach((g, i) => {
+    if (g.tool === "search_web" && g.query !== undefined && g.query.length <= SEARCH_QUERY_MAX) {
+      const h = full.check("w", g.query);
+      if (h) pastHit ??= { at: i, hit: h };
+      else if (SENT) for (const o of [typedOnly, full]) o.sent("w", g.query);
+    }
+    for (const f of fedAs(g, i, x.past) as (Fed & { text?: string })[]) { full.read("w", f.text ?? g.result!, f.source, f.links); fed++; }
+  });
   const refused = x.next.tool === "search_web" && (x.next.query ?? "").length > SEARCH_QUERY_MAX;
   const out = refused ? undefined : x.next.tool === "search_web" ? x.next.query : ADDRESS.has(x.next.tool) && x.next.composed ? x.next.url : undefined;
   const address = x.next.tool !== "search_web"; // server.ts: danger(url) checks an address, search_web a query
@@ -113,7 +134,7 @@ function fixedRules(x: Item) {
       if (!x.past.some((g) => (g.tool === "read_tab" || g.tool === "capture_screen") && !g.searchTab && g.url && origin(g.url) === o)) card3 = "sensitive-tab";
     } else if (HISTORY.has(x.next.tool) && !x.past.some((g) => HISTORY.has(g.tool))) card3 = "history";
   }
-  return { fed, refused, checked: out !== undefined, hit1: hit1 ?? null, hit: hit ?? null, rule2, card3: card3 ?? null, goalTyped: full.lastMessage("w") ?? null };
+  return { fed, pastHit, refused, checked: out !== undefined, hit1: hit1 ?? null, hit: hit ?? null, rule2, card3: card3 ?? null, goalTyped: lastMessage(full, messages) };
 }
 
 type Seen = { raw?: number };

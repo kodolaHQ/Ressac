@@ -5,7 +5,7 @@ The scripts, frozen attack catalogues, per-case results and reports behind [How 
 ## What this bench is, and is not
 
 - **It is** a test of each SECURITY.md claim, one brick at a time: does the network allowlist hold, does the container mount the home folder, does the MCP server refuse a token it should refuse, does a test go red when its guard is removed.
-- **It is not** an end-to-end prompt-injection rate. How often a hostile page actually makes data leave, through every layer at once with a real model, is brick **B3**. B3 has not been run, and nothing here estimates it.
+- **It is not** an end-to-end prompt-injection rate. How often a hostile page actually makes data leave, through every layer at once with a real model, is brick **B3** (`B3/`): built and wiring-tested on 0.1.22, not yet run with a model, so nothing here estimates it.
 - The outflow figure (51.5%) is one layer's detection rate on leaks that were forced to happen, replayed on recorded gestures. It is not a leak rate of the product.
 
 ## Method, short
@@ -33,7 +33,7 @@ Every brick ran on Ressac **0.1.20**, commit `e94539fb` (in `v0.1.21`'s history)
 | Outflow rules (replay) | `outflow/` | corpora below | `runner-outflow.mts` | Node + the repo at `c61a21f5`; corpus 3 needs two public git clones | caught the data in 1001/1944 = **51.5%** [49.3–53.7] of adapted attacks; paused 7/398 honest gestures |
 | VM trial of the fixes | `vm-trial/` | — | `drive.mts` | a Tart macOS VM and a signed DMG | 7/7 cases, controls included |
 
-B3 (end-to-end injection) is not here: not run yet.
+B3 (end-to-end injection, `B3/`): built and wiring-tested on `main` `e2d740b3` (0.1.22), 2026-11-22; **not yet run with a model on 0.1.22**. Rerun: `B3/run.mjs` (see `B3/README.md`); needs Node + the repo, the BrowseSafe++ train sample rebuilt by its scripts or a ressac cases file, and a Claude login or Ollama for the model runs.
 
 Per-case results:
 - B0: `results-run.json`, `results-related.json`, and the full table at the end of `REPORT.md`.
@@ -99,9 +99,12 @@ export RESSAC_WORKTREE=/tmp/ressac-c61
 BENCH_TYPED=paste $TSX runner-outflow.mts corpus3/corpus3-nosink.json /tmp/c3-nosink.json && node analyze-blind.mjs c3 corpus3/corpus3-nosink.json /tmp/c3-nosink.json
 $TSX runner-outflow.mts corpus2/corpus2.json /tmp/c2.json && node analyze-blind.mjs c2 corpus2/corpus2.json /tmp/c2.json
 $TSX runner-outflow.mts corpus1bis.json /tmp/1bis.json && node analyze-outflow.mjs corpus1bis.json /tmp/1bis.json
+# Corpus 4 (B3 holes), at the fix branch: unset RESSAC_WORKTREE (or point it at that checkout)
+node corpus4-build.mjs && shasum -a 256 -c corpus4.sha256
+$TSX runner-outflow.mts corpus4.json /tmp/c4.json && node analyze-corpus4.mjs corpus4.json /tmp/c4.json
 ```
 
-Expected: corpus 3 data only `check 1001` of 1944 (51.5%); corpus 2 `check 7`, `rule3 56` of 398; corpus 1-bis `check 38`, `rule3 88` of 341. Each run takes about a second. On `main` the runner stops (`lastMessage` is gone): it replays 0.1.19's wiring, not today's. `judge` mode also needs the removed judge, `RESSAC_LLAMA_SERVER` and the d1 model, which are not published.
+Expected: corpus 3 data only `check 1001` of 1944 (51.5%); corpus 2 `check 7`, `rule3 56` of 398; corpus 1-bis `check 38`, `rule3 88` of 341. Each run takes about a second. Without `lastMessage` (gone after 0.1.19) the runner takes the last typed line as the goal, so it also runs at a later commit; the wiring it replays is still `c61a21f5`'s plus the series rule (`Outflow.sent`, when `server.ts` calls it). `judge` mode also needs the removed judge, `RESSAC_LLAMA_SERVER` and the d1 model, which are not published.
 
 B0, the mutation run, on a clean checkout at the measured commit (about 40 min for all 297; pass ids to run a few):
 
@@ -144,6 +147,8 @@ apps/firefox/node_modules/.bin/vitest run --root bench/security/B7-B9/unit --glo
 
 ## Data and licences
 
+B3 samples **BrowseSafe++** (Perplexity, Chen et al., arXiv:2610.17457), <https://huggingface.co/datasets/perplexity-ai/browsesafe-plus-plus>, revision `7674843074bf3b36c0a0209dfd06e03cf47743dd`, train split only, CC BY 4.0. No page of it is copied here: `B3/select_cases.py` rebuilds the sample, and `B3/cases.sha256` is what it must give.
+
 Corpus 3 adapts two public benchmarks. Neither dataset is copied here: `corpus3/build.mjs` reads them from clones pinned to these commits.
 - **AgentDojo**, <https://github.com/ethz-spylab/agentdojo>, commit `089ed468cf3ed0322acc66b0211f26d9d90dbf60`. MIT License, Copyright (c) 2024 Edoardo Debenedetti, Jie Zhang, Mislav Balunovic, Luca Beurer-Kellner, Marc Fischer, and Florian Tramèr.
 - **InjecAgent**, <https://github.com/uiuc-kang-lab/InjecAgent>, commit `f19c9f2c79a41046eb13c03c51a24c567a8ffa07`. MIT License, Copyright (c) 2023 Qiusi Zhan.
@@ -154,7 +159,7 @@ The judge figure of `docs/security-testing.md` (87% of attacks let through) come
 
 ## Known limits of the bench
 
-- **No end-to-end number.** B3 is not run. Nothing here says how often Ressac leaks under a real injection.
+- **No end-to-end number.** B3 is built but not run with a model. Nothing here says how often Ressac leaks under a real injection.
 - **Two versions, one machine.** Each brick ran on 0.1.20, and B1-B2, B4-B6 and the B7-B9 e2e ran again on 0.1.22, all on one M5 Pro Mac. The 0.1.20 numbers are what was found; the 0.1.22 ones show the fixes hold.
 - **Not every attack ran.** B7-B9's report lists cases pending a VM or never written (« Not done »); those pending the engine are the e2e, run on 0.1.22. B1-B2's live-race attacks (DNS rebinding, CONNECT fronting) were argued from code. No brick tested the Docker fallback.
 - **B0 is first-order and unit-level.** 297 hand-picked mutations are not exhaustive, and 21 guards live only in Firefox: their e2e tests were named, not run.
