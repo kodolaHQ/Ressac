@@ -1,8 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { isLocalHost } from "../chrome/agent/local-guard";
+import { isLocalHost, localLiteral } from "../chrome/agent/local-guard";
 
 const resolver = (addresses: string[]) => vi.fn(async (_h: string) => addresses);
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => (vi.unstubAllEnvs(), vi.unstubAllGlobals()));
 
 it("public name resolving to ::1 is local", async () => {
   expect(await isLocalHost("localtest.me", resolver(["93.184.216.34", "::1"]))).toBe(true);
@@ -28,4 +28,21 @@ it("RESSAC_TEST_PUBLIC_ADDRESSES makes 127.0.0.1 public", async () => {
 it("a failed or empty resolution is refused (fail closed)", async () => {
   expect(await isLocalHost("down.example", vi.fn(async () => Promise.reject(new Error("NXDOMAIN"))))).toBe(true);
   expect(await isLocalHost("empty.example", resolver([]))).toBe(true);
+});
+
+it("in Firefox, RESSAC_TEST_PUBLIC_ADDRESSES is honoured under automation only", () => {
+  let automation = false;
+  vi.stubGlobal("__RESSAC_PACKAGED__", false);
+  vi.stubGlobal("Services", { env: { get: (n: string) => (n === "RESSAC_TEST_PUBLIC_ADDRESSES" ? "127.0.0.1" : "") } });
+  vi.stubGlobal("Cu", { get isInAutomation() { return automation; } });
+  vi.stubGlobal("Ci", { nsIMarionette: {} });
+  let marionette = false;
+  vi.stubGlobal("Cc", { "@mozilla.org/remote/marionette;1": { getService: () => ({ running: marionette }) } });
+  expect(localLiteral("127.0.0.1")).toBe(true);
+  automation = true;
+  expect(localLiteral("127.0.0.1")).toBe(false);
+  // Marionette running alone is automation too (the e2e tests).
+  automation = false;
+  marionette = true;
+  expect(localLiteral("127.0.0.1")).toBe(false);
 });

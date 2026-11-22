@@ -14,18 +14,42 @@ export function parseDsn(dsn: string): { envelopeUrl: string; minidumpUrl: strin
   };
 }
 
-// chrome:// and resource:// are not listed: they stay.
-const PRIVATE_URL = /\b(?:(?:https?|wss?|file):\/\/|blob:|data:)[^\s)'"<>]+/gi;
+// Every scheme but Ressac's own code (chrome://, resource://, moz-src://), which helps debugging and names nothing private.
+const PRIVATE_URL = /(?<![a-z0-9+.-])(?!(?:chrome|resource|moz-src):)(?:[a-z][a-z0-9+.-]*:\/\/|blob:|data:|mailto:|about:reader\?)[^\s)'"<>]+/gi;
+// The rest of a path, spaces included (« Espace Banque/projet/app.js »), up to a quote, a bracket or the line's end:
+// hiding a few words too many is fine, a folder name is not.
+const TAIL = String.raw`[^\n)'"<>]*`;
+// Folders of the Mac other than the home (another account, an external disk), and a path written from the home.
+const OTHER_PATH = new RegExp(String.raw`(?<![\w.-])(?:/(?:Users|Volumes|tmp|private|var)/|~/)` + TAIL, "g");
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export function scrub(text: string, home: string): string {
-  const t = text.replace(PRIVATE_URL, "<url>");
   const h = home.replace(/\/+$/, "");
-  // Only at a path boundary: /Users/marieX is someone else's folder.
-  return h ? t.replace(new RegExp(h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\w.-])", "g"), "~") : t;
+  let t = text.normalize("NFC");
+  if (h) {
+    // The home in any case and accent form (both sides composed), slashes JSON-escaped or not; only at a path boundary
+    // (/Users/marieX is someone else's folder). What follows it names the user's folders and files: it goes too.
+    // A slash may also be percent-encoded (an address that carries the path).
+    const slash = String.raw`(?:\\?/|%2f)`;
+    const form = escape(h.normalize("NFC")).replace(/\//g, slash);
+    t = t.replace(new RegExp(`${form}(?![\\w.-])(${slash}${TAIL})?`, "giu"), (_, rest) => (rest ? "~/…" : "~"));
+  }
+  return t.replace(OTHER_PATH, (p) => (p.startsWith("~/") ? "~/…" : "<path>")).replace(PRIVATE_URL, "<url>");
 }
 
-// A message may quote what it choked on (JSON.parse, a path, typed text): no quoted span leaves.
-const QUOTED = /"[^"\n]*?"|'[^'\n]*?'|`[^`\n]*?`|«[^»\n]*?»/g;
+// A message may quote what it choked on (JSON.parse, a path, typed text): no quoted span leaves. A single quote opens a
+// quote only after a non-letter: « d'ouvrir 'contrat.pdf' » quotes the file name, not « ouvrir ».
+const QUOTED = /"[^"\n]*?"|(?<![\p{L}\d])'[^'\n]*?'|`[^`\n]*?`|«[^»\n]*?»|“[^”\n]*?”|‘[^’\n]*?’/gu;
+// In a message only (frames keep their file and function names): e-mails, IPs, and names with a dot (a host, a file).
+// Each pattern starts only at a word's start: a match tried from every position of a long word is quadratic.
+const EMAIL = /(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
+// IPv6 bare: with « :: » or at least four colons, so a time (12:30:45) stays.
+const IP = /\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b|\[[0-9a-f:.]+\](?::\d+)?|(?<![\w:])(?=[0-9a-f:]*::|(?:[0-9a-f]{1,4}:){4})[0-9a-f:]{2,39}(?:%\w+)?(?![\w:])/gi;
+// A host by its last label, or by a port or path after it: « this.tabs is undefined » keeps the code name it is about.
+const TLD = "com|net|org|fr|io|dev|app|co|me|info|eu|de|uk|be|ch|ca|us|es|it|nl|example|test|local|internal|lan|home|corp";
+const HOST = new RegExp(String.raw`(?<![\w/.:@~<-])(?:[a-z0-9-]+\.)+(?:(?:${TLD})(?![\w-])|[a-z][a-z0-9-]*(?=[:/]))(?::\d+)?(?:/[^\s)'"<>]*)?`, "gi");
+// 300 characters are sent: the rest need not be scrubbed (a huge message would cost the chrome thread).
+const message = (t: string, home: string) => scrub(t.slice(0, 4000), home).replace(EMAIL, "<email>").replace(IP, "<ip>").replace(HOST, "<host>").replace(QUOTED, '"…"');
 
 const V8 = /^\s*at (?:(.*?) \()?(.*?):(\d+):(\d+)\)?\s*$/;
 const SPIDER = /^(.*?)@(.*?):(\d+):(\d+)\s*$/;
@@ -54,7 +78,7 @@ export function errorEnvelope(e: ReportedError, o: { release: string; home: stri
     // An explicit, unlocatable IP: Sentry keeps it instead of the sender's, so it derives no city.
     user: { ip_address: "0.0.0.0" },
     tags: { source: e.source },
-    exception: { values: [{ type: s(e.type), value: s(e.message).replace(QUOTED, '"…"').slice(0, 300), ...(frames.length ? { stacktrace: { frames } } : {}) }] },
+    exception: { values: [{ type: message(e.type, o.home), value: message(e.message, o.home).slice(0, 300), ...(frames.length ? { stacktrace: { frames } } : {}) }] },
   };
   return [{ event_id: o.eventId, sent_at: o.now.toISOString() }, { type: "event" }, event].map((x) => JSON.stringify(x)).join("\n");
 }

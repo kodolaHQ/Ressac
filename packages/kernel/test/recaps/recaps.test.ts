@@ -65,6 +65,17 @@ test("publish without id creates the file; links never seen and local addresses 
   expect(cards.items.map((c) => c.link?.url)).toEqual(["https://exemple.fr/a", null, null]);
 });
 
+test("a link read with credentials in it is never opened from a recap", async () => {
+  const { recaps, seen } = await setup();
+  seen.add(["https://u:p@exemple.fr/a", "https://exemple.fr/b"]);
+  const items = [{ name: "A", url: "https://u:p@exemple.fr/a", photo: "https://img.fr/a.jpg" }, { name: "B", url: "https://exemple.fr/b", photo: "https://img.fr/b.jpg" }];
+  const r = await recaps.publish({ title: "Vélos", results: { items }, plan, seen });
+  if (!r.ok) throw new Error(r.errors.join());
+  // The same recap opens the link without credentials: only the credentials keep the first one shut.
+  expect(await recaps.linkAllowed(r.id, "https://exemple.fr/b")).toBe(true);
+  expect(await recaps.linkAllowed(r.id, "https://u:p@exemple.fr/a")).toBe(false);
+});
+
 test("republish with the id keeps a link seen before, even with an empty seen list", async () => {
   const { recaps, seen } = await setup();
   const r = await recaps.publish({ title: "Vélos", results, plan, seen });

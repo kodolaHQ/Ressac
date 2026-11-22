@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { apply } from "../core/state/actions";
 import { initialState } from "../core/state/initial-state";
 import { loadSession, SessionRecorder } from "../core/state/persistence";
-import { isSignatureFailure, isStaleUpdate, plistVersion, showUpdateCard, updateCardTitle, updateDownloadUrl, updatePhase, updateStatusText } from "../core/update";
+import { dropUpdate, isSignatureFailure, isStaleUpdate, plistVersion, showUpdateCard, updateCardTitle, updateDownloadUrl, updatePhase, updateStatusText } from "../core/update";
 import type { BrowserState, UpdateShown } from "../shared/model";
 
 let n = 0;
@@ -74,6 +74,12 @@ describe("isStaleUpdate", () => {
     expect(isStaleUpdate("ready", "9.9.9", "0.1.8", compare)).toBe(false);
     expect(isStaleUpdate("ready", plistVersion(plist), "0.1.8", compare)).toBe(true);
     expect(plistVersion("")).toBeNull();
+  });
+  it("dropUpdate: a ready update offered as 9.9.9 whose staged app is 0.1.0 is dropped; a genuine one is shown", () => {
+    expect(dropUpdate("ready", "9.9.9", "0.1.0", "0.1.8", compare)).toBe(true);
+    expect(dropUpdate("ready", "0.1.5", null, "0.1.8", compare)).toBe(true);
+    expect(dropUpdate("ready", "0.1.9", "0.1.9", "0.1.8", compare)).toBe(false);
+    expect(dropUpdate("ready", "0.1.9", null, "0.1.8", compare)).toBe(false);
   });
   it("an unknown version or another phase is left alone", () => {
     expect(isStaleUpdate("ready", null, "0.1.6", compare)).toBe(false);

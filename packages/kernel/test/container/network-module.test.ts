@@ -26,6 +26,8 @@ describe("allowed", () => {
     expect(allowed("evil.com", BASE_DOMAINS)).toBe(false);
     expect(allowed("github.com.", BASE_DOMAINS)).toBe(true);
     expect(allowed("evilexample.com", ["*.example.com"])).toBe(false);
+    // An exact domain matches itself only, not a name ending with it.
+    expect(allowed("evilgithub.com", ["github.com"])).toBe(false);
   });
 });
 
@@ -34,7 +36,12 @@ test("rules", () => {
   const lines = text.trim().split("\n");
   expect(lines[0]).toBe("*filter");
   expect(lines.at(-1)).toBe("COMMIT");
-  expect(lines.at(-2)).toContain("REJECT");
+  // udp and tcp get a prompt refusal; the catch-all (ICMP, every other protocol) comes last.
+  expect(lines.slice(-4, -1)).toEqual([
+    "-A OUTPUT -p udp -j REJECT --reject-with icmp-port-unreachable",
+    "-A OUTPUT -p tcp -j REJECT --reject-with tcp-reset",
+    "-A OUTPUT -j REJECT",
+  ]);
   expect(text).toContain("-A OUTPUT -d 0.250.250.254/32 -p tcp --dport 5300 -j ACCEPT");
   expect(text).toContain("-A OUTPUT -d 0.250.250.254/32 -p tcp --dport 41000 -j ACCEPT");
   expect(text).toContain("-m owner --uid-owner ressac-proxy -j ACCEPT");
@@ -122,8 +129,32 @@ describe("proxy", () => {
   });
 
   test("localAddress: private, loopback, link-local and mapped ones; public ones pass", () => {
-    for (const [a, f] of [["10.1.2.3", 4], ["127.0.0.1", 4], ["192.168.65.254", 4], ["172.20.0.1", 4], ["169.254.169.254", 4], ["::1", 6], ["fd00::1", 6], ["fe80::1", 6], ["::ffff:10.0.0.1", 6]] as const) expect(localAddress(a, f), a).toBe(true);
+    for (const [a, f] of [["10.1.2.3", 4], ["127.0.0.1", 4], ["192.168.65.254", 4], ["172.20.0.1", 4], ["169.254.169.254", 4], ["100.64.0.1", 4], ["::1", 6], ["fd00::1", 6], ["fe80::1", 6], ["::ffff:10.0.0.1", 6]] as const) expect(localAddress(a, f), a).toBe(true);
     for (const [a, f] of [["93.184.216.34", 4], ["160.79.104.10", 4], ["2606:4700::1", 6]] as const) expect(localAddress(a, f), a).toBe(false);
+  });
+
+  test("plain HTTP to a host outside the list gets 403", async () => {
+    const { server, port } = await startProxy([443], 80);
+    const status = await new Promise<number>((resolve) => {
+      http.get({ host: "127.0.0.1", port, path: "http://evil.example/", headers: { host: "evil.example" } }, (r) => (r.resume(), resolve(r.statusCode ?? 0)));
+    });
+    expect(status).toBe(403);
+    server.close();
+  });
+
+  test("the shipped proxy (no options) refuses a name that resolves to a local address", async () => {
+    const server = createProxy(() => ["localhost"]);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const port = (server.address() as { port: number }).port;
+    const text = await new Promise<string>((resolve) => {
+      http.get({ host: "127.0.0.1", port, path: "http://localhost/", headers: { host: "localhost" } }, (r) => {
+        let t = "";
+        r.on("data", (c) => (t += c)).on("end", () => resolve(`${r.statusCode} ${t}`));
+      });
+    });
+    expect(text).toMatch(/^403 .*local or private address/);
+    server.close();
   });
 
   test("plain-HTTP forward: non-80 port and relative URI get 403", async () => {

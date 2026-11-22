@@ -43,6 +43,11 @@ export class SearchSessions {
     return s && { tabId: s.tabId, goal: s.goal };
   }
 
+  /** Every running search's tab, all windows. */
+  runningTabs(): string[] {
+    return [...this.byTab.keys()];
+  }
+
   start(window: string, tabId: string, goal: string): void {
     if (this.byWindow.has(window)) throw new Error("a search is already running in this window");
     if (this.byTab.has(tabId)) throw new Error("this tab already belongs to a search");

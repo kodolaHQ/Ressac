@@ -49,6 +49,8 @@ const CAPTURE = { capture: true } as const;
 const READ_PAGES_PAGE_MAX = 3_000;
 const reducedNote = (shown: number, total: number) => `(Page réduite : ${shown} passages sur ${total} ; read_tab avec full: true donne toute la page.)`;
 export const LINKS_HEADER = 'Liens (numérotés, les plus utiles d\'abord ; navigate accepte {"link": n}) :';
+/** A tab's last printed links, and whether they came from a page the agent writes (a local page, a site app). */
+type LinkList = { urls: string[]; written: boolean };
 const unknownLink = (n: number) => `Lien ${n} inconnu : relis l'onglet avec links: true.`;
 /** Every address a read makes free to follow: each link as read, and the target of an engine redirect. */
 const readUrls = (links: readonly { url: string }[] = []) => links.flatMap((l) => [l.url, unwrapLink(l.url)]);
@@ -430,7 +432,7 @@ function createToolsServer(
     asked: Set<string>;
   },
   /** Per tab, the addresses of the last numbered list printed (`navigate { link }`); outlives a request's server. */
-  listed = new Map<string, string[]>(),
+  listed = new Map<string, LinkList>(),
   /** Every address read, kernel-wide (a recap links only to these); outlives a request's server. */
   seen = new SeenUrls(),
   recaps?: Recaps,
@@ -443,6 +445,8 @@ function createToolsServer(
   const l10n = (id: string, args?: Record<string, string | number>) => say(locale(), id, args);
   const server = new McpServer({ name: "ressac", version: "0.1.0" });
   const key = win ?? MAIN_WINDOW;
+  /** Rules 1 and 2. The main token belongs to no window: it is checked against every window's reads. */
+  const checkOutflow = (out: string, address = false) => (win == null ? outflow?.checkAll(out, address) : outflow?.check(key, out, address));
   /** The outflow remembers the text a tool returns (rule 2). */
   const remember = (r: Result, source: string, links: boolean | readonly string[] = false) => outflow?.read(key, r.content.map((c) => (c.type === "text" ? c.text : "")).join("\n"), source, links);
   /** Per OUTFLOW_LINKS result, the addresses it may let the agent follow. */
@@ -532,7 +536,7 @@ function createToolsServer(
     const top = full ? ranked : ranked.slice(0, LINKS_SHOWN);
     if (withLinks) {
       listed.delete(o.id);
-      listed.set(o.id, top.map((l) => l.url));
+      listed.set(o.id, { urls: top.map((l) => l.url), written: !linksFollowable(o) });
       // Closed tabs leave their list: only the most recent are kept.
       if (listed.size > LISTS_KEPT) listed.delete(listed.keys().next().value!);
     }
@@ -664,22 +668,26 @@ function createToolsServer(
 
   /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks). */
   function danger(url: string): { danger?: string } {
-    const hit = outflow?.check(key, url, true);
+    const hit = checkOutflow(url, true);
     return hit ? { danger: OUTFLOW_DANGER(locale(), hit) } : {};
   }
 
   /**
    * Rule 3: during a search, a sensitive source asks its card again once per search, even if granted in the conversation.
-   * `ask` puts the card up under the key it is given. No search: true, nothing asked.
+   * Any window's search counts, whatever the token: another window's token (readable in the container) must not read around
+   * it. `ask` puts the card up under the key it is given. No search: true, nothing asked.
    */
   async function oncePerSearch(name: (searchTabId: string) => string, ask: (key: string) => Promise<boolean>): Promise<boolean> {
-    const cur = searching?.sessions.current(key);
-    if (!cur) return true;
-    const k = name(cur.tabId);
-    if (searching!.asked.has(k)) return true;
-    if (!(await ask(k))) return false;
-    searching!.asked.add(k);
-    searching!.sessions.onEnd(cur.tabId, () => searching!.asked.delete(k));
+    const tabs = searching?.sessions.runningTabs() ?? [];
+    const keys = tabs.map(name).filter((k) => !searching!.asked.has(k));
+    if (keys.length === 0) return true;
+    if (!(await ask(keys[0]!))) return false;
+    tabs.forEach((t) => {
+      const k = name(t);
+      if (searching!.asked.has(k)) return;
+      searching!.asked.add(k);
+      searching!.sessions.onEnd(t, () => searching!.asked.delete(k));
+    });
     return true;
   }
 
@@ -838,7 +846,8 @@ function createToolsServer(
     },
     protect(async ({ id, url: given, link, reason }, extra) => {
       if ((given === undefined) === (link === undefined)) return text("Donne soit `url`, soit `link`.", true);
-      const url = link === undefined ? given! : listed.get(id)?.[link];
+      const list = link === undefined ? undefined : listed.get(id);
+      const url = link === undefined ? given! : list?.urls[link];
       if (url === undefined) return text(unknownLink(link!), true);
       // The tab leaves this page (or stays, refused): its numbers would point into a page no longer shown.
       listed.delete(id);
@@ -881,8 +890,8 @@ function createToolsServer(
         return text(`Appli de site ${id} → ${url}`);
       }
       if (!(await access(o))) return text(DENIAL_TEXT);
-      // A link of a local page is the agent's own writing: it counts as composed.
-      const refusal = link === undefined || isLocal(o.url) ? await composedRefusal("navigate", url, reason, extra?.signal) : null;
+      // A link of a local page is the agent's own writing: it counts as composed, also once the tab has left that page.
+      const refusal = link === undefined || list?.written || isLocal(o.url) ? await composedRefusal("navigate", url, reason, extra?.signal) : null;
       if (refusal) return text(refusal);
       // An app's window never leaves its origin (it has no address bar): another site opens
       // in a tab, as with open_tab, and the agent keeps access to the window.
@@ -983,7 +992,7 @@ function createToolsServer(
           // A search read_pages started without a reason takes this goal.
           if (current && !current.goal) sessions.setGoal(current.tabId, goal);
           // Rule 1 and 2: a query carrying a secret or private data read earlier pauses before it reaches the engine.
-          const hit = outflow?.check(key, query);
+          const hit = checkOutflow(query);
           let o: TabInfo;
           if (current) {
             if (hit) {
@@ -1731,7 +1740,7 @@ export async function startMcpServer(o: {
   const requests: OngoingRequests = new Map();
   const chains = new Map<string, Promise<unknown>>();
   const asked = new Set<string>();
-  const listed = new Map<string, string[]>();
+  const listed = new Map<string, LinkList>();
   const seen = new SeenUrls();
   const dev: DevToolsOptions = {
     agent: o.agent ?? "L'agent",

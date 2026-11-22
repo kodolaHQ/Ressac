@@ -23,6 +23,7 @@ test.each([
   "https://MAIL.GOOGLE.COM/",
   "https://mail.google.com./",
   "https://MAIL.GOOGLE.COM.",
+  "https://www.paypal.com./", // the trailing dot, on a host the webmail rule does not catch
   "view-source:https://mail.google.com/",
   "blob:https://mail.google.com/0b1c-uuid",
   "view-source:view-source:https://mail.google.com/",
@@ -45,6 +46,13 @@ test.each([
   "https://mail.zoho.eu/zm/",
   "https://particuliers.sg.fr/icd/x",
   "about:reader?url=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2F0%2F",
+  // Encoded or parameterised segments load the same page on most servers.
+  "https://github.com/%73ettings/tokens",
+  "https://github.com/settings;a=1/tokens",
+  "https://github.com/x/settings%2Ftokens",
+  "https://example.com/%6Cogin",
+  "https://example.com/%256Cogin",
+  "https://example.com/ACCOUNT%2f",
   // Nesting past what is unwrapped fails closed.
   "view-source:view-source:view-source:view-source:https://www.marmiton.org/x",
 ])("sensitive: %s", (url) => expect(isSensitive(url)).toBe(true));
@@ -65,6 +73,10 @@ test.each([
   "view-source:https://www.marmiton.org/x",
   "about:reader?url=https%3A%2F%2Fwww.marmiton.org%2Fx",
   "https://www.mailchimp.com/",
+  // A literal percent sign is not a hidden segment.
+  "https://en.wikipedia.org/wiki/100%25_(film)",
+  "https://example.com/promo-50%25-off",
+  "https://example.com/a%2525zz",
   "not a url",
   "",
 ])("not sensitive: %s", (url) => expect(isSensitive(url)).toBe(false));

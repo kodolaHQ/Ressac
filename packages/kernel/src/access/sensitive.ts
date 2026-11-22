@@ -44,7 +44,7 @@ export function isSensitive(url: string, depth = 0): boolean {
   if (HOSTS.some((d) => host === d || host.endsWith("." + d))) return true;
   // a webmail on its own host (mail.ovh.net, webmail.gandi.net)
   if (/^(?:web)?mail\./.test(host)) return true;
-  const parts = u.pathname.toLowerCase().split("/").filter(Boolean);
+  const parts = decodedPath(u.pathname).split("/").map((p) => p.split(";")[0]!).filter(Boolean);
   // a Slack workspace (app. or <team>.), not Slack's own site or API docs
   if (host.endsWith(".slack.com") && host !== "www.slack.com" && host !== "api.slack.com") return true;
   if (/(^|\.)linkedin\.com$/.test(host) && parts[0] === "messaging") return true;
@@ -52,4 +52,12 @@ export function isSensitive(url: string, depth = 0): boolean {
   if (/(^|\.)amazon\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host) && ((parts[0] === "gp" && parts[1] === "your-account") || parts.includes("your-orders"))) return true;
   if (parts.some((p) => SEGMENTS.has(p))) return true;
   return parts.includes("billing") && !host.startsWith("docs.") && !parts.includes("docs");
+}
+
+/** The path as most servers route it: ASCII escapes undone (twice-encoded too), lower case. The segments checked are ASCII,
+ *  so a literal « %25 » or a non-ASCII escape stays as it is. */
+function decodedPath(path: string): string {
+  let p = path;
+  for (let i = 0; i < 3; i++) p = p.replace(/%([0-7][0-9a-f])/gi, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
+  return p.toLowerCase();
 }

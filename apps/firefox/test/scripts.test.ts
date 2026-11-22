@@ -107,6 +107,11 @@ describe("package.sh update archive", () => {
     expect(sh).toContain("warning: no MAR key or no RESSAC_UPDATE_KEY, packaging without an update archive");
   });
 
+  it("a MAR whose signature verifies with neither certificate is deleted and fails the build", () => {
+    const line = sh.split("\n").find((l) => l.includes("signmar -D $certs/dep1.der -v $mar"));
+    expect(line?.trim()).toMatch(/\|\| \{ rm -f \$mar; fail "the update archive's signature does not verify" \}$/);
+  });
+
   it("points the app's update feed at the secret folder through the AppUpdateURL policy, after the dev policy is gone and before signing", () => {
     const feed = at('feed="https://updates.getressac.app/updates/$update_key/browser/Darwin_aarch64-gcc3/ressac/update.xml"');
     expect(at("rm -f $res/distribution/policies.json")).toBeLessThan(feed);

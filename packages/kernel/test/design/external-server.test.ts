@@ -1,4 +1,5 @@
 import { request } from "node:http";
+import { Server } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -7,10 +8,10 @@ import { AccessPolicy } from "../../src/access/policy.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { startMcpServer, generateToken } from "../../src/mcp/server.js";
 import { UNREADABLE_WARNING, ExternalRegistry } from "../../src/design/external.js";
-import { Remarks, batchState, type DesignContext, type ReviewContext } from "../../src/design/remarks.js";
+import { Remarks, batchState, type Batch, type DesignContext, type ReviewContext } from "../../src/design/remarks.js";
 import { externalProject, type DesignFolders } from "../../src/design/projects.js";
 import {
-  NO_REMARK, PAGE_DATA_PREFIX, startExternalServer, undeclaredProject,
+  NO_REMARK, PAGE_DATA_PREFIX, renderBatches, startExternalServer, undeclaredProject,
 } from "../../src/design/external-server.js";
 import { tempFolder } from "../helpers/temp.js";
 import { mkdir } from "node:fs/promises";
@@ -355,6 +356,26 @@ describe("serveur MCP externe", () => {
     const ports = await call(c, "declare_project", { folder: folder, ports: [] });
     expect(ports.isError).toBe(true);
     expect(text(ports)).toContain("Entre 1 et 10 ports.");
+  });
+
+  test("the server listens on loopback only", async () => {
+    const listen = vi.spyOn(Server.prototype, "listen");
+    try {
+      await frame();
+      expect(listen.mock.calls.at(-1)?.[1]).toBe("127.0.0.1");
+    } finally {
+      listen.mockRestore();
+    }
+  });
+
+  test("a capture name that is not one of ours is never read from disk", async () => {
+    const readCapture = vi.fn(async () => PNG);
+    const batch = (capture: string): Batch => ({ id: "20261121T100000Z-abcd", project: "p" as Batch["project"], created: "", destination: "mcp",
+      items: [{ id: "e-0000000a", type: "design", text: "x", context: ctx(), capture }] });
+    await renderBatches([batch("../../x.png"), batch("e-0000000a.png/../../x.png")], readCapture);
+    expect(readCapture).not.toHaveBeenCalled();
+    await renderBatches([batch("e-0000000a.png")], readCapture);
+    expect(readCapture).toHaveBeenCalledTimes(1);
   });
 
   test("two servers on the same fixed port: the second rejects EADDRINUSE", async () => {

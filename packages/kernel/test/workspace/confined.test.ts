@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { mkdir, readdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { enter, inChild, inFolder, readFiles, writeEntries, type ReadFiles } from "../../src/workspace/confined.js";
+import { enter, inChild, inFolder, listFolder, moveEntry, readFiles, writeEntries, type ReadFiles } from "../../src/workspace/confined.js";
 import { tempFolder } from "../helpers/temp.js";
 
 declare const __name: <F>(f: F, name: string) => F;
@@ -92,4 +92,39 @@ test("a folder swapped for a link between its lstat and the chdir is refused: by
   expect(await swapRun(join(f.root, "space"), ["app", "sous"], writeEntries, [[["x.json", ""]], []], "sous", f.mac)).toBeNull();
   expect((await readdir(f.mac)).sort()).toEqual(["a.txt", "sous"]);
   expect((await readdir(join(f.mac, "sous"))).sort()).toEqual(["a.txt"]);
+});
+
+test("enter refuses a folder name that walks out: « .. », or one with a slash", async () => {
+  const { root } = await frame();
+  expect(await inFolder(join(root, "space", "app"), [".."], listFolder, [])).toBeNull();
+  expect(await inFolder(join(root, "space"), ["app/sous"], listFolder, [])).toBeNull();
+});
+
+test("moveEntry refuses a parent that is a link, and moves nothing at its end", async () => {
+  const { root, mac } = await frame();
+  await symlink(mac, join(root, "space", "lien"));
+  expect(await inChild(moveEntry, [join(root, "space", "lien"), "sous", "parti"])).toBe("refused");
+  expect((await readdir(mac)).sort()).toEqual(["a.txt", "sous"]);
+});
+
+/** Child side: the first lstat of `grown` appends to it, as the agent can between the lstat and the read; then `enter` and `readFiles`. */
+function growThenRead(enterSource: string, readSource: string, top: string, names: string[], args: unknown[], grown: string): unknown {
+  const fs = process.getBuiltinModule("node:fs");
+  const lstat = fs.lstatSync;
+  let done = false;
+  (fs as { lstatSync: unknown }).lstatSync = (p: string, o?: object) => {
+    const r = lstat(p, o as never);
+    if (p === grown && !done) {
+      done = true;
+      fs.appendFileSync(p, "grown past the cap");
+    }
+    return r;
+  };
+  (0, eval)(`(${enterSource})`)(top, names, false);
+  return (0, eval)(`(${readSource})`)(...args);
+}
+
+test("readFiles refuses a file that grew past its cap after its lstat, never cuts it", async () => {
+  const { root } = await frame();
+  expect(await inChild(growThenRead, [enter.toString(), readFiles.toString(), join(root, "space"), ["app"], [["a.txt"], 10, 100], "a.txt"])).toEqual({ failed: 0, why: "big" });
 });

@@ -35,7 +35,8 @@ export function agentPageDecision(o: { from: string; to: string; document: boole
   if (!to) return "cancel";
   if (loopback(to.hostname) && agentPage(o.to, ports)) return "allow";
   if (o.document && o.gesture) return "allow";
-  return CDN_HOSTS.has(to.hostname) && o.method === "GET" ? "allow" : "cancel";
+  // Encrypted, on its usual port: in clear text (or on a port nobody serves) the address is readable on the way.
+  return CDN_HOSTS.has(to.hostname) && to.protocol === "https:" && to.port === "" && o.method === "GET" ? "allow" : "cancel";
 }
 
 /** The container's ports from the variable's raw value, as the kernel reads them; unset is host/host.ts's default. */
@@ -50,8 +51,15 @@ const principalSpec = (p: any): string => (p?.isNullPrincipal ? p.precursorPrinc
 /** Whether an agent page's request must not leave (see installAgentPageGuard). */
 function blocked(ch: any, range: [number, number]): boolean {
   const li = ch.loadInfo;
-  if (!li || li.triggeringPrincipal?.isSystemPrincipal) return false;
+  if (!li) return false;
   const document = li.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_DOCUMENT;
+  const system = !!li.triggeringPrincipal?.isSystemPrincipal;
+  const o = { to: ch.URI.spec as string, document, gesture: !system && li.hasValidUserGestureActivation, method: ch.requestMethod ?? "GET" };
+  // Where a redirect sends a load is the server's choice: an agent page's server must not send to the web a load that
+  // something else started (an address typed or reloaded, a link on a web page). Each hop is judged as if it were the page.
+  if (li.redirectChain.some((e: any) => agentPageDecision({ ...o, from: principalSpec(e.principal) }, range) === "cancel")) return true;
+  // What Ressac loads itself is judged only past such a hop.
+  if (system) return false;
   const top = (li.browsingContext ?? li.workerAssociatedBrowsingContext)?.top;
   const froms: string[] = document
     ? [principalSpec(li.triggeringPrincipal)]
@@ -61,7 +69,6 @@ function blocked(ch: any, range: [number, number]): boolean {
         top?.currentURI?.spec ?? "",
         principalSpec(top?.currentWindowGlobal?.documentPrincipal),
       ];
-  const o = { to: ch.URI.spec as string, document, gesture: li.hasValidUserGestureActivation, method: ch.requestMethod ?? "GET" };
   return !froms.every((from) => agentPageDecision({ ...o, from }, range) === "allow");
 }
 
@@ -71,7 +78,7 @@ function blocked(ch: any, range: [number, number]): boolean {
  * triggering principal). Any other request by its own principals (a service worker has no browsing context; a beacon
  * sent on pagehide may run under the next page) and by the tab's top-level page, its address and its principal (an
  * about:blank window an agent page opened and writes into has the agent page's principal). What Ressac itself loads
- * (the system principal: the address bar, its own fetches) is never judged. The port range is read once.
+ * (the system principal: the address bar, its own fetches) is judged only past a redirect by an agent page's server. The port range is read once.
  * A WebSocket resolves its host (WebSocketChannel::DoAdmissionDNS) before that observer, unless a proxy is set
  * (OnProxyAvailable skips the lookup): a blocked channel gets a dead proxy from a channel filter, then the cancel.
  * shortcut: WebRTC is not guarded (no HTTP request); upgrade if agent pages must never open a socket to the web.
