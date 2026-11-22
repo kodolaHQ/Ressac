@@ -8,5 +8,5 @@ dc7eb3206982a3bd1680f56de1c66c5d918342d0385e065341b36cda0906c069  fix-ressac-d1a
 054c1997a71423cc4fde29859017a3b2f7bcf69ceb599aa889dff2ccfda75c9c  fix-ressac-d1aa1764-claude-obedient-minimax-m3.1-flash-cloud-card-deny-address-deny.summary.json
 eadde0874903f5b816055abd8f6513a70d7fd24c7a9577f7e278be6e582d5b8c  v0123-lang-minimax-grant.summary.json
 0cf192b61e797f46d7a552e67e35a3e8b76c10f2c6a39ac789e53ee190d35e25  v0123-lang-minimax-deny.summary.json
-da67124d8f2495e932594d0d89b2a569da31e75b6acaa694cad5095b53392b3d  adversary-0.1.24-grant.summary.json
-23d0cb0fcad256c3ce262023bff9ff31d1f6bbcb6dd5f12206fd28a2986cc202  adversary-0.1.24-deny.summary.json
+f45dcf7cbbbd431f80b6aa6fc73b0f5b48ab088b603267816e4e4ec1641de9b3  adversary-0.1.24-r2-grant.summary.json
+e4ca058a37fa5b4f90b7bc3cced0b96b4432d23374666a9c69e43d150440176d  adversary-0.1.24-r2-deny.summary.json
