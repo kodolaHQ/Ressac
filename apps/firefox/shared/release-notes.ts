@@ -1,6 +1,13 @@
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
   {
+    version: "0.1.24",
+    date: "novembre 2026",
+    items: [
+      "Sécurité : une suite de recherches de l'agent faite seulement de morceaux d'un code (« trois huit », puis « un six », puis « deux quatre ») est mise en pause, même sans autre mot autour.",
+    ],
+  },
+  {
     version: "0.1.23",
     date: "novembre 2026",
     items: [
