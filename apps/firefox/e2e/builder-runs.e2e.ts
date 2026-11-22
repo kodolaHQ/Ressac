@@ -646,7 +646,7 @@ describe("the workflow builder's runs", () => {
     await waitDisabled(search, true);
     expect(await inUi(m, `return ${el(search)}.getAttribute("title")`)).toBe('Le widget doit déclarer "web": true : demande-le à l\'agent.');
     // Playwright's force click: the mouse on a disabled button.
-    await click(m, search);
+    await click(m, search, { force: true });
     await sleep(300);
     await waitCount(tid("node-web-search"), 0);
 

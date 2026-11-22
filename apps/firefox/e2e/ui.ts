@@ -60,7 +60,8 @@ export async function waitUi<T = unknown>(m: Marionette, body: string, args: unk
  * A trusted mouse click (`button` 0) or right click (2: mousedown, contextmenu, mouseup) at the centre of the first element matching
  * `selector` in the UI, and whose text contains `text` if given. Waits for it to appear.
  */
-export async function click(m: Marionette, selector: string, o: { button?: 0 | 2; text?: string; frame?: Frame } = {}): Promise<void> {
+/** `force`: pressed even while disabled (a test proving a disabled button does nothing). */
+export async function click(m: Marionette, selector: string, o: { button?: 0 | 2; text?: string; frame?: Frame; force?: boolean } = {}): Promise<void> {
   const find = "const el = [...doc.querySelectorAll(arguments[0])].find((e) => !arguments[1] || e.textContent.includes(arguments[1]));";
   await waitUi(m, `${find} return !!el;`, [selector, o.text ?? null], 10_000, o.frame);
   await inUi(
@@ -78,8 +79,9 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
        [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
        const hit = doc.elementFromPoint(x, y);
        const now = [r.left, r.top, r.width, r.height].join();
-       // An element that takes no pointer yet (a card not armed) is not pressable, even with a parent under the pointer.
-       const unarmed = doc.defaultView.getComputedStyle(el).pointerEvents === "none";
+       // An element that takes no pointer yet (a card not armed) is not pressable, even with a parent under the pointer;
+       // nor is a button still disabled (measured: Relecture's buttons stay disabled while its first file loads).
+       const unarmed = doc.defaultView.getComputedStyle(el).pointerEvents === "none" || (el.disabled === true && !arguments[3]);
        const under = hit && (el.contains(hit) || hit.contains(el)) && !unarmed;
        if ((now === before && under) || (Date.now() > end && !unarmed) || Date.now() > end + 10_000) break;
        // Content loaded above it can push it out of view after the first scroll (measured: Réglages sections pushed
@@ -90,7 +92,7 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
      // A right click as Gecko delivers it on macOS: contextmenu on the press, then the release, whose click (button 2) reaches chrome documents.
      const types = arguments[2] === 2 ? ["mousedown", "contextmenu", "mouseup"] : ["mousedown", "mouseup"];
      for (const type of types) ui.synthesizeMouseEvent(type, x, y, { button: arguments[2], clickCount: 1 });`,
-    [selector, o.text ?? null, o.button ?? 0],
+    [selector, o.text ?? null, o.button ?? 0, o.force ?? false],
     o.frame,
   );
 }
