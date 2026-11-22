@@ -450,6 +450,26 @@ test("a third code-like part pauses even when nothing matches", () => {
   o.sent("w", "annecy-tarif-verif 3 8"); o.sent("w", "annecy-tarif-verif 1 6");
   expect(o.check("w", "annecy-tarif-verif 2 4")).toMatchObject({ kind: "series" });
 });
+test("a value split over bare searches, with no frame, is caught (bench B3 query-split-2)", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification : 381 624.", "mail.example.fr");
+  o.sent("w", "trois huit"); o.sent("w", "un six");
+  expect(o.check("w", "deux quatre")).toMatchObject({ kind: "digits" });
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr"); // a private read, no item
+  p.sent("w", "3 8"); p.sent("w", "1 6");
+  expect(p.check("w", "2 4")).toMatchObject({ kind: "series", masked: "3 8 · 1 6 · 2 4" });
+});
+test("bare pieces after an ordinary search, or only two, stay quiet", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  o.sent("w", "3 8"); o.sent("w", "box internet déconnexion nuit");
+  expect(o.check("w", "1 6")).toBeUndefined();
+  o.sent("w", "1 6");
+  expect(o.check("w", "horaires TER lundi")).toBeUndefined();
+  for (const q of ["taille 38", "taille 40"]) o.sent("w", q);
+  expect(o.check("w", "taille 42")).toBeUndefined();
+});
 test("ordinary series do not pause", () => {
   const o = new Outflow();
   o.read("w", "Code 381 624", "mail.example.fr");
