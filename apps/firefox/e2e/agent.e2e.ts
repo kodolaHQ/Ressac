@@ -13,11 +13,23 @@ const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
 
 let server: Awaited<ReturnType<typeof startServer>>;
+// Another origin: /tenu answers only once `releaseOther` is called (reset each test).
+let other: Awaited<ReturnType<typeof startServer>>;
+let releaseOther: () => void = () => {};
+let otherGate = Promise.resolve();
+const OTHER_TEXT = "Le texte de l'autre site";
+const SITE_CHANGED = { text: "Erreur : L'onglet a changé de site pendant la lecture : rien n'est rendu.", error: true };
 let w: LaunchedRessac;
 let m: Marionette;
 // /reset drops the connection: the page fails to load, on a port the agent may read (see RESSAC_CONTAINER_PORTS).
 beforeAll(async () => (server = await startServer({ routes: { "/reset": (req) => req.socket.destroy() } })));
-afterAll(() => server?.close());
+beforeAll(async () => {
+  const page = (res: import("node:http").ServerResponse) => res.writeHead(200, { "Content-Type": "text/html" }).end(`<p>${OTHER_TEXT}</p>`);
+  other = await startServer({ routes: { "/autre": (_req, res) => page(res), "/tenu": (_req, res) => void otherGate.then(() => page(res)) } });
+});
+afterAll(() => Promise.all([server?.close(), other?.close()]));
+beforeEach(() => void (otherGate = new Promise<void>((ok) => (releaseOther = ok))));
+afterEach(() => releaseOther());
 beforeEach(async () => {
   // The server's port as the agent's app range: the tabs it opens there are its own, readable without a card.
   w = await launchRessac({ env: { RESSAC_MEMORY_LOOP: "1", RESSAC_CONTAINER_PORTS: `${server.port}-${server.port}` } });
@@ -208,6 +220,55 @@ it("read_tab on a tab that crashes while loading answers the crash error at once
   await crash(id);
   expect(await read).toEqual({ text: "Erreur : La page a planté : rechargez-la.", error: true });
   expect(Date.now() - start).toBeLessThan(5_000);
+});
+
+// The kernel checked the tab on its first origin; the tab is on another one when the read reaches the browser.
+it("read_tab on a tab that went to another origin after the kernel's check answers « site changed », no text", async () => {
+  const { text: id } = await call("open_tab", { url: `${server.url}/texte.html` });
+  await loaded("/texte.html");
+  // When the kernel announces the read (after its check, just before it sends readText on the same pipe): the tab goes
+  // to the other origin and that page loads. The rpc handles lines in order, so readText waits until this returns.
+  await m.execute(
+    `const [id, url, STORE] = arguments;
+     (async () => {
+       const store = await ChromeUtils.importESModule(STORE).ready;
+       const off = store.agent.on("agent.activity", (a) => {
+         if (a.tab !== id) return;
+         off();
+         const b = gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === id).linkedBrowser;
+         b.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
+         const end = Date.now() + 10_000;
+         Services.tm.spinEventLoopUntil("e2e", () => Date.now() > end || (store.state.tabs[id]?.url === url && !b.webProgress.isLoadingDocument));
+       });
+       window.__otherArmed = true;
+     })();`,
+    [id, `${other.url}/autre`, STORE],
+  );
+  await waitFor(m, "return window.__otherArmed === true", (v) => v === true);
+  const read = await call("read_tab", { id });
+  expect(read).toEqual(SITE_CHANGED);
+  expect((await state(m)).tabs[id]?.url).toBe(`${other.url}/autre`);
+});
+
+// The tab leaves for another origin while the read waits for its load: the page it then reads is not the one checked.
+it("read_tab on a tab that goes to another origin during the read answers « site changed », no text", async () => {
+  const { text: id } = await call("open_tab", { url: `${server.url}/texte.html` });
+  await loaded("/texte.html");
+  // A load the other server holds: the tab stays on its first origin (nothing committed) and the read waits for it.
+  await m.execute(
+    `const [id, url] = arguments;
+     gBrowser.tabs.find((t) => t.getAttribute("ressac-tab-id") === id).linkedBrowser
+       .loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
+     const c = window.ressacWindow, ensure = c.ensure;
+     c.ensure = (t) => { if (t === id) window.__reading = true; return ensure(t); };`,
+    [id, `${other.url}/tenu`],
+  );
+  await poll(() => Promise.resolve(other.paths.includes("/tenu")), (v) => v);
+  const read = call("read_tab", { id });
+  await waitFor(m, "return window.__reading === true", (v) => v === true);
+  releaseOther();
+  expect(await read).toEqual(SITE_CHANGED);
+  expect((await state(m)).tabs[id]?.url).toBe(`${other.url}/tenu`);
 });
 
 it("read_tab on a tab that failed to load answers an error, not Firefox's error page", async () => {
