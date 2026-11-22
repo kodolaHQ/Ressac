@@ -2,12 +2,12 @@
 
 [SECURITY.md](../SECURITY.md) lists what Ressac promises: what the agent can reach, what stops it from sending your data out, and how updates and telemetry behave. In November 2026 we checked every one of those promises, brick by brick, before testers or attackers would. This page explains how, what held, what broke and what is still untested.
 
-The bench ran on Ressac 0.1.20. It took most of the 21st and 22nd of November 2026.
+In short: the bench found 9 bypasses, all fixed (one in part, with what stays open written in SECURITY.md). It ran on Ressac 0.1.20, on the 21st and 22nd of November 2026; the fixes ship in 0.1.21.
 
 ## Why
 
 Two ideas we measured that month did worse than we hoped:
-- a small local model meant to spot hostile searches let 87% of the attacks through, so we removed it;
+- a small local model meant to spot hostile searches, the « judge », let 87% of the attacks through (a figure for the removed judge, not for the product), so we removed it;
 - a « doubtful site » warning stayed below the criteria we had set for it beforehand, so it is on hold.
 
 So we stopped trusting how our protections looked on paper and tested each one.
@@ -25,7 +25,9 @@ So we stopped trusting how our protections looked on paper and tested each one.
 5. **Outside eyes.** Each attack list was written by an agent that had not built the brick, working from the code and SECURITY.md only. Each fix was reviewed by another fresh agent. Two of those reviews found further holes, now fixed.
 6. **Honest reporting.** Every bypass is named, and every limit that stays is written in SECURITY.md.
 
-## Results
+## Results, measured on 0.1.20
+
+We removed each guard on purpose to check that our tests would catch it: 43 were not caught, and each now has a test that fails without it. Attacking each brick found 9 bypasses, all fixed.
 
 | Brick | What was attacked | Result |
 |---|---|---|
@@ -38,7 +40,7 @@ So we stopped trusting how our protections looked on paper and tested each one.
 | Pages and apps the agent builds; Ressac's interface | 152 attacks: agent pages, site apps, widget frames, the kernel's fetch, the design server | **3 bypasses**, fixed |
 | Updates and telemetry | signing with throwaway keys, version checks, publishing, the error scrub in the real app | **1 bypass** (the scrub), fixed; limits written |
 
-## What broke, and what we did
+## What broke, and what we did (found on 0.1.20, fixed in 0.1.21)
 
 1. **The auto-memory file.** In Navigateur mode, Claude still loaded its auto-memory file. The instruction check, which shows you every change the agent makes to its own instructions, did not watch that file. Auto-memory is now off in Navigateur.
 2. **A stale link list.** The agent could follow a link from a list that the page no longer offered. A list that was rewritten is now refused.
@@ -54,6 +56,14 @@ So we stopped trusting how our protections looked on paper and tested each one.
 8. **CDNs.** The five allowed CDNs were matched by name only, so plain HTTP on any port passed. They are now allowed over HTTPS on their usual port only.
 
 Each fix has a test that fails without it. The redirect and CDN fixes were also checked in the signed DMG in a macOS VM: 7 of 7 cases, with control cases showing the network itself let those requests through.
+
+## Reading our numbers
+
+SECURITY.md gives two kinds of figures, and neither is a leak rate of the product.
+- **The outflow rules' 51.5%** (measured on 0.1.19's rules, replayed): on 1,944 public attacks that each put the data to leak whole into one search or one address, the rules caught the data in about half. It is a detection rate of one layer on leaks that were forced to happen, and an upper bound for that layer.
+- **The removed judge's 87%**: the share of attacks the judge let through, before we removed it. It does not describe Ressac today.
+
+Published figures such as an attack success rate around 1% for a frontier model under prompt injection measure something else: how often an attacked agent, end to end, actually does what the hostile page asks. Most attacks fail there because the model refuses, before any of our layers is involved. Our 51.5% asks what one of our layers catches once the model has already obeyed. The two numbers do not compare, and an end-to-end figure for Ressac is the next step (below).
 
 ## What is not tested yet
 
