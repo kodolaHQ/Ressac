@@ -73,4 +73,4 @@ Published figures such as an attack success rate around 1% for a frontier model 
 - **The Docker fallback**, used instead of Ressac's own VM on some setups.
 - **An outside review.** No independent security review has seen these results yet. It is wanted before any public security claim.
 
-The bench's scripts depend on our machines and are not published yet. The regression tests for every fix are in the normal test suites.
+The bench itself (catalogues with their checksums, scripts, per-case results and reports) is in [bench/security](../bench/security/README.md), with what an outsider can rerun and what needs a Mac with a built Ressac. The regression tests for every fix are in the normal test suites.
