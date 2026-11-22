@@ -1,5 +1,5 @@
 // Security bench B7, claims C7.1–C7.3 (catalogue A10–A31, B2–B5): pages the agent serves on its container's ports.
-// NOT part of the repo's suite. Written without the engine (it was busy): never run yet. To run, from apps/firefox:
+// NOT part of the repo's suite. Written at 0.1.20 without the engine; run on 0.1.22 (output in results/). To run, from apps/firefox:
 //   cp <bench>/e2e/b7-agent-page.e2e.ts e2e/bench-b7-agent-page.e2e.ts
 //   corepack pnpm --filter firefox-ressac exec vitest run -c vitest.e2e.config.ts e2e/bench-b7-agent-page.e2e.ts
 //   rm e2e/bench-b7-agent-page.e2e.ts

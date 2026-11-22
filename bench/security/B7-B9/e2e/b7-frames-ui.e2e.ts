@@ -1,7 +1,7 @@
 // Security bench B7, claims C7.8 and C7.9 (catalogue H4, H5, H6, I3): vectors the repo's suites do not hold
 // (e2e/frames.e2e.ts, e2e/ui-network.e2e.ts already cover fetch, WebSocket, img, font, beacon, worker, WebRTC,
 // dns-prefetch, preconnect, links, fullscreen, mailto: and the process: run those first, they are the baseline).
-// NOT part of the repo's suite. Written without the engine (it was busy): never run yet. To run, from apps/firefox:
+// NOT part of the repo's suite. Written at 0.1.20 without the engine; run on 0.1.22 (output in results/). To run, from apps/firefox:
 //   cp <bench>/e2e/b7-frames-ui.e2e.ts e2e/bench-b7-frames-ui.e2e.ts
 //   corepack pnpm --filter firefox-ressac exec vitest run -c vitest.e2e.config.ts e2e/bench-b7-frames-ui.e2e.ts
 //   rm e2e/bench-b7-frames-ui.e2e.ts
@@ -226,14 +226,18 @@ describe("bench B7: frames and the UI, extra vectors", () => {
          const out = {};
          const t0 = Date.now(); try { alert("x"); out.alert = Date.now() - t0 < 500 ? "returned at once" : "blocked the page"; } catch (e) { out.alert = "threw"; }
          try { await document.body.requestPointerLock(); out.pointerLock = document.pointerLockElement ? "LOCKED" : "no"; } catch (e) { out.pointerLock = "refused"; }
-         try { document.getElementById("d").click(); out.download = "clicked"; } catch (e) { out.download = "threw"; }
          try { const x = window.open("about:blank"); out.open = x ? "OPENED" : "null"; } catch (e) { out.open = "threw"; }
+         // Clicked after this reply: the link can navigate the frame itself (to a data: page, H4), which would drop the reply.
+         setTimeout(() => document.getElementById("d").click(), 50);
+         out.download = "clicked after the reply";
          return out;
        })()`,
     );
     console.log("[H6]", r);
     expect(r.pointerLock === "LOCKED").toBe(false);
     expect(r.open === "OPENED").toBe(false);
+    // The deferred click has had time to start a download, if it can.
+    await new Promise((ok) => setTimeout(ok, 1500));
     const downloads = await m.execute<number>(`return (async () => { const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs"); return (await (await Downloads.getList(Downloads.ALL)).getAll()).filter((d) => d.target.path.includes("bench-leak")).length; })();`);
     expect(downloads).toBe(0);
   }, 60_000);

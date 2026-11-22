@@ -1,5 +1,5 @@
 // Security bench B9, claim C9.5 (catalogue P11–P17): what telemetry really sends, captured by a fake Sentry.
-// NOT part of the repo's suite. Written without the engine (it was busy): never run yet. To run, from apps/firefox:
+// NOT part of the repo's suite. Written at 0.1.20 without the engine; run on 0.1.22 (output in results/). To run, from apps/firefox:
 //   cp <bench>/e2e/b9-telemetry-capture.e2e.ts e2e/bench-b9-telemetry-capture.e2e.ts
 //   corepack pnpm --filter firefox-ressac exec vitest run -c vitest.e2e.config.ts e2e/bench-b9-telemetry-capture.e2e.ts
 //   rm e2e/bench-b9-telemetry-capture.e2e.ts
