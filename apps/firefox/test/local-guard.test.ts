@@ -36,8 +36,13 @@ it("in Firefox, RESSAC_TEST_PUBLIC_ADDRESSES is honoured under automation only",
   vi.stubGlobal("Services", { env: { get: (n: string) => (n === "RESSAC_TEST_PUBLIC_ADDRESSES" ? "127.0.0.1" : "") } });
   vi.stubGlobal("Cu", { get isInAutomation() { return automation; } });
   vi.stubGlobal("Ci", { nsIMarionette: {} });
-  vi.stubGlobal("Cc", { "@mozilla.org/remote/marionette;1": { getService: () => ({ running: false }) } });
+  let marionette = false;
+  vi.stubGlobal("Cc", { "@mozilla.org/remote/marionette;1": { getService: () => ({ running: marionette }) } });
   expect(localLiteral("127.0.0.1")).toBe(true);
   automation = true;
+  expect(localLiteral("127.0.0.1")).toBe(false);
+  // Marionette running alone is automation too (the e2e tests).
+  automation = false;
+  marionette = true;
   expect(localLiteral("127.0.0.1")).toBe(false);
 });
