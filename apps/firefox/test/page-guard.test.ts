@@ -61,3 +61,12 @@ it("an agent port under a public name is an agent page too", () => {
   expect(req({ from: "http://127.0.0.1.nip.io:5301/" })).toBe("cancel");
   expect(req({ from: "http://localtest.me:5301/" })).toBe("cancel");
 });
+
+it("a gesture frees a top-level navigation only, never a fetch or beacon", () => {
+  expect(req({ gesture: true, method: "POST" })).toBe("cancel");
+  expect(req({ gesture: true, to: "https://cdnjs.cloudflare.com/x", method: "POST" })).toBe("cancel");
+});
+
+it("an unparsable target is cancelled", () => {
+  expect(req({ to: "::::" })).toBe("cancel");
+});
