@@ -819,3 +819,39 @@ test("known false pauses: scattered bare searches of one shape (formations, ches
     expect(o.check("w", qs.at(-1)!), qs.join(" | ")).toMatchObject({ kind: "series" });
   }
 });
+test("a grid address listed again under a word keeps its piece; a word label leaves the address to tell it", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  const urls = [..."381"].map((d) => `https://g.example.net/k/q${d}x`);
+  o.links("w", urls.map((url, i) => ({ text: "381"[i]!, url })));
+  o.links("w", urls.map((url) => ({ text: "voir", url })));
+  expect(urls.map((u) => o.click("w", u)).at(-1)).toMatchObject({ kind: "clicks", masked: "3 · 8 · 1" });
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  const plain = [..."381"].map((d) => `https://g.example.net/k/${d}`);
+  p.links("w", plain.map((url) => ({ text: "case", url })));
+  expect(plain.map((u) => p.click("w", u)).at(-1)).toMatchObject({ kind: "clicks" });
+});
+test("one back step per run at most; an old step stops carding after 8 pieces", () => {
+  const run = (pieces: string) => {
+    const o = new Outflow();
+    o.read("w", "Bonjour", "mail.example.fr");
+    return [...pieces].map((c) => (o.click("w", `https://site.example/p/${c}`, c) ? "H" : "f")).join("");
+  };
+  expect(run("234512341")).toBe("ffffffffH"); // the second back to « 1 »
+  // « 5 9 3 » carded, then an honest pager: the drop leaves the judged pieces after 8.
+  expect(run("59312345678")).toBe("ffHHHHHHHHf");
+});
+test("evictions: the oldest labels and the least recently used sites go first", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  const urls = [..."381"].map((d) => `https://g.example.net/k/q${d}x`);
+  o.links("w", urls.map((url, i) => ({ text: "381"[i]!, url })));
+  o.links("w", Array.from({ length: 2000 }, (_, i) => ({ text: `lien ${i}`, url: `https://g.example.net/f/${i}` })));
+  expect(urls.map((u) => o.click("w", u)).every((h) => h === undefined)).toBe(true); // written as a limit
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  p.click("w", "https://g.example.net/k/3", "3"); p.click("w", "https://g.example.net/k/8", "8");
+  for (let s = 0; s < 8; s++) p.click("w", `https://s${s}.example/x/1`, "1");
+  expect(p.click("w", "https://g.example.net/k/1", "1")).toBeUndefined(); // the grid's run was dropped: written as a limit
+});

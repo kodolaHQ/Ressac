@@ -76,6 +76,8 @@ const URL_LENGTH_MAX = 500;
 const SERIES_MAX = 20;
 // Sites whose followed pieces are kept, the least recently used dropped: a grid's site is the one the agent keeps going to.
 const CLICK_SITES_MAX = 8;
+// How many of a site's last pieces the pager shape judges: a 6-character code fits, and an old step stops carding.
+const PAGER_SPAN = 8;
 // Labels of the links shown, by address: 40 per read, so the last 50 reads; under 1 MB with addresses up to 500 characters.
 const LABELS_MAX = 2000;
 // A query is kept up to 500 characters: longer is prose, not a frame around a code.
@@ -458,8 +460,8 @@ export class Outflow {
    */
   click(win: string, url: string, label?: string): OutflowHit | undefined {
     const w = this.wins.get(win);
-    const known = label === undefined ? w?.labels.get(url) : undefined;
-    const piece = known === undefined ? clickPiece(url, label) : known || undefined;
+    // A label shown that is no piece (« voir ») leaves the address to tell it: a word label never frees a /k/3.
+    const piece = (label === undefined && w?.labels.get(url)) || clickPiece(url, label);
     if (!w?.privateRead || !piece) return undefined;
     // Links elsewhere or with words between the pieces do not end the run: a « Retour » link would otherwise defeat it.
     const site = clickSite(url);
@@ -471,15 +473,21 @@ export class Outflow {
     // The pieces joined, scanned as an address is (rule 2): a run that spells a read item is that item, whatever its shape.
     const spelt = w.read.size ? this.check(win, run.join(" "), true) : undefined;
     if (spelt) return spelt;
-    // shortcut: a run of ASCII digits and letters is read as a pager, and passes when it spells no read item, when each step
-    // climbs or steps back by one (« 2 3 4 », « 4 3 », « 2 3 5 »), or goes back to « 1 » or to a page of the run right
-    // after a step of one (« 2 3 4 5 1 », « 3 4 5 4 2 »). So a code shaped that way (123 456, 135 799: 2.9 % of 6-digit
-    // codes, more with the back steps) leaves when it was not read whole; upgrade if a bench shows codes sent that way. Any
-    // other character (a CJK label) gets no pager pass, or a page could make every code climb.
-    const at = (i: number) => run[i]!.codePointAt(0)!;
-    const pager = run.every(
-      (c, i) => /^[0-9a-z]$/.test(c) && (!i || at(i) >= at(i - 1) - 1 || (i > 1 && Math.abs(at(i - 1) - at(i - 2)) <= 1 && (c === "1" || run.indexOf(c) < i))),
-    );
+    // shortcut: the last PAGER_SPAN pieces of a run of ASCII digits and letters are read as a pager, and pass when they spell
+    // no read item, when each step climbs or steps back by one (« 2 3 4 », « 4 3 », « 2 3 5 »), with one step at most going
+    // back to « 1 » or to a page of the run right after a step of one (« 2 3 4 5 1 », « 3 4 5 4 2 »). So a code shaped
+    // that way (123 456, 135 799: measured over all 6-digit codes, 7.4 %, 2.9 % without the back step) leaves when it was
+    // not read whole; upgrade if a bench shows codes sent that way. Any other character (a CJK label) gets no pager pass, or a page could make every code
+    // climb. Only the last pieces are judged so a step that carded stops carding honest links later (a drop stays within
+    // PAGER_SPAN pieces of its two ends, so a code still meets it).
+    const tail = run.slice(-PAGER_SPAN);
+    const at = (i: number) => tail[i]!.codePointAt(0)!;
+    let back = 0;
+    const pager = tail.every((c, i) => {
+      if (!/^[0-9a-z]$/.test(c)) return false;
+      if (!i || at(i) >= at(i - 1) - 1) return true;
+      return i > 1 && Math.abs(at(i - 1) - at(i - 2)) <= 1 && (c === "1" || tail.indexOf(c) < i) && ++back <= 1;
+    });
     if (run.length < 3 || pager) return undefined;
     // `masked` shows the pieces in clear, as for a series of searches: the agent asked to send each of them.
     return { kind: "clicks", masked: run.join(" · ").slice(0, 40) };
@@ -490,8 +498,11 @@ export class Outflow {
     const w = this.win(win);
     for (const l of links) {
       if (l.url.length > URL_LENGTH_MAX) continue;
+      // A piece once shown stays: listing the same address again under a word (« voir ») must not free it.
+      const piece = clickPiece(l.url, l.text || " ") ?? "";
+      const kept = w.labels.get(l.url);
       w.labels.delete(l.url);
-      w.labels.set(l.url, clickPiece(l.url, l.text || " ") ?? "");
+      w.labels.set(l.url, kept || piece);
       if (w.labels.size > LABELS_MAX) w.labels.delete(w.labels.keys().next().value!);
     }
   }
