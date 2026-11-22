@@ -82,7 +82,10 @@ const errOf=f=>{try{f();return 'ok'}catch(e){return e.code||String(e.message).sl
 const probe = async (code: string, user = "node") => {
   const js = `${LIB}\n(async()=>{${code}})().then(v=>console.log(JSON.stringify(v)),e=>console.log(JSON.stringify({probeError:String(e)})))`;
   const r = user === "node" ? await workshop.exec(["node", "-e", js]) : pod(["exec", "-u", user, containerName(), "node", "-e", js]);
-  return lastJson(r);
+  const v = lastJson(r);
+  // A crashed probe found nothing, which must not read as « nothing got through »: the case becomes NOT_TESTED.
+  if (v && typeof v === "object" && "probeError" in v) throw new Error(`probe crashed: ${v.probeError}`);
+  return v;
 };
 const sh = async (cmd: string) => workshop.exec(["sh", "-c", cmd]);
 
@@ -129,15 +132,22 @@ try {
   await run("C1.1-A2", C11, "direct UDP from node: a DNS query to 8.8.8.8:53 and 1.1.1.1:53, a datagram to 1.1.1.1:9999",
     "no reply to any datagram (send refused, EPERM / port unreachable)", async () => {
       const q = [0x12, 0x34, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 7, ..."example".split("").map((c) => c.charCodeAt(0)), 3, ..."com".split("").map((c) => c.charCodeAt(0)), 0, 0, 1, 0, 1];
-      const o = await probe(`const q=Buffer.from(${JSON.stringify(q)});const udp=(h,p)=>new Promise(r=>{const s=dgram.createSocket('udp4');let res='no-reply';s.on('message',()=>{res='reply'});s.on('error',e=>{if(res!=='reply')res='error '+e.code});s.send(q,p,h,e=>{if(e)res='send-error '+e.code});setTimeout(()=>{try{s.close()}catch{};r(res)},3000)});
-        return {'8.8.8.8:53':await udp('8.8.8.8',53),'1.1.1.1:53':await udp('1.1.1.1',53),'1.1.1.1:9999':await udp('1.1.1.1',9999)}`);
-      return { observed: o, verdict: hold(!Object.values(o).includes("reply")) };
+      const udp = `const q=Buffer.from(${JSON.stringify(q)});const udp=(h,p)=>new Promise(r=>{const s=dgram.createSocket('udp4');let res='no-reply';s.on('message',()=>{res='reply'});s.on('error',e=>{if(res!=='reply')res='error '+e.code});s.send(q,p,h,e=>{if(e)res='send-error '+e.code});setTimeout(()=>{try{s.close()}catch{};r(res)},3000)});`;
+      const o = await probe(`${udp}return {'8.8.8.8:53':await udp('8.8.8.8',53),'1.1.1.1:53':await udp('1.1.1.1',53),'1.1.1.1:9999':await udp('1.1.1.1',9999)}`);
+      // Control: the same DNS query as root (let out by the owner rule) gets its reply, so a refusal is the rules.
+      const rootControl = await probe(`${udp}return await udp('8.8.8.8',53)`, "root");
+      // Only the rules' refusal at send proves it; a silent no-reply could be a lost datagram.
+      const vals = Object.values(o);
+      return { observed: { node: o, rootControl }, verdict: vals.includes("reply") ? "BYPASS" : rootControl === "reply" && vals.every((v) => v === "send-error EPERM") ? "HOLDS" : "NOT_TESTED" };
     });
   await run("C1.1-A3", C11, "DNS as an egress channel: getaddrinfo, the container's resolv.conf servers, and a resolver set to 8.8.8.8, for example.com",
     "every name resolution fails from node (names are resolved by the proxy only)", async () => {
       const o = await probe(`const t=p=>p.then(v=>'resolved '+JSON.stringify(v).slice(0,80),e=>e.code);const R=new dns.promises.Resolver({timeout:2000,tries:1});R.setServers(['8.8.8.8']);
         return {resolvConf:fs.readFileSync('/etc/resolv.conf','utf8').split('\\n').filter(l=>l.startsWith('nameserver')).join(' '),lookup:await t(dns.promises.lookup('example.com')),resolve4:await t(new dns.promises.Resolver({timeout:2000,tries:1}).resolve4('example.com')),at8888:await t(R.resolve4('example.com'))}`);
-      return { observed: o, verdict: hold(![o.lookup, o.resolve4, o.at8888].some((v: string) => v.startsWith("resolved"))) };
+      // Control: root (let out by the owner rule) resolves the same name through 8.8.8.8.
+      const rootControl = await probe("const R=new dns.promises.Resolver({timeout:2000,tries:1});R.setServers(['8.8.8.8']);return await R.resolve4('example.com').then(()=>'resolved',e=>e.code)", "root");
+      const leaked = [o.lookup, o.resolve4, o.at8888].some((v: string) => v.startsWith("resolved"));
+      return { observed: { ...o, rootControl }, verdict: leaked ? "BYPASS" : rootControl === "resolved" ? "HOLDS" : "NOT_TESTED" };
     });
   await run("C1.1-A4", C11, "IPv6 egress: connect to [2606:4700:4700::1111]:443 and to ::ffff:1.1.1.1:443 (IPv4-mapped), from node",
     "no connection", async () => {
@@ -203,7 +213,7 @@ echo proxypid=$p; kill -9 $p 2>/dev/null; echo kill=$?`);
       return { observed: o, verdict: hold(Object.values(o).every((v: any) => v.status === "403" && v.refused)) };
     });
   await run("C1.2-A12", C12, "request smuggling on the plain-HTTP path: a request with both Content-Length and Transfer-Encoding followed by GET http://example.com/; two pipelined requests, the second to example.com; a CRLF-encoded path",
-    "example.com never answers ('Example Domain' never in any response); the pipelined example.com request gets its own 403", async () => {
+    "example.com's page never comes back ('Example Domain' in no response; root fetching it directly does see that text, the control); whether the smuggled request gets its own 403 is recorded, not required", async () => {
       const o = await probe(`const a=await raw('GET http://github.com/ HTTP/1.1\\r\\nHost: github.com\\r\\nContent-Length: 4\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n0\\r\\n\\r\\nGET http://example.com/ HTTP/1.1\\r\\nHost: example.com\\r\\nConnection: close\\r\\n\\r\\n');
         const b=await raw('GET http://github.com/ HTTP/1.1\\r\\nHost: github.com\\r\\n\\r\\nGET http://example.com/ HTTP/1.1\\r\\nHost: example.com\\r\\nConnection: close\\r\\n\\r\\n');
         const c=await raw('GET http://github.com/%0d%0aHost:%20example.com HTTP/1.1\\r\\nHost: github.com\\r\\nConnection: close\\r\\n\\r\\n');
@@ -211,7 +221,9 @@ echo proxypid=$p; kill -9 $p 2>/dev/null; echo kill=$?`);
         return {clte:{statuses:st(a),exampleBody:a.includes('Example Domain')},pipelined:{statuses:st(b),exampleRefused:b.includes('example.com is not in'),exampleBody:b.includes('Example Domain')},crlf:{statuses:st(c),exampleBody:c.includes('Example Domain')}}`);
       // exampleRefused is recorded, not required: a proxy that drops the pipelined request is not a bypass.
       const ok = !o.clte.exampleBody && !o.pipelined.exampleBody && !o.crlf.exampleBody;
-      return { observed: o, verdict: hold(ok) };
+      // Control: root (let out by the owner rule) fetching example.com directly sees the text the check looks for.
+      const control = pod(["exec", "-u", "root", C, "curl", "-s", "--noproxy", "*", "--max-time", "10", "http://example.com/"]).stdout.includes("Example Domain");
+      return { observed: { ...o, rootControlSeesExampleDomain: control }, verdict: control ? hold(ok) : ok ? "NOT_TESTED" : "BYPASS" };
     });
   await run("C1.2-A18", C12, "domains-file poisoning: node appends a domain to /etc/ressac/domains.json",
     "file owned by root, mode 644, write refused (EACCES)", async () => {

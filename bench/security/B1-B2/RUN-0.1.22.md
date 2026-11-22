@@ -1,7 +1,7 @@
 # B1 + B2 rerun on 0.1.22
 
-- **Date:** 2026-11-22 (run started 10:42 UTC, about 2 min).
-- **Code:** branch `bench-security` at `c187d606`, whose product code is byte-identical to `main` `dd43cd2e` (`git diff dd43cd2e c187d606 -- . ':!bench' ':!docs'` is empty), which contains tag `v0.1.22` (`585d8034`).
+- **Date:** 2026-11-22 (run started 10:50 UTC, about 2 min; this replaces a first run of 10:42 UTC with the same counts, made before the review fixes below).
+- **Code:** branch `bench-security` at `7690de0e` plus the runner fixes committed with these results; its product code is byte-identical to `main` `dd43cd2e` (`git diff dd43cd2e 7690de0e -- . ':!bench' ':!docs'` is empty), which contains tag `v0.1.22` (`585d8034`).
 - **Catalogue:** `catalogue.md`, unchanged (published sha256 `145b2d10…4d92`, see `../README.md`).
 - **VM image:** `ressac-vm-3.24.4-5.8.10-20062535e787.raw.zst`, sha256 `7113cc64e8631d4ae7f4f99dca9d60feb180e01d6ef791d15d14d85ab037ec4b`. This is `VM_IMAGE` in `machine.ts` with no override, downloaded from `updates.getressac.app` and checked by the kernel's own `install` (`downloadVerified`). The run saw the `downloading` state. The workshop image's `ressac.dockerfile` label (`130e39ada27e`) equals the repo's `dockerfileHash()`, so the shipped workshop image ran, with no rebuild.
 - **Tools:** Lima 2.3.0 and Podman 5.8.10, SHA-checked by `apps/firefox/scripts/vm-tools.sh`.
@@ -18,7 +18,13 @@ The checks are built to avoid the 8 false `BROKEN` lines of the first 0.1.20 run
 - No check relies on an end-of-line anchor.
 - Process checks match the exact program name, and the probe's own process is left out.
 - The home checks use the Mac user's home, not the Lima guest user's.
-- Every refusal has a control that shows the path works when it should: root's direct connect, the relay port, `1-1-1-1.nip.io`, the in-range forward, curl restored for A28, and the regular file in C2.11. When the control fails, the verdict is `NOT_TESTED`, never `HOLDS`.
+- The network refusals have a control that shows the path works when it should:
+  - root's direct connect (A1), root's DNS query to 8.8.8.8 getting its reply (A2), root resolving through 8.8.8.8 (A3);
+  - root fetching example.com directly and seeing the « Example Domain » text A12 looks for;
+  - the relay port, `1-1-1-1.nip.io`, the in-range forward, curl restored for A28, and the regular file in C2.11.
+
+  When the control fails, the verdict is `NOT_TESTED`, never `HOLDS`. The file, capability and mount refusals (C2.5, C2.8, C2.10…) have no control: they check an errno or exit code of the refused call itself.
+- A2 holds only on the `send-error EPERM` the rules produce, not on a silent missing reply. A probe that crashes (`probeError`) makes its case `NOT_TESTED`; it never counts as « nothing got through ».
 
 Rerun from the repo root (Apple Silicon; the Mac's 127.0.0.1:5340-5359 and 5400-5401 TCP and 5402 UDP must be free):
 
