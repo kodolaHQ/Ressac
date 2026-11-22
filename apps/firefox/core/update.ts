@@ -35,6 +35,13 @@ export const isSignatureFailure = (errorCode: number): boolean => errorCode >= 1
 export const isStaleUpdate = (phase: UpdatePhase, version: string | null, running: string, compare: (a: string, b: string) => number): boolean =>
   (phase === "downloading" || phase === "ready") && !!version && compare(version, running) <= 0;
 
+/**
+ * Whether an offered update is dropped: stale by update.xml's version (not signed), or by `staged`, the staged app's own
+ * version (signed inside the MAR), so an old signed MAR offered under a new number never rolls Ressac back.
+ */
+export const dropUpdate = (phase: UpdatePhase, version: string | null, staged: string | null, running: string, compare: (a: string, b: string) => number): boolean =>
+  isStaleUpdate(phase, version, running, compare) || isStaleUpdate(phase, staged, running, compare);
+
 /** CFBundleShortVersionString of an Info.plist (XML): the staged app's own Ressac version, signed inside the MAR. */
 export function plistVersion(plist: string): string | null {
   return /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)?.[1]?.trim() ?? null;
