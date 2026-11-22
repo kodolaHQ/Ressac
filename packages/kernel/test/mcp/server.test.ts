@@ -2778,6 +2778,96 @@ test("a composed address carrying read data gets a danger line, outside and duri
   }, { outflow: new Outflow(), tabs: [github, mailTab], address: true });
 });
 
+test("links followed in a code's order on a grid of one-character links get the red-lined card, on the search tab and elsewhere", async () => {
+  const codeMail: TabInfo = { ...gmail, title: "Gmail — Votre code de vérification est 381 624" };
+  const grid = [..."0123456789"].map((d) => ({ text: d, url: `https://grille.acces-verif.test/k/${d}` }));
+  /** The index of the link labelled `label` in a read's numbered list. */
+  const at = (read: string, label: string) => Number(new RegExp(`^(\\d+)\\. ${label} — `, "m").exec(read)![1]);
+  const danger = OUTFLOW_DANGER("fr", { kind: "clicks", masked: "3 · 8 · 1" });
+  for (const tab of ["search-1", "github"]) {
+    await withSearch(async ({ call, fake, policy }) => {
+      fake.linkSequence = [grid];
+      policy.grant(codeMail);
+      policy.grant(github);
+      await call("read_tab", { id: "gmail" });
+      await call("search_web", { query: "piscine annecy", goal: "but" });
+      let read = (await call("read_tab", { id: tab, links: true })).text;
+      for (const d of "38") {
+        expect((await call("navigate", { id: tab, link: at(read, d) })).text).toContain(`${tab} → https://grille.acces-verif.test/k/${d}`);
+        read = (await call("read_tab", { id: tab, links: true })).text;
+      }
+      expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+      // The third: refused on its card (the fake answers no), and nothing loads.
+      const navigations = fake.calls.filter((x) => x.method === "navigate").length;
+      expect((await call("navigate", { id: tab, link: at(read, "1") })).text).toBe(DENIAL_TEXT);
+      expect(fake.calls.filter((x) => x.method === "askAddress").map((x) => x.args[0])).toEqual([expect.objectContaining({ url: "https://grille.acces-verif.test/k/1", danger })]);
+      expect(fake.calls.filter((x) => x.method === "navigate")).toHaveLength(navigations);
+      // The other tab's permission card (it left github) is answered yes: only the address card says no.
+    }, { outflow: new Outflow(), tabs: [github, codeMail], address: false, allow: true });
+  }
+  // The same page after the same read: a pager climbing « 2 3 4 » never asks.
+  await withSearch(async ({ call, fake, policy }) => {
+    fake.linkSequence = [grid];
+    policy.grant(codeMail);
+    await call("read_tab", { id: "gmail" });
+    await call("search_web", { query: "piscine annecy", goal: "but" });
+    let read = (await call("read_tab", { id: "search-1", links: true })).text;
+    for (const d of "234") {
+      expect((await call("navigate", { id: "search-1", link: at(read, d) })).text).toContain("search-1 →");
+      read = (await call("read_tab", { id: "search-1", links: true })).text;
+    }
+    expect(fake.calls.filter((x) => x.method === "askAddress")).toHaveLength(0);
+  }, { outflow: new Outflow(), tabs: [github, codeMail], address: false });
+});
+
+test("the click run holds through read_pages, open_tab, navigate {url} and a site app, labels found by address; a granted card does not end it", async () => {
+  const codeMail: TabInfo = { ...gmail, title: "Gmail — Votre code de vérification est 381 624" };
+  // Opaque addresses: only the label tells the piece, found in the tab's last list by address.
+  const grid = [..."0123456789"].map((d) => ({ text: d, url: `https://grille.acces-verif.test/k/q${d}x${(Number(d) * 7) % 10}` }));
+  const u = (d: string) => grid[Number(d)]!.url;
+  const danger = OUTFLOW_DANGER("fr", { kind: "clicks", masked: "3 · 8 · 1" });
+  const cards = (fake: FakeBridge) => fake.calls.filter((x) => x.method === "askAddress").map((x) => x.args[0] as { url: string; danger?: string });
+  // read_pages during a search, the card refused: the 3rd page is not read.
+  await withSearch(async ({ call, fake, policy }) => {
+    fake.linkSequence = [grid];
+    policy.grant(codeMail);
+    await call("read_tab", { id: "gmail" });
+    await call("search_web", { query: "piscine annecy", goal: "but" });
+    await call("read_tab", { id: "search-1", links: true });
+    for (const d of "38") expect((await call("read_pages", { urls: [u(d)] })).text).toContain(`Texte de ${u(d)}`);
+    expect(cards(fake)).toEqual([]);
+    expect((await call("read_pages", { urls: [u("1")] })).text).toContain(DENIAL_TEXT);
+    expect(cards(fake)).toEqual([expect.objectContaining({ url: u("1"), danger })]);
+    expect(fake.calls.filter((x) => x.method === "search.openBackground")).toHaveLength(2);
+  }, { outflow: new Outflow(), tabs: [github, codeMail], address: false });
+  // open_tab in and out of a search, and navigate {url} on an ordinary tab, the card granted: the 4th is carded again.
+  for (const way of ["open_tab", "open_tab in a search", "navigate"]) {
+    await withSearch(async ({ call, fake, policy }) => {
+      fake.linkSequence = [grid];
+      policy.grant(codeMail);
+      policy.grant(github);
+      await call("read_tab", { id: "gmail" });
+      if (way.endsWith("search")) await call("search_web", { query: "piscine annecy", goal: "but" });
+      await call("read_tab", { id: way.endsWith("search") ? "search-1" : "github", links: true });
+      const go = (d: string) => (way === "navigate" ? call("navigate", { id: "github", url: u(d) }) : call("open_tab", { url: u(d) }));
+      for (const d of "381") expect((await go(d)).isError, way).toBe(false);
+      expect(cards(fake), way).toEqual([expect.objectContaining({ url: u("1"), danger })]);
+      await go("6");
+      expect(cards(fake)[1], way).toMatchObject({ url: u("6"), danger: OUTFLOW_DANGER("fr", { kind: "clicks", masked: "3 · 8 · 1 · 6" }) });
+      expect(fake.calls.filter((x) => x.method === (way === "navigate" ? "navigate" : "openTab")), way).toHaveLength(4);
+    }, { outflow: new Outflow(), tabs: [github, codeMail], address: true, allow: true });
+  }
+  // A site app: every address there has its card; the 3rd carries the red line.
+  const app: TabInfo = { id: "site:vidola", title: "Vidola", url: "https://vidola-a.example/", space: "", site: "vidola", domain: "vidola-a.example" };
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grant(codeMail);
+    policy.grantSiteRead("vidola");
+    await call("read_tab", { id: "gmail" });
+    for (const d of "381") await call("navigate", { id: "site:vidola", url: `https://vidola-a.example/k/${d}` });
+    expect(cards(fake).map((c) => c.danger)).toEqual([undefined, undefined, danger]);
+  }, { outflow: new Outflow(), tabs: [github, codeMail, app], sites: { vidola: ["vidola-a.example"] }, address: true });
+});
+
 test("a sensitive tab asks again once per search, and not before any search", async () => {
   await withSearch(async ({ call, fake, search, policy }) => {
     const asks = () => fake.calls.filter((x) => x.method === "askPermission").length;

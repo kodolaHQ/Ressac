@@ -34,6 +34,7 @@ kernel-outflow-kind-phone = un numéro de téléphone
 kernel-outflow-kind-digits = un numéro
 kernel-outflow-kind-token = un identifiant
 kernel-outflow-kind-series = une suite de recherches qui envoie une information par morceaux
+kernel-outflow-kind-clicks = une suite de liens suivis qui envoie une information par morceaux
 kernel-outflow-source-history = votre historique
 kernel-outflow-source-bookmarks = vos favoris
 kernel-outflow-source-sites = vos applis de site

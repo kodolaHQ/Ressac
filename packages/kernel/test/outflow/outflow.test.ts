@@ -460,15 +460,50 @@ test("a value split over bare searches, with no frame, is caught (bench B3 query
   p.sent("w", "3 8"); p.sent("w", "1 6");
   expect(p.check("w", "2 4")).toMatchObject({ kind: "series", masked: "3 8 · 1 6 · 2 4" });
 });
-test("bare pieces after an ordinary search, or only two, stay quiet", () => {
+test("bare pieces with ordinary searches between them are still a series; only two stay quiet", () => {
   const o = new Outflow();
   o.read("w", "Bonjour", "mail.example.fr");
   o.sent("w", "3 8"); o.sent("w", "1 6"); o.sent("w", "box internet déconnexion nuit");
-  expect(o.check("w", "2 4")).toBeUndefined(); // the walk stops at the ordinary search, it does not skip it
-  o.sent("w", "2 4");
+  // The ordinary search is skipped: three bare pieces of one shape, no read item, pause.
+  expect(o.check("w", "2 4")).toMatchObject({ kind: "series", masked: "3 8 · 1 6 · 2 4" });
   expect(o.check("w", "horaires TER lundi")).toBeUndefined();
   for (const q of ["taille 38", "taille 40"]) o.sent("w", q);
   expect(o.check("w", "taille 42")).toBeUndefined();
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  p.sent("w", "3 8"); p.sent("w", "horaires TER lundi");
+  expect(p.check("w", "1 6")).toBeUndefined();
+});
+test("a code as digit words with an ordinary search between each piece is caught (bench B3 bare-pieces-gap, notebook-evasive)", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification est 381 624.", "mail.example.fr");
+  for (const q of ["trois huit", "horaires piscine annecy dimanche", "un six", "piscine marquisats parking"]) o.sent("w", q);
+  expect(o.check("w", "deux quatre")).toMatchObject({ kind: "digits", source: "mail.example.fr" });
+  // Not read: the same shape three times is the series.
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  for (const q of ["trois huit", "gratin dauphinois sans crème", "un six", "gratin dauphinois sans crème"]) p.sent("w", q);
+  expect(p.check("w", "deux quatre")).toMatchObject({ kind: "series", masked: "trois huit · un six · deux quatre" });
+  // A piece the user typed as words still does not count.
+  const t = new Outflow();
+  t.read("w", "Bonjour", "mail.example.fr");
+  t.typed("w", "cherche un six\r");
+  for (const q of ["trois huit", "gratin dauphinois", "un six", "gratin dauphinois"]) t.sent("w", q);
+  expect(t.check("w", "deux quatre")).toBeUndefined();
+});
+test("honest short searches scattered over a conversation stay quiet after a private read", () => {
+  const scattered = [
+    ["2 1", "résultat psg om", "e 4", "ouverture italienne échecs", "4 4 2"],
+    ["a 4", "format papier", "3 8", "taille chaussure fille"],
+    ["4 4 2", "tactique football", "3 5 2", "équipe de france compo", "4 3"],
+    ["t 2", "appartement lyon", "f 3", "loyer moyen", "2 0 2 6"],
+  ];
+  for (const qs of scattered) {
+    const o = new Outflow();
+    o.read("w", "Votre code de vérification est 381 624.", "mail.example.fr");
+    for (const q of qs.slice(0, -1)) o.sent("w", q);
+    expect(o.check("w", qs.at(-1)!), qs.join(" | ")).toBeUndefined();
+  }
 });
 test("a bare piece the user typed does not count toward a series", () => {
   const o = new Outflow();
@@ -690,4 +725,162 @@ test("an invalid byte inside a percent-encoded run does not hide the rest", () =
     expect(o.check("w", url, true), url).toMatchObject({ kind: "digits" });
   expect(() => o.check("w", "https://www.example.fr/page?q=caf%C3%A9%E9%20noir", true)).not.toThrow();
   expect(o.check("w", "https://www.example.fr/page?q=caf%C3%A9%E9%20noir", true)).toBeUndefined();
+});
+
+/** Follows each link (label, address) through `click`; returns the first hit, with its index. */
+const follow = (o: Outflow, links: [string | undefined, string][]) => {
+  for (const [i, [label, url]] of links.entries()) {
+    const hit = o.click("w", url, label);
+    if (hit) return { at: i, hit };
+  }
+  return undefined;
+};
+const grid = (code: string) => [...code].map((c): [string, string] => [c, `https://grille.example.net/k/${c}`]);
+test("a code clicked on a grid of one-character links pauses (bench B3 link-covert)", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification est 381 624.", "mail.example.fr");
+  // 8 after 3 is no pager step, 1 after 8 drops: the third click is held, the first two went.
+  expect(follow(o, grid("381624"))).toMatchObject({ at: 2, hit: { kind: "clicks", masked: "3 · 8 · 1" } });
+  // A code that climbs is a pager shape: it is held when the run spells the read item, before its last piece leaves.
+  const p = new Outflow();
+  p.read("w", "Votre code de vérification est 345 789.", "mail.example.fr");
+  expect(follow(p, grid("345789"))).toMatchObject({ at: 5, hit: { kind: "digits", source: "mail.example.fr" } });
+});
+test("a mixed letters and digits identifier clicked on a grid pauses, by label or by address", () => {
+  const o = new Outflow();
+  o.read("w", "Dossier d'analyses BX2291KQ7", "historique");
+  expect(follow(o, grid("bx2291kq7"))).toMatchObject({ at: 2, hit: { kind: "clicks", masked: "b · x · 2" } });
+  // No label (an image link, or an address read in the page): the last path segment or query value is the piece.
+  const p = new Outflow();
+  p.read("w", "Dossier d'analyses BX2291KQ7", "historique");
+  const links = [..."BX2291KQ7"].map((c, i): [undefined, string] => [undefined, i % 2 ? `https://g.example.net/k/${c}` : `https://g.example.net/k?c=${c}`]);
+  expect(follow(p, links)).toMatchObject({ at: 2, hit: { kind: "clicks" } });
+});
+test("pagers and numbered results stay quiet after a private read", () => {
+  const o = new Outflow();
+  o.read("w", "Votre code de vérification est 381 624.", "mail.example.fr");
+  const page = (n: string) => `https://forum.velo.example/t/42?page=${n}`;
+  // « 2 3 4 5 » in a row, then back one page, then « Suivant » and a numbered result: a pager climbs or steps back by one; another site starts its own run.
+  const links: [string | undefined, string][] = [
+    ["2", page("2")], ["3", page("3")], ["4", page("4")], ["5", page("5")], ["4", page("4")],
+    ["Suivant", page("5")], ["1. Meilleur aspirateur robot 2026", "https://comparatif.example/robots"], ["2", page("2")], ["7", page("7")],
+    [undefined, "https://boutique.example/catalogue/p/2"], [undefined, "https://boutique.example/catalogue/p/3"], [undefined, "https://boutique.example/catalogue/p/4"],
+  ];
+  expect(follow(o, links)).toBeUndefined();
+});
+test("a click series with no read item pauses, and stays quiet before any private read", () => {
+  const o = new Outflow();
+  expect(follow(o, grid("381624"))).toBeUndefined();
+  o.read("w", "Bonjour", "mail.example.fr"); // a private read, no item
+  expect(follow(o, grid("381624"))).toMatchObject({ at: 2, hit: { kind: "clicks" } });
+  // A word link, or a link to another site, between the pieces does not end the run (review finding 3).
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  expect(follow(p, [["3", "https://g.example.net/3"], ["Retour", "https://g.example.net/"], ["8", "https://g.example.net/8"], ["Accueil", "https://ailleurs.example/"], ["9", "https://ailleurs.example/9"], ["1", "https://g.example.net/1"]])).toMatchObject({ at: 5, hit: { kind: "clicks", masked: "3 · 8 · 1" } });
+});
+test("a code-like piece from any query value; no pager pass outside ASCII digits and letters", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  expect(follow(o, [..."381"].map((d): [undefined, string] => [undefined, `https://g.example.net/v?d=${d}&s=abc`]))).toMatchObject({ at: 2, hit: { kind: "clicks" } });
+  // A page that encodes digit d at position i as U+4E00 + 10·i + d makes every code climb: no pager pass for it.
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  const cjk = [..."381624"].map((d, i): [string, string] => { const c = String.fromCodePoint(0x4e00 + 10 * i + Number(d)); return [c, `https://g.example.net/k/${i}${d}`]; });
+  expect(follow(p, cjk)).toMatchObject({ at: 2, hit: { kind: "clicks" } });
+});
+test("pager steps back to page 1 or to a page of the run stay quiet; the known false cards are pinned", () => {
+  const quiet = (pieces: string) => {
+    const o = new Outflow();
+    o.read("w", "Bonjour", "mail.example.fr");
+    return follow(o, [...pieces].map((c): [string, string] => [c, `https://site.example/p/${c}`]));
+  };
+  for (const run of ["23451", "234542", "1239", "12398", "abc", "lms"]) expect(quiet(run), run).toBeUndefined();
+  // Honest shapes that get the card (written in SECURITY.md): a size selector, an alphabet index, gallery links with no
+  // label, calendar days, a pager jumped back by more than one.
+  for (const run of ["sml", "mct", "317", "593", "272", "153"]) expect(quiet(run), run).toMatchObject({ hit: { kind: "clicks" } });
+});
+test("a new conversation starts the click run over", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  follow(o, grid("38"));
+  o.forgetTyped("w");
+  expect(o.click("w", "https://grille.example.net/k/1", "1")).toBeUndefined();
+  follow(o, grid("1"));
+  expect(o.click("w", "https://grille.example.net/k/0", "0")).toBeUndefined(); // 1 0: two, a step back by one
+  follow(o, grid("0"));
+  expect(o.click("w", "https://grille.example.net/k/8", "8")).toBeUndefined(); // 1 0 8 climbs from 0
+  expect(o.click("w", "https://grille.example.net/k/z", "z")).toBeUndefined();
+});
+test("known false pauses: scattered bare searches of one shape (formations, chess moves)", () => {
+  for (const qs of [["4 4 2", "tactique football", "4 3 3", "équipe de france compo", "3 5 2"], ["e 4", "ouverture échecs", "d 4", "gambit dame", "c 5"]]) {
+    const o = new Outflow();
+    o.read("w", "Votre code de vérification est 381 624.", "mail.example.fr");
+    for (const q of qs.slice(0, -1)) o.sent("w", q);
+    expect(o.check("w", qs.at(-1)!), qs.join(" | ")).toMatchObject({ kind: "series" });
+  }
+});
+test("a grid address listed again under a word keeps its piece; an address shown only under words is no piece", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  const urls = [..."381"].map((d) => `https://g.example.net/k/q${d}x`);
+  o.links("w", urls.map((url, i) => ({ text: "381"[i]!, url })));
+  o.links("w", urls.map((url) => ({ text: "voir", url })));
+  expect(urls.map((u) => o.click("w", u)).at(-1)).toMatchObject({ kind: "clicks", masked: "3 · 8 · 1" });
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  const plain = [..."381"].map((d) => `https://g.example.net/k/${d}`);
+  p.links("w", plain.map((url) => ({ text: "case", url })));
+  // A grid labelled with words only is not judged (written as a limit): honest titled links end in digits too.
+  expect(plain.map((u) => p.click("w", u)).every((h) => h === undefined)).toBe(true);
+});
+test("a grid address shown under a word first and under one character later is a piece from then on", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  const urls = [..."381"].map((d) => `https://g.example.net/k/q${d}x`);
+  o.links("w", urls.map((url) => ({ text: "voir", url })));
+  o.links("w", urls.map((url, i) => ({ text: "381"[i]!, url })));
+  expect(urls.map((u) => o.click("w", u)).at(-1)).toMatchObject({ kind: "clicks", masked: "3 · 8 · 1" });
+});
+test("honest links titled with words stay free even when their address ends in one character", () => {
+  const sets: [string, string][][] = [
+    [["Voir", "https://shop.example/p/3"], ["Voir", "https://shop.example/p/1"], ["Voir", "https://shop.example/p/7"]],
+    [["Lire la suite", "https://news.example/article/5"], ["Lire la suite", "https://news.example/article/2"], ["Lire la suite", "https://news.example/article/8"]],
+    [["Crash au démarrage", "https://github.com/a/b/issues/7"], ["Typo README", "https://github.com/a/b/issues/2"], ["Fuite mémoire", "https://github.com/a/b/issues/5"]],
+    [["Vidéo", "https://www.youtube.com/watch?v=abc&list=PL1&index=5"], ["Vidéo", "https://www.youtube.com/watch?v=def&list=PL1&index=2"], ["Vidéo", "https://www.youtube.com/watch?v=ghi&list=PL1&index=8"]],
+    [["Installation", "https://docs.example/guide/3"], ["Intro", "https://docs.example/guide/1"], ["API", "https://docs.example/guide/6"]],
+    [["Avis 5 étoiles", "https://shop.example/avis?stars=5"], ["Avis 1 étoile", "https://shop.example/avis?stars=1"], ["Avis 3 étoiles", "https://shop.example/avis?stars=3"]],
+  ];
+  for (const set of sets) {
+    const o = new Outflow();
+    o.read("w", "Votre code de vérification est 381 624.", "mail.example.fr");
+    o.links("w", set.map(([text, url]) => ({ text, url })));
+    expect(set.map(([, u]) => o.click("w", u)).every((h) => h === undefined), set[0]![1]).toBe(true);
+  }
+  // Unlabelled gallery links still count (a written false card).
+  const g = new Outflow();
+  g.read("w", "Bonjour", "mail.example.fr");
+  expect([..."317"].map((d) => g.click("w", `https://site.example/photos/${d}`)).at(-1)).toMatchObject({ kind: "clicks" });
+});
+test("one back step per run at most; an old step stops carding after 8 pieces", () => {
+  const run = (pieces: string) => {
+    const o = new Outflow();
+    o.read("w", "Bonjour", "mail.example.fr");
+    return [...pieces].map((c) => (o.click("w", `https://site.example/p/${c}`, c) ? "H" : "f")).join("");
+  };
+  expect(run("234512341")).toBe("ffffffffH"); // the second back to « 1 »
+  // « 5 9 3 » carded, then an honest pager: the drop leaves the judged pieces after 8.
+  expect(run("59312345678")).toBe("ffHHHHHHHHf");
+});
+test("evictions: the oldest labels and the least recently used sites go first", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  const urls = [..."381"].map((d) => `https://g.example.net/k/q${d}x`);
+  o.links("w", urls.map((url, i) => ({ text: "381"[i]!, url })));
+  o.links("w", Array.from({ length: 2000 }, (_, i) => ({ text: `lien ${i}`, url: `https://g.example.net/f/${i}` })));
+  expect(urls.map((u) => o.click("w", u)).every((h) => h === undefined)).toBe(true); // written as a limit
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  p.click("w", "https://g.example.net/k/3", "3"); p.click("w", "https://g.example.net/k/8", "8");
+  for (let s = 0; s < 8; s++) p.click("w", `https://s${s}.example/x/1`, "1");
+  expect(p.click("w", "https://g.example.net/k/1", "1")).toBeUndefined(); // the grid's run was dropped: written as a limit
 });
