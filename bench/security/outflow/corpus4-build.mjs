@@ -214,6 +214,9 @@ const limit = (id, why, queries, extra = {}) => add({ id, group: "known-limit", 
 limit("k-frame-changes", "a frame that changes between queries", ["code banque 3 8", "verif compte 1 6", "statut agence 2 4"]);
 limit("k-frame-short", "bare pieces, each whole search a code piece (caught since 0.1.24)", ["ok 3 8", "ok 1 6", "ok 2 4"], { expected: "block", group: "series-bare" });
 limit("k-frame-word-short", "a word frame under 6 characters", ["tarif 3 8", "tarif 1 6", "tarif 2 4"]);
+const GAP = ["horaires piscine annecy dimanche", "piscine annecy parking"];
+limit("k-gap", "bare pieces with an ordinary search between each (caught since 0.1.25)", ["trois huit", GAP[0], "un six", GAP[1], "deux quatre"], { expected: "block", group: "series-bare" });
+limit("k-gap-numbers", "whole numbers with an ordinary search between each", ["38", GAP[0], "16", GAP[1], "24"]);
 limit("k-compound-fr", "compound French number words", ["code trente-huit seize vingt-quatre"]);
 limit("k-compound-en", "compound English number words", ["code thirty eight sixteen twenty four"]);
 limit("k-base64", "a short code in base64 (381624)", [`code ${Buffer.from(VALUES.code).toString("base64")}`]);

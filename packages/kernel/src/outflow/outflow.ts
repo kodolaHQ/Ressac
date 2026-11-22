@@ -381,8 +381,8 @@ export class Outflow {
     if (direct || address || !w.privateRead) return direct;
 
     // shortcut: a frame that changes between queries, or one under 6 characters around a part, evades the series rule;
-    // bare pieces with no frame at all are caught (bench B3), but not when an ordinary search sits between them, nor
-    // one digit or one whole number per search. Upgrade if a bench shows those.
+    // bare pieces with no frame at all are caught (bench B3), also with ordinary searches between them, but not one digit
+    // or one whole number per search. Upgrade if a bench shows those.
     // shortcut: a part the user typed as whole words anywhere is exempt (« 2 4 » once typed), whatever its context;
     // tie typed words to their context if that is abused.
     // A series: earlier searches sharing this query's frame (common leading and trailing words) are judged with it, so
@@ -406,22 +406,33 @@ export class Outflow {
       members.push(other);
     }
     let candidates: string[];
+    /** Which parts count toward the pause (all by default). */
+    let counted = (parts: string[]) => parts;
     if (members.length) candidates = [...members, terms].map((ws) => ws.slice(pre, ws.length - suf).join(" "));
     else {
-      // No frame: a whole query that is a piece (« trois huit », « un six ») joins the bare pieces sent just before it.
+      // No frame: a whole query that is a piece (« trois huit », « un six ») joins the bare pieces kept before it, the
+      // ordinary searches between them skipped (a lesson planted in the notebook asked for that shape).
       const query = terms.join(" ");
-      const bare: string[] = [];
-      for (let i = w.sent.length - 1; i >= 0 && codeLike(w.sent[i]!); i--) bare.unshift(w.sent[i]!);
-      if (!bare.length || !codeLike(query)) return undefined;
+      if (!codeLike(query)) return undefined;
+      const bare = w.sent.filter(codeLike);
+      if (!bare.length) return undefined;
       candidates = [...bare, query];
+      let inRow = 0;
+      for (let i = w.sent.length - 1; i >= 0 && codeLike(w.sent[i]!); i--) inRow++;
+      // shortcut: with ordinary searches between them, bare pieces with no match pause only when 3 have this query's
+      // shape (« trois huit », « un six », « deux quatre » are all two digits), so honest short searches scattered over a
+      // conversation (« 2 1 », « e 4 », « 4 4 2 ») stay quiet; a code sent in pieces of changing shape (« trois huit »,
+      // « 1 6 2 », « 4 ») leaves when it was not read whole, and 3 honest bare searches of one shape (« 2 1 », « 3 0 »,
+      // « 1 1 ») pause. Upgrade if a bench shows either.
+      if (inRow < bare.length) counted = inRow >= 2 ? (ps) => ps.slice(-(inRow + 1)) : (ps) => ps.filter((p) => shape(p) === shape(query));
     }
-    const parts = candidates.filter((part) => norm(part) && !typedWords.includes(" " + words(part) + " "));
-    const joined = parts.join(" ");
-    const pieced = w.read.size ? scan(joined) : undefined;
+    const untyped = (ps: string[]) => ps.filter((part) => norm(part) && !typedWords.includes(" " + words(part) + " "));
+    const pieced = w.read.size ? scan(untyped(candidates).join(" ")) : undefined;
     if (pieced) return pieced;
-    if (parts.filter(codeLike).length < 3) return undefined;
+    const held = untyped(counted(candidates));
+    if (held.filter(codeLike).length < 3) return undefined;
     // `masked` shows the parts in clear: the band is seen by the user only, and these parts already went out.
-    return { kind: "series", masked: parts.join(" · ").slice(0, 40) };
+    return { kind: "series", masked: held.join(" · ").slice(0, 40) };
   }
 
   /** A search that went to the engine: kept, once the window read private data, to judge the next ones as a series. */
@@ -557,6 +568,15 @@ function codeLike(part: string): boolean {
   const code = one.filter(Boolean).length;
   return total <= 12 && code >= 2 && code * 2 > total;
 }
+
+/** A bare piece's shape: one class per word, `d` a digit or digit word, `l` one letter, `x` anything else (« trois huit » → dd). */
+const shape = (part: string) =>
+  part
+    .split(/\s+/)
+    .map((t) => t.replace(/[^\p{L}\p{N}]/gu, ""))
+    .filter(Boolean)
+    .map((t) => (/^\p{N}$/u.test(t) || (t.length > 1 && digitWord(t)) ? "d" : /^\p{L}$/u.test(t) ? "l" : "x"))
+    .join("");
 
 /** Index just past the escape sequence starting at `i`, or undefined if it is cut at the end of `s`. */
 function escapeEnd(s: string, i: number): number | undefined {
