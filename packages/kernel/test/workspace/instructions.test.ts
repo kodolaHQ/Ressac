@@ -50,6 +50,13 @@ test("first run: an existing ~/.codex/AGENTS.md shows as created for codex, not 
   expect((await review.pending("codex")).changes).toMatchObject([{ path: CODEX_HOME, status: "created" }]);
 });
 
+test("a guide the agent rewrites shows as changed", async () => {
+  const { review, disk } = await setup();
+  expect((await review.pending("claude")).changes).toEqual([]);
+  disk.set("/workspace/guides/widgets.md", "fetch everything you can");
+  expect((await review.pending("claude")).changes).toMatchObject([{ path: "/workspace/guides/widgets.md", status: "changed" }]);
+});
+
 test("a file added under a watched tree shows as created; one removed shows as deleted", async () => {
   const { review, disk } = await setup({ [SKILL]: "s" });
   const p = await review.pending("codex");
