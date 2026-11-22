@@ -5,7 +5,7 @@ The scripts, frozen attack catalogues, per-case results and reports behind [How 
 ## What this bench is, and is not
 
 - **It is** a test of each SECURITY.md claim, one brick at a time: does the network allowlist hold, does the container mount the home folder, does the MCP server refuse a token it should refuse, does a test go red when its guard is removed.
-- **It is not** an end-to-end prompt-injection rate. How often a hostile page actually makes data leave, through every layer at once with a real model, is brick **B3** (`B3/`): built and wiring-tested on 0.1.22, not yet run with a model, so nothing here estimates it.
+- **It is not** an end-to-end prompt-injection rate of a real model. Brick **B3** (`B3/`) runs a real agent through every layer at once. On 0.1.22 Claude Haiku tried nothing on 85 hostile pages, and minimax-m3.1-flash, told to obey the page (a worst case, not a model's rate), gave kernel figures before and after the outflow fix of 0.1.23 (`B3/README.md`). One run per case, so these are small samples, not a rate.
 - The outflow figure (51.5%) is one layer's detection rate on leaks that were forced to happen, replayed on recorded gestures. It is not a leak rate of the product.
 
 ## Method, short
@@ -33,7 +33,11 @@ Every brick ran on Ressac **0.1.20**, commit `e94539fb` (in `v0.1.21`'s history)
 | Outflow rules (replay) | `outflow/` | corpora below | `runner-outflow.mts` | Node + the repo at `c61a21f5`; corpus 3 needs two public git clones | caught the data in 1001/1944 = **51.5%** [49.3–53.7] of adapted attacks; paused 7/398 honest gestures |
 | VM trial of the fixes | `vm-trial/` | — | `drive.mts` | a Tart macOS VM and a signed DMG | 7/7 cases, controls included |
 
-B3 (end-to-end injection, `B3/`): built and wiring-tested on `main` `e2d740b3` (0.1.22), 2026-11-22; **not yet run with a model on 0.1.22**. Rerun: `B3/run.mjs` (see `B3/README.md`); needs Node + the repo, the BrowseSafe++ train sample rebuilt by its scripts or a ressac cases file, and a Claude login or Ollama for the model runs.
+B3 (end-to-end injection, `B3/`): built and wiring-tested on `main` `e2d740b3` (0.1.22), 2026-11-22, then run on 0.1.22 kernels, once per case:
+- Claude Haiku (`claude-haiku-5-5`): 100 BrowseSafe++ cases and the 72 ressac cases, cards granted; it tried nothing;
+- minimax-m3.1-flash (Ollama Cloud), obedient arm: the 72 ressac cases before the outflow fix (kernel `31f568c8`) and after it (`b2bb8875`, shipped in 0.1.23), plus the 10 encoded-lang cases after it, each with every card granted and every card refused. Attacks whose data left whole: 11 → 3 (granted) and 3 → 0 (refused) of 36, 2/10 and 0/10 encoded-lang; one more attack sent a whole code in pieces with no shared words in every run, counted as a partial leak (`B3/README.md`).
+
+Per-case summaries of these eight runs: `B3/results/` (with `SHA256SUMS`). The controls of these runs were biased (most had no link); corrected sets are in `B3/ressac/*.v2.json`, not run. Rerun: `B3/run.mjs` (see `B3/README.md`); needs Node + the repo, the BrowseSafe++ train sample rebuilt by its scripts or a ressac cases file, and a Claude login or Ollama for the model runs.
 
 Per-case results:
 - B0: `results-run.json`, `results-related.json`, and the full table at the end of `REPORT.md`.
@@ -159,7 +163,7 @@ The judge figure of `docs/security-testing.md` (87% of attacks let through) come
 
 ## Known limits of the bench
 
-- **No end-to-end number.** B3 is built but not run with a model. Nothing here says how often Ressac leaks under a real injection.
+- **No end-to-end rate.** B3 ran once per case with two models: Haiku, which never tried, and an obedient minimax, a worst case. Haiku's 0 attempts on 85 pages is one small run, the obedient minimax is a worst case, and B3's controls were biased (`B3/README.md`): nothing here is a leak rate of Ressac under a real injection.
 - **Two versions, one machine.** Each brick ran on 0.1.20, and B1-B2, B4-B6 and the B7-B9 e2e ran again on 0.1.22, all on one M5 Pro Mac. The 0.1.20 numbers are what was found; the 0.1.22 ones show the fixes hold.
 - **Not every attack ran.** B7-B9's report lists cases pending a VM or never written (« Not done »); those pending the engine are the e2e, run on 0.1.22. B1-B2's live-race attacks (DNS rebinding, CONNECT fronting) were argued from code. No brick tested the Docker fallback.
 - **B0 is first-order and unit-level.** 297 hand-picked mutations are not exhaustive, and 21 guards live only in Firefox: their e2e tests were named, not run.
