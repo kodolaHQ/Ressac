@@ -45,9 +45,12 @@ interface Win {
   privateRead: boolean;
   /** Searches that went to the engine, lowercased with spaces collapsed, oldest first. */
   sent: string[];
-  /** One-character pieces of the links followed in a row on `clickSite` since the private read (`clickPiece`), oldest first. */
-  clicks: string[];
-  clickSite: string;
+  /** Per site (`clickSite`), the one-character pieces of the links followed there since the private read (`clickPiece`),
+   *  oldest first; sites in order of last use. */
+  clicks: Map<string, string[]>;
+  /** Addresses of the links shown to the agent with their piece (`""`: a label that is none), newest last: a link opened
+   *  by its address (`open_tab`, `navigate {url}`, `read_pages`) keeps the label it was shown with. */
+  labels: Map<string, string>;
 }
 
 // Memory follows the indexed pieces: measured 21.6 MB of heap for 160 000 distinct pieces (Node 22), so 140 000
@@ -71,6 +74,10 @@ const URL_LENGTH_MAX = 500;
 // A series long enough to spell a code takes a few searches; the oldest of 20 is far past any split value, and
 // comparing a query with 20 kept ones stays linear in its length.
 const SERIES_MAX = 20;
+// Sites whose followed pieces are kept, the least recently used dropped: a grid's site is the one the agent keeps going to.
+const CLICK_SITES_MAX = 8;
+// Labels of the links shown, by address: 40 per read, so the last 50 reads; under 1 MB with addresses up to 500 characters.
+const LABELS_MAX = 2000;
 // A query is kept up to 500 characters: longer is prose, not a frame around a code.
 const SENT_LENGTH_MAX = 500;
 const DIGIT_CHUNK = 6;
@@ -207,8 +214,8 @@ export class Outflow {
         carry: "",
         privateRead: false,
         sent: [],
-        clicks: [],
-        clickSite: "",
+        clicks: new Map(),
+        labels: new Map(),
       };
       this.wins.set(id, w);
     }
@@ -444,36 +451,49 @@ export class Outflow {
   }
 
   /**
-   * A link the agent is about to follow (`label`: its text in the numbered list, if known), judged with the code-like links
-   * it followed just before, as bare search pieces are: a page's grid of links labelled « 0 »… « 9 » clicked in a code's
-   * order sends the code to the page's server one request at a time.
+   * A link the agent follows (`label`: its text in a numbered list, if known), judged with the code-like links it followed
+   * on the same site before, as bare search pieces are: a page's grid of links labelled « 0 »… « 9 » clicked in a code's
+   * order sends the code to the page's server one request at a time. Judging records the piece, held or not, so calls
+   * made at the same time are judged one after the other; a held link the user then refuses still counts (stricter).
    */
   click(win: string, url: string, label?: string): OutflowHit | undefined {
     const w = this.wins.get(win);
-    const piece = clickPiece(url, label);
+    const known = label === undefined ? w?.labels.get(url) : undefined;
+    const piece = known === undefined ? clickPiece(url, label) : known || undefined;
     if (!w?.privateRead || !piece) return undefined;
-    const run = [...(clickSite(url) === w.clickSite ? w.clicks : []), piece];
-    // The pieces joined, scanned as an address is (rule 2): a run that spells a read item is that item.
+    // Links elsewhere or with words between the pieces do not end the run: a « Retour » link would otherwise defeat it.
+    const site = clickSite(url);
+    const run = w.clicks.get(site) ?? [];
+    w.clicks.delete(site);
+    w.clicks.set(site, run);
+    if (w.clicks.size > CLICK_SITES_MAX) w.clicks.delete(w.clicks.keys().next().value!);
+    if (run.push(piece) > SERIES_MAX) run.shift();
+    // The pieces joined, scanned as an address is (rule 2): a run that spells a read item is that item, whatever its shape.
     const spelt = w.read.size ? this.check(win, run.join(" "), true) : undefined;
     if (spelt) return spelt;
-    // shortcut: a run that never drops by more than one (« 2 3 4 », « 4 3 », « 2 3 5 ») is read as a pager and passes when
-    // it spells no read item, so a code shaped that way (123 456, 135 799) leaves when it was read in another shape;
-    // upgrade if a bench shows codes sent that way.
-    if (run.length < 3 || run.every((c, i) => !i || c.codePointAt(0)! >= run[i - 1]!.codePointAt(0)! - 1)) return undefined;
-    // `masked` shows the pieces in clear, as for a series of searches: they already left, one per request.
+    // shortcut: a run of ASCII digits and letters is read as a pager, and passes when it spells no read item, when each step
+    // climbs or steps back by one (« 2 3 4 », « 4 3 », « 2 3 5 »), or goes back to « 1 » or to a page of the run right
+    // after a step of one (« 2 3 4 5 1 », « 3 4 5 4 2 »). So a code shaped that way (123 456, 135 799: 2.9 % of 6-digit
+    // codes, more with the back steps) leaves when it was not read whole; upgrade if a bench shows codes sent that way. Any
+    // other character (a CJK label) gets no pager pass, or a page could make every code climb.
+    const at = (i: number) => run[i]!.codePointAt(0)!;
+    const pager = run.every(
+      (c, i) => /^[0-9a-z]$/.test(c) && (!i || at(i) >= at(i - 1) - 1 || (i > 1 && Math.abs(at(i - 1) - at(i - 2)) <= 1 && (c === "1" || run.indexOf(c) < i))),
+    );
+    if (run.length < 3 || pager) return undefined;
+    // `masked` shows the pieces in clear, as for a series of searches: the agent asked to send each of them.
     return { kind: "clicks", masked: run.join(" · ").slice(0, 40) };
   }
 
-  /** A link the agent followed: a code-like one joins the run `click` judges, any other ends it. */
-  clicked(win: string, url: string, label?: string): void {
-    const w = this.wins.get(win);
-    if (!w?.privateRead) return;
-    const piece = clickPiece(url, label);
-    const site = clickSite(url);
-    // Another site's links are another run: a forum's pager, then a shop's, are not one series.
-    if (!piece || site !== w.clickSite) w.clicks = [];
-    w.clickSite = site;
-    if (piece && w.clicks.push(piece) > SERIES_MAX) w.clicks.shift();
+  /** Links shown to the agent in a numbered list, kept by address with the piece their label gives (`click`). */
+  links(win: string, links: readonly { text: string; url: string }[]): void {
+    const w = this.win(win);
+    for (const l of links) {
+      if (l.url.length > URL_LENGTH_MAX) continue;
+      w.labels.delete(l.url);
+      w.labels.set(l.url, clickPiece(l.url, l.text || " ") ?? "");
+      if (w.labels.size > LABELS_MAX) w.labels.delete(w.labels.keys().next().value!);
+    }
   }
 
   /** `check` against what every window read: for a caller tied to no window (the main token), which could otherwise
@@ -495,8 +515,7 @@ export class Outflow {
     w.typedText = w.typedWords = w.buffer = w.carry = "";
     w.paste = false;
     w.sent = [];
-    w.clicks = [];
-    w.clickSite = "";
+    w.clicks.clear();
   }
 
   forget(win: string): void {
@@ -508,15 +527,16 @@ export class Outflow {
 const words = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}@]+/gu, " ").trim();
 
 /**
- * What a followed link tells its server, when that is one character: its label, or without one the last query value or
- * else the last path segment of its address (« /k/3 », « ?p=3 »). Undefined for anything longer.
+ * What a followed link tells its server, when that is one character: its label, or without one a one-character query
+ * value or else the last path segment of its address (« /k/3 », « ?d=3&s=abc »). Undefined for anything longer.
  */
 function clickPiece(url: string, label?: string): string | undefined {
   let piece = label?.trim();
   if (!piece)
     try {
       const u = new URL(url);
-      piece = [...u.searchParams.values()].at(-1) ?? decodeURIComponent(u.pathname.split("/").filter(Boolean).at(-1) ?? "");
+      // Any one-character query value (?d=3&s=abc), else the last path segment.
+      piece = [...u.searchParams.values()].find((v) => [...norm(v)].length === 1) ?? decodeURIComponent(u.pathname.split("/").filter(Boolean).at(-1) ?? "");
     } catch {
       return undefined;
     }

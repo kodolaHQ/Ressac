@@ -50,7 +50,7 @@ const READ_PAGES_PAGE_MAX = 3_000;
 const reducedNote = (shown: number, total: number) => `(Page réduite : ${shown} passages sur ${total} ; read_tab avec full: true donne toute la page.)`;
 export const LINKS_HEADER = 'Liens (numérotés, les plus utiles d\'abord ; navigate accepte {"link": n}) :';
 /** A tab's last printed links, and whether they came from a page the agent writes (a local page, a site app). */
-type LinkList = { urls: string[]; labels: string[]; written: boolean };
+type LinkList = { urls: string[]; written: boolean };
 const unknownLink = (n: number) => `Lien ${n} inconnu : relis l'onglet avec links: true.`;
 /** Every address a read makes free to follow: each link as read, and the target of an engine redirect. */
 const readUrls = (links: readonly { url: string }[] = []) => links.flatMap((l) => [l.url, unwrapLink(l.url)]);
@@ -541,7 +541,9 @@ function createToolsServer(
     const top = full ? ranked : ranked.slice(0, LINKS_SHOWN);
     if (withLinks) {
       listed.delete(o.id);
-      listed.set(o.id, { urls: top.map((l) => l.url), labels: top.map((l) => l.text), written: !linksFollowable(o) });
+      listed.set(o.id, { urls: top.map((l) => l.url), written: !linksFollowable(o) });
+      // Their labels: a link opened later by its address still tells its piece (`Outflow.click`).
+      outflow?.links(key, top);
       // Closed tabs leave their list: only the most recent are kept.
       if (listed.size > LISTS_KEPT) listed.delete(listed.keys().next().value!);
     }
@@ -844,7 +846,6 @@ function createToolsServer(
       }
       const o = await bridge.openTab(target, space);
       policy.tabOpenedByAgent(o);
-      if (!isLocal(url)) outflow?.clicked(key, url);
       return text(o.id);
     }),
   );
@@ -870,10 +871,7 @@ function createToolsServer(
       if (searching?.sessions.takeStop(win ?? MAIN_WINDOW, id)) return text(STOP_TEXT);
       const o = await tab(id);
       // A link that spells something with the ones followed before it is never free: its card shows what (rule 2).
-      const label = link === undefined ? undefined : list?.labels[link];
-      const clicks = isLocal(url) ? undefined : outflow?.click(key, url, label);
-      /** The link went: it joins the run of followed links (or ends it). */
-      const gone = () => { if (!isLocal(url)) outflow?.clicked(key, url, label); };
+      const clicks = isLocal(url) ? undefined : outflow?.click(key, url);
       if (searching?.sessions.owns(id)) {
         const { sessions } = searching;
         // Longer than the search remembers: it could be allowed but never freed.
@@ -894,7 +892,6 @@ function createToolsServer(
           sessions.allow(id, url);
         }
         await sessions.step(id, l10n("kernel-search-opening", { url: target }), () => working(id, () => bridge.navigate(id, target), l10n("kernel-activity-goes-to", { site: siteOf(target) })));
-        gone();
         return text(`Onglet ${id} → ${target}`);
       }
       if (o.site !== undefined) {
@@ -908,7 +905,6 @@ function createToolsServer(
         if (refusal) return text(refusal);
         const loaded = await working(id, () => bridge.navigate(id, url), l10n("kernel-activity-goes-to", { site: siteOf(url) }));
         if (loaded === "pending") return text(PENDING_SITE_NAVIGATION);
-        gone();
         return text(`Appli de site ${id} → ${url}`);
       }
       if (!(await access(o))) return text(DENIAL_TEXT);
@@ -920,14 +916,12 @@ function createToolsServer(
       if (o.app && originOf(url) !== originOf(o.url)) {
         const fresh = await bridge.openTab(url);
         policy.tabOpenedByAgent(fresh);
-        gone();
         return text(`L'application ne quitte pas son adresse : ${url} ouvert dans l'onglet ${fresh.id}.`);
       }
       // Before bridge.navigate: the browser may report the navigation (tabNavigated) before it
       // ends, and the agent must not lose access to its own demo.
       policy.navigationByAgent(id, url);
       await working(id, () => bridge.navigate(id, url), l10n("kernel-activity-goes-to", { site: siteOf(url) }));
-      gone();
       return text(`Onglet ${id} → ${url}`);
     }),
   );
@@ -1072,15 +1066,17 @@ function createToolsServer(
             if (!urlWeb(u)) { errors.set(u, `Erreur : URL refusée (http ou https uniquement) : ${u}`); continue; }
             if (u.length > URL_MAX) { errors.set(u, `Erreur : ${TOO_LONG_TEXT}`); continue; }
             const free = tabId && sessions.freeAs(tabId, u);
-            if (free) { ok.push([u, free]); continue; }
+            // Judged in the order asked, though the reads then run together: a grid read page by page is a run of clicks.
+            const clicks = isLocal(u) ? undefined : outflow?.click(key, u);
+            if (free && !clicks) { ok.push([u, free]); continue; }
             if (!bridge.askAddress) { errors.set(u, `Erreur : ${UNREAD_ADDRESS_TEXT}`); continue; }
             const t = tabId;
-            const ask = () => askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(u) }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}), extra?.signal);
+            const ask = () => askAddressCard(bridge, policy, requests, { url: u, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(u, clicks) }, `address:${t ?? key}:${u}`, win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}), extra?.signal);
             const yes = await (t ? sessions.step(t, l10n("kernel-search-address-step"), ask) : ask());
             if (t && !sessions.owns(t)) return ended();
             if (!yes) { errors.set(u, `Erreur : ${DENIAL_TEXT}`); continue; }
             if (t) sessions.allow(t, u);
-            ok.push([u, u]);
+            ok.push([u, free || u]);
           }
           // The user took the search tab while a card was up: nothing is read in this search now.
           if (handing(tabId)) return text(HANDING_TEXT, true);

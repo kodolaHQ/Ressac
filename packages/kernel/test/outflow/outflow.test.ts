@@ -727,12 +727,11 @@ test("an invalid byte inside a percent-encoded run does not hide the rest", () =
   expect(o.check("w", "https://www.example.fr/page?q=caf%C3%A9%E9%20noir", true)).toBeUndefined();
 });
 
-/** Follows each link (label, address) through `click` then `clicked`; returns the first hit, with its index. */
+/** Follows each link (label, address) through `click`; returns the first hit, with its index. */
 const follow = (o: Outflow, links: [string | undefined, string][]) => {
   for (const [i, [label, url]] of links.entries()) {
     const hit = o.click("w", url, label);
     if (hit) return { at: i, hit };
-    o.clicked("w", url, label);
   }
   return undefined;
 };
@@ -774,10 +773,31 @@ test("a click series with no read item pauses, and stays quiet before any privat
   expect(follow(o, grid("381624"))).toBeUndefined();
   o.read("w", "Bonjour", "mail.example.fr"); // a private read, no item
   expect(follow(o, grid("381624"))).toMatchObject({ at: 2, hit: { kind: "clicks" } });
-  // Only two code-like links in a row, a word link ending the run.
+  // A word link, or a link to another site, between the pieces does not end the run (review finding 3).
   const p = new Outflow();
   p.read("w", "Bonjour", "mail.example.fr");
-  expect(follow(p, [["3", "https://g.example.net/3"], ["8", "https://g.example.net/8"], ["Accueil", "https://g.example.net/"], ["1", "https://g.example.net/1"]])).toBeUndefined();
+  expect(follow(p, [["3", "https://g.example.net/3"], ["Retour", "https://g.example.net/"], ["8", "https://g.example.net/8"], ["Accueil", "https://ailleurs.example/"], ["9", "https://ailleurs.example/9"], ["1", "https://g.example.net/1"]])).toMatchObject({ at: 5, hit: { kind: "clicks", masked: "3 · 8 · 1" } });
+});
+test("a code-like piece from any query value; no pager pass outside ASCII digits and letters", () => {
+  const o = new Outflow();
+  o.read("w", "Bonjour", "mail.example.fr");
+  expect(follow(o, [..."381"].map((d): [undefined, string] => [undefined, `https://g.example.net/v?d=${d}&s=abc`]))).toMatchObject({ at: 2, hit: { kind: "clicks" } });
+  // A page that encodes digit d at position i as U+4E00 + 10·i + d makes every code climb: no pager pass for it.
+  const p = new Outflow();
+  p.read("w", "Bonjour", "mail.example.fr");
+  const cjk = [..."381624"].map((d, i): [string, string] => { const c = String.fromCodePoint(0x4e00 + 10 * i + Number(d)); return [c, `https://g.example.net/k/${i}${d}`]; });
+  expect(follow(p, cjk)).toMatchObject({ at: 2, hit: { kind: "clicks" } });
+});
+test("pager steps back to page 1 or to a page of the run stay quiet; the known false cards are pinned", () => {
+  const quiet = (pieces: string) => {
+    const o = new Outflow();
+    o.read("w", "Bonjour", "mail.example.fr");
+    return follow(o, [...pieces].map((c): [string, string] => [c, `https://site.example/p/${c}`]));
+  };
+  for (const run of ["23451", "234542", "1239", "12398", "abc", "lms"]) expect(quiet(run), run).toBeUndefined();
+  // Honest shapes that get the card (written in SECURITY.md): a size selector, an alphabet index, gallery links with no
+  // label, calendar days, a pager jumped back by more than one.
+  for (const run of ["sml", "mct", "317", "593", "272", "153"]) expect(quiet(run), run).toMatchObject({ hit: { kind: "clicks" } });
 });
 test("a new conversation starts the click run over", () => {
   const o = new Outflow();
@@ -790,4 +810,12 @@ test("a new conversation starts the click run over", () => {
   follow(o, grid("0"));
   expect(o.click("w", "https://grille.example.net/k/8", "8")).toBeUndefined(); // 1 0 8 climbs from 0
   expect(o.click("w", "https://grille.example.net/k/z", "z")).toBeUndefined();
+});
+test("known false pauses: scattered bare searches of one shape (formations, chess moves)", () => {
+  for (const qs of [["4 4 2", "tactique football", "4 3 3", "équipe de france compo", "3 5 2"], ["e 4", "ouverture échecs", "d 4", "gambit dame", "c 5"]]) {
+    const o = new Outflow();
+    o.read("w", "Votre code de vérification est 381 624.", "mail.example.fr");
+    for (const q of qs.slice(0, -1)) o.sent("w", q);
+    expect(o.check("w", qs.at(-1)!), qs.join(" | ")).toMatchObject({ kind: "series" });
+  }
 });
