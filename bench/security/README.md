@@ -39,7 +39,7 @@ Per-case results:
 - B0: `results-run.json`, `results-related.json`, and the full table at the end of `REPORT.md`.
 - B4-B6: `results/b4.jsonl`, `results/b6.jsonl`, `results/b5links.out`. The B5 and B6 container outputs were not saved; the report is their only record.
 - B7-B9: `unit/results/*.json`, `unit/results/publish.txt`.
-- Outflow: each run's per-item output is not published, but the replay is deterministic and takes seconds (below).
+- Outflow: `outflow/results/` holds each corpus's per-item output (rerun 2026-11-22 at `c61a21f5`, identical totals to the published figures), with `results.sha256`. The replay is deterministic, so a rerun gives the same files.
 - VM trial: `results.json`.
 - B1-B2: the report only. Its runners were kept in a temporary folder and lost.
 
