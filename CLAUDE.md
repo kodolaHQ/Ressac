@@ -47,9 +47,10 @@ Every rule below comes from a test that failed on a busy machine. A red must mea
 
 ## Branches
 
-- **`main` is what was released.** No feature or fix is committed or pushed straight to `main`.
-- **The next version has its own branch** (`next`), cut from `main` after a release. Features and fixes go on their own branch, then are merged into `next`. At release time `next` is merged into `main`, the version is bumped there and the tag is cut from it.
-- **An urgent security fix** goes on a `hotfix/<version>` branch cut from the last release tag, with the current version's patch number incremented (0.1.21 → 0.1.22). It is merged into `main`, released, then merged into `next`. The next version takes the following number when it ships.
+Trunk-based, releases are tags.
+- **`main` is the next version, never committed to directly.** Every feature or fix goes on its own short branch, merged into `main` once its e2e files pass.
+- **A release is a `v<version>` tag on `main`** (`release:publish` cuts it). If `main` holds unfinished work at release time, cut `release/<version>` from it; only fixes go there.
+- **An urgent security fix** goes on `hotfix/<version>`, cut from the last release tag, with the patch number incremented (`v0.1.21` → `hotfix/0.1.22`). It is released from that branch, then merged back into `main`; the next normal release takes the following number.
 
 ## Version and release
 
