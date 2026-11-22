@@ -36,6 +36,10 @@ it("a bad RESSAC_CONTAINER_PORTS gives the kernel's range, unset the host's defa
 it("known CDNs are reachable with GET only", () => {
   expect(req({ to: "https://fonts.gstatic.com/s/inter.woff2" })).toBe("allow");
   expect(req({ to: "https://fonts.gstatic.com/s/inter.woff2", method: "POST" })).toBe("cancel");
+  // In clear text or on another port, the address is readable on the way.
+  expect(req({ to: "http://unpkg.com/?d=secret" })).toBe("cancel");
+  expect(req({ to: "https://unpkg.com:8443/?d=secret" })).toBe("cancel");
+  expect(req({ to: "https://unpkg.com:443/react" })).toBe("allow");
 });
 
 it("a local page outside the agent's ports is not guarded", () => {
