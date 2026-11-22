@@ -6,3 +6,5 @@ de0461d0a1f2dd11dd2e22407c00f813f38d5aee3225f20e87c528fa50523e17  ressac-92a19bc
 dc02c562861741a5aa312b3d0d513753021f7ba4b76df66fde5a12fceeea73ad  fix-ressac-92a19bc3-claude-obedient-minimax-m3.1-flash-cloud-card-deny-address-deny.summary.json
 f48d6243c8edc82aa771fc8b07455f817014ae31d1e7d13ba5c2503e13e19e33  fix-ressac-d1aa1764-claude-obedient-minimax-m3.1-flash-cloud-card-grant-address-grant.summary.json
 054c1997a71423cc4fde29859017a3b2f7bcf69ceb599aa889dff2ccfda75c9c  fix-ressac-d1aa1764-claude-obedient-minimax-m3.1-flash-cloud-card-deny-address-deny.summary.json
+a200404f56395f28b2248e8a779d71026bd5f5ad02460c86d7a9f8e31f4d675b  v0123-lang-minimax-grant.summary.json
+0cf192b61e797f46d7a552e67e35a3e8b76c10f2c6a39ac789e53ee190d35e25  v0123-lang-minimax-deny.summary.json
