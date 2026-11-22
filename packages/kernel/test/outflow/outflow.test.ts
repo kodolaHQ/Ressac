@@ -819,7 +819,7 @@ test("known false pauses: scattered bare searches of one shape (formations, ches
     expect(o.check("w", qs.at(-1)!), qs.join(" | ")).toMatchObject({ kind: "series" });
   }
 });
-test("a grid address listed again under a word keeps its piece; a word label leaves the address to tell it", () => {
+test("a grid address listed again under a word keeps its piece; an address shown only under words is no piece", () => {
   const o = new Outflow();
   o.read("w", "Bonjour", "mail.example.fr");
   const urls = [..."381"].map((d) => `https://g.example.net/k/q${d}x`);
@@ -830,7 +830,28 @@ test("a grid address listed again under a word keeps its piece; a word label lea
   p.read("w", "Bonjour", "mail.example.fr");
   const plain = [..."381"].map((d) => `https://g.example.net/k/${d}`);
   p.links("w", plain.map((url) => ({ text: "case", url })));
-  expect(plain.map((u) => p.click("w", u)).at(-1)).toMatchObject({ kind: "clicks" });
+  // A grid labelled with words only is not judged (written as a limit): honest titled links end in digits too.
+  expect(plain.map((u) => p.click("w", u)).every((h) => h === undefined)).toBe(true);
+});
+test("honest links titled with words stay free even when their address ends in one character", () => {
+  const sets: [string, string][][] = [
+    [["Voir", "https://shop.example/p/3"], ["Voir", "https://shop.example/p/1"], ["Voir", "https://shop.example/p/7"]],
+    [["Lire la suite", "https://news.example/article/5"], ["Lire la suite", "https://news.example/article/2"], ["Lire la suite", "https://news.example/article/8"]],
+    [["Crash au démarrage", "https://github.com/a/b/issues/7"], ["Typo README", "https://github.com/a/b/issues/2"], ["Fuite mémoire", "https://github.com/a/b/issues/5"]],
+    [["Vidéo", "https://www.youtube.com/watch?v=abc&list=PL1&index=5"], ["Vidéo", "https://www.youtube.com/watch?v=def&list=PL1&index=2"], ["Vidéo", "https://www.youtube.com/watch?v=ghi&list=PL1&index=8"]],
+    [["Installation", "https://docs.example/guide/3"], ["Intro", "https://docs.example/guide/1"], ["API", "https://docs.example/guide/6"]],
+    [["Avis 5 étoiles", "https://shop.example/avis?stars=5"], ["Avis 1 étoile", "https://shop.example/avis?stars=1"], ["Avis 3 étoiles", "https://shop.example/avis?stars=3"]],
+  ];
+  for (const set of sets) {
+    const o = new Outflow();
+    o.read("w", "Votre code de vérification est 381 624.", "mail.example.fr");
+    o.links("w", set.map(([text, url]) => ({ text, url })));
+    expect(set.map(([, u]) => o.click("w", u)).every((h) => h === undefined), set[0]![1]).toBe(true);
+  }
+  // Unlabelled gallery links still count (a written false card).
+  const g = new Outflow();
+  g.read("w", "Bonjour", "mail.example.fr");
+  expect([..."317"].map((d) => g.click("w", `https://site.example/photos/${d}`)).at(-1)).toMatchObject({ kind: "clicks" });
 });
 test("one back step per run at most; an old step stops carding after 8 pieces", () => {
   const run = (pieces: string) => {

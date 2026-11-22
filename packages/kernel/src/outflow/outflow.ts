@@ -460,8 +460,11 @@ export class Outflow {
    */
   click(win: string, url: string, label?: string): OutflowHit | undefined {
     const w = this.wins.get(win);
-    // A label shown that is no piece (« voir ») leaves the address to tell it: a word label never frees a /k/3.
-    const piece = (label === undefined && w?.labels.get(url)) || clickPiece(url, label);
+    // The piece: a one-character label, or one this address was shown with elsewhere (a « voir » listing of it never frees
+    // it); an address shown only under words (« Lire la suite » on /article/5) is no piece; one never shown with a label
+    // tells its own (an image link, an address typed from the page).
+    const shown = w?.labels.get(url);
+    const piece = shown || (shown === undefined || label !== undefined ? clickPiece(url, label) : undefined);
     if (!w?.privateRead || !piece) return undefined;
     // Links elsewhere or with words between the pieces do not end the run: a « Retour » link would otherwise defeat it.
     const site = clickSite(url);
@@ -498,8 +501,10 @@ export class Outflow {
     const w = this.win(win);
     for (const l of links) {
       if (l.url.length > URL_LENGTH_MAX) continue;
-      // A piece once shown stays: listing the same address again under a word (« voir ») must not free it.
-      const piece = clickPiece(l.url, l.text || " ") ?? "";
+      // A link with no label tells nothing here: its address gives its piece. A piece once shown stays: listing the same
+      // address again under a word (« voir ») must not free it.
+      if (!l.text.trim()) continue;
+      const piece = clickPiece(l.url, l.text) ?? "";
       const kept = w.labels.get(l.url);
       w.labels.delete(l.url);
       w.labels.set(l.url, kept || piece);
