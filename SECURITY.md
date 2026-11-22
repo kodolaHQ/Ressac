@@ -77,6 +77,8 @@ Known limits are marked with `shortcut:` comments in the code (for example custo
 - The design-mode server lets the last client that declares a folder take it, with its pending remarks and its port, and accepts folders outside your home and any port from 1024 outside the agent's range.
 - Without the signing settings, a DMG built from source is only ad hoc signed.
 
+How these protections were tested, and what is not tested yet: [docs/security-testing.md](docs/security-testing.md).
+
 A way around one of the protections above is a vulnerability, even when it needs a crafted page.
 
 ## Out of scope
