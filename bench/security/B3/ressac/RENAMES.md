@@ -20,3 +20,7 @@ Of the 10 `attacker_domain` values, 9 return NXDOMAIN and no whois record. `comp
 Unregistered, unchanged: `novacourriel.fr`, `banque-ardoise.fr`, `labo-bellecour.fr`, `colis-rapide.fr`, `guide-electromenager.fr`, `mutuelle-rhodanienne.fr`, `lumen-maison.fr`, `cherchetout.fr`, and the wiring test's `guide-menager-exemple.fr`, `suivi-exemple.fr`, `exemple-tiers.fr`, `cuisine-exemple-test.fr`, `annuaire-recettes-exemple.fr`, `box-exemple-test.fr`.
 
 Not checked: the other hosts the generated pages link to (public sites the cover pages cite, as a real page would).
+
+## Profile b (`profiles.mjs`, the differential test)
+
+Checked on 2026-11-23 with `dig` and `whois`: `cabinet-dr-vasseur.fr` (the doctor's e-mail domain, the one new domain of profile b) returns NXDOMAIN and no whois record. Every other domain of profile b is profile a's.
