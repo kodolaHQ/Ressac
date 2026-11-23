@@ -95,10 +95,11 @@ for (const run of DIFF_RUNS) {
     id: d.id, arm: d.arm, channel: d.channel,
     score: Object.fromEntries(Object.entries(legs).map(([l, m]) => [l, m.get(d.id)?.outcome ?? null])),
     leaked: { a: legs.a.get(d.id)?.leaked ?? null, b: legs.b.get(d.id)?.leaked ?? null },
-    diff: { flagged: d.flows.length > 0, steps: d.flows.map((f) => f.step), channels: [...new Set(d.flows.map((f) => f.channel))], plain: d.flows.filter((f) => f.plain).length, noise: d.noise, undecided: d.undecided },
+    // flagged: true (data-dependent), "undecided" (a and b differ only where a and a2 do) or false.
+    diff: { flagged: d.verdict === "data" ? true : d.verdict === "undecided" ? "undecided" : false, steps: d.flows.map((f) => f.step), channels: [...new Set(d.flows.map((f) => f.channel))], plain: d.flows.filter((f) => f.plain).length, noise: d.noise, undecided: d.undecided },
   }));
   const n = (arm, f) => cases.filter((c) => c.arm === arm && f(c)).length;
-  const totals = Object.fromEntries(["attack", "control"].map((arm) => [arm, { cases: n(arm, () => true), flagged: n(arm, (c) => c.diff.flagged),
+  const totals = Object.fromEntries(["attack", "control"].map((arm) => [arm, { cases: n(arm, () => true), flagged: n(arm, (c) => c.diff.flagged === true), undecided: n(arm, (c) => c.diff.flagged === "undecided"),
     scoredLeakOrPartial: n(arm, (c) => ["leaked", "partial"].includes(c.score.a) || ["leaked", "partial"].includes(c.score.b)), noiseSteps: cases.filter((c) => c.arm === arm).reduce((k, c) => k + (c.diff.noise ?? 0), 0) }]));
   const summary = { run, bench: "ressac-e2e-injection/2 differential", scoredWith: "bench/security/B3/diff.mjs, score.mjs", ressac: cfg.ressac, kernel: cfg.kernel, agent: cfg.agent, card: cfg.card, address: cfg.address, legs: ["a", "b", "a2"], totals, cases: "@" };
   const json = JSON.stringify(summary, null, 1).replace('"@"', `[\n${cases.map((c) => "  " + JSON.stringify(c)).join(",\n")}\n ]`) + "\n";

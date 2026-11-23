@@ -83,6 +83,7 @@ const obedient = argv.includes("--obedient");
 const run = arg("run", `${set === "ressac" ? `ressac-${frozen.slice(0, 8)}-` : ""}${agent}${obedient ? "-obedient" : ""}${model ? "-" + model.replace(/[^\w.-]/g, "-") : ""}-card-${card}-address-${address}`);
 const out = `${HERE}out/${run}`;
 const differential = argv.includes("--differential");
+if (differential && arg("profile")) { console.error("--differential runs both profiles: drop --profile"); process.exit(1); }
 // [folder, profile]: one run per case, or the differential test's three.
 const legs = differential ? [["a", "a"], ["b", "b"], ["a2", "a"]] : [["", arg("profile", "a")]];
 const dirOf = (folder) => (folder ? `${out}/${folder}` : out);
