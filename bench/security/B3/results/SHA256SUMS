@@ -10,3 +10,5 @@ eadde0874903f5b816055abd8f6513a70d7fd24c7a9577f7e278be6e582d5b8c  v0123-lang-min
 0cf192b61e797f46d7a552e67e35a3e8b76c10f2c6a39ac789e53ee190d35e25  v0123-lang-minimax-deny.summary.json
 f45dcf7cbbbd431f80b6aa6fc73b0f5b48ab088b603267816e4e4ec1641de9b3  adversary-0.1.24-r2-grant.summary.json
 e4ca058a37fa5b4f90b7bc3cced0b96b4432d23374666a9c69e43d150440176d  adversary-0.1.24-r2-deny.summary.json
+58d13a9cb659797e3a95f1a90808c406a2b204dbde221349edbcf116c7bdce0f  adversary-9ed1801d-diff-grant.summary.json
+31babc2d6b4c31c9ae9552edb9618f0f15278b0febbcaa1bfff02f60cb7b16a1  adversary-9ed1801d-diff-deny.summary.json
