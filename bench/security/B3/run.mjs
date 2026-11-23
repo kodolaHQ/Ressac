@@ -11,7 +11,10 @@
 //   without a red line, default grant; a red line is always refused), --arm attack|control, --model <m>, --timeout-s <s> (300),
 //   --ollama <model> [--ollama-url http://127.0.0.1:11434]: a local model, Claude Code pointed at Ollama as Ressac does it, on a
 //   derived tag <model>-ressac-bench-64k (num_ctx 64000, made here if missing; your Ollama settings are untouched); parallel 1.
-//   --max-tools <n> (30). The agent runs with production's --dangerously-skip-permissions; the harness allows only mcp__ressac__ tools.
+//   --max-tools <n> (30), --profile a|b (the user's invented values, profiles.mjs; default a).
+//   --differential: each case three times, under profile a (out/<run>/a), profile b (b) and a again (a2, the noise baseline),
+//   then diff.mjs compares what went out (README « Two profiles »). Three runs per case: three times the cost of a model run.
+//   The agent runs with production's --dangerously-skip-permissions; the harness allows only mcp__ressac__ tools.
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -79,23 +82,30 @@ const model = ollama ? tag : arg("model");
 const obedient = argv.includes("--obedient");
 const run = arg("run", `${set === "ressac" ? `ressac-${frozen.slice(0, 8)}-` : ""}${agent}${obedient ? "-obedient" : ""}${model ? "-" + model.replace(/[^\w.-]/g, "-") : ""}-card-${card}-address-${address}`);
 const out = `${HERE}out/${run}`;
-mkdirSync(out, { recursive: true });
+const differential = argv.includes("--differential");
+if (differential && arg("profile")) { console.error("--differential runs both profiles: drop --profile"); process.exit(1); }
+// [folder, profile]: one run per case, or the differential test's three.
+const legs = differential ? [["a", "a"], ["b", "b"], ["a2", "a"]] : [["", arg("profile", "a")]];
+const dirOf = (folder) => (folder ? `${out}/${folder}` : out);
+for (const [folder] of legs) mkdirSync(dirOf(folder), { recursive: true });
 // A record is final without `error` (a provider safeguard stop included) or once the agent called a tool: it is an
 // outcome, never rerun. Only a run that failed before any tool call is run again.
-const done = (c) => { try { const r = JSON.parse(readFileSync(`${out}/${c.id}.json`, "utf8")); return !r.error || r.events.some((e) => e.t === "tool"); } catch { return false; } };
-const todo = cases.filter((c) => !done(c));
-console.log(`${cases.length} cases (sha256 ${frozen.slice(0, 12)}…), ${cases.length - todo.length} already done, ${todo.length} to run → ${out}`);
-const pass = ["--set", set, "--cases-file", file, "--agent", agent, "--card", card, "--address", address, "--out", out, ...(ollama ? ["--ollama", tag, "--ollama-url", ollamaUrl] : []), ...[...(ollama ? [] : ["model"]), "timeout-s", "max-tools"].flatMap((k) => (arg(k) ? [`--${k}`, arg(k)] : [])), ...(obedient ? ["--obedient"] : [])];
+const done = (c, dir) => { try { const r = JSON.parse(readFileSync(`${dir}/${c.id}.json`, "utf8")); return !r.error || r.events.some((e) => e.t === "tool"); } catch { return false; } };
+const jobs = legs.flatMap(([folder, profile]) => cases.map((c) => ({ c, profile, dir: dirOf(folder) })));
+const todo = jobs.filter((j) => !done(j.c, j.dir));
+console.log(`${jobs.length} case runs (${cases.length} cases, sha256 ${frozen.slice(0, 12)}…), ${jobs.length - todo.length} already done, ${todo.length} to run → ${out}`);
+const pass = ["--set", set, "--cases-file", file, "--agent", agent, "--card", card, "--address", address, ...(ollama ? ["--ollama", tag, "--ollama-url", ollamaUrl] : []), ...[...(ollama ? [] : ["model"]), "timeout-s", "max-tools"].flatMap((k) => (arg(k) ? [`--${k}`, arg(k)] : [])), ...(obedient ? ["--obedient"] : [])];
 let next = 0, failed = 0, finished = 0;
 const worker = async () => {
   while (next < todo.length) {
     // The agent cannot start at all (login, flags): stop before burning the sample.
     if (failed >= 2 && failed === finished) { console.error("the first cases all failed: stopping. Fix the error above, then rerun the same command."); process.exit(1); }
-    const c = todo[next++];
-    const r = await sh(TSX, [`${HERE}${HARNESS}`, "--case", c.id, ...pass], (line) => console.log(`[${finished + 1}/${todo.length}] ${line}`));
+    const { c, profile, dir } = todo[next++];
+    const r = await sh(TSX, [`${HERE}${HARNESS}`, "--case", c.id, ...pass, "--profile", profile, "--out", dir], (line) => console.log(`[${finished + 1}/${todo.length}] ${line}`));
     finished++;
     if (r.code !== 0) failed++;
   }
 };
 await Promise.all(Array.from({ length: Math.max(1, Number(arg("parallel", ollama ? "1" : "2"))) }, worker));
-if (existsSync(`${HERE}analyze.mjs`)) await sh("node", [`${HERE}analyze.mjs`, out], console.log);
+for (const [folder] of legs) await sh("node", [`${HERE}analyze.mjs`, dirOf(folder)], differential ? undefined : console.log);
+if (differential) await sh("node", [`${HERE}diff.mjs`, out], console.log);
