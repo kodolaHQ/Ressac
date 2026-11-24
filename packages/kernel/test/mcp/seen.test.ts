@@ -17,9 +17,9 @@ test("a fragment is dropped when added, never when checked", () => {
   expect(t.has("https://a.fr/p#données")).toBe(false);
 });
 
-test("only http(s) addresses of at most 2000 characters", () => {
+test("only http(s) addresses of at most 500 characters", () => {
   const s = new SeenUrls();
-  const [fits, over] = [`https://a.fr/${"x".repeat(2000 - 13)}`, `https://a.fr/${"x".repeat(2000 - 12)}`];
+  const [fits, over] = [`https://a.fr/${"x".repeat(500 - 13)}`, `https://a.fr/${"x".repeat(500 - 12)}`];
   s.add(["javascript:alert(1)", "data:text/html,x", fits, over]);
   expect(s.has("javascript:alert(1)")).toBe(false);
   expect(s.has("data:text/html,x")).toBe(false);
