@@ -18,7 +18,20 @@ interface Item {
   source: string;
   /** Where it was read: `<tab>\n<origin>` per read (empty parts when unknown), so a check can leave out a tab's own reads. */
   from: Set<string>;
+  group: Group;
+  /** Its pieces in `shingles`. */
+  size: number;
 }
+
+type Group = "digits" | "token" | "phone" | "email" | "secret";
+// Lowest value first: digits and tokens fill ordinary pages, secrets are rare and worth the most. A group's weight
+// divides its share when the window picks what to evict.
+const GROUPS: readonly Group[] = ["digits", "token", "phone", "email", "secret"];
+const WEIGHT: Record<Group, number> = { digits: 1, token: 1, phone: 2, email: 2, secret: 4 };
+const groupOf = (kind: Item["kind"]): Group => (GROUPS.includes(kind as Group) ? (kind as Group) : "secret");
+/** Items of one group, oldest first, with their pieces. */
+type Slot = { items: Set<Item>; pieces: number };
+const slotOf = (m: Map<Group, Slot>, g: Group): Slot => m.get(g) ?? m.set(g, { items: new Set(), pieces: 0 }).get(g)!;
 
 /** A tab and its origin: a check for a script on that tab leaves out what was read there (`check`'s `except`). */
 export type ReadPlace = { tab?: string; origin?: string | null };
@@ -36,6 +49,8 @@ interface Win {
   shingles: Map<string, Item | Set<Item>>;
   /** Pieces in `shingles`, counted per item. */
   pieces: number;
+  /** The read items per group, for eviction by value. */
+  groups: Map<Group, Slot>;
   /** Lengths of the short items indexed whole, with their count. */
   shortLengths: Map<number, number>;
   /** Whole addresses seen in reads, normalised, oldest first: opening one is following a link, not composing. */
@@ -61,18 +76,19 @@ interface Win {
   labels: Map<string, string>;
 }
 
-// Memory follows the indexed pieces: measured 6.2 MB of heap for 45 000 distinct pieces (Node 22, 32-character
-// tokens), 8.3 MB per window with the addresses and labels full; kept across conversations, so sized for 8 GB Macs.
+// Memory follows the indexed pieces: measured 6.6 MB of heap for 45 000 distinct pieces (Node 22, 32-character
+// tokens), 8.8 MB per window with the addresses and labels full; kept across conversations, so sized for 8 GB Macs.
 const READ_MAX = 6000;
 const PIECES_MAX = 45_000;
 // Bounds one long item's share of the index; a long secret is still caught whole by rule 1.
 const ITEM_PIECES_MAX = 256;
-// One read keeps new items in text order, up to a tenth of the window per kind: padding of one kind never uses
-// another kind's budget, and the five kinds together fill at most half the window, so one read never flushes it.
-// shortcut: padding of the same kind before an item in one read (600 items or 4 500 pieces) still hides it; a hard
-// memory bound needs a limit somewhere, revisit if reads get split per source.
-const READ_KIND_MAX = READ_MAX / 10;
-const READ_KIND_PIECES_MAX = PIECES_MAX / 10;
+// One read keeps its last items: per kind 2 000 items or 14 000 pieces, half the window in all, its lowest kind dropped
+// first. Padding before an item never hides it, padding after it needs that much of its own kind, and one read never
+// flushes more than half the window. Past the window, the oldest item goes from the group with the largest weighted
+// share: ordinary pages (numbers, ids) push out their own kind, not a secret, e-mail or phone read earlier.
+// shortcut: an item still goes after a window's share of later items of its own kind; a longer memory needs more heap.
+const READ_KIND_MAX = 2000;
+const READ_KIND_PIECES_MAX = 14_000;
 const TYPED_ITEMS_MAX = 5000;
 const TYPED_MAX = 64 * 1024;
 const CARRY_MAX = 4096;
@@ -138,7 +154,7 @@ const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p
 const softNorm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}@/]/gu, "");
 
 /** Distinctive items in `text`, each normalised form once: secrets first, then the others in text order. */
-function extract(raw: string): Omit<Item, "source" | "from">[] {
+function extract(raw: string): Omit<Item, "source" | "from" | "group" | "size">[] {
   const text = plain(raw);
   const others: { at: number; kind: Item["kind"]; value: string }[] = [];
   for (const m of text.matchAll(EMAIL)) others.push({ at: m.index, kind: "email", value: m[0] });
@@ -214,6 +230,7 @@ export class Outflow {
         read: new Map(),
         shingles: new Map(),
         pieces: 0,
+        groups: new Map(),
         shortLengths: new Map(),
         urls: new Set(),
         typedItems: new Set(),
@@ -251,7 +268,17 @@ export class Outflow {
       w.urls.add(url);
       if (w.urls.size > URLS_MAX) w.urls.delete(w.urls.values().next().value!);
     }
-    const perKind = new Map<string, { items: number; pieces: number }>();
+    // This read's items, per group and in all.
+    const mine = new Map<Group, Slot>();
+    const all: Slot = { items: new Set(), pieces: 0 };
+    const forgetMine = (item: Item) => {
+      const own = slotOf(mine, item.group);
+      own.items.delete(item);
+      own.pieces -= item.size;
+      all.items.delete(item);
+      all.pieces -= item.size;
+      this.drop(w, item);
+    };
     for (const found of extract(shown)) {
       const known = w.read.get(found.norm);
       if (known) {
@@ -260,18 +287,28 @@ export class Outflow {
         known.source = source;
         known.from.add(known.from.size < PLACES_MAX ? placeKey(place) : "\n");
         w.read.set(found.norm, known);
+        const slot = slotOf(w.groups, known.group);
+        slot.items.delete(known);
+        slot.items.add(known);
         continue;
       }
-      const item = { ...found, source, from: new Set([placeKey(place)]) };
-      const ps = [...indexed(item)];
-      const group = ["email", "phone", "digits", "token"].includes(item.kind) ? item.kind : "secret";
-      const kind = perKind.get(group) ?? { items: 0, pieces: 0 };
-      perKind.set(group, kind);
-      if (kind.items >= READ_KIND_MAX || kind.pieces + ps.length > READ_KIND_PIECES_MAX) continue;
-      kind.items++;
-      kind.pieces += ps.length;
+      const group = groupOf(found.kind);
+      const ps = [...indexed(found)];
+      const item: Item = { ...found, source, from: new Set([placeKey(place)]), group, size: ps.length };
+      const own = slotOf(mine, group);
+      while (own.items.size && (own.items.size >= READ_KIND_MAX || own.pieces + ps.length > READ_KIND_PIECES_MAX))
+        forgetMine(own.items.values().next().value!);
+      while (all.items.size && (all.items.size >= READ_MAX / 2 || all.pieces + ps.length > PIECES_MAX / 2))
+        forgetMine(slotOf(mine, GROUPS.find((g) => mine.get(g)?.items.size)!).items.values().next().value!);
+      own.items.add(item);
+      own.pieces += ps.length;
+      all.items.add(item);
+      all.pieces += ps.length;
       w.pieces += ps.length;
       w.read.set(item.norm, item);
+      const slot = slotOf(w.groups, group);
+      slot.items.add(item);
+      slot.pieces += ps.length;
       this.countShort(w, item, 1);
       for (const p of ps) {
         const at = w.shingles.get(p);
@@ -279,12 +316,28 @@ export class Outflow {
         else if (at instanceof Set) at.add(item);
         else if (at !== item) w.shingles.set(p, new Set([at, item]));
       }
-      while (w.read.size > READ_MAX || w.pieces > PIECES_MAX) this.drop(w, w.read.values().next().value!);
+      while (w.read.size > READ_MAX || w.pieces > PIECES_MAX) this.drop(w, this.victim(w, all.items));
     }
+  }
+
+  /** The oldest earlier-read item of the group with the largest weighted share; this read holds at most half the window. */
+  private victim(w: Win, mine: Set<Item>): Item {
+    let best: { item: Item; share: number } | undefined;
+    for (const g of GROUPS) {
+      const slot = w.groups.get(g);
+      const oldest = slot?.items.values().next().value;
+      if (!oldest || mine.has(oldest)) continue;
+      const share = Math.max(slot!.items.size / READ_MAX, slot!.pieces / PIECES_MAX) / WEIGHT[g];
+      if (!best || share > best.share) best = { item: oldest, share };
+    }
+    return best?.item ?? [...w.read.values()].find((i) => !mine.has(i)) ?? w.read.values().next().value!;
   }
 
   private drop(w: Win, item: Item): void {
     w.read.delete(item.norm);
+    const slot = slotOf(w.groups, item.group);
+    slot.items.delete(item);
+    slot.pieces -= item.size;
     this.countShort(w, item, -1);
     for (const p of indexed(item)) {
       w.pieces--;
