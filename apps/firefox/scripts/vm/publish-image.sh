@@ -19,7 +19,8 @@ images=(dist/vm/ressac-vm-*.raw.zst(N))
 image=$images[1]
 name=${image:t:r:r}
 for f in dist/vm/packages.txt dist/vm/sources.tar dist/vm/commit.txt; do [[ -f $f ]] || fail "$f is missing, run build-image.sh"; done
-code=$(curl --max-time 30 -s -o /dev/null -w '%{http_code}' "$public/vm/${image:t}" || true)
+# Its own query string, as publish.sh: Cloudflare caches a 404 for 4 h, and this check runs just before the upload.
+code=$(curl --max-time 30 -s -o /dev/null -w '%{http_code}' "$public/vm/${image:t}?t=$(date +%s)" || true)
 [[ $code == 404 ]] || fail "$public/vm/${image:t} answers HTTP $code: already published (or no network)"
 # Checked before any upload, so a refused mirror never leaves R2 half published.
 commit=$(<dist/vm/commit.txt)
