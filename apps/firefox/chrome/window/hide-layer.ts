@@ -567,9 +567,10 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
     if (f?.isConnected) return;
     f = doc.createElementNS(XHTML, "iframe") as NonNullable<typeof f>;
     f.id = "ressac-hide-marks";
-    // Under the gesture's frames (z-index 3), never in the way of a click.
-    f.style.cssText = "position: fixed; z-index: 2; border: 0; background: transparent; display: none; pointer-events: none";
-    doc.getElementById("browser")!.append(f);
+    // Over the tab box (z-index 2: at 2 the page painted over the marks, measured), under the gesture's frames (3, later
+    // in the DOM or placed after it), never in the way of a click.
+    f.style.cssText = "position: fixed; z-index: 3; border: 0; background: transparent; display: none; pointer-events: none";
+    doc.getElementById("browser")!.insertBefore(f, doc.getElementById("ressac-hide-layer"));
     const mayLoad = cutFrameNetwork(f);
     f.ressacMarks = { api };
     f.addEventListener("load", tint, true);

@@ -168,6 +168,27 @@ it("the marks hatch what the agent receives masked, follow a scroll, fade with t
   expect(await inPage<string[]>("return window.__seen;")).toEqual([]);
 }, 180_000);
 
+/** The composited window's pixel at the first hatch's centre, with the hatches filled green for the read. */
+const hatchPixel = () =>
+  m.execute<number[]>(`return (async () => {
+    const f = document.getElementById("ressac-hide-marks"), d = f.contentDocument;
+    const style = d.createElement("style");
+    style.textContent = ".mark { background: rgb(0, 255, 0) !important; border-radius: 0 !important }";
+    d.head.append(style);
+    try {
+      await new Promise((r) => setTimeout(r, 300));
+      const a = f.getBoundingClientRect(), r = d.querySelector('[data-testid="hide-mark"]').getBoundingClientRect();
+      const bitmap = await window.browsingContext.currentWindowGlobal.drawSnapshot(new DOMRect(a.x + r.x + r.width / 2, a.y + r.y + r.height / 2, 1, 1), 1, "white");
+      const c = document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
+      c.width = c.height = 1;
+      const g = c.getContext("2d");
+      g.drawImage(bitmap, 0, 0);
+      return [...g.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+    } finally {
+      style.remove();
+    }
+  })();`);
+
 it("the viewfinder of « Cacher pour l'agent » shows the hatches without the aura, and leaving it takes them away", async () => {
   const dataDir = await mkdtemp(join(os.tmpdir(), "ressac-data-"));
   const profile = await mkdtemp(join(os.tmpdir(), "ressac-firefox-"));
@@ -190,6 +211,9 @@ it("the viewfinder of « Cacher pour l'agent » shows the hatches without the au
   const [iban, name, plain] = [await rectOf("iban"), await rectOf("nom"), await inPage<Rect>(`const p = document.querySelectorAll("p")[2].getBoundingClientRect(); return { x: p.x, y: p.y, width: p.width, height: p.height };`)];
   const shown = await until(marks, (rs) => covers(rs, iban) && covers(rs, name), "the hatches while picking");
   expect(covers(shown, plain)).toBe(false);
+  // Painted over the page, not only laid out: a pixel at the name's hatch, read from the window's composited snapshot
+  // with the hatch filled green (at z-index 2 the page covered the marks frame and only rects were right).
+  expect(await hatchPixel()).toEqual([0, 255, 0]);
 
   // A second press leaves the viewfinder: the hatches go.
   await click(m, '[data-testid="hide-button"]');
