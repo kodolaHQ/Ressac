@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import type { HistoryResult } from "@ressac/kernel";
+import type { HistoryResult, KeptPage } from "@ressac/kernel";
 import type { Visit } from "../shared/model";
 
 export type { HistoryResult, Visit };
@@ -67,7 +67,7 @@ export class History {
     | "keep" | "updateTitleText" | "isPrivate" | "forgetText" | "forgetSpaceTexts" | "eraseTextsSince"
     | "eraseOrphanTexts" | "clearAllTexts" | "purgeBefore" | "purgeVisitsBefore" | "totalBytes" | "oldTexts" | "forgetTextId"
     | "keptText" | "visitsOf" | "excerpt" | "importVisit" | "noteIcon" | "icon" | "clearIcons" | "eraseOrphanIcons"
-    | "pendingVectors" | "saveVector" | "similar" | "dropVector",
+    | "pendingVectors" | "saveVector" | "similar" | "dropVector" | "textByUser",
     StatementSync
   >;
   private byteCap: number;
@@ -82,12 +82,14 @@ export class History {
     this.createTables(options.vectorModel);
     this.req = {
       note: this.db.prepare(`
-        INSERT INTO visits (url, space_id, title, last_visit, private, url_fold, title_fold) VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO visits (url, space_id, title, last_visit, private, url_fold, title_fold, user_visits) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, title_fold = excluded.title_fold, last_visit = excluded.last_visit,
-          visits = CASE WHEN private = 1 AND excluded.private = 0 THEN 1 ELSE visits + 1 END, private = excluded.private`),
+          visits = CASE WHEN private = 1 AND excluded.private = 0 THEN 1 ELSE visits + 1 END,
+          user_visits = CASE WHEN private = 1 AND excluded.private = 0 THEN excluded.user_visits ELSE user_visits + excluded.user_visits END,
+          private = excluded.private`),
       // Re-importing never counts a new visit: the row only moves forward in time.
       importVisit: this.db.prepare(`
-        INSERT INTO visits (url, space_id, title, last_visit, private, url_fold, title_fold) VALUES (?, '${IMPORTED_SPACE}', ?, ?, 0, ?, ?)
+        INSERT INTO visits (url, space_id, title, last_visit, private, url_fold, title_fold, user_visits) VALUES (?, '${IMPORTED_SPACE}', ?, ?, 0, ?, ?, 1)
         ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, title_fold = excluded.title_fold, last_visit = excluded.last_visit
         WHERE excluded.last_visit > last_visit`),
       updateTitle: this.db.prepare("UPDATE visits SET title = ?, title_fold = ? WHERE url = ? AND space_id = ?"),
@@ -100,9 +102,9 @@ export class History {
       clearAll: this.db.prepare("DELETE FROM visits"),
       makePrivate: this.db.prepare("UPDATE visits SET private = 1 WHERE space_id = ?"),
       keep: this.db.prepare(`
-        INSERT INTO texts (url, space_id, title, date, text, bytes) VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO texts (url, space_id, title, date, text, bytes, by_user) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (url, space_id) DO UPDATE SET title = excluded.title, date = excluded.date, text = excluded.text,
-          bytes = excluded.bytes`),
+          bytes = excluded.bytes, by_user = excluded.by_user`),
       updateTitleText: this.db.prepare("UPDATE texts SET title = ? WHERE url = ? AND space_id = ? AND title <> ?"),
       isPrivate: this.db.prepare("SELECT 1 FROM visits WHERE url = ? AND space_id = ? AND private = 1"),
       forgetText: this.db.prepare("DELETE FROM texts WHERE url = ? AND space_id = ?"),
@@ -118,11 +120,11 @@ export class History {
       oldTexts: this.db.prepare("SELECT id, bytes FROM texts ORDER BY date, id"),
       forgetTextId: this.db.prepare("DELETE FROM texts WHERE id = ?"),
       keptText: this.db.prepare(`
-        SELECT t.url, t.title, t.date, t.text FROM texts t
+        SELECT t.url, t.title, t.date, t.text, t.by_user AS byUser FROM texts t
         JOIN visits v ON v.url = t.url AND v.space_id = t.space_id AND v.private = 0
         WHERE t.url = ? ORDER BY t.date DESC LIMIT 1`),
       visitsOf: this.db.prepare(`
-        SELECT title, last_visit AS date, visits FROM visits
+        SELECT title, last_visit AS date, visits, user_visits AS userVisits FROM visits
         WHERE url = :url AND private = 0 AND last_visit >= :since AND last_visit <= :until
         ORDER BY last_visit DESC`),
       noteIcon: this.db.prepare(
@@ -155,6 +157,7 @@ export class History {
         FROM vectors x JOIN visits v ON v.url = x.url AND v.space_id = x.space_id
         LEFT JOIN texts t ON t.url = x.url AND t.space_id = x.space_id
         WHERE v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until`),
+      textByUser: this.db.prepare("SELECT by_user FROM texts WHERE id = ?"),
       excerpt: this.db.prepare(
         `SELECT snippet(texts_fts, 2, '', '', '…', ${SNIPPET_WORDS}) AS excerpt FROM texts_fts WHERE texts_fts MATCH ? AND rowid = ?`,
       ),
@@ -183,7 +186,14 @@ export class History {
           ALTER TABLE visits ADD COLUMN title_fold TEXT NOT NULL DEFAULT '';
           UPDATE visits SET url_fold = fold(url), title_fold = fold(title);`);
       }
+      // The user's own visits (not the agent's tabs'): rows from before the column predate agent tabs, so they are all theirs.
+      if (!columns.includes("user_visits")) this.db.exec("ALTER TABLE visits ADD COLUMN user_visits INTEGER NOT NULL DEFAULT 0; UPDATE visits SET user_visits = visits;");
       this.db.exec("CREATE INDEX IF NOT EXISTS visits_date ON visits (last_visit)");
+      // Kept from a visit of the user's: older texts are theirs. texts_update re-indexes a row on any update: dropped for
+      // the one-time fill (the full-text index stays as it is) and created again below.
+      const textColumns = (this.db.prepare("PRAGMA table_info(texts)").all() as { name: string }[]).map((c) => c.name);
+      if (textColumns.length && !textColumns.includes("by_user"))
+        this.db.exec("DROP TRIGGER IF EXISTS texts_update; ALTER TABLE texts ADD COLUMN by_user INTEGER NOT NULL DEFAULT 0; UPDATE texts SET by_user = 1;");
       // Kept text: one row per URL and per space. The FTS5 index reads its content from `texts` (nothing is stored
       // twice); the triggers keep it up to date whichever method writes or erases.
       this.db.exec(`
@@ -195,6 +205,7 @@ export class History {
           date TEXT NOT NULL,
           text TEXT NOT NULL,
           bytes INTEGER NOT NULL,
+          by_user INTEGER NOT NULL DEFAULT 0,
           UNIQUE (url, space_id)
         );
         CREATE INDEX IF NOT EXISTS texts_date ON texts (date);
@@ -275,10 +286,11 @@ export class History {
     this.db.exec("PRAGMA user_version = 1");
   }
 
-  note(v: { url: string; title: string; spaceId: string; private: boolean; date?: Date }): void {
+  /** `byAgent`: the visit of a tab the agent reached; only `false` counts as the user's (an RPC caller may omit it). */
+  note(v: { url: string; title: string; spaceId: string; private: boolean; byAgent: boolean; date?: Date }): void {
     if (!this.db.isOpen) return; // a page can still navigate during the exit
     const title = cleanTitle(v.title);
-    this.req.note.run(v.url, v.spaceId, title, (v.date ?? new Date()).toISOString(), v.private ? 1 : 0, fold(v.url), fold(title));
+    this.req.note.run(v.url, v.spaceId, title, (v.date ?? new Date()).toISOString(), v.private ? 1 : 0, fold(v.url), fold(title), v.byAgent === false ? 1 : 0);
   }
 
   /** Imported visits (http(s) only, within RETENTION_DAYS) in one transaction; returns the rows written or updated. */
@@ -330,14 +342,14 @@ export class History {
   }
 
   /** Keeps a page's text (truncated to TEXT_MAX characters), replacing that of the previous visit. */
-  keep(r: { url: string; spaceId: string; title: string; text: string; date?: Date }): void {
+  keep(r: { url: string; spaceId: string; title: string; text: string; byAgent: boolean; date?: Date }): void {
     if (!this.db.isOpen) return;
     if (this.req.isPrivate.get(r.url, r.spaceId)) return; // defense: nothing is kept from a private visit
     let text = noNul(r.text).slice(0, TEXT_MAX);
     if (/[\uD800-\uDBFF]$/.test(text)) text = text.slice(0, -1); // no half character
     const date = (r.date ?? new Date()).toISOString();
     const title = cleanTitle(r.title);
-    this.req.keep.run(r.url, r.spaceId, title, date, text, Buffer.byteLength(text, "utf8") + Buffer.byteLength(title, "utf8"));
+    this.req.keep.run(r.url, r.spaceId, title, date, text, Buffer.byteLength(text, "utf8") + Buffer.byteLength(title, "utf8"), r.byAgent === false ? 1 : 0);
   }
 
   /** Forgets a visit's text without erasing the visit. */
@@ -372,10 +384,11 @@ export class History {
     this.checkpoint();
   }
 
-  /** The most recent kept text of this URL, excluding private visits. */
-  keptText(url: string): { url: string; title: string; date: string; text: string } | null {
+  /** The most recent kept text of this URL, excluding private visits; `byUser` if it was kept from a visit of the user's. */
+  keptText(url: string): KeptPage | null {
     if (!this.db.isOpen) return null;
-    return (this.req.keptText.get(url) as { url: string; title: string; date: string; text: string } | undefined) ?? null;
+    const r = this.req.keptText.get(url) as (Omit<KeptPage, "byUser"> & { byUser: number }) | undefined;
+    return r ? { ...r, byUser: r.byUser === 1 } : null;
   }
 
   /**
@@ -420,14 +433,17 @@ export class History {
         LIMIT :limit`)
       .all({ ...period, ...patterns, ...(words.length ? { fts } : {}), limit: limit }) as { url: string; id: number | null }[];
     return lines.map(({ url, id }) => {
-      const visits = this.req.visitsOf.all({ url, ...period }) as { title: string; date: string; visits: number }[];
+      const visits = this.req.visitsOf.all({ url, ...period }) as { title: string; date: string; visits: number; userVisits: number }[];
       const snippet = id === null ? undefined : (this.req.excerpt.get(fts, id) as { excerpt: string } | undefined);
+      // The user's: they visited it themselves, and its excerpt (page text) was not kept from an agent's tab.
+      const textByUser = id === null || (this.req.textByUser.get(id) as { by_user: number } | undefined)?.by_user === 1;
       return {
         url,
         title: visits[0]!.title,
         lastVisit: visits[0]!.date,
         visits: visits.reduce((n, v) => n + v.visits, 0),
         excerpt: snippet?.excerpt ?? "",
+        byUser: textByUser && visits.some((v) => v.userVisits > 0),
       };
     });
   }

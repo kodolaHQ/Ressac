@@ -191,7 +191,7 @@ describe("space settings", () => {
     const text = await inUi<string>(m, "return doc.querySelector(arguments[0]).textContent", [MODAL]);
     expect(text).toContain("L'agent ne voit pas ces onglets, ne lit rien, n'a pas les outils de développement, et rien n'est retenu dans sa mémoire.");
     expect(text).toContain(
-      "Cookies, comptes connectés, autorisations des sites. Changer de profil : les onglets de l'espace se rechargent, tu devras peut-être te reconnecter.",
+      "Cookies, comptes connectés, autorisations des sites. Changer de profil : les onglets de l'espace se rechargent, vous devrez peut-être vous reconnecter.",
     );
     expect(await fields()).toMatchObject({
       icon: "💶",
@@ -286,7 +286,7 @@ describe("space settings", () => {
     await waitUi(m, "return doc.querySelectorAll('[role=menuitem]').length > 0");
     // Shown: a window for a close that would follow (blur, the press's own click).
     await new Promise((r) => setTimeout(r, 300));
-    expect(await inUi(m, "return [...doc.querySelectorAll('[role=menuitem]')].map((e) => e.textContent)")).toEqual(["Réglages", "Supprimer"]);
+    expect(await inUi(m, "return [...doc.querySelectorAll('[role=menuitem]')].map((e) => e.textContent)")).toEqual(["Réglages", "Passeport", "Supprimer"]);
     expect(await active()).toBe(home.id);
     await click(m, '[role="menuitem"]', { text: "Réglages" });
     await modalOpen("Réglages de l'espace");

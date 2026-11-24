@@ -182,3 +182,33 @@ chrome-pill-hide = Hide
 chrome-vim-paused = vim paused · ⇧Esc to resume
 chrome-host-stopped = The agent kernel stopped.
 chrome-display-denied = Display refused: it contains &lt;link&gt;, &lt;meta http-equiv&gt; or speculation rules, which would send data out. See guides/widgets.md.
+
+# Touch ID after a masking card's « Yes »: macOS shows it as « Ressac is trying to … ».
+chrome-mask-reauth-reveal = show { $name } to the agent
+chrome-mask-reauth-fill = fill { $name } on { $where }
+chrome-mask-reauth-devtools = unlock the developer tools on { $site }
+chrome-mask-reauth-lift = lift the workshop lock
+chrome-mask-fill-kind = Fill { $name } on { $site }?
+chrome-mask-fill-rows = Fill { $n } fields on { $site } from your passport?
+chrome-mask-fill-row = { $field }: { $name }
+chrome-mask-fill-remember = Remember { $site } for { $name }
+chrome-mask-fill-remember-failed = The site could not be remembered.
+chrome-mask-fill-other-profile = This comes from your “{ $profile }” passport, not this tab's.
+chrome-mask-fill-missing =
+    Your passport has no { $kind ->
+        [prenoms] first name
+        [nom_famille] last name
+        [nom_complet] name
+        [naissance] date of birth
+        [adresse] address
+        [adresse_voie] street
+        [code_postal] postcode
+        [ville] city
+        [tel] phone number
+        [email] email
+        [iban] IBAN
+        [secu] social security number
+        [piece] ID document number
+        [plaque] number plate
+       *[other] such data
+    }.

@@ -72,7 +72,7 @@ test("live behind list.keep: STREAMING_WARNING on the output; behind a chain: no
 test("web.search without a declared maximum duration: warning (not an error); with one, or without the context, nothing", () => {
   const w = wf(block("c", "web.search", { query: "x" }), block("p", "source.page", { url: "https://a.fr" }));
   const withoutAccount = { sources: { account: [], public: [], web: true }, config: {} };
-  expect(WEB_WITHOUT_DURATION_WARNING("fr")).toBe("sans maxDurationMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer maxDurationMinutes");
+  expect(WEB_WITHOUT_DURATION_WARNING("fr")).toBe("sans maxDurationMinutes, ce widget peut être coupé à 150 s : demandez à l'agent de déclarer maxDurationMinutes");
   expect(warnWorkflow(w, { ...withoutAccount, maxDurationMinutes: null })).toEqual([{ block: "c", message: WEB_WITHOUT_DURATION_WARNING("fr") }]);
   expect(warnWorkflow(w, { ...withoutAccount, maxDurationMinutes: 30 })).toEqual([]);
   expect(warnWorkflow(w, withoutAccount)).toEqual([]);

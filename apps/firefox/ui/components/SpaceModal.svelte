@@ -57,12 +57,25 @@
   const options = $derived(profileOptions(spaces, appState.value?.profiles ?? [], draft.id, appState.value?.locale ?? "fr"));
   const fresh = $derived(draft.id === null);
   const valid = $derived(draft.name.trim() !== "" && draft.profile !== PROFILE_TO_CHOOSE);
-  const losesConnections = $derived(choiceLosesConnections(spaces, draft.id, draft.profile));
-
   // Extensions: the rows seen from the space's saved profile (an existing space only).
   let lines = $state<SpaceExtensionLine[] | null>(null);
   let extensionError = $state<string | null>(null);
   const saved = $derived(spaces.find((e) => e.id === draft.id));
+  /** The entries of the saved profile's passport, lost with it when the space leaves it (design § 4.4). */
+  let passportCount = $state(0);
+  $effect(() => {
+    const profile = saved?.profile;
+    if (!profile) return;
+    void api.settings.passport
+      ?.profiles()
+      .then((all) => (passportCount = all.find((p) => p.id === profile)?.count ?? 0))
+      .catch(() => {});
+  });
+  const losesConnections = $derived(choiceLosesConnections(spaces, draft.id, draft.profile, passportCount));
+  /** « Supprimer aussi son passeport »: unticked, the passport is kept (design § 4.4). */
+  let dropPassport = $state(false);
+  /** A drop that failed (nothing changed), or one done for a change the state then refused. */
+  let failure = $state<"failed" | "space-kept" | null>(null);
   const profileChanged = $derived(!!saved && draft.profile !== saved.profile);
   const linesKey = $derived(saved ? `${saved.id}|${saved.profile}|${saved.private}|${spaces.map((e) => `${e.name}:${e.profile}`).join(",")}` : "");
   const warned = $derived(
@@ -116,12 +129,25 @@
     spaceSettings.draft = null;
   }
 
-  function validate(e?: SubmitEvent) {
+  /** A drop pending: the modal takes no other press, nor Escape. */
+  let saving = $state(false);
+  async function validate(e?: SubmitEvent) {
     e?.preventDefault();
-    if (!valid) return;
+    if (!valid || saving) return;
     const name = draft.name.trim();
     const icon = draft.icon.trim() || "📁";
     const { id, private: isPrivate, profile, aura } = draft;
+    // The passport goes first: a failed drop keeps the space as it was and says so.
+    if (saved && losesConnections?.passport && dropPassport) {
+      saving = true;
+      const ok = await api.settings.passport!.drop(saved.profile).finally(() => (saving = false));
+      // Closed meanwhile (the space deleted from another window): nothing left to save.
+      if (spaceSettings.draft !== draft) return;
+      if (!ok) return void (failure = "failed");
+      passportCount = 0;
+      // The reducer's refusals (core/state/actions.ts updateSpace): the space gone, or its chosen profile gone.
+      if (!spaces.some((e) => e.id === id) || (profile !== "new" && !appState.value?.profiles.some((p) => p.id === profile))) return void (failure = "space-kept");
+    }
     if (id === null) api.dispatch({ type: "createSpace", name: name, icon: icon, private: isPrivate, profile: profile, aura, windowId: windowId });
     else api.dispatch({ type: "updateSpace", id, name: name, icon: icon, private: isPrivate, profile: profile, aura });
     close();
@@ -137,6 +163,7 @@
     if (command.open || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
+      if (saving) return;
       if (picking) {
         picking = false;
         iconField.focus();
@@ -145,7 +172,7 @@
       // A focused button keeps its own action; everywhere else, Enter saves.
       if (e.target instanceof HTMLElement && e.target.closest("button")) return;
       e.preventDefault();
-      if (!e.repeat) validate();
+      if (!e.repeat) void validate();
     } else if (e.key === "Tab") {
       // Focus does not leave the modal: Tab loops over its controls.
       const list = focusables();
@@ -224,6 +251,13 @@
           {t("sidebar-space-profile-note")}
         </p>
         {#if losesConnections}<p class="note alert" role="alert" data-testid="connections-lost">{t("sidebar-space-delete-logins")}</p>{/if}
+        {#if losesConnections?.passport}
+          <div class="rise" out:fade={{ duration: 120 }}>
+            <p class="note alert" data-testid="passport-lost">{t("sidebar-space-passport-count", { count: losesConnections.passport })}</p>
+            <label class="case"><input type="checkbox" data-testid="space-modal-drop-passport" disabled={saving} bind:checked={dropPassport} /> {t("sidebar-space-passport-drop")}</label>
+          </div>
+        {/if}
+        {#if failure}<p class="note alert rise" role="alert" data-testid="space-modal-drop-failed" out:fade={{ duration: 120 }}>{t(failure === "failed" ? "sidebar-space-passport-drop-failed" : "sidebar-space-passport-dropped-only")}</p>{/if}
       </div>
       {#if !fresh}
         <div class="block" data-testid="space-extensions">
@@ -257,8 +291,8 @@
         </div>
       {/if}
       <div class="actions">
-        <button type="button" onclick={close}>{t("sidebar-cancel")}</button>
-        <button type="submit" class="main" disabled={!valid}>{t(fresh ? "sidebar-create" : "sidebar-save")}</button>
+        <button type="button" disabled={saving} onclick={close}>{t("sidebar-cancel")}</button>
+        <button type="submit" class="main" disabled={!valid || saving}>{t(fresh ? "sidebar-create" : "sidebar-save")}</button>
       </div>
     </form>
   </div>
@@ -340,6 +374,7 @@
   .extension { display: flex; flex-direction: column; gap: 2px; }
   .source { font-size: 11px; color: var(--text-muted); }
   .alert { color: var(--text); font-weight: 600; }
+  .rise { display: flex; flex-direction: column; gap: 6px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
   button { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap), background var(--tap); }
   button:hover:not(:disabled) { background: var(--bg-active); }

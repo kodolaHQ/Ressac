@@ -191,6 +191,17 @@ describe("the ⌘T bar's Chercher / Demander switch", () => {
     expect(embed.inputs.filter((t) => t.includes("poème"))).toEqual([]);
   });
 
+  it("an action request holding a phone reaches the agent with its label, never the number", async () => {
+    const phone = "06 12 34 " + "56 78";
+    await ask(`écris un message au ${phone} pour dire bonjour`);
+    await pressKeys(m, "Enter");
+    await waitBar(false);
+    await agentPanelShown();
+    await expect.poll(() => agentInput(w.dataDir), { timeout: 20_000 }).toMatch(/écris un message au ⟨tel-[a-z0-9]{8}⟩ pour dire bonjour\r/);
+    expect(agentInput(w.dataDir)).not.toContain(phone);
+    expect(agentInput(w.dataDir)).not.toContain(phone.replaceAll(" ", ""));
+  });
+
   it("« Demander à l'agent » after the hits: one line with the question and the hits' URLs", async () => {
     const url = await seed("/b.html", "Le mascaret de la Seine", "Le mascaret remonte la Seine.");
     await ask("la page sur les mascarets");

@@ -7,6 +7,8 @@ import {
   DevToolsBusy,
   ProfileDenied,
   SiteChanged,
+  LoadRefused,
+  type LoadOptions,
   type TabRead,
   type BrowserHistory,
   type MessageConsole,
@@ -19,6 +21,8 @@ import {
   type HistoryResult,
   type JsResult,
   type PageLink,
+  type PageField,
+  type FillSeal,
 } from "./bridge.js";
 
 // Transparent 1×1 PNG.
@@ -147,6 +151,17 @@ class FakeDevTools implements BrowserDevTools {
 /** Simulated browser: for the tests and the dev command. */
 export class FakeBridge implements BrowserBridge {
   readonly calls: { method: string; args: unknown[] }[] = [];
+  /** A server's redirect, by address: a load of the key lands on the value, unless `allow` refuses the hop (as Firefox's load guard). */
+  readonly redirects = new Map<string, string>();
+  /** Where a load of `url` lands; a hop off the start's origin and `o.allow` throws LoadRefused. */
+  private land(url: string, o?: LoadOptions): string {
+    const hop = this.redirects.get(url);
+    if (hop === undefined) return url;
+    if (o?.allow != null && originOf(hop) !== originOf(url) && !o.allow.includes(originOf(hop))) throw new LoadRefused(hop);
+    return hop;
+  }
+  /** `o` noted only when it restricts: calls without a lock or a handle look as before. */
+  private static restricts = (o?: LoadOptions) => (o?.allow != null ? [o] : []);
   private readonly tabs: TabInfo[];
   private active: string | null;
   private readonly allow: boolean;
@@ -185,6 +200,14 @@ export class FakeBridge implements BrowserBridge {
   siteChanges = 0;
   /** What the browser would add to a read of a tab at this address (status, blocks, structured data…). */
   captures = new Map<string, Partial<TabRead>>();
+  /** A tab's page, by tab id, instead of the generated « Texte de … » and its one link. */
+  pages = new Map<string, { text: string; links?: PageLink[]; fields?: PageField[]; frameOrigins?: string[] }>();
+  /** What `fill.prepare` seals for a field, by handle, over the default: the page's field on its tab's origin, in the top frame, no login. */
+  seals = new Map<string, Partial<FillSeal>>();
+  /** What the next `fill.commit` calls answer (then `"filled"`). */
+  fillAnswers: ("filled" | "changed")[] = [];
+  fill?: BrowserBridge["fill"];
+  askFill?: BrowserBridge["askFill"];
   readPageInvisible?: (url: string, o: PageReadOptions) => Promise<ReadPage>;
   readHtmlInvisible?: (url: string, o: { localAddresses?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Suspended reads in progress, by URL: `relacher` lets them finish. */
@@ -195,9 +218,15 @@ export class FakeBridge implements BrowserBridge {
   /** Site apps whose tweaks card is shown: navigating answers « pending ». */
   private readonly pendingSites: Set<string>;
   askAddress?: BrowserBridge["askAddress"];
+  askReveal?: BrowserBridge["askReveal"];
+  askLabelAlert?: BrowserBridge["askLabelAlert"];
+  askLockNotice(o: { text: string }, window: string | undefined): void {
+    this.note("askLockNotice", { ...o }, window);
+  }
   /** The signals the address card was asked with. */
   readonly addressSignals: AbortSignal[] = [];
   askDevTools?: (o: TabInfo, d: { rights: DevRight[]; reason: string; agent: string }, signal?: AbortSignal) => Promise<DevRight[]>;
+  askDevUnlock?: BrowserBridge["askDevUnlock"];
 
   /**
    * `outilsDev` provides the simulated dev tools; `accorderDev` also provides the consent card,
@@ -230,6 +259,14 @@ export class FakeBridge implements BrowserBridge {
       search?: { privateWindows?: string[]; /** Addresses whose read fails. */ failing?: string[]; /** Addresses whose read never answers. */ hanging?: string[] };
       /** Provides the address card: answers this value, `"later"` true after 400 ms, or `"wait"` until its signal is raised (then false). */
       address?: boolean | "wait" | "later";
+      /** Provides the reveal card, which answers this value. */
+      reveal?: boolean;
+      /** Provides the dev tools unlock card of a carrier tab, which answers this value. */
+      devUnlock?: boolean;
+      /** Provides the label alert card, which answers this value. */
+      labelAlert?: boolean;
+      /** Provides `fill` (commits recorded, raw value included) and the fill card, which answers this. */
+      fill?: { yes: boolean; login?: number };
     },
   ) {
     this.sites = o.sites ?? {};
@@ -311,24 +348,25 @@ export class FakeBridge implements BrowserBridge {
     for (const u of searching?.hanging ?? []) this.hanging.add(u);
     if (searching)
       this.search = {
-        open: async (window, target, reuse) => {
-          this.note("search.open", window, target, reuse);
+        open: async (window, target, reuse, o) => {
+          this.note("search.open", window, target, reuse, ...FakeBridge.restricts(o));
           if (window !== undefined && searching.privateWindows?.includes(window)) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
-          const url = "query" in target ? `https://moteur.test/?q=${encodeURIComponent(target.query)}` : target.url;
+          const url = this.land("query" in target ? `https://moteur.test/?q=${encodeURIComponent(target.query)}` : target.url, o);
           const old = reuse ? this.tabs.find((x) => x.id === reuse) : undefined;
           if (reuse && !old) throw new TabNotFound(reuse);
           if (old) {
             old.url = url;
             return { ...old };
           }
-          const tab = { id: `search-${++this.counter}`, title: url, url, space: "perso" };
+          const tab = { id: `search-${++this.counter}`, title: url, url, space: "perso", agentReached: true };
           this.tabs.push(tab);
           this.active = tab.id;
           return { ...tab };
         },
-        openBackground: async (searchTabId, url) => {
-          this.note("search.openBackground", searchTabId, url);
-          const tab = { id: `bg-${++this.counter}`, title: url, url, space: this.find(searchTabId).space };
+        openBackground: async (searchTabId, start, o) => {
+          this.note("search.openBackground", searchTabId, start, ...FakeBridge.restricts(o));
+          const url = this.land(start, o);
+          const tab = { id: `bg-${++this.counter}`, title: url, url, space: this.find(searchTabId).space, agentReached: true };
           this.tabs.push(tab);
           return { ...tab };
         },
@@ -355,6 +393,43 @@ export class FakeBridge implements BrowserBridge {
         return new Promise((ok) => signal?.addEventListener("abort", () => ok(false), { once: true }));
       };
     }
+    const { reveal, labelAlert } = o;
+    if (reveal !== undefined)
+      this.askReveal = async (d, window) => {
+        this.note("askReveal", { ...d }, window);
+        return reveal;
+      };
+    if (labelAlert !== undefined)
+      this.askLabelAlert = async (d, window) => {
+        this.note("askLabelAlert", { ...d }, window);
+        return labelAlert;
+      };
+    const filling = o.fill;
+    if (filling) {
+      this.fill = {
+        prepare: async (tab, handle) => {
+          this.note("fill.prepare", tab, handle);
+          const t = this.find(tab);
+          const url = new URL(t.url);
+          const field = this.pages.get(tab)?.fields?.find((f) => f.handle === handle);
+          return { seal: `seal-${++this.counter}`, origin: url.origin, path: url.pathname, frames: [url.origin], type: field?.type ?? "text", autocomplete: field?.autocomplete ?? "", action: null, logins: [], agentReached: t.agentReached ?? true, ...this.seals.get(handle) };
+        },
+        commit: async (seal, v, origin) => {
+          this.note("fill.commit", seal, { ...v }, origin);
+          return this.fillAnswers.shift() ?? "filled";
+        },
+      };
+      this.askFill = async (d, window) => {
+        this.note("askFill", { ...d }, window);
+        return { ...filling };
+      };
+    }
+    const devUnlock = o.devUnlock;
+    if (devUnlock !== undefined)
+      this.askDevUnlock = async (tab, d) => {
+        this.note("askDevUnlock", { ...tab }, { ...d });
+        return devUnlock;
+      };
     const giveGrant = o.grantDev;
     if (giveGrant) {
       this.askDevTools = async (tab, d) => {
@@ -470,23 +545,27 @@ export class FakeBridge implements BrowserBridge {
       throw new SiteChanged(id);
     }
     const seq = this.linkSequence;
-    const links = seq?.length ? (seq.length > 1 ? seq.shift()! : seq[0]!) : [{ text: "Annonce", url: "https://exemple.fr/a" }];
-    return { text: `Texte de ${tab.title} (${tab.url})`, links, ...(o?.capture ? this.captures.get(tab.url) : {}) };
+    const page = this.pages.get(id);
+    const links = page?.links ?? (seq?.length ? (seq.length > 1 ? seq.shift()! : seq[0]!) : [{ text: "Annonce", url: "https://exemple.fr/a" }]);
+    return { text: page?.text ?? `Texte de ${tab.title} (${tab.url})`, links, ...(page?.fields ? { fields: page.fields.map((f) => ({ ...f })) } : {}), ...(page?.frameOrigins ? { frameOrigins: [...page.frameOrigins] } : {}), ...(o?.capture ? this.captures.get(tab.url) : {}) };
   }
 
-  async openTab(url: string, space?: string) {
-    this.note("openTab", url, space);
-    const o = { id: `agent-${++this.counter}`, title: url, url, space: space ?? "perso" };
+  async openTab(start: string, space?: string, options?: LoadOptions) {
+    this.note("openTab", start, space, ...FakeBridge.restricts(options));
+    const url = this.land(start, options);
+    const o = { id: `agent-${++this.counter}`, title: url, url, space: space ?? "perso", agentReached: true };
     this.tabs.push(o);
     this.active = o.id;
     return { ...o };
   }
 
-  async navigate(id: string, url: string): Promise<void | "pending"> {
-    this.note("navigate", id, url);
+  async navigate(id: string, start: string, options?: LoadOptions): Promise<void | "pending"> {
+    this.note("navigate", id, start, ...FakeBridge.restricts(options));
     const o = this.find(id);
     if (o.site !== undefined && this.pendingSites.has(o.site)) return "pending";
-    o.url = url;
+    o.url = this.land(start, options);
+    // Taken over by the agent: no longer reached by the user (spec § 5.3).
+    if (o.site === undefined) o.agentReached = true;
   }
 
   async capture(id: string, o?: { expect?: string }) {

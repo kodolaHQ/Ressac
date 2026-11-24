@@ -21,6 +21,13 @@ import { FakeBridge } from "../src/mcp/fake-bridge.js";
 import { tempFolder } from "./helpers/temp.js";
 import { fakeRunner } from "./helpers/fake-runner.js";
 import type { InstructionChange } from "../src/workspace/instructions.js";
+import type { Masker } from "../src/mask/masker.js";
+
+/** The window's banner says « non couverte ». */
+const uncovered = (m: Pick<Masker, "uncoveredCause">, win: string) => {
+  const c = m.uncoveredCause(win);
+  return c.resumed || c.passport.length > 0;
+};
 
 let kernel: Kernel | undefined;
 afterEach(async () => {
@@ -31,7 +38,7 @@ afterEach(async () => {
 async function createWithoutDocker() {
   const root = await tempFolder();
   const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   return kernel;
 }
 
@@ -65,7 +72,7 @@ test("a stopped machine: openAgentSession throws a WorkshopError that says so, n
   const root = await tempFolder();
   const machine = { kind: "machine" as const, binary: () => "/no/podman", args: () => [], hostAddress: () => "192.168.5.2", up: async () => false, wake: async () => {} };
   const workshop = new Workshop({ paths: spacePaths(root), engine: () => machine });
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root, workshop });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root, workshop });
   const error = await kernel.openAgentSession({ cols: 80, rows: 24 }).catch((e) => e);
   expect(error).toBeInstanceOf(WorkshopError);
   expect(error.state).toBe("machine-stopped");
@@ -77,7 +84,7 @@ test("a stopped machine is not booted at launch: the first session wakes it", as
   const wakes: string[] = [];
   const machine = { kind: "machine" as const, binary: () => "/no/podman", args: () => [], hostAddress: () => "192.168.5.2", up: async () => false, wake: async (r: string) => void wakes.push(r) };
   const workshop = new Workshop({ paths: spacePaths(root), engine: () => machine });
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root, workshop });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root, workshop });
   await new Promise((r) => setTimeout(r, 50));
   const user = () => wakes.filter((r) => r === "user");
   expect(user()).toEqual([]);
@@ -99,7 +106,7 @@ test("profil inconnu → erreur claire", async () => {
   const root = await tempFolder();
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   await expect(
-    createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, profileId: "inconnu" }),
+    createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, profileId: "inconnu" }),
   ).rejects.toThrow(/inconnu/);
 });
 
@@ -112,7 +119,7 @@ test("createKernel does not wait for a slow image build", async () => {
     [/ build /, () => new Promise(() => {})], // never ends
   ]);
   const start = Date.now();
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   expect(Date.now() - start).toBeLessThan(2000);
 });
 
@@ -124,7 +131,7 @@ test("container start failure: createKernel succeeds, the session throws Worksho
     [/ image inspect /, { code: 0 }],
     [/ run /, { code: 125, stderr: "Bind for 127.0.0.1:5280 failed: port is already allocated" }],
   ]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: await workshopWithoutDocker(root, run) });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: await workshopWithoutDocker(root, run) });
   const error = await kernel.openAgentSession({ cols: 80, rows: 24 }).catch((e) => e);
   expect(error).toBeInstanceOf(WorkshopError);
   expect(error.message).toContain("port is already allocated");
@@ -138,7 +145,7 @@ test("build failed at launch: the first session returns that failure without reb
     [/ inspect -f/, { code: 1 }],
     [/ build /, { code: 1, stderr: "réseau coupé" }],
   ]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: await workshopWithoutDocker(root, run) });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: await workshopWithoutDocker(root, run) });
   const error = await kernel.openAgentSession({ cols: 80, rows: 24 }).catch((e) => e);
   expect(error.message).toContain("réseau coupé");
   expect(calls.filter((a) => a.args[0] === "build")).toHaveLength(1);
@@ -158,7 +165,7 @@ test("at launch, once the container is ready, the agents of a previous app are s
   const runUpToDate: typeof run = (c, args, o) =>
     args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}|2684354560\n`, stderr: "" }) : run(c, args, o);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
   await kernel.openAgentSession({ cols: 80, rows: 24, mode: "workshop" }).then((s) => s.stop(), () => {});
   const execs = calls.filter((a) => a.args[0] === "exec").map((a) => a.args.join(" "));
   // The cleanup (all marked sessions), then the sweep before the first session, then this session's own stop.
@@ -174,7 +181,7 @@ test("createKernel reads models and Dockerfile from resources", async () => {
   await cp(join(import.meta.dirname, "..", "docker"), join(copy, "docker"), { recursive: true });
   await writeFile(join(copy, "templates", "fr", "AGENTS.md"), "# copie");
   const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, resources: copy, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, resources: copy, run: run });
   expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe("# copie");
 });
 
@@ -183,7 +190,7 @@ test("relocalize swaps the untouched templates to the new language", async () =>
   let locale = "fr";
   let order: string[] = [];
   const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
-  kernel = await createKernel({ locale: () => order.shift() ?? locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => order.shift() ?? locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   const templates = join(import.meta.dirname, "..", "templates");
   expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe(await readFile(join(templates, "fr", "AGENTS.md"), "utf8"));
   locale = "en";
@@ -208,7 +215,7 @@ test("createKernel reuses the provided workshop", async () => {
   const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
   const workshop = new Workshop({ paths: spacePaths(root), run: run });
   const state = vi.spyOn(workshop, "state").mockResolvedValue("docker-absent");
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: workshop });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: workshop });
   await kernel.workshopState();
   expect(state).toHaveBeenCalled();
 });
@@ -224,12 +231,12 @@ test("arreter: new conversation for the policy (pending cards drop) and dev tool
     const num = ++n;
     return Object.assign(Object.create(tools), { release: () => released.push(num) });
   };
-  const first = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: bridge, root: root, run: run });
+  const first = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: bridge, root: root, run: run });
   const conversation = first.policy.conversation;
   await first.stop();
   expect(first.policy.conversation).toBe(conversation + 1);
   expect(released).toEqual([1]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: bridge, root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: bridge, root: root, run: run });
   expect(n).toBe(2);
 });
 
@@ -245,7 +252,7 @@ test("kernel: arreter() stops the scheduler and the local AI", async () => {
   // The kernel closes its own access to the AI (a late harvest does not restart Kev), not the shared AI.
   const access = { kev: vi.fn(), gemma: vi.fn(), close: vi.fn(async () => void order.push("ia")) };
   const ai = { access: () => access, stop: vi.fn() } as unknown as LocalAi;
-  const n = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, ai: ai });
+  const n = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, ai: ai });
   expect(n.ai).toBe(ai);
   await n.stop();
   expect(order).toEqual(["planificateur", "ia"]);
@@ -256,7 +263,7 @@ test("kernel: arreter() stops the scheduler and the local AI", async () => {
 test("kernel: readHome reads the widgets; ia is null without local AI", async () => {
   const root = await tempFolder();
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   await writeWidget(kernel.paths, "meteo", declarationWidget());
   const state = await kernel.readHome();
   expect(state.widgets.map((w) => w.id)).toContain("meteo");
@@ -268,7 +275,7 @@ test("kernel: accorder records the grant (domains sorted), notifies and starts a
   const widgetsFolder = `${root}-widgets`;
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   const onChange = vi.fn();
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, onChange: onChange });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, onChange: onChange });
   await writeWidget(
     kernel.paths,
     "daily",
@@ -293,7 +300,7 @@ test("kernel: accorder records the grant (domains sorted), notifies and starts a
 test("kernel: accorder refuses a widget without an account", async () => {
   const root = await tempFolder();
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   await writeWidget(kernel.paths, "meteo", declarationWidget());
   await expect(kernel.grant({ id: "meteo", profile: "perso", account: [], public: [] })).rejects.toThrow(/compte/);
 });
@@ -302,7 +309,7 @@ test("kernel: accorder refuses if the declaration is no longer the one shown to 
   const root = await tempFolder();
   const widgetsFolder = `${root}-widgets`;
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   await writeWidget(
     kernel.paths,
     "daily",
@@ -323,7 +330,7 @@ test("kernel: refuserAccord erases the data; account removed afterwards → widg
   const root = await tempFolder();
   const widgetsFolder = `${root}-widgets`;
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   const decl = (account: string[]) => declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { account: account, public: [] } });
   await writeWidget(kernel.paths, "daily", decl(["app.daily.dev"]), { "harvest.mjs": "export default () => 1" });
   await kernel.grant({ id: "daily", profile: "perso", account: ["app.daily.dev"], public: [] });
@@ -375,12 +382,15 @@ async function instructionScript(root: string, args: string[], input: string) {
   return '"done"';
 }
 
-async function createReady(locale: () => string = () => "fr", o: { instructionsFail?: boolean; writeFail?: boolean } = {}) {
+/** The commands the last createReady's workshop ran. */
+let runs: { args: string[] }[] = [];
+async function createReady(locale: () => string = () => "fr", o: { instructionsFail?: boolean; writeFail?: boolean; bridge?: FakeBridge; onLock?: () => Promise<void> } = {}) {
   const root = await tempFolder();
-  const { run } = fakeRunner([
+  const { run, calls } = fakeRunner([
     [/ info$/, { code: 0 }],
     [/ inspect -f/, { code: 0, stdout: "true\n" }],
   ]);
+  runs = calls;
   const { dockerfileHash } = await import("../src/container/workshop.js");
   const runUpToDate: typeof run = async (c, args, opts) =>
     args.at(-1) === "ressac-instructions"
@@ -393,7 +403,7 @@ async function createReady(locale: () => string = () => "fr", o: { instructionsF
           ? { code: 0, stdout: `${root}|${dockerfileHash()}|2684354560\n`, stderr: "" }
           : run(c, args, opts);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
-  kernel = await createKernel({ locale: locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: o.bridge ?? new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop, ...(o.onLock ? { onLock: o.onLock } : {}) });
   return kernel;
 }
 
@@ -427,6 +437,78 @@ test("a session opened for a window writes its own MCP config, deleted when the 
   await vi.waitFor(async () => expect(await readdir(folder)).toEqual([]));
 });
 
+test("a reveal is refused while a second session is open, granted once it ended", async () => {
+  const code = "381" + "624";
+  const bridge = new FakeBridge([{ id: "mail", title: "Boîte", url: "https://mail.example.test/inbox", space: "perso", agentReached: false }], { active: "mail", allow: true, reveal: true });
+  bridge.pages.set("mail", { text: `Ton code : ${code}` });
+  const n = await createReady(() => "fr", { bridge });
+  const folder = join(n.paths.internal, "sessions");
+  const a = await n.openAgentSession({ cols: 80, rows: 24, window: "F1" });
+  const auth = JSON.parse(await readFile(join(folder, (await readdir(folder))[0]!), "utf8")).mcpServers.ressac.headers.Authorization;
+  const c = new Client({ name: "test", version: "0" });
+  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${n.mcpPort}/mcp`), { requestInit: { headers: { Authorization: auth } } }));
+  const call = async (name: string, args: Record<string, unknown>) => ((await c.callTool({ name, arguments: args })).content as { text: string }[])[0]!.text;
+  try {
+    const label = (await call("read_tab", { id: "mail" })).match(/⟨code-[a-z0-9]{8}⟩/)![0];
+    const b = await n.openAgentSession({ cols: 80, rows: 24, window: "F2" });
+    expect(await call("reveal_value", { label, reason: "payer" })).toMatch(/^Une autre conversation utilise l'atelier/);
+    await b.stop();
+    await vi.waitFor(async () => expect(await readdir(folder)).toHaveLength(1));
+    expect(n.workspaceLock.locked()).toBe(false);
+    // A site app's tweak, recorded with the widgets' and actions' code.
+    await mkdir(join(n.paths.sites, "vidola", "tweaks"), { recursive: true });
+    await writeFile(join(n.paths.sites, "vidola", "site.json"), JSON.stringify({ name: "Vidola", url: "https://a.example/", domains: ["a.example"], tweaks: [{ matches: ["/*"], js: ["a.js"] }] }));
+    await writeFile(join(n.paths.sites, "vidola", "tweaks", "a.js"), "A");
+    expect(await call("reveal_value", { label, reason: "payer" })).toContain(code);
+    const { tweaksHash } = await import("../src/sites/read.js");
+    expect(n.workspaceLock.info()?.codes["site:vidola"]).toBe(tweaksHash({ js: { "a.js": "A" }, css: {} }));
+    // Locked before the value left: the file, the reveal stamp in the container.
+    expect(n.workspaceLock.info()?.names).toEqual(["votre code"]);
+    expect(runs.some((x) => x.args.join(" ").includes("-u root") && x.args.join(" ").includes("touch /run/ressac-reveal-stamp"))).toBe(true);
+  } finally {
+    await c.close();
+    await a.stop();
+  }
+});
+
+test("the lift is refused while a conversation is open; once it ended, the lock goes and a new session is born unlocked", async () => {
+  const n = await createReady();
+  await mkdir(join(n.paths.internal, "sessions"), { recursive: true });
+  await n.workspaceLock.lock({ names: ["votre code"] });
+  const a = await n.openAgentSession({ cols: 80, rows: 24, window: "F1" });
+  await expect(n.masking.lift({ choice: "quarantine" })).rejects.toThrow("Arrêtez la conversation pour lever le verrou");
+  expect(n.workspaceLock.locked()).toBe(true);
+  await a.stop();
+  await vi.waitFor(async () => expect(await readdir(join(n.paths.internal, "sessions"))).toEqual([]));
+  expect(await n.masking.changedFiles()).toEqual([]);
+  await n.masking.lift({ choice: "quarantine" });
+  expect(n.workspaceLock.locked()).toBe(false);
+  expect(runs.some((x) => x.args.join(" ").includes("rm -f /run/ressac-reveal-stamp"))).toBe(true);
+  expect(await n.masking.quarantine.list()).toEqual([]);
+  (await n.openAgentSession({ cols: 80, rows: 24, window: "F2" })).stop();
+  expect(n.masker.locks().some((l) => l.locked())).toBe(false);
+});
+
+test("while a lift runs, the same lift shares it and another choice is refused", async () => {
+  const n = await createReady();
+  await n.workspaceLock.lock({ names: ["votre code"] });
+  const { Workshop } = await import("../src/container/workshop.js");
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  const sweep = vi.spyOn(Workshop.prototype, "stopAgentProcesses").mockImplementation(() => held);
+  try {
+    const first = n.masking.lift({ choice: "quarantine" });
+    await vi.waitFor(() => expect(sweep).toHaveBeenCalled());
+    expect(n.masking.lift({ choice: "quarantine" })).toBe(first);
+    await expect(n.masking.lift({ choice: "delete" })).rejects.toThrow("Le verrou est déjà en train d'être levé.");
+    release();
+    await first;
+    expect(n.workspaceLock.locked()).toBe(false);
+  } finally {
+    sweep.mockRestore();
+  }
+});
+
 test("a session opened while none runs first kills what the agent left in the container; one opened beside it does not", async () => {
   const n = await createReady();
   const { Workshop } = await import("../src/container/workshop.js");
@@ -456,7 +538,7 @@ test("an out-of-date container (a 0.1.7 one could hold a process moving .ressac)
     [/ inspect -f /, { code: 0, stdout: `${root}|old-hash\n` }],
     [/ rm -f ressac-workshop$/, () => ((spaceAtRemoval = existsSync(join(root, ".ressac"))), { code: 0 })],
   ]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: await workshopWithoutDocker(root, run) });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, workshop: await workshopWithoutDocker(root, run) });
   expect(spaceAtRemoval).toBe(false);
 });
 
@@ -466,7 +548,7 @@ test("kernel startup deletes nothing under .ressac/sessions (it could be followe
   await mkdir(folder, { recursive: true });
   await writeFile(join(folder, "reste.json"), "{}");
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   expect(existsSync(join(folder, "reste.json"))).toBe(true);
 });
 
@@ -499,7 +581,7 @@ async function createWithActions(prepareSpace?: (root: string, actionsFolder: st
   const actionsFolder = await tempFolder();
   await prepareSpace?.(root, actionsFolder);
   const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: actionsFolder, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: actionsFolder, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   return { n: kernel, actionsFolder: actionsFolder };
 }
 
@@ -583,7 +665,7 @@ test("kernel: owners on disk at start get no reads approved; approveReads checks
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, "action.json"), JSON.stringify({ name: "P", sources: { public: ["x.fr"], web: true } }));
     const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
-    kernel = await createKernel({ locale: () => "fr", widgetsFolder, actionsFolder, bridge: new FakeBridge([], { active: null, allow: false }), root, run });
+    kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder, actionsFolder, bridge: new FakeBridge([], { active: null, allow: false }), root, run });
     return { n: kernel, actionsFolder };
   })();
   expect((await readReads(widgetsFolder)).old).toBeUndefined();
@@ -617,7 +699,7 @@ test("kernel: a fresh space grants its starters nothing: each one that reads wai
   const root = await tempFolder();
   const widgetsFolder = `${root}-widgets`;
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root, run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root, run });
   expect(await readReads(widgetsFolder)).toEqual({});
   const widgets = (await kernel.readHome()).widgets.flatMap((w) => ("error" in w || w.declaration.sources.account.length ? [] : [w]));
   expect(widgets.map((w) => w.id)).toContain("actus-tech");
@@ -680,6 +762,47 @@ describe("openAgentSession with a profile", () => {
       expect(n.outflow.check("f1", typed)?.kind).toBe("email");
       await resumed.stop();
       await fresh.stop();
+    });
+  });
+
+  test("covered: a new Claude conversation is recorded and covered when resumed; an unknown id or a Codex resume is not", async () => {
+    await started(async (n) => {
+      const id = "11111111-2222-3333-4444-555555555555";
+      const open = (o: { profile: string; conversation?: string; resume?: boolean }) => n.openAgentSession({ cols: 80, rows: 24, window: "f1", ...o });
+      const sessions = [await open({ profile: "claude", conversation: id })];
+      expect(uncovered(n.masker, "f1")).toBe(false);
+      sessions.push(await open({ profile: "claude", conversation: id, resume: true }));
+      expect(uncovered(n.masker, "f1")).toBe(false);
+      sessions.push(await open({ profile: "claude", conversation: "99999999-2222-3333-4444-555555555555", resume: true }));
+      expect(uncovered(n.masker, "f1")).toBe(true);
+      sessions.push(await open({ profile: "codex", resume: true }));
+      expect(uncovered(n.masker, "f1")).toBe(true);
+      sessions.push(await open({ profile: "codex" }));
+      expect(uncovered(n.masker, "f1")).toBe(false);
+      for (const s of sessions) await s.stop();
+    });
+  });
+
+  test("passport: an added form marks only the conversations that read something « non couverte », and takes them out of covered.json", async () => {
+    await started(async (n) => {
+      const [read, idle] = ["11111111-2222-3333-4444-555555555555", "22222222-2222-3333-4444-555555555555"];
+      const a = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "claude", conversation: read });
+      const b = await n.openAgentSession({ cols: 80, rows: 24, window: "f2", profile: "claude", conversation: idle });
+      n.masker.maskTyped("f1", "bonjour");
+      const covered = async () => JSON.parse(await readFile(join(`${n.paths.root}-masking`, "covered.json"), "utf8"));
+      const entry = { id: "0000000000000001", field: "nom" as const, value: { given: "Camille", family: "Exemplaire" }, variants: [], origins: [], how: "typed" as const, created: "2026-11-23T10:00:00.000Z", updated: "2026-11-23T10:00:00.000Z" };
+      expect(await n.replacePassport("default", [])).toEqual({ uncovered: 0 });
+      expect(await n.replacePassport("default", [entry])).toEqual({ uncovered: 1 });
+      expect([uncovered(n.masker, "f1"), uncovered(n.masker, "f2")]).toEqual([true, false]);
+      expect(n.masker.uncoveredCause("f1")).toEqual({ resumed: false, passport: [{ profile: "default", id: entry.id }] });
+      expect(await covered()).toEqual([idle]);
+      // Only origins change: nothing new to mask, nobody marked.
+      n.masker.maskTyped("f2", "bonjour");
+      expect(await n.replacePassport("default", [{ ...entry, origins: ["ameli.fr"] }])).toEqual({ uncovered: 0 });
+      expect(uncovered(n.masker, "f2")).toBe(false);
+      expect(n.passport.entries("default")[0]!.origins).toEqual(["ameli.fr"]);
+      await a.stop();
+      await b.stop();
     });
   });
 
@@ -912,7 +1035,7 @@ test("kernel: onRecapChange is called once per successful recap publication", as
   const root = await tempFolder();
   const { run } = fakeRunner([[/ info$/, { code: 1 }]]);
   const onRecapChange = vi.fn();
-  kernel = await createKernel({ locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, recapsFolder: `${root}-recaps`, onRecapChange, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
+  kernel = await createKernel({ maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, recapsFolder: `${root}-recaps`, onRecapChange, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   const mcp = await readMcp(kernel);
   const client = new Client({ name: "test", version: "0" });
   await client.connect(
@@ -926,4 +1049,37 @@ test("kernel: onRecapChange is called once per successful recap publication", as
   await client.close();
   expect(onRecapChange).toHaveBeenCalledTimes(1);
   expect((await readdir(`${root}-recaps`)).filter((f) => f !== "used-days.json")).toEqual([`${onRecapChange.mock.calls[0]![0]}.json`]);
+});
+
+test("the reveal awaits the browser's lock hook before the value leaves; a hook that fails refuses it", async () => {
+  const code = "381" + "624";
+  for (const fails of [false, true]) {
+    const bridge = new FakeBridge([{ id: "mail", title: "Boîte", url: "https://mail.example.test/inbox", space: "perso", agentReached: false }], { active: "mail", allow: true, reveal: true });
+    bridge.pages.set("mail", { text: `Ton code : ${code}` });
+    let hooked = 0;
+    const n = await createReady(() => "fr", { bridge, onLock: async () => { hooked++; if (fails) throw new Error("apps did not stop"); } });
+    const id = "11111111-2222-3333-4444-555555555555";
+    let a = await n.openAgentSession({ cols: 80, rows: 24, window: "F1", profile: "claude", conversation: id });
+    const folder = join(n.paths.internal, "sessions");
+    const auth = JSON.parse(await readFile(join(folder, (await readdir(folder))[0]!), "utf8")).mcpServers.ressac.headers.Authorization;
+    const c = new Client({ name: "test", version: "0" });
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${n.mcpPort}/mcp`), { requestInit: { headers: { Authorization: auth } } }));
+    const call = async (name: string, args: Record<string, unknown>) => ((await c.callTool({ name, arguments: args })).content as { text: string }[])[0]!.text;
+    try {
+      const label = (await call("read_tab", { id: "mail" })).match(/⟨code-[a-z0-9]{8}⟩/)![0];
+      const r = await call("reveal_value", { label, reason: "payer" });
+      expect(hooked).toBe(1);
+      if (fails) expect(r).not.toContain(code);
+      else {
+        expect(r).toContain(code);
+        // The revealing conversation, resumed later, holds the value in its context: no longer covered.
+        await a.stop();
+        a = await n.openAgentSession({ cols: 80, rows: 24, window: "F1", profile: "claude", conversation: id, resume: true });
+        expect(uncovered(n.masker, "F1")).toBe(true);
+      }
+    } finally {
+      await c.close();
+      await a.stop();
+    }
+  }
 });

@@ -328,3 +328,22 @@ home-widget-no-display = The agent has not written this widget's display yet.
 
 home-profile-of = Profile of “{ $spaces }”
 home-profile = Profile “{ $id }”
+
+# Masking cards (spec § 8): they name the value, never show it; « Voir » shows it here only.
+home-request-label-mask-reveal = The agent wants to see a masked value
+home-request-label-mask-fill = Fill a field with your data
+home-request-label-mask-label-alert = The agent sends the label of a masked value
+home-request-label-mask-devtools = Unlock the developer tools on a tab that shows your data
+home-request-mask-fill = Fill { $name } into « { $field } » on { $where }?
+home-request-mask-devtools = Unlock the developer tools on { $site } (tab « { $tab } ») for this conversation?
+home-request-mask-reveal-allow = Show
+home-request-mask-fill-allow = Fill
+home-request-mask-fill-remember-hint = On this site, the value will stay masked for the agent and fill without Touch ID.
+home-request-mask-alert-allow = Send the label
+home-request-mask-devtools-allow = Unlock for this conversation
+home-request-mask-see = Show me
+home-request-mask-hide = Hide
+home-request-mask-see-address = Show the address
+home-request-mask-hide-address = Hide the address
+home-request-mask-logins = Login to fill
+home-request-mask-login = Login { $n }

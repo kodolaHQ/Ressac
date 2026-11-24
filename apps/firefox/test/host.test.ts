@@ -38,8 +38,11 @@ interface Host {
 
 const hosts: Host[] = [];
 
-/** `o.dataDir`: restart on that folder; `o.handlers`: more requests answered as Firefox. */
-function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string) => void, o: { dataDir?: string; handlers?: Record<string, Handler> } = {}): Host {
+/**
+ * `o.dataDir`: restart on that folder; `o.handlers`: more requests answered as Firefox. Like the chrome, it pushes an empty
+ * passport set at once (no tool answers before), unless `o.passport` is false.
+ */
+function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string) => void, o: { dataDir?: string; handlers?: Record<string, Handler>; passport?: false } = {}): Host {
   const dataDir = o.dataDir ?? realpathSync(mkdtempSync(join(tmpdir(), "ressac-host-")));
   prepare?.(dataDir);
   const root = join(dataDir, "workspace");
@@ -82,6 +85,7 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
     },
   });
   createInterface({ input: child.stdout }).on("line", (l) => rpc.receive(l));
+  if (o.passport !== false) void rpc.request("passport.ready", { unreadable: [] }).catch(() => {});
   const exited = new Promise<number | null>((r) => child.on("exit", (code) => (rpc.close(`host exited: ${err}`), r(code))));
   const h = { child, rpc, dataDir, root: root, log: log, stderr: () => err, data: () => data, states: states, exited };
   hosts.push(h);
@@ -292,12 +296,14 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(await check("f1", iban)).toMatchObject({ kind: "iban" });
     h.rpc.notify("agent.write", { window: "f1", data: `${iban}\r` });
     expect(await check("f1", iban)).toBeNull();
-    // ⌘T before the window's agent runs (its usual case): the question is typed once written into the new conversation;
-    // the page titles shown with it are not typed.
-    await h.rpc.request("ask.handOff", { window: "f2", question: `corrige ${key}`, shown: [{ url: "https://un.test/", title: iban, lastVisit: "2026-11-19" }] });
+    // ⌘T before the window's agent runs (its usual case): the question is typed once written into the new conversation,
+    // as written: masked, its key went as a label, so the key itself was never typed; the page titles shown with it are not typed.
+    await h.rpc.request("ask.handOff", { window: "f2", question: `corrige ${key} et ok`, shown: [{ url: "https://un.test/", title: iban, lastVisit: "2026-11-19" }] });
     await h.rpc.request("agent.start", { window: "f2", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("received: corrige"));
-    expect(await check("f2", key)).toBeNull();
+    expect(h.data()).toMatch(/received: corrige ⟨[a-z]+-[a-z0-9]{8}⟩ et ok/);
+    expect(h.data()).not.toContain(key);
+    expect(await check("f2", key)).toMatchObject({ kind: "api-key" });
     expect(await check("f2", iban)).toMatchObject({ kind: "iban" });
     h.rpc.notify("agent.closeWindow", { window: "f1" });
     expect(await check("f1", iban)).toMatchObject({ kind: "iban" });
@@ -603,6 +609,72 @@ describe("agent host", { timeout: 30_000 }, () => {
   });
 });
 
+describe("passport", { timeout: 60_000 }, () => {
+  // Built from parts: no whole personal value sits in the source.
+  const given = ["Zéphy", "rine"].join("");
+  const family = ["Quinta", "valle"].join("");
+  const entry = { id: "0000000000000001", field: "nom", value: { given, family }, variants: [], origins: [], how: "typed", created: "2026-11-23T10:00:00.000Z", updated: "2026-11-23T10:00:00.000Z" };
+
+  it("passport.* never write a value to stderr nor to an error; a bad call gets the fixed text", async () => {
+    const h = startHost({}, undefined, { passport: false });
+    expect(await h.rpc.request("passport.replace", { profile: "perso", entries: [entry] })).toEqual({ ok: true, uncovered: 0 });
+    const refused = (p: unknown) => h.rpc.request("passport.replace", p).then(() => null, (e: Error) => e.message);
+    expect(await refused({ profile: `../${given}`, entries: [entry] })).toBe("invalid passport");
+    expect(await refused({ profile: "perso", entries: { given } })).toBe("invalid passport");
+    expect(await h.rpc.request("passport.drop", { profile: `${family}/x` }).then(() => null, (e: Error) => e.message)).toBe("invalid passport");
+    expect(await h.rpc.request("passport.ready", { unreadable: ["autre"] })).toEqual({ ok: true });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    expect(await h.rpc.request("passport.replace", { profile: "autre", entries: [entry, { ...entry, id: "0000000000000002", value: { given: family, family: given } }] })).toEqual({ ok: true, uncovered: 0 });
+    expect(await h.rpc.request("agent.masking", { window: "f1" })).toMatchObject({ passportUnreadable: [] });
+    h.child.kill("SIGTERM");
+    await h.exited;
+    expect(h.stderr()).not.toContain(given);
+    expect(h.stderr()).not.toContain(family);
+  });
+
+  it("an agent session starts only once the passports are in: Ressac's own texts to it are masked with them", async () => {
+    const h = startHost({}, undefined, { passport: false });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    const starting = h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
+    const sessionRan = () => (existsSync(h.log) ? readFileSync(h.log, "utf8") : "").includes("echo $$ > /tmp/ressac-session-");
+    // Must not happen: the session's command run before ready (the window starts once agent.start is sent).
+    await new Promise((r) => setTimeout(r, 1_000));
+    expect(sessionRan()).toBe(false);
+    await h.rpc.request("passport.ready", { unreadable: [] });
+    await starting;
+    await until(sessionRan);
+    await until(() => h.data().includes("fake agent ready>"));
+  });
+
+  it("Review Focus 3: a host, first or restarted, answers no tool before the chrome pushed the passports again", async () => {
+    let pushed = false;
+    // `pushed` turns true only as ready is sent: an answer after the replace but before ready (a gate on the first
+    // replace) lands in the window between them and fails the test.
+    const push = async (h: Host) => {
+      await h.rpc.request("passport.replace", { profile: "perso", entries: [entry] });
+      await new Promise((r) => setTimeout(r, 500));
+      pushed = true;
+      await h.rpc.request("passport.ready", { unreadable: [] });
+    };
+    const firstAnswerAfterPush = async (h: Host) => {
+      pushed = false;
+      await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+      let answeredEarly = false;
+      const call = callMcpTool(h.root, "list_tabs").then((r) => ((answeredEarly = !pushed), r));
+      // Must not happen: an answer before the push (the window starts once the call is sent).
+      await new Promise((r) => setTimeout(r, 500));
+      await push(h);
+      expect((await call).text).toContain("onglet non partagé");
+      expect(answeredEarly).toBe(false);
+    };
+    const first = startHost({}, undefined, { passport: false });
+    await firstAnswerAfterPush(first);
+    first.child.kill("SIGKILL");
+    await first.exited;
+    await firstAnswerAfterPush(startHost({}, undefined, { passport: false, dataDir: first.dataDir }));
+  });
+});
+
 describe("history", { timeout: 30_000 }, () => {
   const visit = (h: Host, url: string, title: string, o: { private?: boolean; spaceId?: string } = {}) =>
     h.rpc.notify("history.record", { url, title: title, spaceId: o.spaceId ?? "e1", private: o.private ?? false });
@@ -783,7 +855,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
   const launch = (amo: { url: string }, f: ReturnType<typeof firefox>, o: { dataDir?: string; prepare?: (d: string) => void; keys?: false } = {}) => {
     f.presents.clear();
     const keys: Record<string, string> = o.keys === false ? {} : { RESSAC_TEST_AMO_KEYS: "user:1:abc:test-secret" };
-    return startHost({ RESSAC_TEST_AMO_URL: amo.url, ...keys }, o.prepare, { dataDir: o.dataDir, handlers: f.handlers });
+    const h = startHost({ RESSAC_TEST_AMO_URL: amo.url, ...keys }, o.prepare, { dataDir: o.dataDir, handlers: f.handlers });
+    // Agent extensions run only in Atelier (masking, Task 15): sent first, as the chrome does at each host start.
+    h.rpc.notify("agent.mode", { mode: "workshop" });
+    return h;
   };
   /** An agent tool, once the kernel runs. */
   const tool = async (h: Host, name: string, args: Record<string, unknown> = {}) => {

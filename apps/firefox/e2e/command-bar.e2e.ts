@@ -224,6 +224,13 @@ describe("Command bar", () => {
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"settings-privacy\"]')");
+    // Réglages › Passeport, by one of its own words (design § 9.1).
+    await pressKeys(m, "Meta+t");
+    await type("identité");
+    await waitUi(m, "return doc.querySelector('[data-testid=\"command-row\"][data-type=\"command\"]')?.textContent.includes('Réglages › Passeport')");
+    await pressKeys(m, "ArrowDown");
+    await pressKeys(m, "Enter");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"settings-passport\"]')");
     for (const on of [true, false]) {
       await pressKeys(m, "Meta+t");
       await type("vim");

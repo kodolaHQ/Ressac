@@ -67,6 +67,20 @@ export function resumeInFrame(d: DeclarationSite, frame: { url: string; main: bo
  * `ressacSite`, the guard bounded to its host, only if the main page (`page`, that of the view) is on the site:
  * the frames of a login page receive nothing. Resume (Ressac code): see `repriseDansCadre`.
  */
+/**
+ * The injection holds what can put text of its own in the page: a script, or a stylesheet that may (`content:` writes
+ * generated text; an escape or an @import could hide one). Such a tweak is the agent's writing: the page is no longer only
+ * the user's while it is applied (spec § 5.3). A style-only tweak keeps the page theirs.
+ */
+export function injectsScript(i: Pick<FrameInjection, "css" | "js"> | null): boolean {
+  if (!i) return false;
+  if (i.js.length > 0) return true;
+  return i.css.some((c) => {
+    const css = c.replace(/\/\*[\s\S]*?(\*\/|$)/g, "");
+    return css.includes("\\") || /@import/i.test(css) || /(^|[{;])\s*content\s*:/i.test(css);
+  });
+}
+
 export function injectionFor(
   o: { site: OpenableSite; tweaks: TweaksRead; granted: boolean; guard: string; localAddresses?: boolean },
   frame: { url: string; main: boolean; page?: string | null },

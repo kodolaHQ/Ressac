@@ -1,4 +1,4 @@
-import { navigationOutsideSite, TabNotFound, PrivateTab, SiteChanged, type DevRight, type TabInfo, type PageReadOptions } from "../shims/kernel";
+import { navigationOutsideSite, TabNotFound, PrivateTab, SiteChanged, LoadRefused, type DevRight, type TabInfo, type PageReadOptions, type LoadOptions } from "../shims/kernel";
 import { privateTab, recapOfUrl, WORKFLOW_PREFIX, AGENT_PROFILE, type BrowserState, type WindowId, type Tab, type Band } from "../../shared/model";
 import { searchTemplate } from "../../shared/search";
 import { boundCapture, boundLinks, policyChanges, closedRecaps, activeRecap, shownRecaps, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/bridge";
@@ -9,9 +9,14 @@ import type { SiteApps } from "../store/sites";
 import type { Store } from "../store/store";
 import type { WindowRegistry } from "../store/windows";
 import type { AgentHost } from "./host";
+import { createFill } from "./fill";
+import { expectAgentLoad } from "./load-guard";
 import { readHtml, readPage } from "./invisible";
-import type { Questions } from "./questions";
+import type { FillCard, Questions } from "./questions";
 import { testEnv } from "../test-env";
+import { format } from "../../shared/i18n";
+import { passportSettings } from "../passport/settings";
+import { keepTicks, rememberSite } from "./remember";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
 /** An agent app window seen as a tab: `app:<dossier>`. */
@@ -115,14 +120,35 @@ export function bridgeHandlers(
       },
     );
   };
+  /** The browser of a tab, site app or agent app window, as a read gets it. */
+  const browserOf = async (id: string) => {
+    const view = windowView(id);
+    if (view === null) {
+      loadedTab(id);
+      return windowOf(id).controller.ensure(id);
+    }
+    if (!view) throw new TabNotFound(id);
+    return view.browser;
+  };
+  const listed = () => [...tabInfos(store.state), ...apps.forAgent().map(appTab), ...sites.forAgent().map(siteTab)];
+  // Unknown counts as reached by the agent: the fill card then asks for Touch ID (fail closed).
+  const fill = createFill({
+    browserOf,
+    agentReached: (id) => listed().find((o) => o.id === id)?.agentReached ?? true,
+    remembered: rememberSite({
+      listed,
+      addOrigin: (profile, id, origin) => passportSettings((m, p) => host().request(m, p)).addOrigin(profile, id, origin),
+      notice: (window) => host().request("mask.notice", { window, text: format(store.state.locale, "chrome-mask-fill-remember-failed", {}) }),
+    }),
+  });
   /** `capture`: also the blocks, reader text, structured data and response facts (the search reads only). */
   const getText = async (browser: any, capture = false) => {
-    const r = await browser.browsingContext.currentWindowGlobal.getActor("RessacPage").sendQuery("getText", { capture });
+    const [r, form] = await Promise.all([browser.browsingContext.currentWindowGlobal.getActor("RessacPage").sendQuery("getText", { capture }), fill.fields(browser)]);
     // The child runs in a web process: its answer is not trusted.
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
     const links = boundLinks(r?.links);
-    return { text, ...(selection ? { selection } : {}), links, ...boundCapture(r) };
+    return { text, ...(selection ? { selection } : {}), links, ...boundCapture(r), ...form };
   };
   const snapshot = async (browser: any, win: Window) => {
     const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");
@@ -137,8 +163,11 @@ export function bridgeHandlers(
     }
   };
 
-  /** The agent's demos open in the foreground, marked ✦. With no window open, in the kept one. */
-  const openTabIn = (window: WindowId | undefined, url: string, space?: string, extra: { profile?: string; background?: boolean } = {}): TabInfo => {
+  /**
+   * The agent's demos open in the foreground, marked ✦. With no window open, in the kept one. `allow` (load-guard.ts):
+   * the tab's first load is judged and awaited; a refused hop closes the tab and throws LoadRefused.
+   */
+  const openTabIn = async (window: WindowId | undefined, url: string, space?: string, extra: { profile?: string; background?: boolean } = {}, allow: string[] | null = null): Promise<TabInfo> => {
     const state = store.state;
     const f = state.windows.find((x) => x.id === (window ?? windows.active())) ?? state.windows[0];
     if (!f) throw new Error("Aucune fenêtre ouverte");
@@ -146,20 +175,30 @@ export function bridgeHandlers(
     if (state.spaces.find((e) => e.id === spaceId)?.private ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
     const id = crypto.randomUUID();
     const { background, ...fields } = extra;
+    const refused = expectAgentLoad(id, url, allow);
     store.dispatch({ type: "openTab", windowId: f.id, url, spaceId: spaceId, activate: !background, openedByAgent: true, ...fields }, () => id);
     if (!store.state.tabs[id]) throw new Error(`Impossible d'ouvrir ${url}`);
     if (!background) store.dispatch({ type: "activateTab", id }); // also switches to its space
+    if (allow !== null) {
+      try {
+        await Promise.race([windowOf(id).controller.ensure(id), refused]);
+      } catch (e) {
+        if (e instanceof LoadRefused) store.dispatch({ type: "closeTab", id });
+        throw e;
+      }
+    }
     return tabInfos(store.state).find((o) => o.id === id)!;
   };
 
-  const openTab = ([url, space]: [string, string?]): TabInfo => openTabIn(undefined, url, space);
+  // A JSON null `space` (sent with an `o`) is no space.
+  const openTab = ([url, space, o]: [string, (string | null)?, LoadOptions?]) => openTabIn(undefined, url, space ?? undefined, {}, o?.allow ?? null);
 
   return {
     // Decision 3: no window open (the last one kept), no active tab.
     activeTab: ([win]: [WindowId?] = []) => activeTabOf(store.state, win ?? windows.active()),
-    listTabs: () => [...tabInfos(store.state), ...apps.forAgent().map(appTab), ...sites.forAgent().map(siteTab)],
+    listTabs: listed,
     openTab: openTab,
-    navigate: async ([id, url]: [string, string]) => {
+    navigate: async ([id, url, o]: [string, string, LoadOptions?]) => {
       if (id.startsWith(SITE_PREFIX)) {
         if (!sites.viewFor(id.slice(SITE_PREFIX.length))) throw new TabNotFound(id);
         // Never a tab instead: off the app's domains nothing loads (the kernel checked it already).
@@ -171,30 +210,30 @@ export function bridgeHandlers(
         const folder = id.slice(APP_PREFIX.length);
         if (!apps.viewFor(folder)) throw new TabNotFound(id);
         // The app window never leaves its origin: elsewhere, a tab of the main window.
-        if (!apps.navigateForAgent(folder, url)) openTab([url]);
+        if (!apps.navigateForAgent(folder, url)) await openTab([url, undefined, o]);
         return;
       }
       tab(id);
-      await windowOf(id).controller.navigateForAgentLoaded(id, url);
+      await windowOf(id).controller.navigateForAgentLoaded(id, url, o?.allow ?? null);
     },
     // The agent's search tab, in its own login profile; `reuse`: that tab goes to the new address instead.
-    "search.open": async ([win, target, reuse]: [WindowId | undefined, { query: string } | { url: string }, string?]) => {
+    "search.open": async ([win, target, reuse, o]: [WindowId | undefined, { query: string } | { url: string }, (string | null)?, LoadOptions?]) => {
       const template = testEnv("RESSAC_TEST_SEARCH_URL") || searchTemplate(store.state.settings);
       const url = "query" in target ? template.replace("%s", encodeURIComponent(target.query)) : target.url;
-      if (reuse !== undefined && store.state.tabs[reuse]) {
+      if (reuse != null && store.state.tabs[reuse]) {
         tab(reuse);
-        await windowOf(reuse).controller.navigateForAgentLoaded(reuse, url);
+        await windowOf(reuse).controller.navigateForAgentLoaded(reuse, url, o?.allow ?? null);
         // Closed during the load: nothing to return.
         const info = tabInfos(store.state).find((o) => o.id === reuse);
         if (!info) throw new TabNotFound(reuse);
         return info;
       }
       // In the background: the user follows it from the pill or the recap, in the « Agent » section of the tab list.
-      return openTabIn(win, url, undefined, { profile: AGENT_PROFILE, background: true });
+      return openTabIn(win ?? undefined, url, undefined, { profile: AGENT_PROFILE, background: true }, o?.allow ?? null);
     },
-    "search.openBackground": ([searchTab, url]: [string, string]) => {
+    "search.openBackground": ([searchTab, url, o]: [string, string, LoadOptions?]) => {
       const t = tab(searchTab);
-      return openTabIn(t.windowId, url, t.spaceId, { profile: AGENT_PROFILE, background: true });
+      return openTabIn(t.windowId, url, t.spaceId, { profile: AGENT_PROFILE, background: true }, o?.allow ?? null);
     },
     // Only a page the search opened (agent profile, not private): never a tab of the user's.
     "search.close": ([id]: [string]) => {
@@ -227,6 +266,9 @@ export function bridgeHandlers(
       const read = (browser: any) => getText(browser, o?.capture === true);
       return onSiteView(id, read, o?.expect) ?? outsidePrivate(id, read, o?.expect);
     },
+    // fill_field (chrome/agent/fill.ts): the seal and the write; a saved login never comes from the host.
+    "fill.prepare": ([id, handle]: [string, string]) => fill.prepare(id, handle),
+    "fill.commit": ([seal, v, origin]: Parameters<ReturnType<typeof createFill>["commit"]>) => fill.commit(seal, v, origin),
     capture: ([id, o]: [string, { expect?: string }?]) =>
       onSiteView(id, snapshot, o?.expect) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window), o?.expect),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the
@@ -245,6 +287,25 @@ export function bridgeHandlers(
     askAddress: ([o, win]: [{ url: string; reason: string; agent: string; danger?: string }, WindowId | undefined], signal) => {
       const f = win ?? windows.active();
       return f ? questions.askAddress(o, f, signal) : false;
+    },
+    // The masking cards (spec § 8), in the window of the conversation (else the active one); refused with none to show them.
+    askReveal: ([o, win]: [{ name: string; reason: string; agent: string; text: string; label: string }, WindowId | undefined], signal) => {
+      const f = win ?? windows.active();
+      return f ? questions.askReveal(o, f, signal) : false;
+    },
+    askLabelAlert: ([o, win]: [{ name: string; destination: string; text: string }, WindowId | undefined], signal) => {
+      const f = win ?? windows.active();
+      return f ? questions.askLabelAlert(o, f, signal) : false;
+    },
+    askFill: async ([o, win]: [FillCard, WindowId | undefined], signal) => {
+      const f = win ?? windows.active();
+      if (!f) return { yes: false };
+      // The ticks stay in chrome, on their seals: the kernel's answer, and so the agent's, is the same without them.
+      return keepTicks(await questions.askFill(o, f, signal), f, fill.remember);
+    },
+    askDevUnlock: ([o, d]: [TabInfo, { agent: string; text: string }], signal) => {
+      const f = windows.active();
+      return f ? questions.askDevUnlock(o, d, f, signal) : false;
     },
     // The « donnees-widget » card in the active window; refused with none to show it. The kernel takes it down (signal)
     // when a new conversation starts.

@@ -70,6 +70,16 @@ export class AccessPolicy {
   private readonly siteRemovals = new Map<string, number>();
   /** tab id → origin the user shared it on (opened the panel or spoke from it); kept across conversations, until closed. */
   private readonly shared = new Map<string, string>();
+  /**
+   * Tabs that showed the user's data (spec § 5.5), kept across conversations: for the capture, by the origin they showed
+   * it on (a top-level navigation off it lifts it); for the dev tools, until closed (their buffers outlive the page).
+   */
+  private readonly captureCarriers = new Map<string, string | null>();
+  private readonly devCarriers = new Set<string>();
+  /** Origins a carrier tab showed the user's data on, for this conversation: every tab on them locks its dev tools. */
+  private readonly devCarrierOrigins = new Set<string>();
+  /** tab id → origin whose dev tools the user unlocked on a carrier tab, for this conversation. */
+  private readonly devUnlocks = new Map<string, string>();
   private readonly listeners = new Set<() => void>();
   private conversationNumber = 0;
   private readonly portBuilt: (port: number) => boolean;
@@ -101,6 +111,9 @@ export class AccessPolicy {
     this.denial.delete(id);
     this.cuts.delete(id);
     this.uses.delete(id);
+    this.captureCarriers.delete(id);
+    this.devCarriers.delete(id);
+    this.devUnlocks.delete(id);
   }
 
   /** Number of the current conversation: changes on every `reset()`. A reply from a past conversation is worth nothing. */
@@ -253,6 +266,7 @@ export class AccessPolicy {
   /** Development rights and the « built » mark do not survive an origin change. */
   private leaveOrigin(id: string, org: string | null): void {
     if (this.rights.get(id)?.origin !== org) this.rights.delete(id);
+    if (this.devUnlocks.get(id) !== org) this.devUnlocks.delete(id);
     if (this.builtTabs.get(id) !== org) this.builtTabs.delete(id);
   }
 
@@ -260,6 +274,7 @@ export class AccessPolicy {
   tabNavigated(id: string, url: string): void {
     const org = origin(url);
     if (this.permissions.get(id) !== org) this.permissions.delete(id);
+    if (this.captureCarriers.has(id) && this.captureCarriers.get(id) !== org) this.captureCarriers.delete(id);
     this.leaveOrigin(id, org);
     this.change();
   }
@@ -284,6 +299,31 @@ export class AccessPolicy {
     if (o.site !== undefined) return this.grantedSiteRead(o.site, o.hash);
     const org = origin(o.url);
     return org !== null && this.permissions.get(o.id) === org;
+  }
+
+  /** The tab shows the user's data now: its capture and dev tools lock (spec § 5.5). */
+  markCarrier(o: TabInfo): void {
+    const org = origin(o.url);
+    this.captureCarriers.set(o.id, org);
+    this.devCarriers.add(o.id);
+    if (org) this.devCarrierOrigins.add(org);
+  }
+
+  captureLocked(id: string): boolean {
+    return this.captureCarriers.has(id);
+  }
+
+  devLocked(o: TabInfo): boolean {
+    const org = origin(o.url);
+    const carrier = this.devCarriers.has(o.id) || (org !== null && this.devCarrierOrigins.has(org));
+    return carrier && (org === null || this.devUnlocks.get(o.id) !== org);
+  }
+
+  /** The user unlocked the dev tools of this carrier tab on its current origin, until the next conversation. */
+  unlockDev(o: TabInfo): void {
+    const org = origin(o.url);
+    if (org) this.devUnlocks.set(o.id, org);
+    this.change();
   }
 
   /** The user shows the agent the data of this widget with an account, until the next conversation. */
@@ -366,6 +406,8 @@ export class AccessPolicy {
     this.builtCuts.clear();
     this.widgetsData.clear();
     this.sitesRead.clear();
+    this.devUnlocks.clear();
+    this.devCarrierOrigins.clear();
     this.conversationNumber++;
     this.change();
   }

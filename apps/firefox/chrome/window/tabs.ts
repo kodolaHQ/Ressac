@@ -304,8 +304,12 @@ export class TabSync {
       const triggeringPrincipal = /^https?:/i.test(o.url)
         ? Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(o.url), { userContextId })
         : Services.scriptSecurityManager.getSystemPrincipal();
-      const tab = this.adopt(o.id) ?? this.gBrowser.addTab(o.url, { triggeringPrincipal, userContextId, skipAnimation: true });
+      const adopted = this.adopt(o.id);
+      // Named before its page loads: the agent load guard (agent/load-guard.ts) maps each request to this id.
+      const tab = adopted ?? this.gBrowser.addTab("about:blank", { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(), userContextId, skipAnimation: true });
       tab.setAttribute(TAB_ID, o.id);
+      // As addTab would (#kickOffBrowserLoad), once named: addTab starts its load before it returns.
+      if (!adopted && o.url !== "about:blank") tab.linkedBrowser.fixupAndLoadURIString(o.url, { triggeringPrincipal });
       // Again once made: an adopted page may live in another <browser> than the one TabOpen saw (a no-op otherwise).
       if (this.siteApp) void this.store.sites.attachTab(this.siteApp, tab.linkedBrowser);
       // Firefox never unloads an essential to free memory, unless saving memory and not kept loaded.
@@ -454,7 +458,8 @@ export class TabSync {
       const url = tab.linkedBrowser.userTypedValue || (tab.linkedBrowser.currentURI?.spec ?? "about:blank");
       // A page in its own login profile (the agent's, an app essential's for its own pages) opens its tabs in that profile too.
       const profile = this.store.sites.childProfile(opener ? this.store.state.tabs[opener]?.profile : undefined, url);
-      this.store.dispatch({ type: "openTab", windowId: this.windowId, url, after: after, activate: tab.selected, ...(profile ? { profile } : {}) }, () => id);
+      // A page's tab is what its opener is; one from an add-on, the preferences or another app: the agent's (fail closed).
+      this.store.dispatch({ type: "openTab", windowId: this.windowId, url, after: after, activate: tab.selected, ...(opener ? { opener } : {}), ...(profile ? { profile } : {}) }, () => id);
     });
   }
 

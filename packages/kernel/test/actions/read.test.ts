@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths, actionValidationContext, readAction, readActions, actionWorkflow, OUTPUT_PAGE_REQUIRED } from "../../src/index.js";
+import { readActionCode } from "../../src/actions/read.js";
 import { tempFolder } from "../helpers/temp.js";
 
 async function space() {
@@ -94,4 +95,17 @@ test("actionWorkflow: harvest.mjs alone → absent; a workflow to a widget → i
   const b = (await readAction(c, "bonne"))!;
   if ("error" in b) throw new Error("lue en erreur");
   expect(actionValidationContext(b.declaration)).toEqual({ web: false, maxDurationMinutes: 5, owner: "action", input: true, locale: "en" });
+});
+
+test("an action's code, as staged for a run: its top-level files but data.json, no link, no sub-folder", async () => {
+  const c = await space();
+  const d = await ask(c, "envoi", { name: "E", sources: {} }, { "lire.mjs": "fetch(x)", "data.json": "{\"secret\":1}" });
+  await mkdir(join(d, "runs"));
+  await writeFile(join(d, "runs", "r.json"), "run");
+  const outside = join(await tempFolder(), "mac.txt");
+  await writeFile(outside, "fichier du Mac");
+  await symlink(outside, join(d, "lien.txt"));
+  const texts = await readActionCode(d);
+  expect(texts.sort()).toEqual([JSON.stringify({ name: "E", sources: {} }), "fetch(x)"].sort());
+  expect(await readActionCode(join(c.actions, "absente"))).toEqual([]);
 });

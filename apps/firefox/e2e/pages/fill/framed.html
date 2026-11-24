@@ -1,0 +1,7 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cadre</title>
+<!-- Cases 5 and 6: the page at ?vers=<url> in a frame (of another origin). -->
+<p>Votre espace</p>
+<iframe id="frame" width="400" height="200"></iframe>
+<script>document.getElementById("frame").src = new URLSearchParams(location.search).get("vers");</script>

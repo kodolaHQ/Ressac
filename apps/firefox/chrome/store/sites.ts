@@ -5,7 +5,8 @@ import type { Action, DesignState } from "../../shared/api";
 import type { FrameBounds } from "../../shared/model";
 import { DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { INFO_NOTICE_DURATION_MS, ICON_MAX, type BarNotice, type SiteWindowState, type SiteStartRequest, type MessageToHome } from "../../shared/sites";
-import type { TweakError } from "../../core/sites/injection";
+import { injectsScript, type TweakError } from "../../core/sites/injection";
+import { TAB_ID } from "../window/tabs";
 import { decisionNavigation, homeOpenUrl, openDecision, type NavigationContext } from "../../core/sites/navigation";
 import { relativeUrl, hostInSite } from "../../../../packages/kernel/src/sites/urls";
 import type { TweaksRead } from "../../../../packages/kernel/src/sites/read";
@@ -123,6 +124,10 @@ interface OpenSite {
   /** The address to load once the card is answered (the agent's), and whether it asked for it. */
   toLoad: string | null;
   agentToLoad: boolean;
+  /** The agent navigated this window, or ran its code there: never a masking source again until it closes (spec § 5.3). */
+  agentReached?: boolean;
+  /** A tweak with script is applied to its page (injectsScript): the agent's while it is. */
+  tweakScript?: boolean;
   /** Has the start address been loaded (« Entrer dans le site » loads it once)? */
   loaded: boolean;
   listeners: Set<(e: SiteWindowState) => void>;
@@ -1030,7 +1035,27 @@ export const sites = {
     } catch {}
     await tabSites.get(top)?.ready;
     const s = siteOfFrame(wgp, frameSites());
-    return frameInjection(wgp, s, !!(s && context(s).localAddresses));
+    const i = frameInjection(wgp, s, !!(s && context(s).localAddresses));
+    if (s) {
+      let main = false;
+      try {
+        main = wgp.browsingContext === s.view?.browsingContext;
+      } catch {}
+      const script = injectsScript(i);
+      const window = [...open.values()].find((x) => x === s);
+      // The page's main frame sets the state for that page; a subframe can only add script to it.
+      if (window) window.tweakScript = script || (!main && !!window.tweakScript);
+      else {
+        const id = (top as any)?.ownerDocument?.defaultView?.gBrowser?.getTabForBrowser(top)?.getAttribute(TAB_ID);
+        if (id) dispatch({ type: "tweakScript", id, script, main });
+      }
+    }
+    return i;
+  },
+  /** The agent ran its code in the window (run_js): the agent's until it closes. */
+  markAgentReached(id: string): void {
+    const s = open.get(id);
+    if (s) s.agentReached = true;
   },
   /** The site actor's "error": a tweak's error in the frame of this WindowGlobalParent. */
   frameError(wgp: any, e: unknown): void {
@@ -1068,12 +1093,12 @@ export const sites = {
    * The open windows for the agent: `url` the page shown, `domaine` the app's current
    * one (its start address's), `empreinte` today's declaration's, to which the agent's grant is tied.
    */
-  forAgent(): { id: string; name: string; url: string; domain: string; hash: string }[] {
+  forAgent(): { id: string; name: string; url: string; domain: string; hash: string; agentReached: boolean }[] {
     return [...open.values()]
       .filter((s) => !s.window.closed)
       .map((s) => {
         const url: string = s.view?.currentURI?.spec ?? "";
-        return { id: s.site.id, name: s.site.declaration.name, url: url && url !== "about:blank" ? url : s.site.start, domain: httpHost(s.site.start) ?? "", hash: s.site.hash };
+        return { id: s.site.id, name: s.site.declaration.name, url: url && url !== "about:blank" ? url : s.site.start, domain: httpHost(s.site.start) ?? "", hash: s.site.hash, agentReached: !!s.agentReached || !!s.tweakScript };
       });
   },
   /** The app view's <browser> and its window: never the bar, the home or the card, nor a sign-in window. */
@@ -1128,6 +1153,7 @@ export const sites = {
   navigateForAgent(id: string, url: string): "loaded" | "pending" | "refused" {
     const s = open.get(id);
     if (!s?.view || s.window.closed || openDecision(url, context(s)) !== "in-app") return "refused";
+    s.agentReached = true;
     if (s.viewState === "grant") {
       s.toLoad = url;
       s.agentToLoad = true;

@@ -16,39 +16,39 @@ beforeEach(() => {
 afterEach(() => h.close());
 
 test("noting the same URL twice → one row, visites = 2, title updated", () => {
-  h.note({ spaceId: "", private: false, url: "https://a.fr/", title: "Ancien", date: date("2026-10-01T10:00:00Z") });
-  h.note({ spaceId: "", private: false, url: "https://a.fr/", title: "Nouveau", date: date("2026-10-02T10:00:00Z") });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://a.fr/", title: "Ancien", date: date("2026-10-01T10:00:00Z") });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://a.fr/", title: "Nouveau", date: date("2026-10-02T10:00:00Z") });
   expect(h.recents()).toEqual([{ url: "https://a.fr/", title: "Nouveau", lastVisit: "2026-10-02T10:00:00.000Z", visits: 2, spaceId: "", private: false, kept: false, favicon: null }]);
 });
 
 test("rechercher finds by title and by URL, case-insensitively", () => {
-  h.note({ spaceId: "", private: false, url: "https://www.youtube.com/watch?v=1", title: "Conférence Rust" });
-  h.note({ spaceId: "", private: false, url: "https://github.com/sveltejs/svelte", title: "Svelte" });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://www.youtube.com/watch?v=1", title: "Conférence Rust" });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://github.com/sveltejs/svelte", title: "Svelte" });
   expect(h.search("RUST").map((v) => v.url)).toEqual(["https://www.youtube.com/watch?v=1"]);
   expect(h.search("GitHub").map((v) => v.title)).toEqual(["Svelte"]);
 });
 
 test("rechercher ignores case and non-ASCII accents (É, é, e)", () => {
-  h.note({ spaceId: "", private: false, url: "https://meteo.fr/", title: "Été à Paris" });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://meteo.fr/", title: "Été à Paris" });
   expect(h.search("été").map((v) => v.url)).toEqual(["https://meteo.fr/"]);
   expect(h.search("ETE").map((v) => v.url)).toEqual(["https://meteo.fr/"]);
 });
 
 test("sorting: most visited first", () => {
-  h.note({ spaceId: "", private: false, url: "https://rare.fr/", title: "page rare", date: date("2026-10-03T00:00:00Z") });
-  for (let i = 0; i < 3; i++) h.note({ spaceId: "", private: false, url: "https://souvent.fr/", title: "page souvent", date: date("2026-10-01T00:00:00Z") });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://rare.fr/", title: "page rare", date: date("2026-10-03T00:00:00Z") });
+  for (let i = 0; i < 3; i++) h.note({ byAgent: false, spaceId: "", private: false, url: "https://souvent.fr/", title: "page souvent", date: date("2026-10-01T00:00:00Z") });
   expect(h.search("page").map((v) => v.url)).toEqual(["https://souvent.fr/", "https://rare.fr/"]);
 });
 
 test("recents: most recent first", () => {
-  h.note({ spaceId: "", private: false, url: "https://a.fr/", title: "A", date: date("2026-10-01T00:00:00Z") });
-  h.note({ spaceId: "", private: false, url: "https://b.fr/", title: "B", date: date("2026-10-02T00:00:00Z") });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://a.fr/", title: "A", date: date("2026-10-01T00:00:00Z") });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://b.fr/", title: "B", date: date("2026-10-02T00:00:00Z") });
   expect(h.recents().map((v) => v.title)).toEqual(["B", "A"]);
 });
 
 test("erase(depuis) only removes recent visits", () => {
-  h.note({ spaceId: "", private: false, url: "https://vieux.fr/", title: "V", date: date("2026-10-01T00:00:00Z") });
-  h.note({ spaceId: "", private: false, url: "https://recent.fr/", title: "R", date: date("2026-10-05T00:00:00Z") });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://vieux.fr/", title: "V", date: date("2026-10-01T00:00:00Z") });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://recent.fr/", title: "R", date: date("2026-10-05T00:00:00Z") });
   h.erase(date("2026-10-04T00:00:00Z"));
   expect(h.recents().map((v) => v.url)).toEqual(["https://vieux.fr/"]);
   h.erase();
@@ -56,9 +56,9 @@ test("erase(depuis) only removes recent visits", () => {
 });
 
 test("special characters (% _ ') in the search are treated literally", () => {
-  h.note({ spaceId: "", private: false, url: "https://a.fr/100%", title: "cent pour cent" });
-  h.note({ spaceId: "", private: false, url: "https://a.fr/x_y", title: "l'apostrophe" });
-  h.note({ spaceId: "", private: false, url: "https://a.fr/autre", title: "rien" });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://a.fr/100%", title: "cent pour cent" });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://a.fr/x_y", title: "l'apostrophe" });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://a.fr/autre", title: "rien" });
   expect(h.search("%").map((v) => v.url)).toEqual(["https://a.fr/100%"]);
   expect(h.search("_").map((v) => v.url)).toEqual(["https://a.fr/x_y"]);
   expect(h.search("l'a").map((v) => v.url)).toEqual(["https://a.fr/x_y"]);
@@ -66,14 +66,14 @@ test("special characters (% _ ') in the search are treated literally", () => {
 });
 
 test("history survives reopening the file", () => {
-  h.note({ spaceId: "", private: false, url: "https://a.fr/", title: "A" });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://a.fr/", title: "A" });
   h.close();
   h = new History(path);
   expect(h.recents().map((v) => v.url)).toEqual(["https://a.fr/"]);
 });
 
 test("updateTitle changes the title of an already noted URL, without counting a visit", () => {
-  h.note({ spaceId: "", private: false, url: "https://a.fr/", title: "https://a.fr/" });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://a.fr/", title: "https://a.fr/" });
   h.updateTitle("https://a.fr/", "", "Le vrai titre");
   h.updateTitle("https://inconnu.fr/", "", "ignoré");
   expect(h.recents()).toMatchObject([{ url: "https://a.fr/", title: "Le vrai titre", visits: 1 }]);
@@ -81,36 +81,36 @@ test("updateTitle changes the title of an already noted URL, without counting a 
 
 test("after fermer, noter and updateTitle are ignored without throwing (late events at exit)", () => {
   h.close();
-  expect(() => h.note({ spaceId: "", private: false, url: "https://a.fr/", title: "A" })).not.toThrow();
+  expect(() => h.note({ byAgent: false, spaceId: "", private: false, url: "https://a.fr/", title: "A" })).not.toThrow();
   expect(() => h.updateTitle("https://a.fr/", "", "A")).not.toThrow();
   expect(h.recents()).toEqual([]);
 });
 
 test("same URL in two spaces: two rows; a new visit in A only counts for A", () => {
-  h.note({ url: "https://a.fr/", title: "A", spaceId: "A", private: false });
-  h.note({ url: "https://a.fr/", title: "A", spaceId: "B", private: false });
-  h.note({ url: "https://a.fr/", title: "A", spaceId: "A", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "A", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "B", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "A", private: false });
   const lines = h.recents();
   expect(lines).toHaveLength(2);
   expect(Object.fromEntries(lines.map((v) => [v.spaceId, v.visits]))).toEqual({ A: 2, B: 1 });
 });
 
 test("updateTitle only touches the targeted space", () => {
-  h.note({ url: "https://a.fr/", title: "t", spaceId: "A", private: false });
-  h.note({ url: "https://a.fr/", title: "t", spaceId: "B", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "t", spaceId: "A", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "t", spaceId: "B", private: false });
   h.updateTitle("https://a.fr/", "A", "nouveau");
   expect(Object.fromEntries(h.recents().map((v) => [v.spaceId, v.title]))).toEqual({ A: "nouveau", B: "t" });
 });
 
 test("a visit in a private space is noted as private", () => {
-  h.note({ url: "https://a.fr/", title: "A", spaceId: "P", private: true });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "P", private: true });
   expect(h.recents()).toMatchObject([{ spaceId: "P", private: true }]);
 });
 
 test("makePrivate marks only this space's rows", () => {
-  h.note({ url: "https://a.fr/", title: "A", spaceId: "A", private: false });
-  h.note({ url: "https://a.fr/", title: "A", spaceId: "B", private: false });
-  h.note({ url: "https://b.fr/", title: "B", spaceId: "", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "A", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "B", private: false });
+  h.note({ byAgent: false, url: "https://b.fr/", title: "B", spaceId: "", private: false });
   h.makePrivate("A");
   expect(Object.fromEntries(h.recents().map((v) => [`${v.spaceId}|${v.url}`, v.private]))).toEqual({
     "A|https://a.fr/": true,
@@ -120,16 +120,16 @@ test("makePrivate marks only this space's rows", () => {
 });
 
 test("search in distinct mode: a URL seen in two spaces comes out once, and the limit counts URLs", () => {
-  h.note({ url: "https://a.fr/", title: "page", spaceId: "A", private: false });
-  h.note({ url: "https://a.fr/", title: "page", spaceId: "B", private: false });
-  h.note({ url: "https://b.fr/", title: "page", spaceId: "A", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "page", spaceId: "A", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "page", spaceId: "B", private: false });
+  h.note({ byAgent: false, url: "https://b.fr/", title: "page", spaceId: "A", private: false });
   expect(h.search("page")).toHaveLength(3);
   expect(h.search("page", 2, true).map((v) => v.url).sort()).toEqual(["https://a.fr/", "https://b.fr/"]);
 });
 
 test("search in distinct mode keeps per URL the most visited row, then the most recent, in order and within the limit", () => {
   const note = (url: string, spaceId: string, times: number, iso: string) => {
-    for (let i = 0; i < times; i++) h.note({ url, title: "page", spaceId: spaceId, private: false, date: date(iso) });
+    for (let i = 0; i < times; i++) h.note({ byAgent: false, url, title: "page", spaceId: spaceId, private: false, date: date(iso) });
   };
   note("https://a.fr/", "A", 1, "2026-10-05T00:00:00Z");
   note("https://a.fr/", "B", 3, "2026-10-01T00:00:00Z"); // most visited: wins despite the date
@@ -141,8 +141,8 @@ test("search in distinct mode keeps per URL the most visited row, then the most 
 });
 
 test("search in distinct mode reads further when one URL fills the first page", () => {
-  for (let i = 0; i < 9; i++) for (let k = 0; k < 2; k++) h.note({ url: "https://a.fr/", title: "page", spaceId: `S${i}`, private: false });
-  h.note({ url: "https://b.fr/", title: "page", spaceId: "A", private: false });
+  for (let i = 0; i < 9; i++) for (let k = 0; k < 2; k++) h.note({ byAgent: false, url: "https://a.fr/", title: "page", spaceId: `S${i}`, private: false });
+  h.note({ byAgent: false, url: "https://b.fr/", title: "page", spaceId: "A", private: false });
   expect(h.search("page", 2, true).map((v) => v.url)).toEqual(["https://a.fr/", "https://b.fr/"]);
 });
 
@@ -153,7 +153,7 @@ test("the folded url and title are stored, kept up to date, and filled in an old
   old.exec("INSERT INTO visits (url, space_id, title, last_visit) VALUES ('https://É.fr/', '', 'Été', '2026-10-01T00:00:00Z')");
   old.close();
   h = new History(path);
-  h.note({ spaceId: "", private: false, url: "https://b.fr/Ça", title: "Noël" });
+  h.note({ byAgent: false, spaceId: "", private: false, url: "https://b.fr/Ça", title: "Noël" });
   h.updateTitle("https://b.fr/Ça", "", "Crème brûlée");
   h.importVisits([{ url: "https://c.fr/", title: "Ölçü", date: new Date() }]);
   const raw = new DatabaseSync(path);
@@ -168,11 +168,11 @@ test("the folded url and title are stored, kept up to date, and filled in an old
 });
 
 test("a private row that becomes non-private restarts at one visit, with a fresh title and date", () => {
-  h.note({ url: "https://a.fr/", title: "Secret", spaceId: "A", private: true, date: date("2026-10-01T00:00:00Z") });
-  h.note({ url: "https://a.fr/", title: "Secret", spaceId: "A", private: true, date: date("2026-10-02T00:00:00Z") });
-  h.note({ url: "https://a.fr/", title: "Public", spaceId: "A", private: false, date: date("2026-10-03T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "Secret", spaceId: "A", private: true, date: date("2026-10-01T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "Secret", spaceId: "A", private: true, date: date("2026-10-02T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "Public", spaceId: "A", private: false, date: date("2026-10-03T00:00:00Z") });
   expect(h.recents()).toMatchObject([{ visits: 1, private: false, title: "Public", lastVisit: "2026-10-03T00:00:00.000Z" }]);
-  h.note({ url: "https://a.fr/", title: "Public", spaceId: "A", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "Public", spaceId: "A", private: false });
   expect(h.recents()[0]!.visits).toBe(2);
 });
 
@@ -182,8 +182,8 @@ const DAY = 86_400_000;
 /** A non-private visit and its retained text, at the same date. */
 function visit(url: string, title: string, text: string, o: { spaceId?: string; date?: string } = {}) {
   const d = date(o.date ?? "2026-10-01T00:00:00Z");
-  h.note({ url, title: title, spaceId: o.spaceId ?? "A", private: false, date: d });
-  h.keep({ url, title: title, spaceId: o.spaceId ?? "A", text: text, date: d });
+  h.note({ byAgent: false, url, title: title, spaceId: o.spaceId ?? "A", private: false, date: d });
+  h.keep({ byAgent: false, url, title: title, spaceId: o.spaceId ?? "A", text: text, date: d });
 }
 
 test("retenir truncates the text to 20,000 characters", () => {
@@ -194,13 +194,13 @@ test("retenir truncates the text to 20,000 characters", () => {
 test("retenir a second time for the same page in the same space replaces the text", () => {
   visit("https://a.fr/", "A", "premier texte");
   visit("https://a.fr/", "A", "second texte", { date: "2026-10-02T00:00:00Z" });
-  expect(h.keptText("https://a.fr/")).toEqual({ url: "https://a.fr/", title: "A", date: "2026-10-02T00:00:00.000Z", text: "second texte" });
+  expect(h.keptText("https://a.fr/")).toEqual({ byUser: true, url: "https://a.fr/", title: "A", date: "2026-10-02T00:00:00.000Z", text: "second texte" });
   expect(h.searchForAgent({ query: "premier" })).toEqual([]);
 });
 
 test("Visit.retenu tells whether this visit's text (URL and space) is retained; oublierTexte forgets it alone", () => {
   visit("https://a.fr/", "A", "texte", { spaceId: "A" });
-  h.note({ url: "https://a.fr/", title: "A", spaceId: "B", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "B", private: false });
   expect(Object.fromEntries(h.recents().map((v) => [v.spaceId, v.kept]))).toEqual({ A: true, B: false });
   h.forgetText("https://a.fr/", "A");
   expect(h.recents().map((v) => v.kept)).toEqual([false, false]);
@@ -220,12 +220,12 @@ test("purger erases visits and text older than 183 days and keeps the 182-day-ol
 test("purger erases the icon of a host with no visit left", () => {
   const ICON = "data:image/png;base64,AAAA";
   const now = date("2026-10-28T12:00:00Z");
-  h.note({ url: "https://vieux.fr/", title: "V", spaceId: "A", private: false, date: new Date(now.getTime() - 184 * DAY) });
-  h.note({ url: "https://jeune.fr/", title: "J", spaceId: "A", private: false, date: new Date(now.getTime() - DAY) });
+  h.note({ byAgent: false, url: "https://vieux.fr/", title: "V", spaceId: "A", private: false, date: new Date(now.getTime() - 184 * DAY) });
+  h.note({ byAgent: false, url: "https://jeune.fr/", title: "J", spaceId: "A", private: false, date: new Date(now.getTime() - DAY) });
   h.noteIcon("https://vieux.fr/", "A", ICON);
   h.noteIcon("https://jeune.fr/", "A", ICON);
   h.purge(now);
-  h.note({ url: "https://vieux.fr/", title: "V", spaceId: "A", private: false, date: now });
+  h.note({ byAgent: false, url: "https://vieux.fr/", title: "V", spaceId: "A", private: false, date: now });
   expect(Object.fromEntries(h.recents().map((v) => [v.url, v.favicon]))).toEqual({ "https://vieux.fr/": null, "https://jeune.fr/": ICON });
 });
 
@@ -243,7 +243,7 @@ test("titles are cut to TITLE_MAX characters at every write, and a kept title co
   const long = "T".repeat(TITLE_MAX - 1) + "😀".repeat(10);
   visit("https://a.fr/", long, "x");
   h.importVisits([{ url: "https://b.fr/", title: long, date: new Date() }]);
-  h.note({ url: "https://c.fr/", title: "c", spaceId: "", private: false });
+  h.note({ byAgent: false, url: "https://c.fr/", title: "c", spaceId: "", private: false });
   h.updateTitle("https://c.fr/", "", long);
   for (const v of h.recents()) expect(v.title).toBe("T".repeat(TITLE_MAX - 1)); // no half emoji
   expect(h.keptText("https://a.fr/")!.title).toBe("T".repeat(TITLE_MAX - 1));
@@ -289,19 +289,74 @@ test("searchForAgent finds « eclair » in the text, the title and the URL, igno
 
 test("searchForAgent: one URL per result, made of non-private visits only", () => {
   visit("https://a.fr/", "Titre A", "un texte sur les éclairs", { spaceId: "A", date: "2026-10-01T00:00:00Z" });
-  h.note({ url: "https://a.fr/", title: "Titre A", spaceId: "A", private: false, date: date("2026-10-03T00:00:00Z") });
-  h.note({ url: "https://a.fr/", title: "Titre B", spaceId: "B", private: false, date: date("2026-10-02T00:00:00Z") });
-  h.note({ url: "https://a.fr/", title: "Secret", spaceId: "P", private: true, date: date("2026-10-09T00:00:00Z") });
-  h.note({ url: "https://secret.fr/eclairs", title: "Éclairs secrets", spaceId: "P", private: true });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "Titre A", spaceId: "A", private: false, date: date("2026-10-03T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "Titre B", spaceId: "B", private: false, date: date("2026-10-02T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "Secret", spaceId: "P", private: true, date: date("2026-10-09T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://secret.fr/eclairs", title: "Éclairs secrets", spaceId: "P", private: true });
   expect(h.searchForAgent({ query: "éclairs" })).toEqual([
-    { url: "https://a.fr/", title: "Titre A", lastVisit: "2026-10-03T00:00:00.000Z", visits: 3, excerpt: "un texte sur les éclairs" },
+    { url: "https://a.fr/", title: "Titre A", lastVisit: "2026-10-03T00:00:00.000Z", visits: 3, excerpt: "un texte sur les éclairs", byUser: true },
   ]);
+});
+
+describe("the user's own visits (masking sources, spec § 5.3)", () => {
+  const note = (byAgent: boolean, spaceId = "A") => h.note({ byAgent, url: "https://a.fr/", title: "A", spaceId, private: false });
+  const byUser = () => h.searchForAgent({ query: "a.fr" }).map((r) => r.byUser);
+
+  test("an agent visit then a user visit of one URL: the user's; agent visits only: not", () => {
+    note(true);
+    note(true, "B");
+    expect(byUser()).toEqual([false]);
+    note(false, "B");
+    expect(byUser()).toEqual([true]);
+  });
+
+  test("a user visit made private does not count: only non-private user visits make a page the user's", () => {
+    h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "P", private: true });
+    note(true);
+    expect(byUser()).toEqual([false]);
+  });
+
+  test("kept text from an agent tab is not the user's, even on a URL the user visited; the latest keep decides", () => {
+    note(false);
+    h.keep({ byAgent: true, url: "https://a.fr/", spaceId: "A", title: "A", text: "piège" });
+    expect(h.keptText("https://a.fr/")!.byUser).toBe(false);
+    // Its excerpt is page text the agent's tab captured: the line is not the user's either.
+    expect(h.searchForAgent({ query: "piège" }).map((r) => r.byUser)).toEqual([false]);
+    h.keep({ byAgent: false, url: "https://a.fr/", spaceId: "A", title: "A", text: "relevé" });
+    expect(h.keptText("https://a.fr/")!.byUser).toBe(true);
+    expect(h.searchForAgent({ query: "relevé" }).map((r) => r.byUser)).toEqual([true]);
+  });
+
+  test("a database from before the flags: its visits and kept texts are the user's (they predate agent tabs)", () => {
+    note(false);
+    h.keep({ byAgent: false, url: "https://a.fr/", spaceId: "A", title: "A", text: "ancien texte" });
+    h.close();
+    const old = new DatabaseSync(path);
+    old.exec("ALTER TABLE visits DROP COLUMN user_visits; ALTER TABLE texts DROP COLUMN by_user;");
+    old.close();
+    h = new History(path);
+    expect(h.searchForAgent({ query: "ancien" }).map((r) => r.byUser)).toEqual([true]);
+    expect(h.keptText("https://a.fr/")!.byUser).toBe(true);
+    // The full-text index still follows its texts after the migration.
+    h.keep({ byAgent: true, url: "https://a.fr/", spaceId: "A", title: "A", text: "nouveau" });
+    expect(h.searchForAgent({ query: "ancien" })).toEqual([]);
+    expect(h.searchForAgent({ query: "nouveau" }).map((r) => r.byUser)).toEqual([false]);
+    // Opened again: migrated once, nothing reset.
+    h.close();
+    h = new History(path);
+    expect(h.keptText("https://a.fr/")!.byUser).toBe(false);
+  });
+
+  test("visits imported from another browser are the user's", () => {
+    h.importVisits([{ url: "https://a.fr/", title: "A", date: new Date() }]);
+    expect(byUser()).toEqual([true]);
+  });
 });
 
 test("searchForAgent never returns a private row's text", () => {
   visit("https://a.fr/", "A", "mot de passe xyzzy", { spaceId: "P" });
-  h.note({ url: "https://a.fr/", title: "A", spaceId: "P", private: true }); // the space became private without rendrePrive
-  h.note({ url: "https://a.fr/", title: "A", spaceId: "B", private: false });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "P", private: true }); // the space became private without rendrePrive
+  h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "B", private: false });
   expect(h.searchForAgent({ query: "xyzzy" })).toEqual([]);
   expect(h.searchForAgent({ query: "a.fr" })).toMatchObject([{ url: "https://a.fr/", excerpt: "", visits: 1 }]);
   expect(h.keptText("https://a.fr/")).toBeNull();
@@ -314,7 +369,7 @@ test("searchForAgent honours depuis and jusqua", () => {
 });
 
 test("searchForAgent returns 20 results by default and never more than 50", () => {
-  for (let i = 0; i < 60; i++) h.note({ url: `https://a.fr/${i}`, title: "page", spaceId: "A", private: false });
+  for (let i = 0; i < 60; i++) h.note({ byAgent: false, url: `https://a.fr/${i}`, title: "page", spaceId: "A", private: false });
   expect(h.searchForAgent({ query: "page" })).toHaveLength(20);
   expect(h.searchForAgent({ query: "page", limit: 500 })).toHaveLength(50);
 });
@@ -329,14 +384,14 @@ test("searchForAgent returns an excerpt of about 300 characters around the found
 });
 
 test("a visit without text is found by title or URL, with an empty excerpt", () => {
-  h.note({ url: "https://github.com/sveltejs/svelte", title: "Svelte • Cybernétique", spaceId: "A", private: false });
+  h.note({ byAgent: false, url: "https://github.com/sveltejs/svelte", title: "Svelte • Cybernétique", spaceId: "A", private: false });
   expect(h.searchForAgent({ query: "CYBERNETIQUE" })).toMatchObject([{ url: "https://github.com/sveltejs/svelte", excerpt: "" }]);
   expect(h.searchForAgent({ query: "LTEJS/SV" })).toMatchObject([{ title: "Svelte • Cybernétique", excerpt: "" }]);
 });
 
 test("ranking: texts found by bm25 first, then titles and URLs alone, from most to least recent", () => {
-  h.note({ url: "https://titre-ancien.fr/", title: "rust", spaceId: "A", private: false, date: date("2026-10-01T00:00:00Z") });
-  h.note({ url: "https://titre-recent.fr/", title: "rust", spaceId: "A", private: false, date: date("2026-10-08T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://titre-ancien.fr/", title: "rust", spaceId: "A", private: false, date: date("2026-10-01T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://titre-recent.fr/", title: "rust", spaceId: "A", private: false, date: date("2026-10-08T00:00:00Z") });
   visit("https://peu.fr/", "Peu", `rust ${"autre chose ".repeat(200)}`, { date: "2026-10-09T00:00:00Z" });
   visit("https://beaucoup.fr/", "Beaucoup", "rust rust rust rust", { date: "2026-10-02T00:00:00Z" });
   expect(h.searchForAgent({ query: "rust" }).map((r) => r.url)).toEqual(["https://beaucoup.fr/", "https://peu.fr/", "https://titre-recent.fr/", "https://titre-ancien.fr/"]);
@@ -349,9 +404,9 @@ test("a query with FTS syntax (quotes, operators) is searched as is, without err
 });
 
 test("an empty query returns the most recent non-private visits", () => {
-  h.note({ url: "https://a.fr/", title: "A", spaceId: "A", private: false, date: date("2026-10-01T00:00:00Z") });
-  h.note({ url: "https://b.fr/", title: "B", spaceId: "A", private: false, date: date("2026-10-02T00:00:00Z") });
-  h.note({ url: "https://p.fr/", title: "P", spaceId: "P", private: true, date: date("2026-10-03T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "A", private: false, date: date("2026-10-01T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://b.fr/", title: "B", spaceId: "A", private: false, date: date("2026-10-02T00:00:00Z") });
+  h.note({ byAgent: false, url: "https://p.fr/", title: "P", spaceId: "P", private: true, date: date("2026-10-03T00:00:00Z") });
   expect(h.searchForAgent({ query: "  " }).map((r) => r.url)).toEqual(["https://b.fr/", "https://a.fr/"]);
 });
 
@@ -364,7 +419,7 @@ test("retained text survives reopening the file", () => {
 
 test("after fermer, the retained-text methods do not throw", () => {
   h.close();
-  expect(() => h.keep({ url: "https://a.fr/", title: "A", spaceId: "A", text: "t" })).not.toThrow();
+  expect(() => h.keep({ byAgent: false, url: "https://a.fr/", title: "A", spaceId: "A", text: "t" })).not.toThrow();
   expect(() => h.purge()).not.toThrow();
   expect(h.searchForAgent({ query: "t" })).toEqual([]);
   expect(h.keptText("https://a.fr/")).toBeNull();
@@ -397,8 +452,8 @@ test("erased text leaves no trace in the database files, the full-text index's l
   // The FTS5 index keeps tokens lowercased: « zorglub » is what a tombstone would leave behind.
   const read = () => ["", "-wal"].map((x) => { try { return readFileSync(path + x).toString("latin1"); } catch { return ""; } }).join("").toLowerCase();
   const keep = (url: string, spaceId: string, date = new Date()) => {
-    h.note({ url, spaceId, title: "Zorglubtitle", private: false, date });
-    h.keep({ url, spaceId, title: "Zorglubtitle", text: "Zorglubsecret ".repeat(50), date });
+    h.note({ byAgent: false, url, spaceId, title: "Zorglubtitle", private: false, date });
+    h.keep({ byAgent: false, url, spaceId, title: "Zorglubtitle", text: "Zorglubsecret ".repeat(50), date });
     expect(read()).toContain("zorglubsecret");
   };
   keep("https://a.fr/", "s");
@@ -433,7 +488,7 @@ test("an index written before secure-delete is rebuilt once at open: its old tom
 
 describe("site favicons", () => {
   const ICON = "data:image/png;base64,AAAA";
-  const visit = (url: string, spaceId = "e", priv = false) => h.note({ url, title: url, spaceId, private: priv });
+  const visit = (url: string, spaceId = "e", priv = false) => h.note({ byAgent: false, url, title: url, spaceId, private: priv });
 
   test("noteIcon keeps a data:image/ icon per host, returned by search and recents", () => {
     visit("https://a.fr/page");
@@ -456,15 +511,15 @@ describe("site favicons", () => {
   });
 
   test("erase() drops every icon; erase(from) drops only those of hosts left without a visit", () => {
-    h.note({ url: "https://vieux.fr/", title: "V", spaceId: "e", private: false, date: date("2026-10-01T00:00:00Z") });
-    h.note({ url: "https://neuf.fr:8080/", title: "N", spaceId: "e", private: false, date: date("2026-10-05T00:00:00Z") });
+    h.note({ byAgent: false, url: "https://vieux.fr/", title: "V", spaceId: "e", private: false, date: date("2026-10-01T00:00:00Z") });
+    h.note({ byAgent: false, url: "https://neuf.fr:8080/", title: "N", spaceId: "e", private: false, date: date("2026-10-05T00:00:00Z") });
     h.noteIcon("https://vieux.fr/", "e", ICON);
     h.noteIcon("https://neuf.fr:8080/", "e", ICON);
     h.erase(date("2026-10-04T00:00:00Z"));
-    h.note({ url: "https://neuf.fr/", title: "N", spaceId: "e", private: false });
+    h.note({ byAgent: false, url: "https://neuf.fr/", title: "N", spaceId: "e", private: false });
     expect(h.recents().map((v) => [v.url, v.favicon])).toEqual([["https://neuf.fr/", null], ["https://vieux.fr/", ICON]]);
     h.erase();
-    h.note({ url: "https://vieux.fr/", title: "V", spaceId: "e", private: false });
+    h.note({ byAgent: false, url: "https://vieux.fr/", title: "V", spaceId: "e", private: false });
     expect(h.recents()[0]!.favicon).toBeNull();
   });
 
@@ -472,22 +527,22 @@ describe("site favicons", () => {
     const old = date("2026-10-01T00:00:00Z");
     // erase(from) erases the recent visits: the « gone » hosts only have recent ones.
     for (const url of ["https://a.fr/x", "http://b.fr/", "https://c.fr:8443/y", "http://d.fr:80/", "https://gone.fr/", "https://gone.fr:1/"]) {
-      h.note({ url, title: url, spaceId: "e", private: false, date: url.includes("gone") ? new Date() : old });
+      h.note({ byAgent: false, url, title: url, spaceId: "e", private: false, date: url.includes("gone") ? new Date() : old });
       h.noteIcon(url, "e", ICON);
     }
-    h.note({ url: "https://a.fr.evil/", title: "x", spaceId: "e", private: false, date: old }); // not a visit of a.fr
-    h.note({ url: "https://e.fr/", title: "e", spaceId: "e", private: false });
+    h.note({ byAgent: false, url: "https://a.fr.evil/", title: "x", spaceId: "e", private: false, date: old }); // not a visit of a.fr
+    h.note({ byAgent: false, url: "https://e.fr/", title: "e", spaceId: "e", private: false });
     h.noteIcon("https://e.fr/", "e", ICON);
-    h.note({ url: "https://e.fr.evil/", title: "x", spaceId: "e", private: false, date: old }); // keeps no icon of e.fr
+    h.note({ byAgent: false, url: "https://e.fr.evil/", title: "x", spaceId: "e", private: false, date: old }); // keeps no icon of e.fr
     for (let i = 0; i < 100; i++) {
-      h.note({ url: `https://s${i}.fr/${i % 2 ? "" : "p"}`, title: "s", spaceId: "e", private: false, date: i % 2 ? new Date() : old });
+      h.note({ byAgent: false, url: `https://s${i}.fr/${i % 2 ? "" : "p"}`, title: "s", spaceId: "e", private: false, date: i % 2 ? new Date() : old });
       h.noteIcon(`https://s${i}.fr/`, "e", ICON);
     }
     h.erase(date("2026-10-02T00:00:00Z"));
     const icons = new Map(h.recents(10_000).map((v) => [v.url, v.favicon]));
     for (const url of ["https://a.fr/x", "http://b.fr/", "https://c.fr:8443/y", "http://d.fr:80/", "https://s42.fr/p"]) expect(icons.get(url)).toBe(ICON);
     for (const url of ["https://gone.fr/", "https://e.fr/", "https://s43.fr/"]) {
-      h.note({ url, title: "g", spaceId: "e", private: false });
+      h.note({ byAgent: false, url, title: "g", spaceId: "e", private: false });
       expect(h.recents(1)[0]!.favicon).toBeNull();
     }
   });
@@ -504,8 +559,8 @@ describe("page vectors", () => {
   });
   afterEach(() => h.close());
   const visit = (url: string, title: string, o: { text?: string; date?: Date; spaceId?: string; priv?: boolean } = {}) => {
-    h.note({ url, title, spaceId: o.spaceId ?? "s", private: o.priv ?? false, date: o.date ?? d(10) });
-    if (o.text !== undefined) h.keep({ url, spaceId: o.spaceId ?? "s", title, text: o.text, date: o.date ?? d(10) });
+    h.note({ byAgent: false, url, title, spaceId: o.spaceId ?? "s", private: o.priv ?? false, date: o.date ?? d(10) });
+    if (o.text !== undefined) h.keep({ byAgent: false, url, spaceId: o.spaceId ?? "s", title, text: o.text, date: o.date ?? d(10) });
   };
   /** Gives every pending page the same vector. */
   const indexAll = (vec = v(1, 0)) => h.saveVectors(h.pendingVectors(1000).map((r) => ({ ...r, vec })));
@@ -603,8 +658,8 @@ describe("page vectors", () => {
     visit("https://a.fr/", "A", { text: "texte" });
     expect(pending()).toEqual([]);
     h.updateTitle("https://a.fr/", "s", "A2");
-    h.keep({ url: "https://b.fr/", spaceId: "s", title: "B", text: "autre texte" });
-    h.keep({ url: "https://c.fr/", spaceId: "s", title: "C", text: "premier texte" });
+    h.keep({ byAgent: false, url: "https://b.fr/", spaceId: "s", title: "B", text: "autre texte" });
+    h.keep({ byAgent: false, url: "https://c.fr/", spaceId: "s", title: "C", text: "premier texte" });
     expect(pending().sort()).toEqual(["https://a.fr/", "https://b.fr/", "https://c.fr/"]);
   });
 

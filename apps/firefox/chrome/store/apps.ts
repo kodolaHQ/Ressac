@@ -8,7 +8,7 @@ import { HOST_EXITED, type AgentHost } from "../agent/host";
 import type { DesignService } from "./design";
 import { appContainer, isAppContainer, removeAppContainer } from "./containers";
 import { frameFeatures, frameOf, installGuard, openInContainer } from "./sites";
-import { agentPorts, installAgentPageGuard } from "../agent/page-guard";
+import { agentPorts, installAgentPageGuard, setAgentPagesLocked } from "../agent/page-guard";
 import { testEnv } from "../test-env";
 
 /** The window.arguments[1] key that marks an agent app window from its creation (read before anything claims it). */
@@ -364,6 +364,8 @@ export const apps = {
     "apps.close": ([folder]: [string]) => apps.close(folder),
     "apps.show": ([folder]: [string]) => apps.show(folder),
     "apps.erase": ([folder]: [string]) => apps.erase(folder),
+    // The workspace lock (host.ts): agent pages lose the CDNs and WebRTC while it holds.
+    "agent.pagesLocked": ([yes]: [boolean]) => setAgentPagesLocked(yes === true),
   },
 };
 

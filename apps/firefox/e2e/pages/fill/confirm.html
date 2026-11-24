@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Confirmation</title>
+<!-- Case 5: a password field that is no login (no username): « Confirmer le code ». -->
+<form action="/fill/next.html"><label for="pin">Confirmer le code</label><input type="password" id="pin"></form>
+<script>
+  // What the page sees in its fields, sent to its own server on each input: the test reads it there.
+  addEventListener("input", (e) => fetch("/log?" + new URLSearchParams({ f: e.target.id, v: e.target.value })));
+</script>

@@ -12,19 +12,19 @@ const DECODINGS_MAX = VARIANTS_MAX / 2;
 const SEPS = "[ .+/_,-]";
 const SEP = `${SEPS}?`;
 
-const API_KEY =
+export const API_KEY =
   /\b(?:(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{22,}|xox[abprs]-[A-Za-z0-9-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|sk-[A-Za-z0-9_-]{20,}|glpat-[A-Za-z0-9_-][A-Za-z0-9_.-]{18,}[A-Za-z0-9_-]|shp(?:at|ss|ca|pa)_[a-fA-F0-9]{32}|do[opr]_v1_[a-f0-9]{64})/g;
 // Header only: looking for the matching END made many headers without one quadratic.
-const PRIVATE_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----/g;
-const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
+export const PRIVATE_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----/g;
+export const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
 // Digit groups joined by one separator each, e.g. "4970 1012 3456 7893 03".
 const DIGIT_CHAIN = new RegExp(`\\d+(?:${SEPS}\\d+)*`, "g");
 // Groupings cards are printed in; a single contiguous group is also accepted.
 const CARD_SHAPES = ["4,6,4", "4,6,5", "4,4,4,4", "4,4,4,4,3"];
 // No trailing boundary: a BIC, city or year often follows, so the country's length cuts the candidate.
-const IBAN = new RegExp(`(?<![0-9A-Za-z])[A-Z]{2}\\d{2}(?:${SEP}[A-Z0-9]){11,30}`, "gi");
+export const IBAN = new RegExp(`(?<![0-9A-Za-z])[A-Z]{2}\\d{2}(?:${SEP}[A-Z0-9]){11,30}`, "gi");
 // IBAN length per country, built from a string so country codes are not identifiers.
-const IBAN_LENGTHS = new Map(
+export const IBAN_LENGTHS = new Map(
   (
     "AD24 AT20 BE16 BG22 CH21 CY28 CZ24 DE22 DK18 EE20 ES24 FI18 FR27 GB22 GI23 GR27 HR21 HU28 IE22 IS26 IT27 LI21 " +
     "LT20 LU20 LV21 MC27 MT31 NL18 NO15 PL28 PT25 RO24 SE24 SI19 SK24 SM27 VA22"
@@ -32,7 +32,7 @@ const IBAN_LENGTHS = new Map(
     .split(" ")
     .map((e) => [e.slice(0, 2), Number(e.slice(2))] as const),
 );
-const NIR = new RegExp(
+export const NIR = new RegExp(
   `(?<![0-9A-Za-z])[12]${SEP}\\d{2}${SEP}\\d{2}${SEP}(?:\\d{2}|2[AB])${SEP}\\d{3}${SEP}\\d{3}${SEP}\\d{2}(?![0-9A-Za-z])`,
   "gi",
 );
@@ -66,46 +66,56 @@ function issued(d: string): boolean {
   return false;
 }
 
-/** Card numbers in a digit chain: at each group, the first issued and Luhn-valid window in a card grouping. */
-function cards(text: string): string[] {
-  const found: string[] = [];
-  for (const [chain] of text.matchAll(DIGIT_CHAIN)) {
-    const groups = chain.split(new RegExp(SEPS));
-    const seps = chain.match(new RegExp(SEPS, "g")) ?? [];
+/** Where a value is written in a text ([start, end)) and its canonical form. */
+export type Span = [start: number, end: number, value: string];
+
+/** Card numbers: at each digit group, the first issued, Luhn-valid window printed in a card grouping. */
+export function cardSpans(t: string): Span[] {
+  const out: Span[] = [];
+  for (const chain of t.matchAll(DIGIT_CHAIN)) {
+    const groups = [...chain[0].matchAll(/\d+/g)];
     for (let i = 0; i < groups.length; ) {
       let taken = 0;
       for (let n = 1; n <= 5 && i + n <= groups.length && !taken; n++) {
-        const window = groups.slice(i, i + n);
-        const shaped = n === 1 || (CARD_SHAPES.includes(window.map((g) => g.length).join()) && new Set(seps.slice(i, i + n - 1)).size === 1);
-        const digits = window.join("");
-        if (shaped && issued(digits) && luhnValid(digits)) {
-          found.push(digits);
+        const w = groups.slice(i, i + n);
+        const seps = new Set(w.slice(1).map((g, k) => chain[0].slice(w[k]!.index + w[k]![0].length, g.index)));
+        const shaped = n === 1 || (CARD_SHAPES.includes(w.map((g) => g[0].length).join()) && seps.size === 1);
+        const d = w.map((g) => g[0]).join("");
+        if (shaped && issued(d) && luhnValid(d)) {
+          const last = w[n - 1]!;
+          out.push([chain.index + w[0]!.index, chain.index + last.index + last[0].length, d]);
           taken = n;
         }
       }
       i += taken || 1;
     }
   }
-  return found;
+  return out;
 }
 
-function ibans(text: string): string[] {
-  const found: string[] = [];
+/** IBANs, cut at their country's length (a BIC or a city often follows); the scan goes on after each one found. */
+export function ibanSpans(t: string): Span[] {
+  const out: Span[] = [];
   const re = new RegExp(IBAN);
-  for (let m; (m = re.exec(text)); re.lastIndex = m.index + 1) {
-    const candidate = compact(m[0]).toUpperCase();
-    const iban = candidate.slice(0, IBAN_LENGTHS.get(candidate.slice(0, 2)) ?? 0);
-    if (iban.length === IBAN_LENGTHS.get(iban.slice(0, 2)) && ibanValid(iban)) found.push(iban);
+  for (let m; (m = re.exec(t)); ) {
+    const len = IBAN_LENGTHS.get(m[0].slice(0, 2).toUpperCase()) ?? 0;
+    let k = 0;
+    for (let n = 0; k < m[0].length && n < len; k++) if (/[0-9A-Za-z]/.test(m[0][k]!)) n++;
+    const v = m[0].slice(0, k).replace(/[^0-9A-Za-z]/g, "").toUpperCase();
+    if (len && v.length === len && ibanValid(v)) {
+      out.push([m.index, m.index + k, v]);
+      re.lastIndex = m.index + k;
+    } else re.lastIndex = m.index + 1;
   }
-  return found;
+  return out;
 }
 
-const ibanValid = (iban: string) =>
+export const ibanValid = (iban: string) =>
   iban.length >= 15 &&
   iban.length <= 34 &&
   mod97((iban.slice(4) + iban.slice(0, 4)).replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55))) === 1;
 
-function nirValid(nir: string): boolean {
+export function nirValid(nir: string): boolean {
   const body = nir.slice(0, 13).replace("2A", "19").replace("2B", "18");
   return 97 - mod97(body) === Number(nir.slice(13));
 }
@@ -183,8 +193,8 @@ function specific(text: string): Secret[] {
   for (const m of text.matchAll(API_KEY)) found.push({ kind: "api-key", value: m[0] });
   for (const m of text.matchAll(PRIVATE_KEY)) found.push({ kind: "private-key", value: m[0] });
   for (const m of text.matchAll(JWT)) found.push({ kind: "jwt", value: m[0] });
-  for (const value of cards(text)) found.push({ kind: "card", value });
-  for (const value of ibans(text)) found.push({ kind: "iban", value });
+  for (const [, , value] of cardSpans(text)) found.push({ kind: "card", value });
+  for (const [, , value] of ibanSpans(text)) found.push({ kind: "iban", value });
   for (const m of text.matchAll(NIR)) {
     const nir = compact(m[0]).toUpperCase();
     if (nirValid(nir)) found.push({ kind: "nir", value: nir });
@@ -205,7 +215,7 @@ export function opaque(token: string): string {
   return kept.length === parts.length ? token : kept.join("-");
 }
 
-function random(text: string): string[] {
+export function randomTokens(text: string): string[] {
   return [...text.replace(GOOGLE_DOC_ID, " ").matchAll(TOKEN)]
     .map((m) => m[0])
     .filter((t) => {
@@ -220,7 +230,7 @@ function random(text: string): string[] {
 export function findSecrets(text: string): Secret[] {
   const all = [...new Set(decodings(text).map(plain))];
   const found = all.flatMap(specific);
-  for (const token of all.flatMap(random))
+  for (const token of all.flatMap(randomTokens))
     if (!found.some((s) => s.value.includes(token))) found.push({ kind: "random", value: token });
   const seen = new Set<string>();
   return found.filter((s) => !seen.has(`${s.kind}\n${s.value}`) && !!seen.add(`${s.kind}\n${s.value}`));

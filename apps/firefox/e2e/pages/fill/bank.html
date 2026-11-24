@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Banque</title>
+<!-- The code read in the webmail, filled here: the page shows what it got, the agent's next read sees its label. -->
+<form action="/fill/next.html"><label for="code">Code reçu par e-mail</label><input id="code"></form>
+<p>Code saisi : <span id="echo"></span></p>
+<script>document.getElementById("code").addEventListener("input", (e) => (document.getElementById("echo").textContent = e.target.value));</script>
+<script>
+  // What the page sees in its fields, sent to its own server on each input: the test reads it there.
+  addEventListener("input", (e) => fetch("/log?" + new URLSearchParams({ f: e.target.id, v: e.target.value })));
+</script>

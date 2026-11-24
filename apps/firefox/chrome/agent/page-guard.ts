@@ -26,17 +26,33 @@ function agentPage(url: string, [min, max]: [number, number]): boolean {
 const loopback = (host: string): boolean => localLiteral(host) && (host === "localhost" || host === "[::1]" || /^127\.\d+\.\d+\.\d+$/.test(host));
 
 /**
- * A request `to`, made while the top-level page is `from`: an agent page's requests stay on the agent's own ports, or GET a known CDN;
- * its top-level navigation leaves only with a user activation on the page (a click, a key press).
+ * A request `to`, made while the top-level page is `from`: an agent page's requests stay on the agent's own ports, or GET a known CDN
+ * (not while the workspace is `locked` after a reveal: the address could carry the value); its top-level navigation leaves only with
+ * a user activation on the page (a click, a key press).
  */
-export function agentPageDecision(o: { from: string; to: string; document: boolean; gesture: boolean; method: string }, ports: [number, number]): "allow" | "cancel" {
+export function agentPageDecision(o: { from: string; to: string; document: boolean; gesture: boolean; method: string; locked?: boolean }, ports: [number, number]): "allow" | "cancel" {
   if (!agentPage(o.from, ports)) return "allow";
   const to = parse(o.to);
   if (!to) return "cancel";
   if (loopback(to.hostname) && agentPage(o.to, ports)) return "allow";
   if (o.document && o.gesture) return "allow";
   // Encrypted, on its usual port: in clear text (or on a port nobody serves) the address is readable on the way.
-  return CDN_HOSTS.has(to.hostname) && to.protocol === "https:" && to.port === "" && o.method === "GET" ? "allow" : "cancel";
+  return !o.locked && CDN_HOSTS.has(to.hostname) && to.protocol === "https:" && to.port === "" && o.method === "GET" ? "allow" : "cancel";
+}
+
+/**
+ * The workspace lock as the host last pushed it (host.ts, `agent.pagesLocked`). Locked until the host says otherwise: a
+ * page that loads before the host answers gets no CDN nor WebRTC.
+ */
+let locked = true;
+export const setAgentPagesLocked = (yes: boolean): void => void (locked = yes);
+
+/**
+ * WebRTC of an agent page while the workspace is locked (webrtcUI's blocker, asked by the parent for every PeerConnection,
+ * as for the frames in ui-network.ts): denied, since a connection goes to any host. A sandboxed frame's origin names its precursor.
+ */
+export function agentPageRtc(origins: string[], ports: [number, number], isLocked = locked): "deny" | "allow" {
+  return isLocked && origins.some((o) => agentPage(o.replace(/^[^?]*\?(?=https?:)/, ""), ports)) ? "deny" : "allow";
 }
 
 /** The container's ports from the variable's raw value, as the kernel reads them; unset is host/host.ts's default. */
@@ -54,7 +70,7 @@ function blocked(ch: any, range: [number, number]): boolean {
   if (!li) return false;
   const document = li.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_DOCUMENT;
   const system = !!li.triggeringPrincipal?.isSystemPrincipal;
-  const o = { to: ch.URI.spec as string, document, gesture: !system && li.hasValidUserGestureActivation, method: ch.requestMethod ?? "GET" };
+  const o = { to: ch.URI.spec as string, document, gesture: !system && li.hasValidUserGestureActivation, method: ch.requestMethod ?? "GET", locked };
   // Where a redirect sends a load is the server's choice: an agent page's server must not send to the web a load that
   // something else started (an address typed or reloaded, a link on a web page). Each hop is judged as if it were the page.
   if (li.redirectChain.some((e: any) => agentPageDecision({ ...o, from: principalSpec(e.principal) }, range) === "cancel")) return true;
@@ -81,7 +97,7 @@ function blocked(ch: any, range: [number, number]): boolean {
  * (the system principal: the address bar, its own fetches) is judged only past a redirect by an agent page's server. The port range is read once.
  * A WebSocket resolves its host (WebSocketChannel::DoAdmissionDNS) before that observer, unless a proxy is set
  * (OnProxyAvailable skips the lookup): a blocked channel gets a dead proxy from a channel filter, then the cancel.
- * shortcut: WebRTC is not guarded (no HTTP request); upgrade if agent pages must never open a socket to the web.
+ * WebRTC (no HTTP request) is denied only while the workspace is locked (agentPageRtc); unlocked, an agent page may open one.
  */
 export function installAgentPageGuard(ports: () => [number, number]): void {
   if (observing) return;
@@ -116,4 +132,8 @@ export function installAgentPageGuard(ports: () => [number, number]): void {
     },
     "http-on-modify-request",
   );
+  ChromeUtils.importESModule("resource:///modules/webrtcUI.sys.mjs").webrtcUI.addPeerConnectionBlocker((p: { innerWindowID?: number; origin?: string }) => {
+    const top = WindowGlobalParent.getByInnerWindowId(p.innerWindowID ?? 0)?.browsingContext?.top;
+    return agentPageRtc([String(p.origin ?? ""), top?.currentURI?.spec ?? ""], range);
+  });
 }

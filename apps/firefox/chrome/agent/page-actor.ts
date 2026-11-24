@@ -229,7 +229,9 @@ function readDisplayed(doc: Document, max: number, capture: boolean) {
         links.push(link);
       }
     }
-    const shadow = (el as any).openOrClosedShadowRoot as ShadowRoot | null;
+    // A UA widget's root (a text input's value, video controls) is the browser's, not the page's: innerText skips it too.
+    const own = (el as any).openOrClosedShadowRoot as (ShadowRoot & { isUAWidget(): boolean }) | null;
+    const shadow = own && !own.isUAWidget() ? own : null;
     if (shadow) {
       deep = true;
       walk(shadow, z, shown, keep, hidden);

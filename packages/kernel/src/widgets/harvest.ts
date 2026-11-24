@@ -48,6 +48,8 @@ export interface HarvestOptions {
   /** null: no local AI, `kev` and `gemma` answer with an error. */
   ai: Pick<LocalAi, "kev" | "gemma"> | null;
   bridge: BrowserBridge;
+  /** The workspace lock's check on the staged copy (runWorkflow's `lockedCode`): what is hashed is what runs. */
+  lockedCode?: (staged: string) => Promise<string | null>;
   clock?: () => Date;
   /** Kernel-side timeout; the container stops by itself after 180 s (+5 s). */
   delayMs?: number;
@@ -407,6 +409,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       memory: await readMemory(dataFolder),
       ...grantContext(widgetsFolder, id, declaration, loc(o)),
       ...codeCheck(widgetsFolder, id, declaration, loc(o)),
+      ...(o.lockedCode ? { lockedCode: o.lockedCode } : {}),
       unrestricted: await readsUnrestricted(widgetsFolder, id, declaration),
       trigger: trigger,
       ...(maxDurationMinutes !== undefined ? { maxDurationMinutes: maxDurationMinutes } : {}),
@@ -542,6 +545,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
       memory: {},
       ...grantContext(widgetsFolder, id, declaration, loc(o)),
       ...codeCheck(widgetsFolder, id, declaration, loc(o)),
+      ...(o.lockedCode ? { lockedCode: o.lockedCode } : {}),
       unrestricted: await readsUnrestricted(widgetsFolder, id, declaration),
       trigger: "replay",
       replay: { ...replay, resumed: plan.resumed },

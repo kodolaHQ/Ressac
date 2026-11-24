@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Fake docker for the end-to-end tests: no real container, no network. See plan 3.
 const { createHash } = require("node:crypto");
-const { appendFileSync, existsSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } = require("node:fs");
+const { appendFileSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } = require("node:fs");
 // Written whole (temp file, then rename): tests poll these files and must never read half of one.
 const put = (f, v) => (writeFileSync(`${f}.tmp`, v), renameSync(`${f}.tmp`, f));
 const { dirname, join } = require("node:path");
@@ -175,9 +175,123 @@ function launchApp(options, command) {
   child.on("exit", (code) => process.exit(code ?? 1));
 }
 
+/**
+ * The workspace lock's lift (packages/kernel/src/mask/lift.ts): /workspace is RESSAC_ROOT, /home/node a fake-home beside
+ * it, the reveal stamp and its folder list files beside it too. The scan prints every folder (`D` changed since the
+ * stamp) and every other entry changed (ctime) after the stamp, leaving out `.ressac` and this fake's own `fake-*` files
+ * at the root.
+ */
+const inside = (p) =>
+  p === "/workspace" || p.startsWith("/workspace/") ? env.RESSAC_ROOT + p.slice("/workspace".length)
+  : p === "/home/node" || p.startsWith("/home/node/") ? join(dirname(env.RESSAC_ROOT), "fake-home") + p.slice("/home/node".length)
+  : null;
+const revealStamp = () => join(dirname(env.RESSAC_ROOT), "fake-reveal-stamp");
+const revealDirs = () => join(dirname(env.RESSAC_ROOT), "fake-reveal-dirs");
+/** Every entry under the fake's roots: [container path, lstat]. */
+function walkRoots() {
+  const out = [];
+  const walk = (dir, shown, top) => {
+    if (!existsSync(dir)) return;
+    out.push([shown, lstatSync(dir)]);
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (top && (e.name === ".ressac" || e.name.startsWith("fake-"))) continue;
+      const full = join(dir, e.name);
+      if (e.isDirectory()) walk(full, `${shown}/${e.name}`, false);
+      else out.push([`${shown}/${e.name}`, lstatSync(full)]);
+    }
+  };
+  walk(env.RESSAC_ROOT, "/workspace", true);
+  walk(join(dirname(env.RESSAC_ROOT), "fake-home"), "/home/node", false);
+  return out;
+}
+const typeOf = (st) => (st.isDirectory() ? "d" : st.isSymbolicLink() ? "l" : st.isFile() ? "f" : "p");
+function changedListing() {
+  const since = existsSync(revealStamp()) ? statSync(revealStamp()).mtimeMs : -1;
+  return walkRoots()
+    .map(([p, st]) => (st.isDirectory() ? `${st.ctimeMs > since ? "D" : "d"} 0 ${p}\0` : st.ctimeMs > since ? `${typeOf(st)} ${st.size} ${p}\0` : ""))
+    .join("");
+}
+const CONTAINER_FILE = /^ressac-workshop(?:-firefox)?:(\/.*)$/;
+if (args[0] === "cp") {
+  const [from, to] = [CONTAINER_FILE.exec(args[1])?.[1], CONTAINER_FILE.exec(args[2])?.[1]];
+  const source = from ? inside(from) : args[1];
+  const target = to ? inside(to) : args[2];
+  if (!source || !target || !lstatSync(source, { throwIfNoEntry: false })) quit(1, "", "Error: No such container:path\n");
+  // Like docker cp: a link is copied as a link, never followed.
+  if (lstatSync(source).isSymbolicLink()) symlinkSync(readlinkSync(source), target);
+  else copyFileSync(source, target);
+  quit(0);
+}
+
 if (args[0] === "exec") {
   const options = args.slice(1, args.indexOf("ressac-workshop"));
   let command = args.slice(args.indexOf("ressac-workshop") + 1);
+  if (command[0] === "sh" && command[2]?.includes("touch /run/ressac-reveal-stamp")) {
+    // The list first, then the stamp (never moved forward), as Workshop.stampReveal does.
+    if (!existsSync(revealDirs())) {
+      put(revealDirs(), walkRoots().filter(([, st]) => st.isDirectory()).map(([p]) => `${p}\0`).join(""));
+      if (!existsSync(revealStamp())) writeFileSync(revealStamp(), "");
+    }
+    quit(0);
+  }
+  if (command[0] === "sh" && command[2]?.includes("cat /run/ressac-reveal-dirs")) {
+    if (!existsSync(revealDirs())) quit(3);
+    const late = !existsSync(revealStamp()) || statSync(revealDirs()).mtimeMs > statSync(revealStamp()).mtimeMs;
+    quit(0, `${late ? "late" : "first"}\0${readFileSync(revealDirs(), "utf8")}`);
+  }
+  if (command[0] === "find" && command.includes("-empty")) {
+    const dirs = command.slice(1, command.indexOf("-xdev"));
+    const out = walkRoots()
+      .filter(([p]) => dirs.some((d) => p === d || p.startsWith(`${d}/`)))
+      .map(([p, st]) => (st.isDirectory() ? (readdirSync(inside(p)).length === 0 ? `e 0 ${p}\0` : "") : `${typeOf(st)} ${st.size} ${p}\0`))
+      .join("");
+    process.stdout.write(out, () => process.exit(0));
+    return;
+  }
+  // « Rendre à l'atelier »: the content in base64 on stdin, or a link's target as the last argument.
+  if (command[0] === "sh" && command.includes("ressac-restore")) {
+    const at = command.indexOf("ressac-restore");
+    const file = inside(command[at + 1]);
+    if (!file) quit(1, "", "outside the fake's folders\n");
+    mkdirSync(dirname(file), { recursive: true });
+    if (command[2].includes("ln -sfn")) {
+      rmSync(file, { force: true });
+      symlinkSync(command[at + 2], file);
+      quit(0);
+    }
+    let input = "";
+    process.stdin.on("data", (c) => (input += c));
+    process.stdin.on("end", () => {
+      writeFileSync(file, Buffer.from(input, "base64"));
+      quit(0);
+    });
+    return;
+  }
+  if (command[0] === "rmdir") {
+    for (const d of command.slice(command.indexOf("--") + 1)) {
+      const dir = inside(d);
+      if (dir && existsSync(dir) && readdirSync(dir).length === 0) rmSync(dir, { recursive: true });
+    }
+    quit(0);
+  }
+  if (command[0] === "sh" && command[2]?.includes("exec find ")) {
+    // Not quit(): process.exit() would cut an output larger than the pipe's 64 KB.
+    process.stdout.write(changedListing(), () => process.exit(0));
+    return;
+  }
+  if (command.join(" ") === "rm -f /run/ressac-reveal-stamp /run/ressac-reveal-dirs") {
+    rmSync(revealStamp(), { force: true });
+    rmSync(revealDirs(), { force: true });
+    quit(0);
+  }
+  if ((command[0] === "rm" || command[0] === "mkdir" || command[0] === "head" || command[0] === "chown") && command.at(-2) === "--") {
+    const file = inside(command.at(-1));
+    if (!file) quit(1, "", `${command[0]}: outside the fake's folders\n`);
+    if (command[0] === "rm") rmSync(file, { recursive: true, force: true });
+    if (command[0] === "mkdir") mkdirSync(file, { recursive: true });
+    if (command[0] === "head") quit(existsSync(file) ? 0 : 1, existsSync(file) ? readFileSync(file).subarray(0, Number(command[2])).toString("utf8") : "", existsSync(file) ? "" : "head: No such file\n");
+    quit(0);
+  }
   // Network securing (Workshop.secureNetwork): the rules apply (stdin drained), the direct probe is blocked (curl exit 7).
   if (command[0] === "node" && command[1] === "/opt/ressac/ressac-network.mjs") {
     let input = "";

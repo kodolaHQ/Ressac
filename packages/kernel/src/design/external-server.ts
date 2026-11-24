@@ -167,6 +167,8 @@ export async function startExternalServer(o: {
   remarks: Remarks;
   declare(client: ExternalClient, d: { folder: string; ports: number[]; name?: string }): Promise<DeclarationResult>;
   port: number;
+  /** A text while Ressac's workspace is locked after a reveal: every request is answered 423 with it, before any tool runs. */
+  refuse?: () => string | null;
 }): Promise<{ port: number; stop(): Promise<void> }> {
   let realPort = 0;
   const http = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -178,6 +180,8 @@ export async function startExternalServer(o: {
     const client = token ? o.registry.tokenClient(token) : null;
     if (!client) return res.writeHead(401).end();
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp-external") return res.writeHead(404).end();
+    const refusal = o.refuse?.();
+    if (refusal) return res.writeHead(423, { "content-type": "text/plain; charset=utf-8" }).end(refusal);
     const stop = new AbortController();
     const server = createExternalServer({ registry: o.registry, remarks: o.remarks, client, signal: stop.signal, declare: o.declare });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });

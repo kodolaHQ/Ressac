@@ -80,6 +80,8 @@ export function createDesignHost(o: {
   chrome: { agentWindow(): Promise<string | null>; giveAgent(win: string): void };
   notify(n: { title: string; text: string }): void;
   broadcast(): void;
+  /** A text while the workspace is locked after a reveal: the external MCP refuses every request with it. */
+  refuse?: () => string | null;
 }): DesignHost {
   // The batches of agent projects go in the space (the agent reads them); external projects' registries, review
   // repositories and batches go under <dataDir>/design, never mounted in the container.
@@ -143,6 +145,7 @@ export function createDesignHost(o: {
         spaceRoot: o.dataDir,
         home: o.home ?? homedir(),
         notify: o.notify,
+        ...(o.refuse ? { refuse: o.refuse } : {}),
       }).then((service) => {
         externals = service;
         o.broadcast();

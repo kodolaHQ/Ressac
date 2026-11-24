@@ -15,6 +15,8 @@ import type { AiAccessRun } from "../../src/ai/dispatcher.js";
 import { lastResult, readResult } from "../../src/actions/data.js";
 import { ACTION_UNKNOWN as unknownIn, actionGrantRequired, runAction, requiredInput, type OptionsAction, type TraceAction } from "../../src/actions/run.js";
 import { DeclarationAction } from "../../src/actions/schemas.js";
+import { readActionCode } from "../../src/actions/read.js";
+import { cp } from "node:fs/promises";
 import { tempFolder } from "../helpers/temp.js";
 
 const ACTION_UNKNOWN = unknownIn("fr");
@@ -159,11 +161,41 @@ describe("runAction", () => {
     expect(steps).toEqual(["layout"]);
   });
 
+  it("the code checked is the staged copy that runs: the source rewritten after the check changes nothing", async () => {
+    const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
+    await gitlabGrant(b);
+    const staged = join(await tempFolder(), "staged");
+    toClean.push(staged);
+    const checked: string[][] = [];
+    const r = await runAction(options(b, "gitlab", {
+      workshop: {
+        stageHarvest: async (_p, d) => (await cp(d, staged, { recursive: true }), staged),
+        harvestCommand: (p, d, m) => ["docker", "run", JSON.stringify(p), d, m],
+        deleteHarvest: async () => {},
+      },
+      // The harvester runs the folder its command names: the staged copy.
+      launch: (cmd, args) => {
+        b.commands.push([cmd, ...args]);
+        const e = spawn(process.execPath, [SCRIPT, args[2]!], { stdio: ["pipe", "pipe", "pipe"] });
+        return { stdin: e.stdin, stdout: e.stdout, stderr: e.stderr, kill: () => void e.kill("SIGKILL"), end: new Promise((ok) => e.on("close", (x) => ok(x))) };
+      },
+      lockedCode: async (folder) => {
+        checked.push(await readActionCode(folder));
+        await writeFile(join(b.folder, "lire.mjs"), CODE_GITLAB.replace("p.title", '"changé"'));
+        return null;
+      },
+    }));
+    expect(r).toMatchObject({ status: "succeeded" });
+    expect(checked).toHaveLength(1);
+    expect(checked[0]).toContain(CODE_GITLAB);
+    expect((await readResult(b.actionsFolder, "gitlab", r.run!))?.results).toEqual({ tickets: [{ title: "Ouvrir la porte" }] });
+  });
+
   it("without a grant: accord-requis, no container launched, nothing written", async () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
     const r = await runAction(options(b, "gitlab"));
     expect(r).toEqual({ status: "grant-required", error: actionGrantRequired(DeclarationAction.parse(GITLAB), "fr"), kernelError: true });
-    expect(r.error).toBe("Accord requis pour lire avec ton compte : gitlab.com");
+    expect(r.error).toBe("Accord requis pour lire avec votre compte : gitlab.com");
     expect(b.commands).toEqual([]);
     expect(existsSync(join(b.actionsFolder, "gitlab"))).toBe(false);
   });

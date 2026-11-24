@@ -16,7 +16,15 @@ interface Item {
   value: string;
   norm: string;
   source: string;
+  /** Where it was read: `<tab>\n<origin>` per read (empty parts when unknown), so a check can leave out a tab's own reads. */
+  from: Set<string>;
 }
+
+/** A tab and its origin: a check for a script on that tab leaves out what was read there (`check`'s `except`). */
+export type ReadPlace = { tab?: string; origin?: string | null };
+const placeKey = (p: ReadPlace = {}) => `${p.tab ?? ""}\n${p.origin ?? ""}`;
+// Bounds an item's places: past it, an item counts as read on an unknown place, so as read elsewhere for every tab.
+const PLACES_MAX = 8;
 
 interface Win {
   /** Read items by normalised form, oldest first. */
@@ -130,7 +138,7 @@ const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p
 const softNorm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}@/]/gu, "");
 
 /** Distinctive items in `text`, each normalised form once: secrets first, then the others in text order. */
-function extract(raw: string): Omit<Item, "source">[] {
+function extract(raw: string): Omit<Item, "source" | "from">[] {
   const text = plain(raw);
   const others: { at: number; kind: Item["kind"]; value: string }[] = [];
   for (const m of text.matchAll(EMAIL)) others.push({ at: m.index, kind: "email", value: m[0] });
@@ -228,8 +236,10 @@ export class Outflow {
    * `links`: the text shows the user's own links (history, bookmarks, tab list, a tab of theirs), so its addresses may
    * be followed. Never for a tool whose output the agent writes (run_js, a widget, a site memory): it would write an
    * address there, then open it unflagged. A list: only these addresses may be followed (the text's are not harvested).
+   * `shown`: the text as the agent got it, where the items are taken (a value it saw only as a label is no item: a
+   * pause on a guess of it would confirm the guess); `text` still gives the addresses.
    */
-  read(win: string, text: string, source: string, links: boolean | readonly string[] = false): void {
+  read(win: string, text: string, source: string, links: boolean | readonly string[] = false, shown = text, place?: ReadPlace): void {
     const w = this.win(win);
     w.privateRead = true;
     // Punctuation of the sentence around it is not part of the address.
@@ -242,16 +252,17 @@ export class Outflow {
       if (w.urls.size > URLS_MAX) w.urls.delete(w.urls.values().next().value!);
     }
     const perKind = new Map<string, { items: number; pieces: number }>();
-    for (const found of extract(text)) {
+    for (const found of extract(shown)) {
       const known = w.read.get(found.norm);
       if (known) {
         // Re-read: refresh its age and source, keep its index entries.
         w.read.delete(found.norm);
         known.source = source;
+        known.from.add(known.from.size < PLACES_MAX ? placeKey(place) : "\n");
         w.read.set(found.norm, known);
         continue;
       }
-      const item = { ...found, source };
+      const item = { ...found, source, from: new Set([placeKey(place)]) };
       const ps = [...indexed(item)];
       const group = ["email", "phone", "digits", "token"].includes(item.kind) ? item.kind : "secret";
       const kind = perKind.get(group) ?? { items: 0, pieces: 0 };
@@ -337,16 +348,22 @@ export class Outflow {
     }
   }
 
-  /** `address`: `out` is an address the agent opens, not a search query. */
-  check(win: string, out: string, address = false): OutflowHit | undefined {
+  /**
+   * `address`: `out` is an address the agent opens, not a search query. `except`: a script's tab and its origin now; an
+   * item read on that origin is left out (the page already has it). Not the tab: it may have left the page it was read on.
+   */
+  check(win: string, out: string, address = false, except?: { tab: string; origin: string | null }): OutflowHit | undefined {
     const w = this.wins.get(win);
+    const foreign = (item: Item) => !except?.origin || ![...item.from].some((k) => k.split("\n")[1] === except.origin);
     const typedNow = w ? w.typedText + "\n" + norm(w.buffer) : "";
     const typed = (n: string) => !!w && (w.typedItems.has(n) || typedNow.includes(n));
 
     for (const s of findSecrets(out)) {
       const n = norm(s.value);
       if (typed(n)) continue;
-      const source = w?.read.get(n)?.source;
+      const read = w?.read.get(n);
+      if (read && !foreign(read)) continue;
+      const source = read?.source;
       return { kind: s.kind, masked: mask(s.value), ...(source ? { source } : {}) };
     }
     if (!w) return undefined;
@@ -359,7 +376,7 @@ export class Outflow {
       const at = w.shingles.get(p);
       // The index first: scanning the typed text for every piece of a long query is quadratic.
       if (!at || typedNow.includes(p)) return undefined;
-      for (const item of at instanceof Set ? at : at ? [at] : []) if (keep(item) && !typed(item.norm)) return item;
+      for (const item of at instanceof Set ? at : at ? [at] : []) if (keep(item) && foreign(item) && !typed(item.norm)) return item;
     };
     const sizes = new Set([DIGIT_CHUNK, TEXT_CHUNK, ...w.shortLengths.keys()]);
     const scan = (out: string): OutflowHit | undefined => {
@@ -514,10 +531,10 @@ export class Outflow {
 
   /** `check` against what every window read: for a caller tied to no window (the main token), which could otherwise
    *  send what a window read. */
-  checkAll(out: string, address = false): OutflowHit | undefined {
+  checkAll(out: string, address = false, except?: { tab: string; origin: string | null }): OutflowHit | undefined {
     // No window yet: still one pass, for the secret shapes (rule 1).
     for (const win of this.wins.size ? this.wins.keys() : [""]) {
-      const hit = this.check(win, out, address);
+      const hit = this.check(win, out, address, except);
       if (hit) return hit;
     }
     return undefined;

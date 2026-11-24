@@ -55,7 +55,39 @@ export interface TabRead {
   contentType?: string;
   /** Visible password fields. */
   passwords?: number;
+  /** The page's fields the agent may fill (`fill_field`): 40 at most, in document order, visible inputs, textareas and contenteditable only. */
+  fields?: PageField[];
+  /**
+   * The origins of every frame of the page, top included. Firefox must fill it: a capture shows a sensitive frame's
+   * pixels, which the top document's text does not hold. Absent: that check is skipped.
+   */
+  frameOrigins?: string[];
 }
+
+/** A field of a page, as a read lists it; `handle` is opaque (`"<innerWindowId>:<n>"`: its document's, so a frame that navigated never resolves an old one), only the browser resolves it. */
+/** The fields a read gives at most, numbered for `fill_field`: the fill actor lists no more, the kernel shows no more. */
+export const FIELDS_MAX = 40;
+export type PageField = { handle: string; type: string; autocomplete: string; label: string };
+
+/**
+ * What the browser sealed of a field before a fill: its document's `origin` and `path`, the origins of `frames` (its
+ * frame, every ancestor and the top document), its form's `action`, the saved logins of `origin` (usernames only) and
+ * whether the agent reached the tab. `commit` writes only if the field still matches the seal. `partner`: for a login
+ * field on its own origin, the handle of its form's other login field (username or password), as Firefox's own login
+ * form detection pairs them; a hint the kernel seals and checks on its own.
+ */
+export type FillSeal = {
+  seal: string; origin: string; path: string; frames: string[]; type: string; autocomplete: string; action: string | null;
+  logins: { username: string }[]; agentReached: boolean; partner?: string;
+};
+
+/** A fill card row whose passport entry may remember the field's site (task 13b): `choice` for a kind row. */
+export type FillRemember = { row: number; choice?: string; seal: string; profile: string; id: string };
+/**
+ * A field of a several-field fill card (design § 8.4). `kind`: a kind row's passport kind, for the card's « Votre
+ * passeport n'a pas de … » when it offers nothing.
+ */
+export type FillRow = { field: string; name: string; kind?: string; choices?: { ref: string; shown: string; value: string }[] };
 
 export interface TabInfo {
   id: string;
@@ -79,7 +111,18 @@ export interface TabInfo {
    * The agent's grant is only valid for the `empreinte` shown on its card.
    */
   hash?: string;
+  /** Opened or reached by the agent (Task 6 fills it); absent counts as reached by the agent: never a source (fail closed). */
+  agentReached?: boolean;
+  /** The tab's login profile, whose passport is « this tab's » (design § 8.1); absent: no passport is. */
+  profile?: string;
 }
+
+/**
+ * How far an agent load may go (spec § 3): `allow` lists the origins its hops (a redirect, a meta refresh) may reach,
+ * besides the start's own origin; a hop elsewhere is cancelled in Firefox's parent and the call throws LoadRefused.
+ * null or absent: no restriction (no lock, no handle).
+ */
+export type LoadOptions = { allow?: string[] | null };
 
 /** What the browser gives the kernel. */
 export interface BrowserBridge {
@@ -92,12 +135,13 @@ export interface BrowserBridge {
    * `expect`: the URL whose access the kernel checked; a tab on another origin when the call lands throws SiteChanged.
    */
   readText(id: string, o?: { capture?: boolean; expect?: string }): Promise<TabRead>;
-  openTab(url: string, space?: string): Promise<TabInfo>;
+  /** `o.allow`: as for `navigate`; with a list, resolves once the first load ends. */
+  openTab(url: string, space?: string, o?: LoadOptions): Promise<TabInfo>;
   /**
    * `"pending"` (site app window only): the tweaks grant card is shown; the address will
    * load after the user's choice.
    */
-  navigate(id: string, url: string): Promise<void | "pending">;
+  navigate(id: string, url: string, o?: LoadOptions): Promise<void | "pending">;
   /** PNG capture of the tab. `expect`: as for readText. */
   capture(id: string, o?: { expect?: string }): Promise<Buffer>;
   /** Shows the request to the user; true if they accept. `signal` raised (new conversation): the card is removed, false. */
@@ -110,12 +154,58 @@ export interface BrowserBridge {
    */
   askDevTools?(o: TabInfo, d: { rights: DevRight[]; reason: string; agent: string }, signal?: AbortSignal): Promise<DevRight[]>;
   /**
+   * The unlock card of a tab that shows the user's data (`kernel-mask-devtools-card`, in `text`), with Touch ID: true
+   * opens its dev tools for this conversation. `signal` raised: the card is removed, false. Absent: they stay locked.
+   */
+  askDevUnlock?(o: TabInfo, d: { agent: string; text: string }, signal?: AbortSignal): Promise<boolean>;
+  /**
    * Shows the card for an address the agent wrote itself (not a link it read) in the window of the search; true if the
    * user allows it. `signal` raised: the card is removed and the answer is false. Absent: such an address is refused.
    * `danger`: what the address carries that the agent
    * read from a private source or that looks like a secret, shown as a red line (it never blocks the card).
    */
   askAddress?(o: { url: string; reason: string; agent: string; danger?: string }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
+  /**
+   * The reveal card (`kernel-mask-reveal-card`, rendered in `text`): the agent asks to see a masked value for this
+   * conversation, which then stays locked. True if the user allows it. `signal` raised: the card is removed, false.
+   * Absent: every reveal is refused. `label`: what the card's « Voir » looks up in this window's session, never the value.
+   */
+  askReveal?(o: { name: string; reason: string; agent: string; conversation: string; text: string; label: string }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
+  /**
+   * The alert card for a label the agent sends in a query or an address it composed (`kernel-mask-label-alert`, in
+   * `text`): only the label goes, never the value. Refused by default; absent: refused.
+   */
+  askLabelAlert?(o: { name: string; destination: string; text: string }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
+  /**
+   * Fills a field the kernel's last read listed (Task 12). `prepare` seals it; `commit` writes the value (a text whose
+   * labels the kernel already replaced, or a saved Firefox login of the seal's origin), `"changed"` when the field no
+   * longer matches its seal (nothing written). Absent: every fill is refused.
+   */
+  fill?: {
+    /** A seal is random, single-use and unique; a field's handle stays stable for its document's lifetime. */
+    prepare(tab: string, handle: string): Promise<FillSeal>;
+    /** `origin`: the origin the kernel approved; the browser writes nothing if the field is no longer on it. */
+    commit(seal: string, v: { text: string } | { savedLogin: "password" | "username"; login?: number }, origin: string): Promise<"filled" | "changed">;
+  };
+  /**
+   * The fill card: « Remplir { name } dans « { field } » sur { where } ? » (`field`: the label the read listed), with Touch ID when `touchId`, a choice among `logins` for a
+   * saved login, and `danger` (red lines: outflow rule 2, the conversation's lock). `login`: the chosen login's index.
+   * `passportProfile`: the passport a value comes from, when it is not this tab's profile's (design § 8.1).
+   * `labels`: those of the text, for the card's « Voir » (looked up in this window's session), never their values.
+   * `rows` (fill by kind, or `also`): one per field, in order; a kind row's `choices` are the tab's passport entries of
+   * that kind, `value` included for the host to keep (ruling F10: only `ref` and `shown` reach the card). `picks`: the
+   * chosen `ref` per row (null: none). `profile` (fill by kind): the tab's passport, for the card's « Ouvrir le passeport ».
+   * `remember`: the rows (and, for a kind row, the choices) whose passport entry may remember the field's site (task
+   * 13b), with its seal and entry for Firefox to add the site once that seal is written; never told to the agent.
+   * `signal` raised: the card is removed, no.
+   */
+  askFill?(
+    o: { name: string; field: string; where: string; touchId: boolean; labels: string[]; logins?: string[]; agent: string; danger?: string; passportProfile?: string; rows?: FillRow[]; profile?: string; remember?: FillRemember[] },
+    win: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<{ yes: boolean; login?: number; picks?: (string | null)[] }>;
+  /** A notice about the conversation's lock (`fill_field` blocked after unknown labels, Task 8). */
+  askLockNotice?(o: { text: string }, window: string | undefined): void;
   /** The tab is in a private space: absent from listerOnglets, the agent has no access to it. */
   isPrivate?(id: string): boolean;
   /** The tab the user is looking at is in a private space (ongletActif then returns null). */
@@ -176,9 +266,9 @@ export interface BrowserBridge {
      * A query goes to the user's engine. Throws in a private space. With `reuse` (the id of the search tab), that tab is
      * navigated instead and nothing opens nor activates.
      */
-    open(window: string | undefined, target: { query: string } | { url: string }, reuse?: string): Promise<TabInfo>;
+    open(window: string | undefined, target: { query: string } | { url: string }, reuse?: string, o?: LoadOptions): Promise<TabInfo>;
     /** Opens `url` in a background tab of AGENT_PROFILE (`openedByAgent`, not activated), in the window and space of the search tab `searchTabId`. */
-    openBackground(searchTabId: string, url: string): Promise<TabInfo>;
+    openBackground(searchTabId: string, url: string, o?: LoadOptions): Promise<TabInfo>;
     /** Closes a tab opened by `open` or `openBackground`, at once (no « leave this site? » question). */
     close(tabId: string): Promise<void>;
     /** Shows or removes the band of the tab. */
@@ -268,6 +358,8 @@ export interface HistoryResult {
   visits: number;
   /** About 300 characters of the kept text around the searched words; empty if the page has no text found. */
   excerpt: string;
+  /** A visit of the user's (Task 6 fills it); absent: not theirs, never a source. */
+  byUser?: boolean;
 }
 
 /** A page whose text was kept, as read by the agent. */
@@ -276,6 +368,8 @@ export interface KeptPage {
   title: string;
   date: string; // ISO
   text: string;
+  /** Kept from a visit of the user's; absent: not theirs, never a source. */
+  byUser?: boolean;
 }
 
 /** What the browser provides to search the history: never a visit from a private space. */
@@ -300,6 +394,14 @@ export class DevToolsBusy extends Error {
   constructor() {
     super("Les outils de développement de l'utilisateur sont ouverts sur cet onglet.");
     this.name = "DevToolsBusy";
+  }
+}
+
+/** A hop of an agent load (a redirect, a meta refresh) went off its allowed origins: Firefox cancelled it. `url`: the hop's address. */
+export class LoadRefused extends Error {
+  constructor(readonly url: string) {
+    super("Chargement arrêté : une redirection menait hors des sites autorisés.");
+    this.name = "LoadRefused";
   }
 }
 

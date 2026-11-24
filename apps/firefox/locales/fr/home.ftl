@@ -119,7 +119,7 @@ home-notes-title = Nouveautés
 home-request-label-devtools = Demande d'accès aux outils de développement
 home-request-label-action = Demande d'accès aux résultats d'une action
 home-request-label-site = Demande d'accès à une appli de site
-home-request-label-history = Demande d'accès à ton historique
+home-request-label-history = Demande d'accès à votre historique
 home-request-label-widget = Demande d'accès aux données d'un widget
 home-request-label-extension = Activer une extension
 home-request-label-console = Débloquer la console d'une extension
@@ -137,10 +137,10 @@ home-request-address-danger = ⚠ { $danger }
 home-request-why = Pourquoi on me demande ça ?
 home-request-why-1 = L'agent ouvre librement les liens qu'il trouve dans les pages qu'il lit et dans ses résultats de recherche. Cette adresse, il ne l'a trouvée nulle part : il l'a écrite lui-même.
 home-request-why-2 = Une page piégée peut lui souffler une adresse qui emporte des informations vers un site inconnu. Un coup d'œil à l'adresse et à sa raison suffit ; dans le doute, « Refuser » : l'agent continue autrement.
-home-request-widget-action = L'agent veut voir les résultats de l'action « { $title } » (lus avec ton compte).
-home-request-widget-site = L'agent veut voir l'appli de site « { $title } » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.
-home-request-history = L'agent veut chercher et lire dans ton historique et tes favoris, pour cette conversation.
-home-request-widget = L'agent veut voir les données du widget « { $title } » (lues avec ton compte).
+home-request-widget-action = L'agent veut voir les résultats de l'action « { $title } » (lus avec votre compte).
+home-request-widget-site = L'agent veut voir l'appli de site « { $title } » (connectée à votre compte) : ses pages et sa mémoire, pour cette conversation.
+home-request-history = L'agent veut chercher et lire dans votre historique et vos favoris, pour cette conversation.
+home-request-widget = L'agent veut voir les données du widget « { $title } » (lues avec votre compte).
 home-request-allow-conversation = Autoriser pour cette conversation
 home-request-tab = L'agent veut lire l'onglet « { $title } »
 home-request-allow-once = Autoriser une fois
@@ -156,7 +156,7 @@ home-devtools-performance = Performances et mémoire
 home-devtools-performance-detail = Profilage, instantanés mémoire
 home-devtools-act = Agir sur la page
 home-devtools-act-detail = Exécuter du JavaScript, modifier le DOM, recharger
-home-devtools-act-sensitive = l'agent peut lire tout ce que contient la page, l'envoyer ailleurs sans te demander, et agir en ton nom sur ce site
+home-devtools-act-sensitive = l'agent peut lire tout ce que contient la page, l'envoyer ailleurs sans vous demander, et agir en votre nom sur ce site
 home-devtools-allow = Autoriser la sélection
 home-devtools-note = Valable pour cette conversation · tombe si l'onglet change de site
 
@@ -178,7 +178,7 @@ home-ext-agent-blind = L'agent ne voit pas ce que cette extension lit sur les on
 home-ext-hardened = Elle pourra lire et modifier chaque page de cet espace, comptes connectés compris.
 home-ext-confirm = Je comprends : elle lira toutes les pages de cet espace
 home-ext-enable = Activer
-home-ext-tick-first = Coche « Je comprends » pour pouvoir l'activer.
+home-ext-tick-first = Cochez « Je comprends » pour pouvoir l'activer.
 
 ## Extensions page
 
@@ -253,7 +253,7 @@ home-apps-from = depuis { $origin }
 home-apps-port = port { $port }
 home-apps-search = Chercher une appli…
 home-apps-no-docker = Docker n'est pas lancé. La liste reste visible, mais aucune appli ne peut être lancée.
-home-apps-empty = Rien ici pour l'instant. Demande à l'agent de tester un package ou de construire une app.
+home-apps-empty = Rien ici pour l'instant. Demandez à l'agent de tester un package ou de construire une app.
 home-apps-no-match = Aucune appli ne correspond.
 home-apps-more = Plus d'actions
 home-apps-debug = Déboguer
@@ -287,7 +287,7 @@ home-external-forget = Oublier
 home-external-connected-on = Branché le { $date }
 home-external-revoke = Révoquer
 home-external-none = Aucun Claude Code branché.
-home-external-command = Colle cette commande dans un terminal : elle ne sera plus affichée.
+home-external-command = Collez cette commande dans un terminal : elle ne sera plus affichée.
 home-external-copied = Copié
 home-external-copy = Copier
 home-external-client-name = Nom du client
@@ -297,7 +297,7 @@ home-external-failed = Le branchement a échoué.
 
 ## Home page
 
-home-empty = Aucun widget pour l'instant. Demande à l'agent de créer le premier.
+home-empty = Aucun widget pour l'instant. Demandez à l'agent de créer le premier.
 home-no-effect = Sans effet pour l'instant : le service des widgets ne répond pas (agent arrêté ?).
 home-grant-not-saved = Accord non enregistré : { $error }
 home-remove-confirm = Retirer « { $name } » de la page d'accueil ?
@@ -313,8 +313,8 @@ home-widget-next = prochaine : { $next }
 home-widget-options = Options du widget
 home-widget-update-now = Mettre à jour maintenant
 home-widget-workflow = Voir / modifier le workflow
-home-widget-grant-public = Ce widget veut lire { $account } avec ton compte, et pourra contacter : { $public }.
-home-widget-grant-private = Ce widget veut lire { $account } avec ton compte, et ne contactera aucun autre site.
+home-widget-grant-public = Ce widget veut lire { $account } avec votre compte, et pourra contacter : { $public }.
+home-widget-grant-private = Ce widget veut lire { $account } avec votre compte, et ne contactera aucun autre site.
 home-widget-allow = Autoriser…
 home-widget-code-changed = Le code a changé depuis votre accord.
 home-widget-reads-public = Ce widget lira : { $public }
@@ -328,3 +328,22 @@ home-widget-no-display = L'agent n'a pas encore écrit l'affichage de ce widget.
 
 home-profile-of = Profil de « { $spaces } »
 home-profile = Profil « { $id } »
+
+# Cartes du masquage (spec § 8) : elles nomment la valeur, jamais ne la montrent ; « Voir » la montre ici seulement.
+home-request-label-mask-reveal = L'agent veut voir une valeur masquée
+home-request-label-mask-fill = Remplir un champ avec vos données
+home-request-label-mask-label-alert = L'agent envoie l'étiquette d'une valeur masquée
+home-request-label-mask-devtools = Débloquer les outils de développement sur un onglet qui montre vos données
+home-request-mask-fill = Remplir { $name } dans « { $field } » sur { $where } ?
+home-request-mask-devtools = Débloquer les outils de développement sur { $site } (onglet « { $tab } ») pour cette conversation ?
+home-request-mask-reveal-allow = Montrer
+home-request-mask-fill-allow = Remplir
+home-request-mask-fill-remember-hint = Sur ce site, la donnée restera masquée pour l'agent et se remplira sans Touch ID.
+home-request-mask-alert-allow = Envoyer l'étiquette
+home-request-mask-devtools-allow = Débloquer pour cette conversation
+home-request-mask-see = Voir
+home-request-mask-hide = Masquer
+home-request-mask-see-address = Voir l'adresse
+home-request-mask-hide-address = Masquer l'adresse
+home-request-mask-logins = Identifiant à remplir
+home-request-mask-login = Identifiant { $n }

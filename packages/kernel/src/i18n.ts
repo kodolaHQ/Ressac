@@ -35,6 +35,13 @@ export function say(locale: string, id: string, args?: Record<string, string | n
   return id;
 }
 
+/** The attribute `.attr` of message `id` in `locale` (no English fallback: a grammar attribute is per language). */
+export function sayAttribute(locale: string, id: string, attr: string): string | undefined {
+  const b = bundle(locale);
+  const pattern = b?.getMessage(id)?.attributes[attr];
+  return b && pattern ? b.formatPattern(pattern) : undefined;
+}
+
 /** The language's name in English, for a prompt the model reads (« French »). */
 export const englishLanguageName = (locale: string): string => new Intl.DisplayNames(["en"], { type: "language" }).of(locale) ?? locale;
 

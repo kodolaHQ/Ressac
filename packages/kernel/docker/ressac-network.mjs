@@ -5,16 +5,24 @@ import net from "node:net";
 import dns from "node:dns/promises";
 import { lookup as dnsLookup } from "node:dns";
 import { execFileSync, spawn } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, statSync, renameSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, statSync, renameSync, chmodSync, readdirSync, rmSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const DOMAINS_FILE = "/etc/ressac/domains.json";
+// Written once the tunnels opened before a lock are dead: until it holds the locked list, every locked apply kills them.
+const LOCKED_APPLIED = "/etc/ressac/locked-applied";
 const PROXY_PORT = 3128;
 const PROXY_USER = "ressac-proxy";
 
+// The model and sign-in domains: all the container keeps while the workspace is locked after a reveal. Measured
+// (spike, 2026-11-23): a Claude subscription session reached api.anthropic.com only; platform.claude.com (token refresh) and
+// Codex's ChatGPT login hosts are kept unmeasured. Ollama and the compatible APIs go through the Mac's relay port.
+// shortcut: the relayed engines answered with an empty list; they still get this one, give them none if a lock ever needs it.
+export const MODEL_DOMAINS = ["api.anthropic.com", "platform.claude.com", "auth.openai.com", "chatgpt.com"];
+
+// Unlocked only: sign-in pages and telemetry the engines use when nothing was revealed.
 export const BASE_DOMAINS = [
-  "api.anthropic.com", "claude.ai", "platform.claude.com", "console.anthropic.com", "statsig.anthropic.com",
-  "api.openai.com", "auth.openai.com", "chatgpt.com",
+  ...MODEL_DOMAINS, "claude.ai", "console.anthropic.com", "statsig.anthropic.com", "api.openai.com",
   "registry.npmjs.org", "registry.yarnpkg.com", "nodejs.org", "pypi.org", "files.pythonhosted.org",
   "github.com", "api.github.com", "codeload.github.com", "objects.githubusercontent.com",
   "raw.githubusercontent.com", "release-assets.githubusercontent.com",
@@ -26,6 +34,12 @@ export function validDomain(d) {
   const name = d.startsWith("*.") ? d.slice(2) : d;
   const labels = name.split(".");
   return labels.length >= 2 && labels.every((l) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(l) && l.length <= 63) && !/^[0-9.]+$/.test(name);
+}
+
+/** What `apply` writes to domains.json: locked, the model domains only; else the base list and the user's valid domains. */
+export function domainList({ domains, locked }) {
+  if (typeof locked !== "boolean") throw new Error("invalid locked");
+  return locked ? [...MODEL_DOMAINS] : [...new Set([...BASE_DOMAINS, ...domains.filter(validDomain)])];
 }
 
 export function allowed(host, domains) {
@@ -143,6 +157,30 @@ function fileDomains() {
   };
 }
 
+/** The processes of user `uid` (numeric names under `proc`). */
+export function pidsOf(uid, proc = "/proc") {
+  return readdirSync(proc).filter((n) => /^\d+$/.test(n) && statSync(`${proc}/${n}`, { throwIfNoEntry: false })?.uid === uid);
+}
+
+/**
+ * A locked apply: kills the proxy (and every tunnel it holds) unless `marker` already says this locked list was applied
+ * with the kill done. The marker is written last: an apply that dies before it kills again next time. True when it killed.
+ */
+export async function cutTunnels(list, { marker = LOCKED_APPLIED, kill, stillListening }) {
+  const done = JSON.stringify(list);
+  let current = null;
+  try {
+    current = readFileSync(marker, "utf8");
+  } catch {}
+  if (current === done) return false;
+  kill();
+  for (let i = 0; i < 50 && (await stillListening()); i++) await new Promise((r) => setTimeout(r, 100));
+  if (await stillListening()) throw new Error("proxy did not stop");
+  writeFileSync(`${marker}.tmp`, done);
+  renameSync(`${marker}.tmp`, marker);
+  return true;
+}
+
 // Any listener on 3128 is safe to reuse: iptables only lets uid ressac-proxy (and root) out, so a rogue one cannot reach the network.
 const listening = () =>
   new Promise((resolve) => {
@@ -154,17 +192,29 @@ const listening = () =>
 async function apply() {
   let input = "";
   for await (const chunk of process.stdin) input += chunk;
-  const { ports, domains } = JSON.parse(input);
+  const { ports, domains, locked } = JSON.parse(input);
   if (!Array.isArray(ports) || !ports.every((p) => Number.isInteger(p) && p > 0 && p < 65536)) throw new Error("invalid ports");
   if (!Array.isArray(domains) || domains.length > 100) throw new Error("invalid domains");
-  const user = domains.filter(validDomain);
+  const list = domainList({ domains, locked });
   for (const d of domains) if (!validDomain(d)) process.stderr.write(`ressac-network: dropped invalid domain ${JSON.stringify(d)}\n`);
   const { address } = await dns.lookup("host.docker.internal", { family: 4 });
   mkdirSync("/etc/ressac", { recursive: true });
-  writeFileSync(`${DOMAINS_FILE}.tmp`, JSON.stringify([...new Set([...BASE_DOMAINS, ...user])]));
+  writeFileSync(`${DOMAINS_FILE}.tmp`, JSON.stringify(list));
   chmodSync(`${DOMAINS_FILE}.tmp`, 0o644);
   renameSync(`${DOMAINS_FILE}.tmp`, DOMAINS_FILE);
   execFileSync("iptables-restore", [], { input: rules({ mac: address, ports }) });
+  // A tunnel opened before the lock (to a code domain, a user domain) would outlive the cut: the proxy dies with them all.
+  if (locked) {
+    const uid = Number(execFileSync("id", ["-u", PROXY_USER]).toString());
+    const kill = () => {
+      for (const pid of pidsOf(uid)) {
+        try {
+          process.kill(Number(pid), "SIGKILL");
+        } catch {}
+      }
+    };
+    await cutTunnels(list, { kill, stillListening: listening });
+  } else rmSync(LOCKED_APPLIED, { force: true });
   if (!(await listening())) {
     const id = (flag) => Number(execFileSync("id", [flag, PROXY_USER]).toString());
     spawn(process.execPath, [process.argv[1], "proxy"], { uid: id("-u"), gid: id("-g"), detached: true, stdio: "ignore", env: { PATH: process.env.PATH } }).unref();

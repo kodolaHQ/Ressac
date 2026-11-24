@@ -26,6 +26,12 @@ export * from "./mcp/bridge.js";
 export * from "./search/sessions.js";
 export * from "./access/policy.js";
 export * from "./mcp/server.js";
+export { Masker } from "./mask/masker.js";
+export { PassportStore } from "./mask/passport.js";
+export { WorkspaceLock } from "./mask/lock.js";
+export type { ChangedFile, LiftChoice, QuarantinedFile } from "./mask/lift.js";
+// MaskZone: the page `Zone` of mcp/bridge.ts keeps its name.
+export type { LabelType, Zone as MaskZone } from "./mask/detectors.js";
 export * from "./devtools/summaries.js";
 export * from "./devtools/tracking.js";
 export * from "./mcp/devtools.js";

@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { Action } from "../shared/api";
 import type { GrantRow } from "../shared/settings";
 import { bundleId, revealable } from "../chrome/store/settings";
-import { createSettingsApi } from "../ui/settings-api";
+import { createSettingsApi, settingsPageDocument } from "../ui/settings-api";
+import { createReviewApi } from "../ui/design-api";
+import { createBadgeApi } from "../ui/badge-api";
 
-function setup(answers: Record<string, (p: any) => unknown> = {}) {
+function setup(answers: Record<string, (p: any) => unknown> = {}, settingsPage = true) {
   const openAgent = vi.fn();
   const switchAgent = vi.fn();
   const calls: { method: string; params: unknown }[] = [];
@@ -21,7 +23,31 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
   const forget = vi.fn(async () => {});
   const sitePermissions = { list: async () => [{ profile: "default", origin: "https://a.fr", permissions: { "media-camera": "allow", notifications: "deny" } as const }], forget };
   const dispatched: Action[] = [];
+  const passport = {
+    passports: vi.fn(async () => [
+      { profile: "default", count: 2, state: "ok" as const },
+      { profile: "gone", count: 3, state: "newer" as const },
+      { profile: "secret", count: 1, state: "ok" as const },
+    ]),
+    unlock: vi.fn(async () => ({ token: "t1", until: 9, showMs: 20_000 })),
+    read: vi.fn(async () => null),
+    save: vi.fn(async () => ({ ok: true as const, revision: "r", uncovered: 0 })),
+    lock: vi.fn(),
+    onLocked: vi.fn(() => () => {}),
+    drop: vi.fn(async () => true),
+    removePassport: vi.fn(async () => true),
+    moveTo: vi.fn(async () => ({ ok: true as const })),
+    restart: vi.fn(async () => true),
+  };
+  const spaces = [
+    { id: "s1", name: "Perso", profile: "default", private: false },
+    { id: "s2", name: "Privé", profile: "secret", private: true },
+    { id: "s3", name: "Travail", profile: "work", private: false },
+    { id: "s4", name: "Clients", profile: "work", private: false },
+  ];
   const api = createSettingsApi({
+    ...(settingsPage ? { passport } : {}),
+    spaces: () => spaces as any,
     host,
     chrome,
     sitePermissions: sitePermissions as any,
@@ -32,7 +58,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     dataDir: "/u/Ressac",
     locale: () => "fr",
   });
-  return { api, calls, chrome, forget, dispatched, openAgent, switchAgent };
+  return { api, calls, chrome, forget, dispatched, openAgent, switchAgent, passport };
 }
 
 const row = (kind: GrantRow["kind"], key: string): GrantRow => ({ kind, key, name: key, profile: null, detail: "" });
@@ -138,8 +164,8 @@ describe("settings api", () => {
 
   it("revealable", () => {
     const r = (p: string) => revealable("/u/Ressac", "/u/Downloads", p);
-    for (const p of ["/u/Ressac", "/u/Ressac.backup-2026-11-10T13-35-12-345Z", "/u/Downloads/Ressac-donnees-2026-11-10 (2).zip", "/u/Ressac/workspace/.ressac/browsing-notes.md"]) expect(r(p)).toBe(true);
-    for (const p of ["/u/Ressac/workspace", "/u/Ressac.backup-x", "/u/Downloads/autre.zip", "/u/Downloads/../Ressac-donnees-2026-11-10.zip", "/etc"]) expect(r(p)).toBe(false);
+    for (const p of ["/u/Ressac", "/u/Ressac.backup-2026-11-10T13-35-12-345Z", "/u/Downloads/Ressac-donnees-2026-11-10 (2).zip", "/u/Ressac/workspace/.ressac/browsing-notes.md", "/u/Ressac/masking/quarantine/2026-11-23T10-00-00Z/workspace/a.txt"]) expect(r(p)).toBe(true);
+    for (const p of ["/u/Ressac/masking/quarantine/../lock.json", "/u/Ressac/masking/quarantine/", "/u/Ressac/masking/quarantine//x", "/u/Ressac/workspace", "/u/Ressac.backup-x", "/u/Downloads/autre.zip", "/u/Downloads/../Ressac-donnees-2026-11-10.zip", "/etc"]) expect(r(p)).toBe(false);
   });
 
   it("default browser: read and asked through the chrome", async () => {
@@ -159,5 +185,67 @@ describe("settings api", () => {
     const { api, dispatched } = setup();
     api.openAdvanced();
     expect(dispatched).toEqual([{ type: "openTab", windowId: "W", url: "about:preferences", activate: true }]);
+  });
+
+  it("passport profiles: the spaces' profiles in sidebar order, then kept passports « Sans espace »; none used only by private spaces", async () => {
+    const { api } = setup();
+    expect(await api.passport!.profiles()).toEqual([
+      { id: "default", name: "Perso", count: 2, state: "ok", kept: false },
+      { id: "work", name: "Travail, Clients", count: 0, state: "ok", kept: false },
+      { id: "gone", name: "Sans espace", count: 3, state: "newer", kept: true },
+    ]);
+  });
+
+  it("passport unlock asks Touch ID with the profile's name; lock revokes only this page's token", async () => {
+    const { api, passport } = setup();
+    expect(await api.passport!.unlock("work")).toEqual({ token: "t1", until: 9, showMs: 20_000 });
+    expect(passport.unlock).toHaveBeenCalledWith("work", "ouvrir votre passeport « Travail, Clients »", "open");
+    api.passport!.lock("default");
+    expect(passport.lock).not.toHaveBeenCalled();
+    api.passport!.lock("work");
+    expect(passport.lock).toHaveBeenCalledWith("t1");
+  });
+
+  it("passport drop forwards the profile and the chrome's answer", async () => {
+    const { api, passport } = setup();
+    expect(await api.passport!.drop("work")).toBe(true);
+    expect(passport.drop).toHaveBeenCalledWith("work");
+  });
+
+  it("passport delete and move: Touch ID with their own reason, then the chrome's answer, token forwarded", async () => {
+    const { api, passport } = setup();
+    await api.passport!.unlock("gone", "delete");
+    expect(passport.unlock).toHaveBeenLastCalledWith("gone", "supprimer votre passeport", "delete");
+    await api.passport!.unlock("gone", "move");
+    expect(passport.unlock).toHaveBeenLastCalledWith("gone", "déplacer votre passeport", "move");
+    await api.passport!.unlock("gone", "restart");
+    expect(passport.unlock).toHaveBeenLastCalledWith("gone", "recréer votre passeport", "restart");
+    // One token per purpose: asking a delete never revokes the open view's; lock(profile, purpose) only that one.
+    passport.unlock.mockResolvedValueOnce({ token: "open1", until: 9, showMs: 1 });
+    await api.passport!.unlock("gone");
+    passport.unlock.mockResolvedValueOnce({ token: "del1", until: 9, showMs: 1 });
+    await api.passport!.unlock("gone", "delete");
+    expect(passport.lock).not.toHaveBeenCalledWith("open1");
+    api.passport!.lock("gone", "delete");
+    expect(passport.lock).toHaveBeenLastCalledWith("del1");
+    expect(passport.lock).not.toHaveBeenCalledWith("open1");
+    expect(await api.passport!.removePassport("gone", "t1")).toBe(true);
+    expect(passport.removePassport).toHaveBeenCalledWith("gone", "t1");
+    expect(await api.passport!.moveTo("gone", "default", "t1")).toEqual({ ok: true });
+    expect(passport.moveTo).toHaveBeenCalledWith("gone", "default", "t1");
+    expect(await api.passport!.restart("gone", "t1")).toBe(true);
+    expect(passport.restart).toHaveBeenCalledWith("gone", "t1");
+  });
+
+  it("the passport API exists only on the settings page's API", () => {
+    expect(setup().api).toHaveProperty("passport");
+    // The agent panel's document builds the same API without it (ui/install-api.ts).
+    expect(setup({}, false).api).not.toHaveProperty("passport");
+    expect(settingsPageDocument({ pathname: "/content/ressac/sidebar.html", search: "" })).toBe(true);
+    for (const url of [{ pathname: "/content/ressac/agent.html", search: "" }, { pathname: "/content/ressac/sidebar.html", search: "?agentview" }, { pathname: "/content/ressac/sidebar.html", search: "?badge=x" }])
+      expect(settingsPageDocument(url)).toBe(false);
+    const review = createReviewApi({ host: { request: async () => null } as any });
+    const badge = createBadgeApi({} as any);
+    for (const other of [review, badge]) expect(other).not.toHaveProperty("passport");
   });
 });

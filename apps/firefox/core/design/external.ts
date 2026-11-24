@@ -43,6 +43,8 @@ export async function startExternals(o: {
   home: string;
   /** Notification of a project's first declaration. */
   notify(n: { title: string; text: string }): void;
+  /** A text while the workspace is locked after a reveal: the server answers every request 423 with it. */
+  refuse?: () => string | null;
 }): Promise<ExternalService> {
   let server: { port: number; stop(): Promise<void> } | null = null;
   let serverState: ExternalsState["server"];
@@ -51,6 +53,7 @@ export async function startExternals(o: {
       registry: o.registry,
       remarks: o.remarks,
       port: o.port,
+      ...(o.refuse ? { refuse: o.refuse } : {}),
       declare: async (client, d): Promise<DeclarationResult> => {
         const r = await o.registry.declare(client.id, d, { ranges: o.ranges, spaceRoot: o.spaceRoot, home: o.home });
         if (r.readable) {

@@ -4,17 +4,19 @@ import {
   PrivateTab,
   DevToolsBusy,
   SiteChanged,
+  LoadRefused,
   ProfileDenied,
   type DevRight,
   type BrowserHistory,
   type TabInfo,
-  type PageLink,
+  type TabRead,
   type PageReadOptions,
   type BrowserDevTools,
   type DevToolsOwner,
   type ReadPage,
   type BrowserBridge,
   type Band,
+  type LoadOptions,
 } from "../../../packages/kernel/src/index.ts";
 import type { History } from "../core/history.ts";
 import type { Rpc } from "../shared/rpc.ts";
@@ -36,6 +38,8 @@ export class RemoteBridge implements BrowserBridge {
     h?: Pick<History, "searchForAgent" | "keptText">,
     /** Answered from the host's mirror of the open site apps (synchronous in BrowserBridge). */
     private readonly siteAllowed: (site: string, url: string) => boolean = () => false,
+    /** The kernel's notice for a conversation (fill_field blocked): the host keeps it for the window's panel. */
+    private readonly lockNotice: (o: { text: string }, window: string | undefined) => void = () => {},
   ) {
     if (h)
       this.history = {
@@ -62,12 +66,13 @@ export class RemoteBridge implements BrowserBridge {
     } catch (e) {
       // The kernel expects an aborted read to reject with the signal's own reason.
       if (signal?.aborted) throw signal.reason;
-      const x = e as Error & { id?: string; profile?: string };
+      const x = e as Error & { id?: string; profile?: string; url?: string };
       if (x.name === "TabNotFound") throw new TabNotFound(x.id!);
       if (x.name === "PrivateTab") throw new PrivateTab(x.id!);
       if (x.name === "ProfileDenied") throw new ProfileDenied(x.profile!);
       if (x.name === "DevToolsBusy") throw new DevToolsBusy();
       if (x.name === "SiteChanged") throw new SiteChanged(x.id!);
+      if (x.name === "LoadRefused") throw new LoadRefused(String(x.url));
       throw e;
     }
   }
@@ -75,9 +80,11 @@ export class RemoteBridge implements BrowserBridge {
   activeTab = () => this.call<TabInfo | null>("activeTab", []);
   listTabs = () => this.call<TabInfo[]>("listTabs", []);
   readText = (id: string, o?: { capture?: boolean; expect?: string }) =>
-    this.call<{ text: string; selection?: string; links?: PageLink[] }>("readText", o?.capture || o?.expect !== undefined ? [id, o] : [id]);
-  openTab = (url: string, space?: string) => this.call<TabInfo>("openTab", space === undefined ? [url] : [url, space]);
-  navigate = (id: string, url: string) => this.call<void | "pending">("navigate", [id, url]);
+    this.call<TabRead>("readText", o?.capture || o?.expect !== undefined ? [id, o] : [id]);
+  // `o` sent only when it restricts: Firefox reads a missing one as no restriction.
+  openTab = (url: string, space?: string, o?: LoadOptions) =>
+    this.call<TabInfo>("openTab", o?.allow != null ? [url, space, o] : space === undefined ? [url] : [url, space]);
+  navigate = (id: string, url: string, o?: LoadOptions) => this.call<void | "pending">("navigate", o?.allow != null ? [id, url, o] : [id, url]);
   capture = async (id: string, o?: { expect?: string }) => Buffer.from(await this.call<string>("capture", o ? [id, o] : [id]), "base64");
   // Taken down (signal) when a new conversation starts: refused.
   askPermission = (o: TabInfo, signal?: AbortSignal) =>
@@ -103,9 +110,51 @@ export class RemoteBridge implements BrowserBridge {
       if (signal?.aborted) return false;
       throw e;
     });
+  /** A masking card taken down (signal: new conversation, call dropped) answers no, as a refusal would. */
+  private card<T>(method: string, params: unknown[], no: T, signal?: AbortSignal): Promise<T> {
+    return this.call<T>(method, params, signal).catch((e) => {
+      if (signal?.aborted) return no;
+      throw e;
+    });
+  }
+  askReveal: NonNullable<BrowserBridge["askReveal"]> = (o, window, signal) => this.card("askReveal", [o, window], false, signal);
+  askLabelAlert: NonNullable<BrowserBridge["askLabelAlert"]> = (o, window, signal) => this.card("askLabelAlert", [o, window], false, signal);
+  /** The usernames of the fill cards up, by reference: they never go in a card's request. */
+  private readonly pendingLogins = new Map<string, { window: string | undefined; logins: string[] }>();
+  /** The passport values a fill card offers, by the kernel's choice ref (ruling F10): the card gets `ref` and `shown` only. */
+  private readonly pendingPassport = new Map<string, { window: string | undefined; value: string }>();
+  askFill: NonNullable<BrowserBridge["askFill"]> = (o, window, signal) => {
+    const { logins, rows, ...rest } = o;
+    const choices = rows?.flatMap((r) => r.choices ?? []) ?? [];
+    for (const c of choices) this.pendingPassport.set(c.ref, { window, value: c.value });
+    const card = rows ? { ...rest, rows: rows.map(({ choices, ...r }) => (choices ? { ...r, choices: choices.map(({ ref, shown }) => ({ ref, shown })) } : r)) } : rest;
+    const ref = logins?.length ? crypto.randomUUID() : undefined;
+    if (ref) this.pendingLogins.set(ref, { window, logins: logins! });
+    return this.card("askFill", [ref ? { ...card, loginCount: logins!.length, loginsRef: ref } : card, window], { yes: false }, signal).finally(() => {
+      if (ref) this.pendingLogins.delete(ref);
+      for (const c of choices) this.pendingPassport.delete(c.ref);
+    });
+  };
+  /** A pending fill card's passport value, for « Voir » in its own window only (none when the kernel named no window). */
+  passportFor(ref: unknown, window: unknown): string | null {
+    const e = typeof ref === "string" ? this.pendingPassport.get(ref) : undefined;
+    return e && e.window !== undefined && e.window === window ? e.value : null;
+  }
+  /** A pending fill card's usernames, for « Voir » in its own window only (none when the kernel named no window). */
+  loginsFor(ref: unknown, window: unknown): string[] | null {
+    const e = typeof ref === "string" ? this.pendingLogins.get(ref) : undefined;
+    return e && e.window !== undefined && e.window === window ? [...e.logins] : null;
+  }
+  /** Firefox seals and writes (chrome/agent/fill.ts); a saved login's password never comes through here. */
+  readonly fill: NonNullable<BrowserBridge["fill"]> = {
+    prepare: (tab, handle) => this.call("fill.prepare", [tab, handle]),
+    commit: (seal, v, origin) => this.call("fill.commit", [seal, v, origin]),
+  };
+  askDevUnlock: NonNullable<BrowserBridge["askDevUnlock"]> = (o, d, signal) => this.card("askDevUnlock", [o, d], false, signal);
+  askLockNotice = (o: { text: string }, window: string | undefined) => this.lockNotice(o, window);
   readonly search: NonNullable<BrowserBridge["search"]> = {
-    open: (window, target, reuse) => this.call("search.open", [window, target, reuse]),
-    openBackground: (searchTabId, url) => this.call("search.openBackground", [searchTabId, url]),
+    open: (window, target, reuse, o) => this.call("search.open", o?.allow != null ? [window, target, reuse, o] : [window, target, reuse]),
+    openBackground: (searchTabId, url, o) => this.call("search.openBackground", o?.allow != null ? [searchTabId, url, o] : [searchTabId, url]),
     close: (tabId) => this.call("search.close", [tabId]),
     band: (tabId: string, band: Band | null) => this.call("search.band", [tabId, band]),
   };

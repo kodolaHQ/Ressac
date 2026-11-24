@@ -22,7 +22,9 @@ const object = (v: unknown): Record<string, any> | undefined => (v && typeof v =
  */
 // Not « cookies »: Firefox's cookie API takes any container's storeId with the host right alone, so one space's grant
 // would read and set the site's cookies in private spaces and other profiles; no guard limits the store yet.
-const ALLOWED_RIGHTS = new Set(["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite"]);
+// Not « webNavigation » (masking): Firefox filters its events with canAccessTab while the tab still shows the old page, so
+// onBeforeNavigate / onErrorOccurred would hand the agent a sensitive target address.
+const ALLOWED_RIGHTS = new Set(["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "alarms", "offscreen", "clipboardRead", "clipboardWrite"]);
 /** Firefox manifest keys that grant a power outside the guards (a search engine, URL handlers, user scripts, privileged APIs, the address bar). */
 const KEYS_DENIED = ["chrome_settings_overrides", "protocol_handlers", "user_scripts", "experiment_apis", "theme_experiment", "omnibox"];
 /** Ressac's own refusal text (decision 9's style). */

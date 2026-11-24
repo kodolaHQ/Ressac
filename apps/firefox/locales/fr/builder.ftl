@@ -39,7 +39,7 @@ builder-save-saved = Enregistré
 builder-save-saving = Enregistrement…
 builder-save-invalid = Non enregistré : { $reason }
 builder-save-error = Erreur d'enregistrement : { $reason }
-builder-awaiting-choice = l'agent a modifié le workflow, choisis une version
+builder-awaiting-choice = l'agent a modifié le workflow, choisissez une version
 builder-save-impossible = Enregistrement impossible
 builder-no-free-code-file = aucun nom de fichier libre pour le bloc Code
 builder-workflow-unreadable = workflow.json illisible
@@ -63,15 +63,15 @@ builder-launch-dialog = Lancer l'action
 builder-cancel = Annuler
 builder-canvas = Canevas du workflow
 builder-palette = Blocs
-builder-palette-no-web-action = L'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l'agent.
-builder-palette-no-web-widget = Le widget doit déclarer "web": true : demande-le à l'agent.
+builder-palette-no-web-action = L'action doit déclarer "web": true dans ses sources (action.json) : demandez-le à l'agent.
+builder-palette-no-web-widget = Le widget doit déclarer "web": true : demandez-le à l'agent.
 builder-node-error = Erreur
 builder-node-warning = Avertissement
 
 ## Barre des exécutions
 
 builder-replay = Rejouer depuis ce bloc
-builder-replay-select = Sélectionne un bloc
+builder-replay-select = Sélectionnez un bloc
 builder-replay-failed = Rejeu impossible : { $reason }
 builder-unexpected-error = erreur inattendue
 
@@ -123,9 +123,9 @@ builder-panel-hours = Heures prévues : { $hours }
 builder-panel-max-duration = Durée maximale : { $minutes } min
 builder-panel-notify = Notification à la fin : oui
 builder-panel-config = Configuration
-builder-panel-help-widget = Pour changer les sources ou la configuration, demande-le à l'agent.
-builder-panel-help-action = Pour changer les sources, la saisie ou la mise en page, demande-le à l'agent.
-builder-panel-select = Sélectionne un bloc pour voir ses réglages.
+builder-panel-help-widget = Pour changer les sources ou la configuration, demandez-le à l'agent.
+builder-panel-help-action = Pour changer les sources, la saisie ou la mise en page, demandez-le à l'agent.
+builder-panel-select = Sélectionnez un bloc pour voir ses réglages.
 builder-preview-trial = Aperçu d'un essai : pas le dernier résultat de l'action
 builder-preview-no-page = Pas de page pour cette exécution.
 
@@ -139,7 +139,7 @@ action-private = Les actions ne sont pas disponibles dans un espace privé
 action-recap-private = Les récaps ne sont pas disponibles dans un espace privé
 action-launch-failed = L'action n'a pas pu être lancée
 action-not-yet = Pas encore de résultat
-action-grant-required = Accord requis pour lire avec ton compte : { $domains }
+action-grant-required = Accord requis pour lire avec votre compte : { $domains }
 action-authorize = Autoriser…
 action-reads-public = Cette action lira : { $public }
 action-reads-web = Cette action cherche et lit le web
@@ -171,13 +171,13 @@ recap-live-kept = { $count ->
    *[other] en direct · { $count } retenues
 }
 recap-writing = Rédige le récap…
-recap-foot = Ce récap disparaît quand tu fermes l'onglet.
+recap-foot = Ce récap disparaît quand vous fermez l'onglet.
 
 ## Liste des actions
 
 actions-title = Actions
 actions-last-never = Jamais lancée
-actions-empty = Aucune action. Demande à l'agent de t'en créer une.
+actions-empty = Aucune action. Demandez à l'agent de vous en créer une.
 actions-input-required = Saisie requise : { $label }
 actions-launch = Lancer
 actions-show-workflow = Voir le workflow

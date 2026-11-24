@@ -67,14 +67,14 @@ describe("action runs", () => {
   });
 
   // actions.spec.ts:489
-  it("Stop: the page says « Arrêtée à ta demande »", { timeout: 90_000 }, async () => {
+  it("Stop: the page says « Arrêtée à votre demande »", { timeout: 90_000 }, async () => {
     servers.settings.siteSlownessMs = 4000;
     await writePagesAction(w.dataDir, servers.site.url, "pages-b");
     await openAction(m, "pages-b", "Pages");
     await click(m, tid("relaunch-action"));
     await q.waitContains(tid("action-progress"), "Lecture de 127.0.0.1…", 30_000);
     await click(m, tid("stop-action"));
-    await q.waitText(tid("action-error"), "Arrêtée à ta demande", 30_000);
+    await q.waitText(tid("action-error"), "Arrêtée à votre demande", 30_000);
     await q.waitCount(tid("action-progress"), 0);
   });
 

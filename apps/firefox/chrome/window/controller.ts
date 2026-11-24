@@ -36,11 +36,12 @@ export interface WindowController {
   /**
    * The agent's naviguer: an http(s) URL loaded with a content principal of the tab's container, without taking the
    * keyboard (the user may be typing in the agent panel). A tab without a XUL tab gets majOnglet{url}, loaded the same
-   * way when TabSync creates its XUL tab.
+   * way when TabSync creates its XUL tab. `allow` (agent/load-guard.ts): where its hops may go; the promise rejects with
+   * LoadRefused when one is cancelled, and never resolves.
    */
-  navigateForAgent(tabId: TabId, url: string): void;
+  navigateForAgent(tabId: TabId, url: string, allow?: string[] | null): Promise<never>;
   /** As `navigateForAgent`, resolved once the new address has finished loading (15 s at most): a read after it never sees the previous page. */
-  navigateForAgentLoaded(tabId: TabId, url: string): Promise<void>;
+  navigateForAgentLoaded(tabId: TabId, url: string, allow?: string[] | null): Promise<void>;
   /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
   ensure(tabId: TabId): Promise<any>;
   /** The browser of a tab if it already has a XUL tab, never created for the asking. */
@@ -110,7 +111,7 @@ export function createController(
   windowId: WindowId,
 ): WindowController {
   const tabs = new TabSync(gBrowser, store, windowId);
-  trackVisits(gBrowser, store.history, (id) => historyContext(store.state, id));
+  trackVisits(gBrowser, store.history, (id) => historyContext(store.state, id), (a) => void store.dispatch(a));
   // Prompts and add-on popups anchor on the sidebar, Firefox's toolbar being hidden (the action anchor: add-on popups).
   const anchors = setupAnchors(window, frame);
   routeAddonsManager(window, store, windowId, tabs);
@@ -452,7 +453,11 @@ export function createController(
     navigate(tabId, input) {
       const url = toUrl(input, searchTemplate(store.state.settings));
       if (!url) return;
-      if (!tabId) return void store.dispatch({ type: "openTab", windowId: windowId, url });
+      // The user's own top-level navigation: a new tab is theirs; an agent's tab becomes theirs once this load commits
+      // (visits.ts → locationCommitted), never for its own address again (spec § 5.3).
+      if (!tabId) return void store.dispatch({ type: "openTab", windowId: windowId, url, agentReached: false });
+      store.loadGuard.forget(tabId);
+      store.dispatch({ type: "userNavigating", id: tabId, url: Services.io.newURI(url).spec });
       if (revive(tabId, url)) return;
       const browser = browserOf(tabId);
       if (!browser) return void store.dispatch({ type: "updateTab", id: tabId, fields: { url } });
@@ -460,28 +465,39 @@ export function createController(
       browser.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
       browser.focus();
     },
-    navigateForAgent(tabId, url) {
+    navigateForAgent(tabId, url, allow = null) {
       const uri = Services.io.newURI(url);
       if (!uri.schemeIs("http") && !uri.schemeIs("https")) throw new Error(`URL refusée (http ou https uniquement) : ${url}`);
+      // Before the load: its visit, a redirect's landing included, is noted as the agent's.
+      store.dispatch({ type: "agentNavigated", id: tabId });
       // Revived at its old URL, then loaded below like any agent load: never with the system principal.
       revive(tabId);
+      // Before the load starts, in the store's registry (this window's bundle has its own copy of load-guard.ts).
+      const refused = store.loadGuard.expect(tabId, url, allow);
       const tab = tabs.tab(tabId);
-      if (!tab) return void store.dispatch({ type: "updateTab", id: tabId, fields: { url } });
+      if (!tab) {
+        store.dispatch({ type: "updateTab", id: tabId, fields: { url } });
+        return refused;
+      }
       const triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: tab.userContextId });
       tab.linkedBrowser.loadURI(uri, { triggeringPrincipal });
+      return refused;
     },
-    async navigateForAgentLoaded(tabId, url) {
+    async navigateForAgentLoaded(tabId, url, allow = null) {
       const browser = tabs.tab(tabId)?.linkedBrowser;
       // Only the fragment changes: a same-document navigation, no load to wait for.
       const base = (u: string) => u.replace(/#.*/, "");
       const sameDocument = url.includes("#") && base(url) === base(browser?.currentURI?.spec ?? "");
       const loaded = browser && !sameDocument ? tabs.nextLoad(tabId, browser) : Promise.resolve();
-      controller.navigateForAgent(tabId, url);
-      await loaded;
+      // A fragment change has no request to judge.
+      const refused = controller.navigateForAgent(tabId, url, sameDocument ? null : allow);
+      await Promise.race([loaded, refused]);
     },
     ensure: (tabId) => tabs.ensure(tabId),
     browserOf,
     command(tabId, c) {
+      // The user's own back, forward or reload: what follows is theirs.
+      store.loadGuard.forget(tabId);
       if (c !== "stop" && revive(tabId)) return;
       const browser = browserOf(tabId);
       if (!browser) return;

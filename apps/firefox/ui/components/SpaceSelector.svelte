@@ -6,8 +6,10 @@
   import { api, appState } from "../state.svelte";
   import { openMenu } from "./menu.svelte";
   import { t } from "../i18n.svelte";
-  import { deletionLosses, PROFILE_TO_CHOOSE } from "./spaceProfiles";
+  import { deletionLosses, losesConnections, PROFILE_TO_CHOOSE } from "./spaceProfiles";
+  import { fade } from "svelte/transition";
   import { spaceSettings } from "./spaceSettings.svelte";
+  import { showSection } from "./settings-section.svelte";
 
   let { window: win }: { window: WindowState } = $props();
   const MOVE = "application/x-ressac-space";
@@ -24,11 +26,51 @@
   /** Space to delete awaiting confirmation (it contains tabs or pinned sites, or it takes sign-ins with it). */
   let toDelete = $state<({ space: Space } & NonNullable<ReturnType<typeof deletionLosses>>) | null>(null);
 
-  function remove(space: Space) {
-    const n = Object.values(appState.value?.tabs ?? {}).filter((o) => o.spaceId === space.id).length;
-    const lost = deletionLosses(appState.value?.spaces ?? [], space, n);
+  /** « Supprimer aussi son passeport »: unticked, the passport is kept (design § 4.4). */
+  let dropPassport = $state(false);
+  /** A drop that failed (nothing changed), or one done for a space the state then kept. */
+  let failure = $state<"failed" | "space-kept" | null>(null);
+  /** A drop pending: the confirmation takes no other press. */
+  let deleting = $state(false);
+  const tabsOf = (space: Space) => Object.values(appState.value?.tabs ?? {}).filter((o) => o.spaceId === space.id).length;
+
+  async function remove(space: Space) {
+    if (deleting) return;
+    const spaces = appState.value?.spaces ?? [];
+    // Counted (no decrypt) only for a profile that goes with the space; no answer: 0, the passport is kept.
+    const passport = losesConnections(spaces, space) ? ((await api.settings.passport?.profiles().catch(() => null))?.find((p) => p.id === space.profile)?.count ?? 0) : 0;
+    const lost = deletionLosses(appState.value?.spaces ?? [], space, tabsOf(space), passport);
+    dropPassport = false;
+    failure = null;
     if (lost) toDelete = { space, ...lost };
     else api.dispatch({ type: "deleteSpace", id: space.id });
+  }
+
+  /** The reducer's refusals (core/state/actions.ts deleteSpace): the last space, or one already gone. */
+  const deletable = (id: string) => (appState.value?.spaces.length ?? 0) > 1 && !!appState.value?.spaces.some((e) => e.id === id);
+
+  async function confirmDelete(space: Space, passport: number) {
+    if (deleting) return;
+    // Recomputed now: a profile another window has just started using keeps its passport.
+    const now = deletionLosses(appState.value?.spaces ?? [], space, tabsOf(space), passport);
+    if (now?.passport && dropPassport) {
+      // The passport goes first: a failed drop keeps the space and says so, never a space gone with its passport said gone.
+      deleting = true;
+      const ok = await api.settings.passport!.drop(space.profile).finally(() => (deleting = false));
+      if (toDelete?.space.id !== space.id) return;
+      if (!ok) return void (failure = "failed");
+      toDelete = { ...toDelete, passport: 0 };
+      if (!appState.value?.spaces.some((e) => e.id === space.id)) return void (toDelete = null);
+      if (!deletable(space.id)) return void (failure = "space-kept");
+    }
+    api.dispatch({ type: "deleteSpace", id: space.id });
+    toDelete = null;
+  }
+
+  /** Réglages › Passeport on this space's profile. */
+  function openPassport(space: Space) {
+    showSection("passport", { profile: space.profile });
+    api.dispatch({ type: "openSettings", windowId: win.id });
   }
 
   // A setting keeps the space's current profile (alone or shared); a new space has none: the user chooses.
@@ -40,22 +82,21 @@
 </script>
 
 {#if toDelete}
-  {@const { space: space, tabs: tabs, logins: connexions, pinned, folders } = toDelete}
+  {@const { space: space, tabs: tabs, logins: connexions, pinned, folders, passport } = toDelete}
   <div class="confirmation" role="alertdialog" aria-label={t("sidebar-space-delete-title")}>
     <p>
       {#if tabs > 0}{t("sidebar-space-delete-tabs", { name: space.name, tabs })}{:else}{t("sidebar-space-delete", { name: space.name })}{/if}
       {#if pinned > 0 || folders > 0}{t("sidebar-space-delete-pinned", { pinned, folders })}{/if}
       {#if connexions}{t("sidebar-space-delete-logins")}{/if}
+      {#if passport > 0}{t("sidebar-space-passport-count", { count: passport })}{/if}
     </p>
+    {#if passport > 0}
+      <label class="drop" out:fade={{ duration: 120 }}><input type="checkbox" data-testid="space-delete-passport" disabled={deleting} bind:checked={dropPassport} /> {t("sidebar-space-passport-drop")}</label>
+    {/if}
+    {#if failure}<p class="failed" role="alert" data-testid="space-delete-passport-failed" out:fade={{ duration: 120 }}>{t(failure === "failed" ? "sidebar-space-passport-drop-failed" : "sidebar-space-passport-dropped-only")}</p>{/if}
     <div class="buttons">
-      <button onclick={() => (toDelete = null)}>{t("sidebar-cancel")}</button>
-      <button
-        class="danger"
-        onclick={() => {
-          api.dispatch({ type: "deleteSpace", id: space.id });
-          toDelete = null;
-        }}>{t("sidebar-delete")}</button
-      >
+      <button disabled={deleting} onclick={() => (toDelete = null)}>{t("sidebar-cancel")}</button>
+      <button class="danger" disabled={deleting} onclick={() => void confirmDelete(space, passport)}>{t("sidebar-delete")}</button>
     </div>
   </div>
 {/if}
@@ -96,7 +137,9 @@
       oncontextmenu={(e) =>
         openMenu(e, [
           { label: t("sidebar-space-settings"), dispatch: () => set(space) },
-          ...((appState.value?.spaces.length ?? 0) > 1 ? [{ label: t("sidebar-delete"), dispatch: () => remove(space) }] : []),
+          // A profile of private spaces only has no passport of its own (design § 3.2).
+          ...(space.private ? [] : [{ label: t("sidebar-space-passport"), dispatch: () => openPassport(space) }]),
+          ...((appState.value?.spaces.length ?? 0) > 1 ? [{ label: t("sidebar-delete"), dispatch: () => void remove(space) }] : []),
         ])}
       ><AuraEmoji icon={space.icon} aura={space.aura} size={28} />{#if space.private}<span class="padlock" aria-hidden="true"><Icon name="lock" size={9} /></span>{/if}</div
     >
@@ -107,7 +150,6 @@
 <style>
   /* A single scrolling row; the padding keeps the grown aura glow and the padlock inside the scroll box. */
   .spaces { display: flex; gap: 2px; padding: 3px 2px; margin: -3px -2px; overflow-x: auto; scrollbar-width: none; }
-  .spaces:has(.confirmation) { flex-wrap: wrap; overflow: visible; }
   /* Round chips: the space's emoji over its own aura's glow, brighter and larger on the active one (AuraEmoji). */
   .spaces :is(button, .space) { all: unset; flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: var(--text-muted); position: relative; transition: transform var(--tap), background var(--tap); }
   .spaces :is(button, .space):hover { background: color-mix(in srgb, var(--glass-hi) 60%, transparent); color: var(--text); }
@@ -120,8 +162,11 @@
   .padlock { position: absolute; left: -2px; bottom: -3px; padding: 2px; border-radius: 999px; background: var(--glass-dense); color: var(--text); box-shadow: 0 0 0 1px var(--glass-edge); }
   .confirmation { flex: 1 0 100%; box-sizing: border-box; padding: 10px; border-radius: 12px; background: var(--glass-hi); box-shadow: inset 0 0 0 1px var(--glass-edge); color: var(--text); -webkit-app-region: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .confirmation p { margin: 0 0 8px; }
+  .drop { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; }
+  .confirmation .failed { font-weight: 600; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .buttons { display: flex; justify-content: flex-end; gap: 6px; }
   .buttons button { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--sheet); color: var(--text); font: inherit; transition: transform var(--tap); }
-  .buttons button:active { transform: scale(0.97); }
+  .buttons button:active:not(:disabled) { transform: scale(0.97); }
+  .buttons button:disabled { opacity: 0.5; }
   .buttons .danger { background: var(--in-error); border-color: var(--in-error); color: var(--accent-ink); }
 </style>

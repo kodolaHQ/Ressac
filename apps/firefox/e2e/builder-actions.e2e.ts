@@ -99,7 +99,7 @@ describe("the builder of an action", () => {
     await waitUi(m, "return !doc.querySelector(arguments[0])?.disabled;", [tid("launch")], 30_000);
     await click(m, tid("launch"));
     const card = tid("grant-card");
-    await q.waitText(`${card} :is(h1, h2, h3, h4)`, "Autoriser l'action « Courrier » à lire avec ton compte");
+    await q.waitText(`${card} :is(h1, h2, h3, h4)`, "Autoriser l'action « Courrier » à lire avec votre compte");
     // Nothing runs until the grant; « Annuler » launches nothing.
     await click(m, `${card} button`, { text: "Annuler" });
     await q.waitCount(card, 0);
@@ -133,7 +133,7 @@ describe("the builder of an action", () => {
     const search = tid("palette-web.search");
     expect(await inUi(m, "return doc.querySelector(arguments[0]).disabled;", [search])).toBe(true);
     expect(await inUi(m, "return doc.querySelector(arguments[0]).title;", [search])).toBe(
-      'L\'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l\'agent.',
+      'L\'action doit déclarer "web": true dans ses sources (action.json) : demandez-le à l\'agent.',
     );
     // The agent knows it is the action's workflow, and the block chosen.
     // The window's agent session, its panel opened (the fake agent notes its arguments once started).

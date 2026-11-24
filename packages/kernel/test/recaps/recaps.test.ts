@@ -247,7 +247,7 @@ describe("sweep of forgotten recaps", () => {
     }
     before(ids);
     const { run } = fakeRunner([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
-    kernel = await createKernel({ widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, recapsFolder, recapsDayMs: 20, bridge, root, run });
+    kernel = await createKernel({ maskingFolder: `${root}-masking`, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, recapsFolder, recapsDayMs: 20, bridge, root, run });
     return { recapsFolder, ids };
   }
   const files = async (folder: string) => (await readdir(folder)).filter((f) => f.endsWith(".json") && f !== "used-days.json").sort();

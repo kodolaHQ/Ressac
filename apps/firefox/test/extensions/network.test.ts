@@ -64,7 +64,7 @@ const pathGuard = join(import.meta.dirname, "..", "..", "..", "..", "packages", 
 const TABLE = `const __ressacFiles = ${JSON.stringify([["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["s.css", "css"], ["x.js", "js"]])};\n`;
 
 function guardContext(
-  allowed: { urls?: string[]; tabs?: number[]; nonTabs?: number[] } = {},
+  allowed: { urls?: string[]; tabs?: number[]; nonTabs?: number[]; sensitiveFrames?: string[]; asked?: unknown[] } = {},
   scripting: Record<string, unknown> = {},
   o: { page?: boolean } = {},
 ) {
@@ -122,7 +122,8 @@ function guardContext(
     __ressac: {
       urlAllowed: async (u: string) => (allowed.urls ?? []).includes(u),
       hostAllowed: async (o: number) => (allowed.tabs ?? []).includes(o),
-      isTab: async (o: number) => !(allowed.nonTabs ?? []).includes(o),
+      // `<tab>:<frame>` (frame `*`: all of them); `sensitiveFrames`: those whose document the main process finds sensitive.
+      isTab: async (o: string) => (allowed.asked?.push(o), !(allowed.nonTabs ?? []).includes(Number(String(o).split(":")[0])) && !(allowed.sensitiveFrames ?? []).includes(o)),
     },
     Promise,
     Error,
@@ -529,4 +530,27 @@ test("guard: onMessage answers { ressac: \"context\" } with isTab(sender.tab.id)
   expect(onMessage.hasListener(agent)).toBe(false);
   // Truly replaced.
   expect(Object.getOwnPropertyDescriptor(chrome.runtime, "onMessage")?.writable).toBe(false);
+});
+
+test("guard: masking, every injection asks isTab for its own frame; a sensitive frame of an ordinary tab gets nothing", async () => {
+  const asked: unknown[] = [];
+  const { calls, emit, chrome } = guardContext({ tabs: [4], sensitiveFrames: ["4:7", "4:*"], asked });
+  // Manifest and registered content scripts: the page guard's request, from the sender's frame.
+  expect(await emit({ ressac: "context", files: [0] }, { tab: { id: 4 }, frameId: 7, documentId: "S" })).toEqual({ tab: false });
+  expect(await emit({ ressac: "context", files: [0] }, { tab: { id: 4 }, frameId: 2, documentId: "D" })).toEqual({ tab: true });
+  expect(asked).toEqual(["4:7", "4:2"]);
+  calls.length = 0;
+  // executeScript / insertCSS: frameIds, allFrames, and the MV2 frameId / allFrames.
+  await expect(chrome.scripting.executeScript({ target: { tabId: 4, frameIds: [2, 7] }, files: ["x.js"] })).rejects.toThrow("Onglet refusé par Ressac");
+  await expect(chrome.scripting.executeScript({ target: { tabId: 4, allFrames: true }, files: ["x.js"] })).rejects.toThrow("Onglet refusé par Ressac");
+  await expect(chrome.scripting.insertCSS({ target: { tabId: 4, frameIds: [7] }, css: "p{}" })).rejects.toThrow("Onglet refusé par Ressac");
+  await expect(chrome.tabs.insertCSS(4, { code: "p{}", frameId: 7 })).rejects.toThrow("Onglet refusé par Ressac");
+  await expect(chrome.tabs.insertCSS(4, { code: "p{}", allFrames: true })).rejects.toThrow("Onglet refusé par Ressac");
+  await expect(chrome.scripting.executeScript({ target: { tabId: 4, frameIds: ["7"] }, files: ["x.js"] })).rejects.toThrow("Onglet refusé par Ressac");
+  expect(calls).toEqual([]);
+  asked.length = 0;
+  await chrome.scripting.executeScript({ target: { tabId: 4, frameIds: [2] }, files: ["x.js"] });
+  await chrome.scripting.executeScript({ target: { tabId: 4 }, files: ["x.js"] });
+  expect(asked).toEqual(["4:2", "4:0"]);
+  expect(calls.map(([n]) => n)).toEqual(["scripting.executeScript", "scripting.executeScript"]);
 });

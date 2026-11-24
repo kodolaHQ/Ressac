@@ -46,7 +46,7 @@ const openPage = async () => {
   await click(m, '[data-testid="settings-button"]');
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [PAGE]);
 };
-const SECTIONS = ["general", "agent", "ai", "workshop", "shortcuts", "privacy", "data", "about"];
+const SECTIONS = ["general", "agent", "ai", "workshop", "shortcuts", "privacy", "passport", "data", "about"];
 /** Shows one section of the page (Général is the one it opens on). */
 const go = async (id: string) => {
   await click(m, `[data-testid="settings-nav-${id}"]`);
@@ -496,6 +496,12 @@ describe("Settings page", () => {
     await openPage();
     await go("privacy");
     await shows("settings-privacy", "Cette version n'envoie rien.");
+    // The masking promise, with the passport, and its limits named in the product.
+    await shows("settings-mask", "Vos mots de passe restent dans Ressac.");
+    await shows("settings-mask", "seuls les codes, IBAN, cartes, numéros d'identité et de sécurité sociale sont masqués.");
+    await shows("settings-mask", "Jamais masqués : un prénom seul");
+    await shows("settings-mask", "Une extension de l'agent peut lire les pages hors de vos sources.");
+    await shows("settings-mask", "c'est celui qu'il voit masqué.");
     expect(await inUi(m, `return doc.querySelector('[data-testid="telemetry-switch"]').disabled`)).toBe(true);
     await w!.close();
     // A local server takes whatever Sentry sends.
@@ -549,6 +555,9 @@ describe("Settings page", () => {
     await openPage();
     const shown = () => inUi<string[]>(m, "return arguments[0].filter((id) => doc.querySelector(`[data-testid=\"settings-${id}\"]`))", [SECTIONS]);
     expect(await shown()).toEqual(["general"]);
+    // The nav lists them in this order, « Passeport » after « Confidentialité ».
+    expect(await inUi<string[]>(m, "return [...doc.querySelectorAll('[data-testid^=\"settings-nav-\"]')].map((b) => b.dataset.testid.slice(13))")).toEqual(SECTIONS);
+    await shows("settings-nav-passport", "Passeport");
     for (const id of SECTIONS) {
       await go(id);
       expect(await shown()).toEqual([id]);

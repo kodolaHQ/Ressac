@@ -1,0 +1,205 @@
+import {
+  API_KEY,
+  cardSpans,
+  ibanSpans,
+  JWT,
+  NIR,
+  nirValid,
+  PRIVATE_KEY,
+  randomTokens,
+} from "../outflow/detect.js";
+import { ascii, fold } from "../outflow/spelled.js";
+import { originalSpan, projections, type Projection } from "./projections.js";
+
+export type LabelType = "code" | "iban" | "carte" | "tel" | "email" | "adresse" | "nom" | "id" | "secu" | "motdepasse" | "masque" | "date";
+export type Zone = "sources" | "web";
+/** Masked in both zones; the other types only in the sources. */
+export const HIGH_RISK: ReadonlySet<LabelType> = new Set<LabelType>(["iban", "carte", "secu", "id", "code"]);
+export type Found = { type: LabelType; start: number; end: number; canonical: string };
+
+type Hit = [start: number, end: number, type: LabelType, canonical: string];
+
+const CONTEXT_WINDOW = 40;
+// Matched on folded text (no accents, lower case). A postal or promo code is no secret.
+const CODE_CONTEXT = /(?<!\p{L})(?:code(?! (?:postal|promo))|verification|otp|pin|secret|a usage unique)(?!\p{L})/u;
+// 4 to 8 digits, maybe grouped (381 624), whole: not glued to a letter or digit, not a price (2 340,12 €).
+const URL_HOST = /\bhttps?:\/\/[^\s/?#<>"'`]+/gi;
+const CODE_DIGITS = /(?<![\p{L}\p{N}]|\d[ .-])\d(?:[ .-]?\d){3,7}(?![\p{L}\p{N}]|[ .-]\d|[.,]\d|\s*€)/gu;
+const TEL_FR = /(?<![\p{N}+])0[1-9](?:[ .-]?\d{2}){4}(?!\p{N})/gu;
+// No country code starts with 0: « 00042178306 » (an account number) is no phone. « 00 33 6… » is spaced after 00.
+const TEL_INTL = /(?<![\p{N}+])(?:\+|00[ .-]?)[1-9](?:[ .-]?(?:\(0\)[ .-]?)?\d){7,14}(?!\p{N})/gu;
+// A French account number (11 digits) after an account word on its line: typed `id`, in the sources only.
+// shortcut: French length only, add other countries' lengths if their banks show in the sources.
+const ACCOUNT = /(?<![\p{L}\p{N}+])\d{11}(?![\p{L}\p{N}])/gu;
+const ACCOUNT_CONTEXT = /(?<!\p{L})(?:compte|livret|account)(?!\p{L})[^\n]{0,30}$/u;
+// Bounded parts and no start inside a run of address characters: linear on a long token without `@`.
+const EMAIL = /(?<![A-Za-z0-9._%+-])([A-Za-z0-9._%+-]{1,64})@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g;
+const PASSWORD = /(?<!\p{L})(?:mot de passe|password|mdp)\s{0,8}:\s{0,8}(\S{1,128})/dgiu;
+const IDENTITY = /(?<![\p{L}\p{N}])(?:passeport|cni|carte d['’ ]?identit[eé]|permis)(?!\p{L})[^\n\d]{0,30}?(?<![A-Za-z0-9])((?=[A-Za-z0-9]*\d)[A-Za-z0-9]{6,20})(?![A-Za-z0-9])/dgiu;
+// The display name of a `Nom <adresse>` header: at a line start or after `:` `,` `;`, up to 5 words. Bounded, and
+// no lookbehind: a long run of spaces would make one quadratic.
+const NAME_HEADER = /(?:^|[\n:,;])[ \t]{0,8}"?(\p{L}[\p{L}\p{M}'’.-]{0,40}(?:[ \t]{1,4}\p{L}[\p{L}\p{M}'’.-]{0,40}){0,4})"?[ \t]{0,4}<[A-Za-z0-9._%+-]{1,64}@([A-Za-z0-9.-]{1,253})/dgu;
+// Words that make a display name an organisation's, accents and case aside. Short on purpose: a person named « Poste »
+// would be shown. shortcut: French and a few English words, add others when the sources show more languages.
+const ORG_WORDS = new Set([
+  "banque", "bank", "credit", "caisse", "assurance", "assurances", "mutuelle", "impots", "tresor", "urssaf", "mairie",
+  "service", "services", "support", "equipe", "team", "societe", "sas", "sarl", "groupe", "agence", "boutique",
+  "colis", "poste", "livraison", "noreply", "no-reply", "notifications", "newsletter", "client", "clients",
+]);
+/** Letters and digits only, lower case, no accents: « Banque Ardoise » and « banque-ardoise » compare equal. */
+const bare = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+
+const ARTICLES = new Set(["la", "le", "les", "l"]);
+// Common French first names, accents dropped (copied from the B3 utility bench's list): a name whose first word is the
+// sender's domain label but holds one of these is a surname written first (« Martin Lucie » <l@martin.fr>), a person.
+// One name is left out on purpose (test/no-owner-name.test.ts). shortcut: about 120 names, add others if a person's name written surname first shows in clear.
+const FIRST_NAMES = new Set(("jean pierre michel andre philippe alain jacques bernard rene louis patrick nicolas daniel christian francois christophe " +
+  "eric frederic laurent stephane david olivier thierry julien sebastien pascal dominique gerard marcel paul antoine maxime alexandre " +
+  "guillaume vincent romain hugo lucas nathan leo gabriel arthur jules raphael adam mathieu benoit cedric fabrice yves henri georges " +
+  "marie jeanne francoise monique catherine nathalie isabelle sylvie anne martine christine sophie valerie sandrine celine stephanie " +
+  "nicole veronique chantal sandra aurelie emilie julie camille laura sarah manon emma lea chloe ines jade louise alice lina zoe " +
+  "helene caroline elodie audrey melanie virginie patricia brigitte josiane danielle juliette charlotte pauline marion lucie odile " +
+  "nadia bastien marc karine agnes emmanuelle beatrice margaux").split(" "));
+const plain = (w: string) => w.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+/**
+ * A header's display name that looks like an organisation's, not a person's: a label of the sender's domain (but its
+ * last), as the whole name or its first word (« Free Mobile » <x@free.fr>; « Camille Exemple » <x@exemple.fr> stays); a one-word acronym of up to 5 characters (DGFiP); or an organisation
+ * word at its head (« Banque Ardoise », « La Poste »), unless two capitalised words follow, a person's name
+ * (« Service Lucie Ferrand »). A person writing from a company domain stays a name, and so does « Marie Banque ».
+ */
+function organisation(name: string, domain: string): boolean {
+  const labels = domain.toLowerCase().split(".").slice(0, -1).map(bare);
+  const parts = name.split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean).map((w) => bare(w));
+  if (labels.includes(bare(name)) || (labels.includes(parts[0]!) && !parts.slice(1).some((w) => FIRST_NAMES.has(w)))) return true;
+  const words = name.split(/[ \t]+/);
+  if (words.length === 1 && name.length <= 5 && [...name].filter((c) => /\p{Lu}/u.test(c)).length >= Math.max(2, name.length - 1)) return true;
+  const head = ARTICLES.has(plain(words[0]!).replace(/['’]$/, "")) && words.length > 1 ? 1 : 0;
+  if (!ORG_WORDS.has(plain(words[head]!))) return false;
+  const rest = words.slice(head + 1);
+  return !(rest.length >= 2 && rest.every((w) => /^\p{Lu}/u.test(w) && !ORG_WORDS.has(plain(w))));
+}
+
+/** NFKC, digits of any script as ASCII. */
+const plainDigits = (s: string) => s.normalize("NFKC").replace(/(?![0-9])\p{Nd}/gu, ascii);
+
+/** The form a value is compared in: one canonical string per value of a type. */
+export function canonical(type: LabelType, raw: string): string {
+  const s = plainDigits(raw);
+  switch (type) {
+    case "iban":
+    case "carte":
+    case "secu":
+      return s.replace(/[^\p{L}\p{N}]/gu, "").toUpperCase();
+    case "tel": {
+      const t = s.replace(/\(0\)/, "");
+      const d = t.replace(/\D/g, "");
+      if (t.trimStart().startsWith("+")) return "+" + d;
+      if (d.startsWith("00")) return "+" + d.slice(2);
+      return d.startsWith("0") ? "+33" + d.slice(1) : "+" + d;
+    }
+    case "email":
+      // The domain is case-insensitive too; the same local part at two domains is two values.
+      return s.toLowerCase();
+    case "nom":
+      return raw.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
+    default:
+      return raw;
+  }
+}
+
+/** The digit strings a phone is written in, from its canonical form: international, 00, and for +33 the 0, 330 and 9-digit ones. */
+export function telDigitForms(canonicalTel: string): string[] {
+  const intl = canonicalTel.slice(1);
+  const fr = intl.startsWith("33") ? intl.slice(2) : undefined;
+  return [intl, "00" + intl, ...(fr ? ["0" + fr, "330" + fr, fr] : [])];
+}
+
+const nearCode = (t: string, start: number, end: number) =>
+  CODE_CONTEXT.test(fold(t.slice(Math.max(0, start - CONTEXT_WINDOW), end + CONTEXT_WINDOW)));
+
+/** Every finding in one projected text `t` (digits already ASCII), in `t`'s offsets. */
+function scan(t: string, zone: Zone): Hit[] {
+  const out: Hit[] = [];
+  for (const [start, end, v] of ibanSpans(t)) out.push([start, end, "iban", v]);
+  for (const [start, end, v] of cardSpans(t)) out.push([start, end, "carte", v]);
+  for (const m of t.matchAll(NIR)) {
+    const v = canonical("secu", m[0]);
+    if (nirValid(v)) out.push([m.index, m.index + m[0].length, "secu", v]);
+  }
+  for (const re of [API_KEY, PRIVATE_KEY, JWT]) for (const m of t.matchAll(re)) out.push([m.index, m.index + m[0].length, "id", m[0]]);
+  for (const token of new Set(randomTokens(t)))
+    for (let i = t.indexOf(token); i >= 0; i = t.indexOf(token, i + token.length)) out.push([i, i + token.length, "id", token]);
+  for (const m of t.matchAll(IDENTITY)) out.push([...m.indices![1]!, "id", m[1]!]);
+  // A URL's host and port are never a code; its path, query and fragment may carry one (`/verify/482913`, `?code=…`).
+  const addresses = [...t.matchAll(URL_HOST)].map((m) => [m.index, m.index + m[0].length] as const);
+  for (const m of t.matchAll(CODE_DIGITS)) {
+    const end = m.index + m[0].length;
+    if (addresses.some(([a, b]) => m.index >= a && m.index < b)) continue;
+    // A postcode before its city on the same line (69005 Lyon), unless a code word comes right before the number.
+    const postcode =
+      m[0].length === 5 && /^[ \t]+\p{Lu}/u.test(t.slice(end, end + 3)) && !CODE_CONTEXT.test(fold(t.slice(Math.max(0, m.index - 20), m.index)));
+    if (!postcode && nearCode(t, m.index, end)) out.push([m.index, end, "code", m[0].replace(/\D/g, "")]);
+  }
+  if (zone === "web") return out;
+  for (const re of [TEL_FR, TEL_INTL]) for (const m of t.matchAll(re)) out.push([m.index, m.index + m[0].length, "tel", canonical("tel", m[0])]);
+  for (const m of t.matchAll(ACCOUNT)) if (ACCOUNT_CONTEXT.test(fold(t.slice(Math.max(0, m.index - CONTEXT_WINDOW), m.index)))) out.push([m.index, m.index + 11, "id", m[0]]);
+  for (const m of t.matchAll(EMAIL)) out.push([m.index, m.index + m[1]!.length, "email", canonical("email", m[0])]);
+  for (const m of t.matchAll(PASSWORD)) out.push([...m.indices![1]!, "motdepasse", m[1]!]);
+  for (const m of t.matchAll(NAME_HEADER)) if (!organisation(m[1]!, m[2]!)) out.push([...m.indices![1]!, "nom", canonical("nom", m[1]!)]);
+  return out;
+}
+
+/** Codes written in words: each numeral run of 4 to 8 digits near a code word of the original text. */
+function spelledCodes(p: Projection, text: string): Hit[] {
+  const out: Hit[] = [];
+  for (const m of p.text.matchAll(/\d+/g)) {
+    const [start, end] = originalSpan(p, m.index, m.index + m[0].length);
+    if (m[0].length >= 4 && m[0].length <= 8 && nearCode(text, start, end)) out.push([start, end, "code", m[0]]);
+  }
+  return out;
+}
+
+/**
+ * Overlapping spans merged into their union, in text order, each union carrying its longest member (ties keep the
+ * first given): a span dropped beside a longer one would leave its own digits in clear next to the label.
+ */
+export function longest<T extends { start: number; end: number }>(spans: T[]): T[] {
+  const sorted = spans.map((s, i) => ({ s, i })).filter(({ s }) => s.end > s.start).sort((a, b) => a.s.start - b.s.start || a.i - b.i);
+  const out: T[] = [];
+  for (let k = 0; k < sorted.length; ) {
+    let best = sorted[k]!;
+    let end = best.s.end;
+    const start = best.s.start;
+    for (k++; k < sorted.length && sorted[k]!.s.start < end; k++) {
+      const c = sorted[k]!;
+      const [lc, lb] = [c.s.end - c.s.start, best.s.end - best.s.start];
+      if (lc > lb || (lc === lb && c.i < best.i)) best = c;
+      end = Math.max(end, c.s.end);
+    }
+    out.push({ ...best.s, start, end });
+  }
+  return out;
+}
+
+/**
+ * Every value to mask in `text`, found on every projection, spans in `text`, overlaps kept. The
+ * web zone gets the high-risk types only. The digits-only projection is not scanned here: it glues unrelated numbers
+ * (a line number and a price) into false cards and codes; it serves the variant matcher of known values.
+ */
+export function findAll(text: string, zone: Zone): Found[] {
+  const found = new Map<string, Found>();
+  for (const p of projections(text)) {
+    if (p.kind === "digits") continue;
+    const hits = p.kind === "numerals" ? spelledCodes(p, text) : scan(p.text.replace(/(?![0-9])\p{Nd}/gu, (c) => (c.length === 1 ? ascii(c) : c)), zone);
+    for (const [s, e, type, canonical] of hits) {
+      if (zone === "web" && !HIGH_RISK.has(type)) continue;
+      const [start, end] = p.kind === "numerals" ? [s, e] : originalSpan(p, s, e);
+      found.set(`${type}\n${start}\n${end}`, { type, start, end, canonical });
+    }
+  }
+  return [...found.values()];
+}
+
+/** `findAll` with overlapping finds merged into their union, typed as the longest. */
+export const detect = (text: string, zone: Zone): Found[] => longest(findAll(text, zone));

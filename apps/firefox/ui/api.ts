@@ -1,5 +1,5 @@
 import type { ShownSite } from "../shared/sites";
-import type { Action, ApiRessac, LocalAiStateShown, AgentPanelState, ApplicationList, ExtensionResult, ShownWidget } from "../shared/api";
+import type { ChangedFile, DiffFile, QuarantinedFile, Action, ApiRessac, LocalAiStateShown, AgentPanelState, ApplicationList, ExtensionResult, MaskingStatus, ShownWidget } from "../shared/api";
 import type { ExtensionLine, SpaceExtensionLine } from "../shared/extensions";
 import type { HomeTheme } from "../../../packages/kernel/src/home/theme.ts";
 import type { FreePlacement } from "../../../packages/kernel/src/home/schemas.ts";
@@ -7,8 +7,12 @@ import type { Execution, ResumeExecution } from "../../../packages/kernel/src/wo
 import { format } from "../shared/i18n";
 import { SHORTCUTS } from "../shared/shortcuts";
 import { HOST_EXITED } from "../chrome/agent/host";
+import { reauth } from "../chrome/agent/reauth";
 import { validFolder } from "../chrome/store/app-folder";
 import type { WindowController } from "../chrome/window/controller";
+
+// Here, not in shared/api.ts: a value import from there pulls the Node kernel (@ressac/kernel) into the UI bundle.
+export const NO_MASKING: MaskingStatus = { locked: null, lockedAgreement: "one-m", uncovered: false, uncoveredPassport: [], notice: null, extensionReads: false, passportUnreadable: [] };
 import { forgetWidget, prepareWidget } from "../chrome/window/widget-frame";
 import { readableProfiles, profilesForGrant, openableUrl } from "./home-profiles";
 import { createActionsApi, createRecapsApi, activeSpacePrivate, type ActionsFirefox, type RecapsFirefox } from "./actions-api";
@@ -79,7 +83,7 @@ export async function serveDisplays(
  * `window.ressac`, on the Firefox window controller. What is not migrated yet (applications, sites,
  * extensions, actions) answers empty; any other member is recorded in `window.ressacMissingApi` and is undefined.
  */
-export function createApi(win: WindowController): ApiFirefox {
+export function createApi(win: WindowController, o: { settingsPage?: boolean } = {}): ApiFirefox {
   const missing = (window.ressacMissingApi ??= new Set());
   // The store outlives this document: a listener into a dead document would throw on every call.
   const untilUnload = (unsubscribe: () => void) => {
@@ -102,6 +106,7 @@ export function createApi(win: WindowController): ApiFirefox {
   /** An extension action in the kernel host; its answer copied into this realm, a failure given back as text. */
   const extension = (method: string, params: Record<string, unknown>) =>
     host.request<ExtensionResult>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+  const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
   /** A host request answered in this realm; `fallback` when the host does not answer (no agent). */
   const ask = <T>(method: string, params: unknown, fallback: T): Promise<T> => host.request<T>(method, params).then((r) => structuredClone(r), () => fallback);
   /** An action's builder in a window whose active space is private (or unknown), read at the moment of asking. */
@@ -151,6 +156,37 @@ export function createApi(win: WindowController): ApiFirefox {
       switch: (profile) => switchAgent(profile),
       relaunch: () => host.request("agent.relaunch", { window: windowId }).then(() => {}, (e) => console.error("[agent] relaunch failed:", e)),
       review: (id, choice) => host.request("agent.review", { window: windowId, id, choice }).then(() => {}, (e) => console.error("[agent] review answer failed:", e)),
+      masking: () => ask("agent.masking", { window: windowId }, NO_MASKING),
+      onMasking(callback) {
+        const offMasking = host.on("agent.masking", () => callback());
+        const offExit = host.on(HOST_EXITED, () => callback());
+        return untilUnload(() => {
+          offMasking();
+          offExit();
+        });
+      },
+      // Always this window's own session: the UI never names another window.
+      revealLogins: (ref) =>
+        host.request<unknown>("agent.revealLogins", { window: windowId, ref: String(ref) }).then((v) => (Array.isArray(v) ? v.map(String) : null), () => null),
+      revealPassport: (ref) => host.request<unknown>("agent.revealPassport", { window: windowId, ref: String(ref) }).then((v) => (typeof v === "string" ? v : null), () => null),
+      passportShown: async (refs) => structuredClone(win.store.passportShown(refs.map((r) => ({ profile: String(r.profile), id: String(r.id) })))),
+      revealLocal: (label) => host.request<unknown>("agent.revealLocal", { window: windowId, label: String(label) }).then((v) => (typeof v === "string" ? v : null), () => null),
+      maskPaste: (text) =>
+        host.request<{ text?: unknown; names?: unknown } | null>("agent.maskPaste", { window: windowId, text: String(text) }).then(
+          (r) => (r && typeof r.text === "string" && Array.isArray(r.names) ? { text: r.text, names: r.names.map(String) } : null),
+          () => null,
+        ),
+      lock: {
+        changed: () => host.request<ChangedFile[]>("masking.changed").then((files) => ({ ok: true as const, files: structuredClone(files) }), (e) => ({ ok: false as const, error: errorText(e) })),
+        file: (path) => ask<DiffFile | null>("masking.file", { path: String(path) }, null),
+        async lift(choice, remove) {
+          // In the chrome, before anything leaves for the host: a page cannot skip it.
+          if (!(await reauth(say("chrome-mask-reauth-lift")))) return { ok: false, error: null };
+          return host.request("masking.lift", { choice, remove: remove ? [...remove] : [] }).then(() => ({ ok: true as const }), (e) => ({ ok: false as const, error: errorText(e) }));
+        },
+        quarantine: () => ask<QuarantinedFile[]>("masking.quarantine.list", {}, []),
+        restore: (id) => host.request("masking.quarantine.restore", { id: String(id) }).then(() => ({ ok: true as const }), (e) => ({ ok: false as const, error: errorText(e) })),
+      },
     },
     tabCycle: (m) => win.tabSwitch(m),
     navigate: (id, input) => win.navigate(id, input),
@@ -183,7 +219,8 @@ export function createApi(win: WindowController): ApiFirefox {
     // The agent's cards and access badges live in the store's realm: the UI gets copies made in this realm.
     permissions: {
       pending: async () => structuredClone(win.store.questions.pending()),
-      answer: (id, d, rights, o) => win.store.questions.answer(id, d, o, rights),
+      // The window is this document's, never the caller's: a tick counts only on its own window's card.
+      answer: (id, d, rights, o) => win.store.questions.answer(id, d, o && { ...o, window: windowId }, rights),
     },
     onPermissions: (callback) => untilUnload(win.store.questions.onChange((l) => callback(structuredClone(l)))),
     access: {
@@ -331,6 +368,8 @@ export function createApi(win: WindowController): ApiFirefox {
       switchAgent,
       dataDir: win.store.dataDir,
       locale: () => win.store.state.locale,
+      ...(o.settingsPage ? { passport: win.store.passport } : {}),
+      spaces: () => win.store.state.spaces,
     }),
     // Import from another browser: the chrome runs the engine's migrators; answers copied into this realm.
     bookmarks: { search: (text, limit) => win.store.bookmarks.search(text, limit).then((v) => structuredClone(v)) },

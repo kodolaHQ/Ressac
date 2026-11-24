@@ -289,7 +289,7 @@ export function createDevTools(o: {
   store: Store;
   windows: WindowRegistry;
   isPrivate(tabId: string): boolean;
-  sites?: { viewFor(id: string): { browser: any; window: Window } | undefined; markWanted(id: string): void; onClosed(cb: () => void): unknown };
+  sites?: { viewFor(id: string): { browser: any; window: Window } | undefined; markWanted(id: string): void; markAgentReached(id: string): void; onClosed(cb: () => void): unknown };
   apps?: { viewFor(folder: string): { browser: any; window: Window } | undefined; onClosed(cb: () => void): unknown };
 }): DevTools {
   /** The top-level reload of the agent's dev tools; on a site app it is Ressac's load, so the M1 net spares it under the home. */
@@ -568,6 +568,9 @@ export function createDevTools(o: {
     async run(id: string, expect: string, code: string, signal?: AbortSignal): Promise<JsResult> {
       if (signal?.aborted) throw abortError(signal);
       const s = await session(id, String(expect));
+      // The agent's code can rewrite the page or navigate it: the tab is the agent's from now on (spec § 5.3).
+      if (id.startsWith(SITE_PREFIX)) o.sites?.markAgentReached(id.slice(SITE_PREFIX.length));
+      else if (!isWindow(id)) o.store.dispatch({ type: "agentNavigated", id });
       const stop = new AbortController();
       const work = evaluate(s, String(code), stop.signal);
       work.catch(() => {}); // a late result is dropped

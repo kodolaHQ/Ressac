@@ -5,10 +5,15 @@ import type { AgentAccount, Backup, GrantKind, LoginResult, GrantRow, SettingsRe
 import type { AgentHost } from "../chrome/agent/host";
 import type { SettingsChrome } from "../chrome/store/settings";
 import type { SitePermissions } from "../chrome/store/site-permissions";
+import type { PassportSettings } from "../chrome/passport/settings";
+import { passportName, type Space } from "../shared/model";
 
 /** The site permissions Settings lists, with their message ids. */
 const LABELS = new Set(["notifications", "geolocation", "media-camera", "media-micro", "midi", "drm"]);
 const DECISIONS = new Set(["allow", "deny"]);
+
+/** The main UI document (sidebar.html, no query), the one that shows ressac://settings; not the agent panel's nor a pill's. */
+export const settingsPageDocument = (url: { pathname: string; search: string }) => url.pathname.endsWith("/sidebar.html") && url.search === "";
 
 /** The settings page's API: the host's RPCs, the chrome's own actions and the site decisions, with the host's silence handled. */
 export function createSettingsApi(o: {
@@ -22,6 +27,10 @@ export function createSettingsApi(o: {
   dataDir: string;
   /** The shown language, read at each call. */
   locale(): string;
+  /** Only in the document showing the settings page: elsewhere the API has no `passport`. */
+  passport?: Pick<PassportSettings, "passports" | "unlock" | "read" | "save" | "lock" | "onLocked" | "drop" | "removePassport" | "moveTo" | "restart">;
+  /** The spaces, read at each call: they name the passports. */
+  spaces(): readonly Pick<Space, "name" | "profile" | "private">[];
 }): SettingsApi {
   const say = (id: string, args?: Record<string, string>) => format(o.locale(), id, args);
   const silent = (): { ok: false; error: string } => ({ ok: false, error: say("sidebar-api-agent-silent") });
@@ -43,7 +52,51 @@ export function createSettingsApi(o: {
       return { kind: "site", key: `${profile}\n${origin}`, name, profile, detail };
     });
   };
+  const nameOf = (profile: string) => passportName(o.spaces(), profile, say("settings-passport-no-space"));
+  /** The tokens this page holds, one per profile and purpose: its « Verrouiller » never locks another window's page. */
+  const tokens = new Map<string, string>();
+  const key = (profile: string, purpose: string) => `${purpose}\n${profile}`;
+  const passport = o.passport;
   return {
+    ...(passport && {
+      passport: {
+        async profiles() {
+          const [files, spaces] = [await passport.passports(), o.spaces()];
+          const named = [...new Set(spaces.filter((s) => !s.private).map((s) => s.profile))];
+          // A profile used only by private spaces has no passport of its own (design § 3.2, ruling F25).
+          const hidden = new Set(spaces.map((s) => s.profile));
+          const of = (id: string) => files.find((f) => f.profile === id);
+          return [
+            ...named.map((id) => ({ id, name: nameOf(id), count: of(id)?.count ?? 0, state: of(id)?.state ?? ("ok" as const), kept: false })),
+            ...files.filter((f) => !hidden.has(f.profile)).map((f) => ({ id: f.profile, name: nameOf(f.profile), count: f.count, state: f.state, kept: true })),
+          ];
+        },
+        async unlock(profile, purpose = "open") {
+          const reason =
+            purpose === "delete" || purpose === "move" || purpose === "restart" ? say(`settings-passport-touchid-${purpose}`) : say("settings-passport-touchid", { profile: nameOf(String(profile)) });
+          const r = await passport.unlock(String(profile), reason, purpose);
+          if (!r) return null;
+          const before = tokens.get(key(profile, purpose));
+          if (before) passport.lock(before);
+          tokens.set(key(profile, purpose), r.token);
+          return structuredClone(r);
+        },
+        read: (profile, token) => passport.read(String(profile), String(token)).then((r) => structuredClone(r)),
+        save: (profile, token, entries, revision) => passport.save(String(profile), String(token), structuredClone(entries), String(revision)).then((r) => structuredClone(r)),
+        lock(profile, purpose) {
+          for (const p of purpose ? [purpose] : (["open", "delete", "move", "restart"] as const)) {
+            const token = tokens.get(key(profile, p));
+            if (token) passport.lock(token);
+            tokens.delete(key(profile, p));
+          }
+        },
+        onLocked: (callback) => passport.onLocked(callback),
+        drop: (profile) => passport.drop(String(profile)),
+        removePassport: (profile, token) => passport.removePassport(String(profile), String(token)),
+        moveTo: (from, to, token) => passport.moveTo(String(from), String(to), String(token)).then((r) => structuredClone(r)),
+        restart: (profile, token) => passport.restart(String(profile), String(token)),
+      },
+    }),
     agents,
     async login(id) {
       const r = await ask<LoginResult>("settings.login", { id }, { kind: "error", error: silent().error });

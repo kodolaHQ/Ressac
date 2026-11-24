@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { agentPageDecision, agentPortRange } from "../chrome/agent/page-guard";
+import { agentPageDecision, agentPageRtc, agentPortRange } from "../chrome/agent/page-guard";
 
 const ports: [number, number] = [5300, 5319];
 const req = (o: Partial<Parameters<typeof agentPageDecision>[0]>) =>
@@ -69,4 +69,19 @@ it("a gesture frees a top-level navigation only, never a fetch or beacon", () =>
 
 it("an unparsable target is cancelled", () => {
   expect(req({ to: "::::" })).toBe("cancel");
+});
+
+it("under the workspace lock, an agent page's CDN GET is cancelled; its own ports stay", () => {
+  expect(req({ to: "https://cdn.jsdelivr.net/npm/x@1", locked: true })).toBe("cancel");
+  expect(req({ to: "http://localhost:5302/a.js", locked: true })).toBe("allow");
+  // Not an agent page: the lock changes nothing.
+  expect(req({ from: "https://news.example/", to: "https://cdn.jsdelivr.net/npm/x@1", locked: true })).toBe("allow");
+});
+
+it("under the workspace lock, an agent page's WebRTC is denied, a sandboxed frame's by its precursor; unlocked or elsewhere it is not", () => {
+  expect(agentPageRtc(["http://localhost:5301", ""], ports, true)).toBe("deny");
+  expect(agentPageRtc(["moz-nullprincipal:{x}?http://127.0.0.1:5301", ""], ports, true)).toBe("deny");
+  expect(agentPageRtc(["https://meet.example", "http://localhost:5305/"], ports, true)).toBe("deny");
+  expect(agentPageRtc(["http://localhost:5301", ""], ports, false)).toBe("allow");
+  expect(agentPageRtc(["https://meet.example", "https://meet.example/abc"], ports, true)).toBe("allow");
 });

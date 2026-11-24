@@ -308,7 +308,7 @@ export function scopeLabels(p: Scope, source: SourceExtension): string[] {
   added(has("clipboardWrite"), "Écrire dans le presse-papiers");
   added(
     has("activeTab"),
-    "Agir sur l'onglet affiché quand tu cliques sur son bouton (non pris en charge par Ressac)",
+    "Agir sur l'onglet affiché quand vous cliquez sur son bouton (non pris en charge par Ressac)",
   );
   if (source === "store") {
     added(has("webRequest"), "Observer les requêtes des pages");

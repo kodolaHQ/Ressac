@@ -276,6 +276,25 @@ test("a tab's load error is not saved", async () => {
   expect((await loadSession(d)).tabs[id]?.error).toBeNull();
 });
 
+test("a session saved before agentReached: its tabs predate agent tabs, so they load as the user's; a saved flag is kept", async () => {
+  const d = folder();
+  const old = structuredClone(richState()) as unknown as { tabs: Record<string, Record<string, unknown>> };
+  const [a, b] = Object.keys(old.tabs);
+  delete old.tabs[a!]!.agentReached;
+  delete old.tabs[a!]!.everAgent;
+  old.tabs[b!]!.agentReached = true;
+  old.tabs[b!]!.everAgent = true;
+  // Volatile: a pending user load and an applied tweak are never saved.
+  old.tabs[b!]!.userLoad = "https://x.test/";
+  old.tabs[b!]!.tweakScript = true;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  const e = await loadSession(d);
+  expect(e.tabs[a!]).toMatchObject({ agentReached: false, everAgent: false });
+  expect(e.tabs[b!]).toMatchObject({ agentReached: true, everAgent: true });
+  expect(e.tabs[b!]).not.toHaveProperty("userLoad");
+  expect(e.tabs[b!]).not.toHaveProperty("tweakScript");
+});
+
 test("a session saved without agentProfile loads with claude", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };

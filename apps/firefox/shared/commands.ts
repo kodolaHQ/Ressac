@@ -5,7 +5,7 @@ import { SEARCH_ENGINES } from "./search";
 import { SHORTCUT_IDS, SHORTCUTS, shortcutLabel, type ShortcutId } from "./shortcuts";
 
 /** Réglages' sections, in its order (ui/components/Settings.svelte). */
-export const SETTINGS_SECTIONS = ["general", "agent", "ai", "workshop", "shortcuts", "privacy", "data", "about"] as const;
+export const SETTINGS_SECTIONS = ["general", "agent", "ai", "workshop", "shortcuts", "privacy", "passport", "data", "about"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export type CommandRun = { kind: "shortcut"; id: ShortcutId } | { kind: "dispatch"; action: Action } | { kind: "settings"; section: SettingsSection };
@@ -59,7 +59,8 @@ export function browserCommands(state: { locale: string; settings: Settings }): 
       group: "section",
       label: say("sidebar-command-settings-section", { section: say(`settings-section-${section}`) }),
       keys: "",
-      words: "réglages reglages settings préférences preferences",
+      // Réglages › Passeport's own words (design § 9.1).
+      words: `réglages reglages settings préférences preferences${section === "passport" ? " passeport identité nom adresse masquer cacher agent données personnelles" : ""}`,
       current: false,
       run: { kind: "settings", section },
     });

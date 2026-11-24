@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Workshop, BUILD_DELAY_MS, parseBuildStep, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript } from "../../src/container/workshop.js";
 import { findDocker } from "../../src/container/engine.js";
 import { execFile, spawn, spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { TOOLS_FOLDERS } from "../../src/container/runner.js";
 import { fakeRunner, type Response } from "../helpers/fake-runner.js";
@@ -679,8 +679,61 @@ describe("agent network", () => {
     const { workshop, calls } = make([[/curl/, { code: 7 }]]);
     await workshop.secureNetwork();
     expect(calls[0]!.args).toEqual(["exec", "--privileged", "-u", "root", "-w", "/", "-i", "ressac-workshop", "node", "/opt/ressac/ressac-network.mjs", "apply"]);
-    expect(JSON.parse(calls[0]!.opts!.input!)).toEqual({ ports: [5281, 5282], domains: ["ok.example.com", "*.good.dev"] });
+    expect(JSON.parse(calls[0]!.opts!.input!)).toEqual({ ports: [5281, 5282], domains: ["ok.example.com", "*.good.dev"], locked: false });
     expect(calls[1]!.args).toEqual(["exec", "ressac-workshop", "curl", "-s", "--noproxy", "*", "--max-time", "3", "https://1.1.1.1"]);
+  });
+
+  test("the reveal writes the folder list, then the stamp, once; as root", async () => {
+    const { run, calls } = fakeRunner([]);
+    await new Workshop({ paths: paths, docker: "docker", run }).stampReveal();
+    expect(calls.at(-1)!.args).toEqual([
+      "exec", "--privileged", "-u", "root", "-w", "/", "ressac-workshop", "sh", "-c",
+      "test -e /run/ressac-reveal-dirs && exit 0; " +
+        'roots=; for r in /workspace/.ressac/logs /workspace /home/node /tmp /var/tmp /dev/shm /run/lock /var/lock; do [ -d "$r" ] && [ ! -L "$r" ] && roots="$roots $r"; done; ' +
+        "find $roots -xdev -path /workspace/.ressac -prune -o -type d -printf '%p\\0' > /run/ressac-reveal-dirs.tmp 2>/dev/null; " +
+        "mv /run/ressac-reveal-dirs.tmp /run/ressac-reveal-dirs && { test -e /run/ressac-reveal-stamp || touch /run/ressac-reveal-stamp; }",
+    ]);
+    await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ressac-reveal-stamp/, { code: 1, stderr: "ro" }]]).run }).stampReveal()).rejects.toThrow(/ro/);
+  });
+
+  /** The reveal's script run by a real sh, its /run paths moved to `dir`, `find` replaced by `findBody` (a sh script). */
+  async function runReveal(dir: string, findBody: string): Promise<number> {
+    const { run, calls } = fakeRunner([]);
+    await new Workshop({ paths: paths, docker: "docker", run }).stampReveal();
+    const script = calls.at(-1)!.args.at(-1)!.replaceAll("/run/", `${dir}/`);
+    mkdirSync(join(dir, "bin"), { recursive: true });
+    writeFileSync(join(dir, "bin", "find"), `#!/bin/sh\n${findBody}\n`, { mode: 0o755 });
+    return spawnSync("/bin/sh", ["-c", script], { env: { ...process.env, PATH: `${join(dir, "bin")}:${process.env.PATH}` } }).status ?? -1;
+  }
+
+  test("a find that fails mid-walk still writes the list, then the stamp: the reveal goes on", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ressac-reveal-"));
+    expect(await runReveal(dir, "printf '/workspace\\0'; echo gone >&2; exit 1")).toBe(0);
+    expect(readFileSync(join(dir, "ressac-reveal-dirs"), "utf8")).toBe("/workspace\0");
+    expect(existsSync(join(dir, "ressac-reveal-stamp"))).toBe(true);
+  });
+
+  test("a stamp left without a list (a failed reveal): the next reveal writes the list and never moves the stamp; a list ends it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ressac-reveal-"));
+    writeFileSync(join(dir, "ressac-reveal-stamp"), "");
+    const old = new Date("2026-01-01T00:00:00Z");
+    utimesSync(join(dir, "ressac-reveal-stamp"), old, old);
+    expect(await runReveal(dir, "printf '/workspace\\0/workspace/x\\0'")).toBe(0);
+    expect(readFileSync(join(dir, "ressac-reveal-dirs"), "utf8")).toBe("/workspace\0/workspace/x\0");
+    expect(statSync(join(dir, "ressac-reveal-stamp")).mtime.getTime()).toBe(old.getTime());
+    // A list in place: find never runs again.
+    expect(await runReveal(dir, "printf '/other\\0'")).toBe(0);
+    expect(readFileSync(join(dir, "ressac-reveal-dirs"), "utf8")).toBe("/workspace\0/workspace/x\0");
+  });
+
+  test("a locked workspace's network says so to apply", async () => {
+    let locked = false;
+    const { run, calls } = fakeRunner([[/curl/, { code: 7 }]]);
+    const workshop = new Workshop({ paths: paths, docker: "docker", run, network: () => ({ ports: [1], domains: ["ok.example.com"], locked }) });
+    await workshop.secureNetwork();
+    locked = true;
+    await workshop.secureNetwork();
+    expect(calls.filter((c) => c.args.includes("apply")).map((c) => JSON.parse(c.opts!.input!).locked)).toEqual([false, true]);
   });
 
   test("secureNetwork fails closed: apply error, or a reachable probe", async () => {

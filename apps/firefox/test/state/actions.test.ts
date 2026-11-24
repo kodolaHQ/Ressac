@@ -1,5 +1,5 @@
 import { MachineIdleSchema, validAgentDomain } from "../../shared/settings";
-import { beforeEach, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { apply, memorySession, withEssentials } from "../../core/state/actions";
 import { keepsLoaded, keptLoaded } from "../../shared/model";
 import { initialState } from "../../core/state/initial-state";
@@ -85,7 +85,7 @@ test("openTab with apres inserts right after; a new tab has default values", () 
   expect(order()).toEqual([a, c, b]);
   expect(e.tabs[c]).toEqual({
     id: c, windowId: F, spaceId: P, url: "https://c.test/", title: "https://c.test/", favicon: null, link: null,
-    openedByAgent: false, loading: false, canGoBack: false, canGoForward: false, zoom: 1, crashed: false, error: null,
+    openedByAgent: false, agentReached: true, everAgent: true, loading: false, canGoBack: false, canGoForward: false, zoom: 1, crashed: false, error: null,
   });
 });
 
@@ -110,6 +110,136 @@ test("link opened from a tab of a background space: it stays in that space; from
 test("tab opened by the agent: openedByAgent true", () => {
   const a = open("http://localhost:5280/", { openedByAgent: true });
   expect(e.tabs[a]!.openedByAgent).toBe(true);
+});
+
+describe("agentReached (masking sources, spec § 5.3)", () => {
+  // Read after `open` has replaced the state.
+  const reached = (id: string) => e.tabs[id]!.agentReached;
+  test("openTab from the agent, or without saying who: reached by the agent (fail closed); the UI's says false", () => {
+    expect(reached(open("https://a.test/", { openedByAgent: true }))).toBe(true);
+    expect(reached(open("https://b.test/"))).toBe(true);
+    expect(reached(open("https://c.test/", { agentReached: false }))).toBe(false);
+  });
+
+  test("agentNavigated takes a user tab over, for good in its back/forward history", () => {
+    const a = open("https://a.test/", { agentReached: false });
+    expect(e.tabs[a]).toMatchObject({ agentReached: false, everAgent: false });
+    ag({ type: "agentNavigated", id: a });
+    expect(e.tabs[a]).toMatchObject({ agentReached: true, everAgent: true });
+    const before = e;
+    expect(apply(e, { type: "agentNavigated", id: a }, genId)).toBe(before);
+    expect(apply(e, { type: "agentNavigated", id: "nope" }, genId)).toBe(before);
+  });
+
+  const commit = (id: string, url: string, o: { history?: boolean; sameDocument?: boolean } = {}) =>
+    ag({ type: "locationCommitted", id, url, history: o.history ?? false, sameDocument: o.sameDocument ?? false });
+
+  test("the user's own load gives an agent tab back only when it commits, by its original address", () => {
+    const a = open("https://agent.test/", { openedByAgent: true });
+    ag({ type: "userNavigating", id: a, url: "https://bank.test/" });
+    // Not before the commit: the agent's page is still shown, its notes stay the agent's.
+    expect(e.tabs[a]).toMatchObject({ agentReached: true, userLoad: "https://bank.test/" });
+    expect(historyContext(e, a)!.byAgent).toBe(true);
+    commit(a, "https://agent.test/#x", { sameDocument: true });
+    expect(e.tabs[a]).toMatchObject({ agentReached: true, userLoad: "https://bank.test/" });
+    // A redirect keeps the load's original address.
+    commit(a, "https://bank.test/");
+    expect(e.tabs[a]!.agentReached).toBe(false);
+    expect(e.tabs[a]!.userLoad).toBeUndefined();
+  });
+
+  test("a user load that never commits (204, download, « Rester ») or another page's commit leaves the tab the agent's", () => {
+    const a = open("https://agent.test/", { openedByAgent: true });
+    ag({ type: "userNavigating", id: a, url: "https://bank.test/" });
+    ag({ type: "loadStopped", id: a });
+    expect(e.tabs[a]!.userLoad).toBeUndefined();
+    commit(a, "https://bank.test/");
+    expect(e.tabs[a]!.agentReached).toBe(true);
+    ag({ type: "userNavigating", id: a, url: "https://bank.test/" });
+    commit(a, "https://elsewhere.test/");
+    expect(e.tabs[a]).toMatchObject({ agentReached: true });
+    expect(e.tabs[a]!.userLoad).toBeUndefined();
+    // The agent navigating meanwhile cancels the user's load.
+    ag({ type: "userNavigating", id: a, url: "https://bank.test/" });
+    ag({ type: "agentNavigated", id: a });
+    expect(e.tabs[a]!.userLoad).toBeUndefined();
+  });
+
+  test("a reload or the agent tab's own address entered again keeps it the agent's; a user tab needs no marker", () => {
+    const a = open("https://agent.test/page", { openedByAgent: true });
+    const before = e;
+    expect(apply(e, { type: "userNavigating", id: a, url: "https://agent.test/page" }, genId)).toBe(before);
+    const u = open("https://u.test/", { agentReached: false });
+    const mid = e;
+    expect(apply(e, { type: "userNavigating", id: u, url: "https://other.test/" }, genId)).toBe(mid);
+  });
+
+  test("a back/forward load in a tab the agent ever reached is the agent's; in one it never reached, nothing changes", () => {
+    const a = open("https://u.test/", { agentReached: false });
+    ag({ type: "agentNavigated", id: a });
+    ag({ type: "userNavigating", id: a, url: "https://mine.test/" });
+    commit(a, "https://mine.test/");
+    expect(e.tabs[a]).toMatchObject({ agentReached: false, everAgent: true });
+    commit(a, "https://agent.test/", { history: true });
+    expect(e.tabs[a]!.agentReached).toBe(true);
+    // A same-document back (pushState entries) too.
+    ag({ type: "userNavigating", id: a, url: "https://mine.test/" });
+    commit(a, "https://mine.test/");
+    commit(a, "", { history: true, sameDocument: true });
+    expect(e.tabs[a]!.agentReached).toBe(true);
+    const u = open("https://u2.test/", { agentReached: false });
+    const before = e;
+    expect(apply(e, { type: "locationCommitted", id: u, url: "https://u2.test/0", history: true, sameDocument: false }, genId)).toBe(before);
+  });
+
+  test("an essential's tweak with script makes the tab the agent's while applied; a style-only one keeps it the user's", () => {
+    const a = open("https://web.whatsapp.com/", { agentReached: false });
+    const before = e;
+    expect(apply(e, { type: "tweakScript", id: a, script: false, main: true }, genId)).toBe(before);
+    ag({ type: "tweakScript", id: a, script: true, main: false });
+    expect(historyContext(e, a)!.byAgent).toBe(true);
+    // A subframe without script does not clear it; the next page's main frame without script does.
+    ag({ type: "tweakScript", id: a, script: false, main: false });
+    expect(e.tabs[a]!.tweakScript).toBe(true);
+    ag({ type: "tweakScript", id: a, script: false, main: true });
+    expect(e.tabs[a]!.tweakScript).toBeUndefined();
+    expect(e.tabs[a]!.agentReached).toBe(false);
+  });
+
+  test("keepTab hands the tab to the user's list but leaves it reached by the agent", () => {
+    const a = open("https://a.test/", { openedByAgent: true });
+    ag({ type: "keepTab", id: a });
+    expect(e.tabs[a]).toMatchObject({ openedByAgent: false, agentReached: true, everAgent: true });
+  });
+
+  test("a tab opened by a page inherits its opener's flag; an unknown opener counts as the agent's", () => {
+    const user = open("https://u.test/", { agentReached: false });
+    const agent = open("https://g.test/", { openedByAgent: true });
+    expect(reached(open("https://u.test/2", { opener: user, after: user }))).toBe(false);
+    expect(reached(open("https://g.test/2", { opener: agent, after: agent }))).toBe(true);
+    // The opener wins over what the opening says: a page cannot launder its tab.
+    expect(reached(open("https://g.test/3", { opener: agent, agentReached: false }))).toBe(true);
+    expect(reached(open("https://x.test/", { opener: "gone" }))).toBe(true);
+  });
+
+  test("a favorite and a reopened tab are the user's own", () => {
+    const a = open("https://a.test/", { openedByAgent: true });
+    ag({ type: "pinTab", id: a });
+    ag({ type: "closeTab", id: a });
+    ag({ type: "openFavorite", windowId: F, kind: "pinned", id: e.spaces[0]!.pinned[0]!.id });
+    expect(Object.values(e.tabs).at(-1)!.agentReached).toBe(false);
+    const b = open("https://b.test/", { openedByAgent: true });
+    ag({ type: "closeTab", id: b });
+    ag({ type: "reopenClosedTab", windowId: F });
+    expect(Object.values(e.tabs).at(-1)).toMatchObject({ url: "https://b.test/", agentReached: false });
+  });
+
+  test("historyContext carries byAgent: the tab's agentReached", () => {
+    const a = open("https://a.test/", { agentReached: false });
+    expect(historyContext(e, a)).toEqual({ spaceId: P, private: false, byAgent: false });
+    ag({ type: "agentNavigated", id: a });
+    expect(historyContext(e, a)).toEqual({ spaceId: P, private: false, byAgent: true });
+  });
 });
 
 test("moveTab reorders (clamped index)", () => {
@@ -443,19 +573,19 @@ test("historyContext: a shared essential counts in the space that displays it, o
   ag({ type: "addEssential", id: g });
   ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
   const B = e.spaces[1]!.id;
-  expect(historyContext(e, g)).toEqual({ spaceId: P, private: false });
+  expect(historyContext(e, g)).toEqual({ spaceId: P, private: false, byAgent: true });
   ag({ type: "openFavorite", windowId: F, kind: "essential", id: e.essentials[0]!.id });
   expect(e.tabs[g]!.spaceId).toBe(P);
-  expect(historyContext(e, g)).toEqual({ spaceId: B, private: false });
+  expect(historyContext(e, g)).toEqual({ spaceId: B, private: false, byAgent: true });
   // Back in Perso, which also displays it: the visit returns there.
   ag({ type: "activateSpace", windowId: F, id: P });
-  expect(historyContext(e, g)).toEqual({ spaceId: P, private: false });
+  expect(historyContext(e, g)).toEqual({ spaceId: P, private: false, byAgent: true });
   // Displayed in an unknown space: private, to be safe.
   const bizarre = structuredClone(e);
   const f = bizarre.windows[0]!;
   f.activeSpace = "disparu";
   f.active["disparu"] = g;
-  expect(historyContext(bizarre, g)).toEqual({ spaceId: "disparu", private: true });
+  expect(historyContext(bizarre, g)).toEqual({ spaceId: "disparu", private: true, byAgent: true });
   expect(historyContext(e, "inexistant")).toBeNull();
 });
 

@@ -7,14 +7,19 @@ import { checkDataFormat } from "../../core/state/format";
 import { lazySave, loadSession, SessionRecorder } from "../../core/state/persistence";
 import { memorySession, withEssentials } from "../../core/state/actions";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
-import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
+import { createHost, HOST_EXITED, pushPassports, type AgentHost } from "../agent/host";
+import { passportFiles, passportShown } from "../passport/store";
+import { passportSettings, type PassportSettings } from "../passport/settings";
 import { createAgentView, type AgentView } from "../agent/agent-view";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
+import { reauth } from "../agent/reauth";
+import { expectAgentLoad, forgetAgentLoad, installAgentLoadGuard, pruneAgentLoads, tabIdOf } from "../agent/load-guard";
 import type { PageReadOptions, ReadPage } from "../shims/kernel";
 import { apps, bindApps, type AgentApps } from "./apps";
 import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
+import { installQuarantine } from "./quarantine";
 import { createDesign, type DesignService } from "./design";
 import { createOverlays } from "../window/design-overlays";
 import { FRAMES_GROUP, FRAMES_TEST_KEY, framesKindDir, wipeFrames } from "../window/frames-root";
@@ -43,7 +48,7 @@ import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-networ
 import { gestureGuard } from "../../shared/widget-gesture";
 import { resolveLocale } from "../../shared/i18n";
 import { isSmallMac, memoryPrefs } from "../../shared/settings";
-import { keepLoadedHosts } from "../window/tabs";
+import { keepLoadedHosts, PARKING, TAB_ID } from "../window/tabs";
 import { testEnv } from "../test-env";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
@@ -80,6 +85,11 @@ export interface RessacStore extends Store {
   containerFor(profile: ProfileId): number;
   /** The Node host running the kernel, started with the store. */
   readonly agent: AgentHost;
+  /** Réglages › Passeport: the process's one passport instance lives in this module, never in a UI bundle's copy. */
+  /** Without `addOrigin`: only a written fill card's tick adds a site (chrome/agent/bridge.ts), never a page. */
+  readonly passport: Omit<PassportSettings, "addOrigin">;
+  /** The « non couverte » tooltip's names and masked displays (chrome/passport/store.ts passportShown). */
+  passportShown(refs: readonly { profile: string; id: string }[]): { field: string | null; display: string | null }[];
   /** The noted visits, kept by the kernel host. */
   readonly history: History;
   /** The ⌘T questions: quick history search, else the agent. */
@@ -108,6 +118,8 @@ export interface RessacStore extends Store {
   readonly design: DesignService;
   /** The real clicks in a widget's display: each lets that widget open one link (recorded by the UI's chrome listener). */
   readonly widgetGestures: ReturnType<typeof gestureGuard<string>>;
+  /** The agent loads the parent judges (agent/load-guard.ts): one registry, here, for every window's controller. */
+  readonly loadGuard: { expect: typeof expectAgentLoad; forget: typeof forgetAgentLoad };
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
   readPage(url: string, o: PageReadOptions, signal?: AbortSignal): Promise<ReadPage>;
   readHtml(url: string, o: { localAddresses?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
@@ -264,7 +276,7 @@ async function start(): Promise<RessacStore> {
   };
   applyMemoryPrefs();
   store.subscribe((s, p) => s.settings.saveMemory !== p.settings.saveMemory && applyMemoryPrefs());
-  const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
+  const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent(), (reason) => reauth(reason));
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());
   apps.onClosed(() => questions.dropStale());
@@ -413,6 +425,17 @@ async function start(): Promise<RessacStore> {
     safeForUntrustedWebProcess: true,
   });
   installCallPlayer();
+  // fill_field (fill-actor.ts): every http(s) frame, a field may sit in one. The child lists and writes on the parent's
+  // demand only; the parent has no receiveMessage, and it computes the frame chain and keeps the seals (agent/fill.ts).
+  const fillActor = actorModule("fill-actor");
+  ChromeUtils.registerWindowActor("RessacFill", {
+    parent: { esModuleURI: fillActor },
+    child: { esModuleURI: fillActor },
+    matches: ["http://*/*", "https://*/*"],
+    allFrames: true,
+    messageManagerGroups: ["browsers"],
+    safeForUntrustedWebProcess: true,
+  });
   // Windows with Firefox's menu bar that are not Ressac's (browser.xhtml windows do this in window/index.ts): the hidden
   // one, whose menu bar macOS shows with no window open, and Page Info, the Library, Firefox's About…
   const hidden = Services.appShell.hiddenDOMWindow;
@@ -501,6 +524,7 @@ async function start(): Promise<RessacStore> {
   // The agent's access to tabs, as the host last sent it (no access while no host runs).
   let access: AccessState = { agent: "L'agent", tabs: {} };
   const agentExtensions = createAgentExtensions(store, windows, questions, () => agent, () => access);
+  installQuarantine();
   const devtools = createDevTools({
     store,
     windows,
@@ -540,6 +564,14 @@ async function start(): Promise<RessacStore> {
     windows.get(win)?.controller.openAgent();
     toFront(win);
   };
+  // Before the host answers any agent call: a restricted agent load never starts without it.
+  // A channel's browsing context → its top's <browser> → that browser's XUL tab, in whichever window → its Ressac tab id.
+  // A main window's tab without one (never its parking tab) cannot be named: it throws, and the guard cancels (TabSync
+  // names its tabs before they load; a tab a page opens is named at TabOpen).
+  // Only a tab gone from the state drops its record: a window closed but kept (or a tab torn off) keeps its tabs, whose
+  // pending agent load is judged when TabSync loads them again.
+  store.subscribe((s, p) => s.tabs !== p.tabs && pruneAgentLoads((id) => id in s.tabs));
+  installAgentLoadGuard((bc) => tabIdOf(bc, TAB_ID, PARKING));
   const agent = createHost({
     dataDir,
     agentProfile: () => store.state.settings.agentProfile,
@@ -555,7 +587,9 @@ async function start(): Promise<RessacStore> {
       "design.agentWindow": async () => (await mainWindow()) ?? null,
       "design.giveAgent": ([win]: [WindowId]) => giveAgent(win),
     },
-    onStart: (notify) => {
+    onStart: (notify, request) => {
+      // Every passport, then ready: this host's tools answer nothing before (design § 5.2), a restart included.
+      void pushPassports(request, passportFiles()).catch((e) => console.error("[ressac] passport push failed:", (e as Error)?.name));
       sendMirror(store, windows, notify);
       notify("agent.codexEngine", { engine: store.state.settings.codexEngine });
       notify("agent.claudeEngine", { engine: store.state.settings.claudeEngine });
@@ -639,6 +673,8 @@ async function start(): Promise<RessacStore> {
     flush,
     containerFor,
     agent,
+    passport: (({ addOrigin: _, ...pages }) => pages)(passportSettings((method, params) => agent.request(method, params))),
+    passportShown: (refs) => passportShown(passportFiles(), refs),
     history,
     ask,
     downloads,
@@ -655,6 +691,7 @@ async function start(): Promise<RessacStore> {
     },
     agentView,
     widgetGestures: widgetGestures,
+    loadGuard: { expect: expectAgentLoad, forget: forgetAgentLoad },
     readPage: (url, o, signal) => readPage(store, url, o, signal),
     readHtml: (url, o, signal) => readHtml(store, url, o, signal),
     actionMedia: { image: actionImage, serve: (name) => serveComponent(dataDir, name, (name, token) => agent.request<number | null>("actions.copyComponent", { root: framesKindDir("components"), name, token })), release: (name) => releaseComponent(dataDir, name) },

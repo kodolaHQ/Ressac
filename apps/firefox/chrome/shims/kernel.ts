@@ -7,6 +7,8 @@ export { relativeUrl, matchesPattern, hostInSite, tweaksFor } from "../../../../
 export const navigationOutsideSite = (url: string) => `L'appli de site ne va que sur ses domaines : ${url} refusée.`;
 export { sitePacing } from "../../../../packages/kernel/src/workflows/pacing";
 export { truncate } from "../../../../packages/kernel/src/devtools/summaries";
+export { validatePassport, validateEntry, canonicalOf, maskedDisplay, cleanOrigin, PASSPORT_FIELDS, FIELD_LABEL, FIELD_GROUP, PASSPORT_LIMITS, PASSPORT_PROFILE, dayFirst } from "../../../../packages/kernel/src/mask/passport-fields";
+export type { PassportEntry, PassportField, Problem } from "../../../../packages/kernel/src/mask/passport-fields";
 export type { DevRight } from "../../../../packages/kernel/src/access/policy";
 export type { ChangeHost } from "../../../../packages/kernel/src/workflows/pacing";
 export type { ReadPage } from "../../../../packages/kernel/src/workflows/protocol";

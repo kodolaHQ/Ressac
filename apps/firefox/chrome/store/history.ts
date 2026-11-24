@@ -4,13 +4,16 @@ import type { AgentHost } from "../agent/host";
 import type { Store } from "./store";
 
 export interface History {
-  /** A committed top-level navigation of a Ressac tab; private and space read from the state now. http(s) only. */
-  visit(id: TabId, url: string, title: string): void;
+  /**
+   * A committed top-level navigation of a Ressac tab; private, space and byAgent read from the state now. http(s) only.
+   * `byAgent`: the tab was the agent's when the visit happened (a held note), whatever it is now.
+   */
+  visit(id: TabId, url: string, title: string, byAgent?: boolean): void;
   title(id: TabId, url: string, title: string): void;
   /** The tab's favicon (data:image/ only), kept per site for the ⌘T rows; never from a private space. */
   icon(id: TabId, url: string, icon: string): void;
-  /** The agent's memory of a page: dropped by the kernel for a private visit or a loopback URL. */
-  retain(r: { url: string; spaceId: string; title: string; text: string }): void;
+  /** The agent's memory of a page: dropped by the kernel for a private visit or a loopback URL. `byAgent`: read in a tab the agent reached. */
+  retain(r: { url: string; spaceId: string; title: string; text: string; byAgent: boolean }): void;
   /** Never rejects: [] while the host is down. */
   search(text: string, limit?: number, distinct?: boolean): Promise<Visit[]>;
   recent(): Promise<Visit[]>;
@@ -29,9 +32,9 @@ export function createHistory(store: Store, host: AgentHost): History {
   const context = (id: TabId, url: string) => (historizable(url) ? historyContext(store.state, id) : null);
   const ask = <T>(method: string, params: unknown, none: T) => host.request<T>(method, params).catch(() => none);
   return {
-    visit(id, url, title) {
+    visit(id, url, title, byAgent) {
       const c = context(id, url);
-      if (c) host.notify("history.record", { url, title: title || url, ...c });
+      if (c) host.notify("history.record", { url, title: title || url, ...c, byAgent: c.byAgent || !!byAgent });
     },
     title(id, url, title) {
       const c = context(id, url);

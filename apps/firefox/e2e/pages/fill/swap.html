@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Vérification</title>
+<!-- Case 3: the test replaces "code", or moves "backup" into the other form (same action), before the commit. -->
+<form id="main" action="/fill/next.html">
+  <label for="code">Code de vérification</label><input id="code">
+  <label for="backup">Code de secours</label><input id="backup">
+</form>
+<form id="other" action="/fill/next.html"></form>
+<script>
+  // What the page sees in its fields, sent to its own server on each input: the test reads it there.
+  addEventListener("input", (e) => fetch("/log?" + new URLSearchParams({ f: e.target.id, v: e.target.value })));
+</script>

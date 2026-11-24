@@ -1,4 +1,5 @@
 import { createApi, type ApiFirefox } from "./api";
+import { settingsPageDocument } from "./settings-api";
 import type { OverlayApi } from "../shared/api";
 import { createBadgeApi } from "./badge-api";
 import { wrapOverlayApi } from "./overlay-api";
@@ -31,7 +32,8 @@ if (params.has("site")) {
 } else {
   const win = window.parent.ressacWindow;
   if (!win) throw new Error("Ressac UI loaded before its window controller");
-  window.ressac = createApi(win);
+  // The passport's Settings API exists only in the document that shows ressac://settings (design § 9.2), not the agent panel's.
+  window.ressac = createApi(win, { settingsPage: settingsPageDocument(location) });
   // Its aura and the window's key and mouse listeners: the controller does not see this frame's load.
   win.uiStarted(window);
 }

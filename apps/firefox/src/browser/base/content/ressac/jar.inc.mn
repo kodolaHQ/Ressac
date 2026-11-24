@@ -18,6 +18,7 @@
 *       content/browser/ressac/vim-actor.sys.mjs (content/ressac/vim-actor.sys.mjs)
 *       content/browser/ressac/call-actor.sys.mjs (content/ressac/call-actor.sys.mjs)
 *       content/browser/ressac/frame-actor.sys.mjs (content/ressac/frame-actor.sys.mjs)
+*       content/browser/ressac/fill-actor.sys.mjs (content/ressac/fill-actor.sys.mjs)
         content/browser/ressac/fonts/FunnelDisplay-latin-ext.woff2 (content/ressac/fonts/FunnelDisplay-latin-ext.woff2)
         content/browser/ressac/fonts/FunnelDisplay-latin.woff2 (content/ressac/fonts/FunnelDisplay-latin.woff2)
         content/browser/ressac/fonts/Geist-latin-ext.woff2 (content/ressac/fonts/Geist-latin-ext.woff2)

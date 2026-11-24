@@ -187,8 +187,9 @@
         if (builderTarget) builderAgent();
       } else if (r === "jumpTab" && !modalOpen && winState) jumping = true;
       else if (r.startsWith("settings:")) {
-        // The menu's « Réglages › … »: Réglages on that section.
-        showSection(r.slice("settings:".length) as SettingsSection);
+        // The menu's « Réglages › … »: Réglages on that section; « settings:passport:<profile> » on that passport.
+        const [section, profile] = r.slice("settings:".length).split(/:(.*)/s);
+        showSection(section as SettingsSection, profile ? { profile } : {});
         api.dispatch({ type: "openSettings", windowId: api.windowId });
       }
     }),

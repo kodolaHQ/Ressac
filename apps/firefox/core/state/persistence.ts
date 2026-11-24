@@ -28,6 +28,9 @@ const TabSchema = z.object({
   favicon: favicon,
   link: z.object({ type: z.enum(["essential", "pinned"]), id: z.string() }).nullable().catch(null),
   openedByAgent: z.boolean(),
+  // A session saved before the flag predates agent tabs: its tabs are the user's.
+  agentReached: z.boolean().default(false),
+  everAgent: z.boolean().default(false),
   profile: z.string().min(1).optional(),
   zoom: z.number().catch(1),
 });

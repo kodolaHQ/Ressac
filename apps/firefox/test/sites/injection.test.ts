@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { grantCovers, grantNeeded, DeclarationSite, type TweaksRead } from "@ressac/kernel";
 import { CONSOLE_TWEAKS_TOTAL, type FrameInjection } from "../../shared/sites";
-import { addTweakConsole, injectionFor, resumeInFrame, type OpenableSite } from "../../core/sites/injection";
+import { addTweakConsole, injectionFor, injectsScript, resumeInFrame, type OpenableSite } from "../../core/sites/injection";
 
 const GUARD = "/* garde */";
 const declaration = DeclarationSite.parse({
@@ -149,4 +149,18 @@ test("declared frame patterns: the resume only goes into the main frame and the 
   const local = DeclarationSite.parse({ ...declaration, tweaks: [{ matches: ["/x"], frames: ["https://lecteur.localhost:*/*"] }] });
   expect(resumeInFrame(local, { url: "http://lecteur.localhost:4000/v", main: false }, true)).toBe(true);
   expect(resumeInFrame(local, { url: "http://pub.localhost:4000/v", main: false }, true)).toBe(false);
+});
+
+test("injectsScript: a style-only tweak keeps the page the user's; a script, or a stylesheet that can write text, makes it the agent's", () => {
+  const css = (...c: string[]) => ({ css: c, js: [] });
+  expect(injectsScript(null)).toBe(false);
+  expect(injectsScript(css())).toBe(false);
+  expect(injectsScript(css(".content:hover { color: red; } .ad { display: none }"))).toBe(false);
+  expect(injectsScript({ css: [], js: [{ code: "1", name: "x" }] })).toBe(true);
+  // Generated text, however it is spelt.
+  expect(injectsScript(css("a::before { content: 'Votre code : 1234' }"))).toBe(true);
+  expect(injectsScript(css("a::after{color:red;CONTENT :attr(title)}"))).toBe(true);
+  expect(injectsScript(css("a::after { cont/* x */ent: 'x' }"))).toBe(true);
+  expect(injectsScript(css("a::after { c\\6f ntent: 'x' }"))).toBe(true);
+  expect(injectsScript(css("@import url(https://x.test/a.css);"))).toBe(true);
 });

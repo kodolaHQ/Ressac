@@ -223,3 +223,18 @@ test("site.json symbolic link, JSON null or [], BOM, exactly 64 KB", async () =>
   expect(by.pile).toMatchObject({ declaration: { name: "Pile" } });
   expect(by.trop).toMatchObject({ error: expect.stringContaining("64 Ko") });
 });
+
+test("tweaksPaused: unlocked never; locked, only the tweaks recorded at the lock are injected (a change, a new app or an unreadable lock pauses)", async () => {
+  const { tweaksHash, tweaksPaused } = await import("../../src/sites/read.js");
+  const t = { js: { "b.js": "B", "a.js": "A" }, css: { "c.css": "C" } };
+  // Name order does not matter, the content does.
+  expect(tweaksHash(t)).toBe(tweaksHash({ js: { "a.js": "A", "b.js": "B" }, css: { "c.css": "C" } }));
+  expect(tweaksHash(t)).not.toBe(tweaksHash({ js: { "a.js": "A2", "b.js": "B" }, css: { "c.css": "C" } }));
+  expect(tweaksHash({ js: { x: "" }, css: {} })).not.toBe(tweaksHash({ js: {}, css: { x: "" } }));
+  const lock = (codes: Record<string, string> | null) => ({ info: () => (codes ? { codes } : null) });
+  expect(tweaksPaused(lock(null), "v", t)).toBe(false);
+  expect(tweaksPaused(lock({ "site:v": tweaksHash(t) }), "v", t)).toBe(false);
+  expect(tweaksPaused(lock({ "site:v": tweaksHash(t) }), "v", { ...t, js: { ...t.js, "a.js": "vol" } })).toBe(true);
+  expect(tweaksPaused(lock({ "site:v": tweaksHash(t) }), "w", t)).toBe(true);
+  expect(tweaksPaused(lock({}), "v", t)).toBe(true);
+});

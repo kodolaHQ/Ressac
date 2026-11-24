@@ -190,7 +190,7 @@ describe("Applications page", () => {
   // applications.spec.ts:412
   it("empty list: help text", async () => {
     p = await openAppsPage(BLOCK, { projects: false });
-    await waitUi(p.m, "return doc.querySelector(arguments[0])?.textContent.includes(\"Demande à l'agent de tester un package ou de construire une app\")", [PAGE]);
+    await waitUi(p.m, "return doc.querySelector(arguments[0])?.textContent.includes(\"Demandez à l'agent de tester un package ou de construire une app\")", [PAGE]);
     expect(await pageText()).toContain("Rien ici pour l'instant.");
   });
 

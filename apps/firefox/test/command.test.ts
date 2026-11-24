@@ -169,3 +169,10 @@ test("browserCommands: ids do not depend on the state; toggles say what they do 
   expect(on.find((c) => c.id === "language-fr")!.current).toBe(true);
   expect(off.some((c) => c.id === "command" || c.id === "address")).toBe(false);
 });
+
+test("⌘T finds Réglages › Passeport by its own words (design § 9.1)", () => {
+  const row = browserCommands({ locale: "fr", settings: initialState().settings }).find((c) => c.id === "settings-passport")!;
+  expect(row.label).toBe("Réglages › Passeport");
+  for (const w of ["passeport", "identité", "adresse", "réglages"]) expect(row.words).toContain(w);
+  expect(browserCommands({ locale: "fr", settings: initialState().settings }).find((c) => c.id === "settings-data")!.words).not.toContain("passeport");
+});

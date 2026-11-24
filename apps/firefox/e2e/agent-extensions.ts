@@ -31,8 +31,11 @@ export function testActor(profile: string): { env: Record<string, string>; prefs
   return { env: { RESSAC_TEST_EXTENSION_ACTOR: dir }, prefs: { "security.sandbox.content.mac.testing_read_path1": dir } };
 }
 
-/** A fake AMO, then Ressac launched against it (fake keys), in the chrome context with its first window ready. close() stops both. */
-export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0]; dataDir: string; profile: string; prefs?: Record<string, string | number | boolean>; env?: Record<string, string> }): Promise<LaunchedRessac & { amo: FakeAmo }> {
+/**
+ * A fake AMO, then Ressac launched against it (fake keys), in the chrome context with its first window ready. close() stops both.
+ * The agent in `mode` (Atelier by default: its extensions run only there, masking Task 15).
+ */
+export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0]; dataDir: string; profile: string; prefs?: Record<string, string | number | boolean>; env?: Record<string, string>; mode?: "browser" | "workshop" }): Promise<LaunchedRessac & { amo: FakeAmo }> {
   const amo = await startFakeAmo(o.amo);
   let w: LaunchedRessac;
   try {
@@ -49,6 +52,7 @@ export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0
   }
   await w.marionette.setContext("chrome");
   await waitFor(w.marionette, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  await dispatch(w.marionette, { type: "chooseAgentMode", mode: o.mode ?? "workshop" });
   return { ...w, amo, close: () => w.close().finally(() => amo.close()) };
 }
 

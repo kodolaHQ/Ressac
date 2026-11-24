@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, constants } from "node:fs";
 import { lstat, open, readdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -121,6 +122,21 @@ export async function readTweaks(s: Extract<SiteRead, { declaration: Declaration
   const output: TweaksRead = { js: {}, css: {} };
   wanted.forEach((w, i) => (output[w.kind][w.file] = r.files[i]!.text));
   return output;
+}
+
+/** The tweak files' fingerprint the workspace lock records (`site:<id>`): files in name order, js then css. */
+export function tweaksHash(t: TweaksRead): string {
+  const sorted = (r: Record<string, string>) => Object.keys(r).sort().map((k) => [k, r[k]]);
+  return createHash("sha256").update(JSON.stringify([sorted(t.js), sorted(t.css)])).digest("hex");
+}
+
+/**
+ * While the workspace is locked, tweaks that are not exactly the ones recorded at the lock (changed, or new) are not
+ * injected: the app opens as if it had none. An unreadable lock counts as locked with nothing recorded.
+ */
+export function tweaksPaused(lock: { info(): { codes: Record<string, string> } | null }, id: string, t: TweaksRead): boolean {
+  const info = lock.info();
+  return info !== null && info.codes[`site:${id}`] !== tweaksHash(t);
 }
 
 /**

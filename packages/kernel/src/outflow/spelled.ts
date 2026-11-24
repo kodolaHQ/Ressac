@@ -30,11 +30,11 @@ const WORD_MAX = Math.max(...Object.keys(DIGIT_WORDS).map((w) => w.length));
 const TOKEN_MAX = 200;
 
 // Lowercase, no apostrophes, accents removed after a Latin or Greek letter only: Indic vowel signs are part of their letters.
-const fold = (s: string) =>
+export const fold = (s: string) =>
   s.toLowerCase().replace(/['\u2019\u02bc]/g, "").normalize("NFD").replace(/([\p{Script=Latin}\p{Script=Greek}])\p{M}+/gu, "$1").normalize("NFC");
 
 /** The ASCII value of a decimal digit of any script: Unicode keeps each script's 0-9 contiguous, runs start at 0. */
-function ascii(d: string): string {
+export function ascii(d: string): string {
   const cp = d.codePointAt(0)!;
   let k = 0;
   while (/\p{Nd}/u.test(String.fromCodePoint(cp - k - 1))) k++;

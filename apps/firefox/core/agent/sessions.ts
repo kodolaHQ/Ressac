@@ -138,6 +138,8 @@ export class SessionsAgent {
       onSend?: (f: WindowId) => void;
       /** The engine a new session of `profile` would use, as a comparable key. */
       engineOf?: (profile: string) => string;
+      /** Ressac's own texts (prefills) as written to the window's running session: masked with its table. */
+      mask?: (f: WindowId, text: string) => string;
     },
   ) {}
 
@@ -349,9 +351,11 @@ export class SessionsAgent {
     e.prefill = p;
   }
 
-  private writePrefill(f: WindowId, s: SessionLike, p: NonNullable<Entry["prefill"]>): void {
+  /** `typed`: keys the user typed while the agent woke, written as they are (what is typed is never masked). */
+  private writePrefill(f: WindowId, s: SessionLike, p: NonNullable<Entry["prefill"]>, typed = false): void {
     p.written?.();
-    s.write(p.text);
+    // Masked here, not when queued: the window's session (and its label table) exists only once it runs.
+    s.write(typed ? p.text : (this.o.mask?.(f, p.text) ?? p.text));
     if (!p.submit) return;
     // Enter apart from the text: in the same write, the agent's TUI takes it as a pasted newline, not a send.
     setTimeout(() => {
@@ -389,7 +393,7 @@ export class SessionsAgent {
         if (!queue.length) return;
         for (const m of queue) {
           if (e.session !== s || !s.active) return;
-          this.writePrefill(f, s, m);
+          this.writePrefill(f, s, m, m !== p);
           // Its Enter goes first (writePrefill), then the next message.
           if (m.submit) await new Promise((r) => setTimeout(r, 2 * SUBMIT_DELAY_MS));
         }

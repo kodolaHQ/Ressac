@@ -3,10 +3,13 @@
   import { onMount, tick, untrack } from "svelte";
   import { UNLOCK_REASON_LENGTH } from "../../shared/extensions-messages";
   import { siteOf, type PendingRequest, type TabId } from "../../shared/model";
+  import { LABELS } from "../../../../packages/kernel/src/mask/table";
   import { api } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import ExtensionRequest from "./ExtensionRequest.svelte";
   import DevToolsRequest from "./DevToolsRequest.svelte";
+  import MaskRequest from "./MaskRequest.svelte";
+  import MaskReveal from "./MaskReveal.svelte";
   import FrozenBackground from "./FrozenBackground.svelte";
 
   /** `ongletId`: the page shown at opening, captured for the background (null: none, or a panel hides it). */
@@ -47,6 +50,9 @@
   );
   const agentReason = $derived((request.reason ?? "").slice(0, UNLOCK_REASON_LENGTH));
   const agentAddress = $derived(request.permissions.includes("agent-address"));
+  const masking = $derived(request.permissions.some((p) => p.startsWith("mask-")));
+  /** A masked handle in the address (`⟨id-…⟩`): « Voir l'adresse » shows it with the values, here only. */
+  const addressLabels = $derived(agentAddress ? [...new Set(request.origin.match(LABELS) ?? [])].slice(0, 10) : []);
   const site = $derived(siteOf(request.origin));
   /** The address card's « Pourquoi on me demande ça ? » explanation, closed again for each request. */
   let why = $state(false);
@@ -148,11 +154,16 @@
               ? "home-request-label-console"
               : agentAddress
                 ? "home-request-label-address"
-                : "home-request-label",
+                : masking
+                  ? `home-request-label-${request.permissions[0]}`
+                  : "home-request-label",
     )}
   >
     {#key request.id}
-      {#if devTools}
+      {#if masking}
+        <!-- One component per card: « Voir » left on never carries over to the next card's values. -->
+        {#key request.id}<MaskRequest request={request} />{/key}
+      {:else if devTools}
         <DevToolsRequest request={request} />
       {:else if extension}
         {#if request.extension}
@@ -178,6 +189,7 @@
         <div class="reading" data-testid="address-request">
           <p>{t("home-request-label-address")}</p>
           <p class="address" data-testid="address-request-url">{request.origin}</p>
+          {#if addressLabels.length}<MaskReveal text={request.origin} labels={addressLabels} see="home-request-mask-see-address" hide="home-request-mask-hide-address" />{/if}
           {#if agentReason}<p class="reason">{t("home-request-address-reason", { reason: agentReason })}</p>{/if}
           {#if request.danger}<p class="reason danger" role="alert" data-testid="address-request-danger">{t("home-request-address-danger", { danger: request.danger.slice(0, UNLOCK_REASON_LENGTH) })}</p>{/if}
           <button class="why-toggle" data-testid="address-request-why" aria-expanded={why} aria-controls="address-request-why" onclick={() => (why = !why)}>{t("home-request-why")}</button>

@@ -3,6 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import type { AgentPanelState } from "../../shared/api";
 import { api } from "../state.svelte";
+import { labelsOn } from "./terminalLabels";
 
 /**
  * The window's agent terminal: **a single** xterm, subscribed only once to the session's data. The side panel and
@@ -12,6 +13,56 @@ import { api } from "../state.svelte";
 
 /** What the window's agent shows (preparing, active, error…), the same for all hosts. */
 export const agent = $state<{ state: AgentPanelState; busy: boolean }>({ state: { state: "preparing" }, busy: false });
+
+/**
+ * Ressac's bubble beside the terminal, in the host showing it (MaskBubble): a label's value revealed here only, or a
+ * paste held until the user chooses. Never written to the session; dropped as soon as it hides.
+ */
+export type Bubble =
+  | { kind: "reveal"; host: HTMLElement; value: string | null }
+  | { kind: "paste"; host: HTMLElement; names: string[] | null; masked: string | null; original: string };
+export const bubble = $state<{ current: Bubble | null }>({ current: null });
+/** Each click supersedes the previous one still waiting on the host; a dismissal drops it too. */
+let asked = 0;
+/**
+ * Each paste supersedes the previous one; a dismissal (a new session, the terminal moving) does not: a paste waiting on
+ * the host is kept until its answer, then written or shown in the bubble where the terminal is then.
+ */
+let pastes = 0;
+export function dismissBubble(): void {
+  asked++;
+  bubble.current = null;
+}
+
+/** A label clicked in the terminal: its value, from this window's own conversation, in the bubble; the agent learns nothing. */
+async function reveal(label: string): Promise<void> {
+  const n = ++asked;
+  const value = await api.agent.revealLocal(label);
+  const host = hosts.at(-1);
+  if (n === asked && host) bubble.current = { kind: "reveal", host, value };
+}
+
+/** A paste or a drop, held: written at once when it hides nothing, else only on the user's choice in the bubble. */
+async function holdPaste(original: string): Promise<void> {
+  const n = ++pastes;
+  const r = await api.agent.maskPaste(original);
+  const host = hosts.at(-1);
+  if (n !== pastes || !terminal || !host) return;
+  // A reveal still waiting must not cover the paste's bubble.
+  asked++;
+  if (r && !r.names.length) return terminal.paste(original);
+  // The host could not check it (r null): nothing goes until « Coller en clair ».
+  bubble.current = { kind: "paste", host, names: r?.names ?? null, masked: r?.text ?? null, original };
+}
+
+/** The bubble's answer: the masked text or the original goes to the agent as a paste. */
+export function choosePaste(masked: boolean): void {
+  const b = bubble.current;
+  dismissBubble();
+  if (b?.kind !== "paste") return;
+  const text = masked ? b.masked : b.original;
+  if (text !== null) terminal?.paste(text);
+}
 
 /** The agent counts as answering while its output flows; this long a silence ends the answer. */
 const BUSY_QUIET_MS = 900;
@@ -47,7 +98,11 @@ const hosts: HTMLElement[] = [];
 
 // A restarting session (Relancer, profile change) clears the previous one's screen.
 const endState = api.agent.onState((e) => {
-  if (e.state === "preparing" && agent.state.state !== "preparing") terminal?.reset();
+  if (e.state === "preparing" && agent.state.state !== "preparing") {
+    terminal?.reset();
+    // Another conversation: its labels are not this one's.
+    dismissBubble();
+  }
   agent.state = e;
 });
 let dataEnd: (() => void) | undefined;
@@ -82,6 +137,11 @@ function create(hostName: HTMLElement): void {
   });
   // ⌘C copies the selection: in the browser's chrome the copy command never reaches xterm's hidden textarea.
   terminal.attachCustomKeyEventHandler((e) => {
+    // Échap closes Ressac's bubble first, never reaching the agent while one shows.
+    if (e.key === "Escape" && bubble.current) {
+      if (e.type === "keydown") dismissBubble();
+      return false;
+    }
     if (e.type !== "keydown" || !e.metaKey || e.key !== "c" || !terminal!.hasSelection()) return true;
     void navigator.clipboard.writeText(terminal!.getSelection()).catch(() => {});
     return false;
@@ -101,6 +161,29 @@ function create(hostName: HTMLElement): void {
   });
   adjustment = new FitAddon();
   terminal.loadAddon(adjustment);
+  // Every paste path (⌘V, the context menu, a drop) is held before xterm sees it: captured on its parent, so xterm's own
+  // paste listeners (textarea and element) never run and no original reaches the agent before the user's choice.
+  const hold = (e: Event, data: DataTransfer | null) => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const text = data?.getData("text/plain");
+    if (text) void holdPaste(text);
+  };
+  element.addEventListener("paste", (e) => hold(e, e.clipboardData), true);
+  element.addEventListener("drop", (e) => hold(e, e.dataTransfer), true);
+  element.addEventListener("dragover", (e) => e.preventDefault(), true);
+  // The labels the agent prints: underlined, a click shows their value in the bubble.
+  terminal.registerLinkProvider({
+    provideLinks(y, callback) {
+      const row = terminal!.buffer.active.getLine(y - 1);
+      const links = (row ? labelsOn(row) : []).map(({ label, start, end }) => ({
+        range: { start: { x: start + 1, y }, end: { x: end + 1, y } },
+        text: label,
+        activate: () => void reveal(label),
+      }));
+      callback(links.length ? links : undefined);
+    },
+  });
   terminal.open(element);
   adjustment.fit();
   terminal.onData((d) => api.agent.write(d));
@@ -116,6 +199,7 @@ function create(hostName: HTMLElement): void {
  * the previous host when the returned function is called.
  */
 export function attacher(hostName: HTMLElement): () => void {
+  dismissBubble();
   hosts.push(hostName);
   if (!element) create(hostName);
   else hostName.append(element);
@@ -124,6 +208,7 @@ export function attacher(hostName: HTMLElement): () => void {
     const i = hosts.lastIndexOf(hostName);
     if (i < 0) return;
     hosts.splice(i, 1);
+    dismissBubble();
     const previous = hosts.at(-1);
     if (i === hosts.length && previous && element) {
       previous.append(element);

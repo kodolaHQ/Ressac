@@ -20,6 +20,14 @@ import { AccessPolicy } from "./access/policy.js";
 import { SearchSessions } from "./search/sessions.js";
 import type { BrowserBridge } from "./mcp/bridge.js";
 import type { ExtensionsTools } from "./mcp/extensions.js";
+import { Masker } from "./mask/masker.js";
+import { PassportStore } from "./mask/passport.js";
+import type { PassportEntry } from "./mask/passport-fields.js";
+import { WorkspaceLock } from "./mask/lock.js";
+import { changedFileDiff, changedFiles, liftWorkspace, listQuarantine, restoreQuarantined, type ChangedFile, type LiftChoice, type QuarantinedFile } from "./mask/lift.js";
+import type { DiffFile } from "./review/repo.js";
+import { CoveredConversations } from "./mask/covered.js";
+import { readSites, readTweaks, tweaksHash } from "./sites/read.js";
 import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow, type AgentActivity } from "./mcp/server.js";
 import { createRecaps, type Recaps } from "./recaps/recaps.js";
 import type { ProfileFiles } from "./mcp/devtools.js";
@@ -36,7 +44,7 @@ import { giveGrant, readGrants, removeGrant } from "./widgets/grants.js";
 import { approveReads, codeHash, removeReads } from "./widgets/reads.js";
 import { readAction, readActions, type ReadAction } from "./actions/read.js";
 import { lastResult, readResult, forgetGoneActions, deleteDataAction } from "./actions/data.js";
-import { FileActions, type ActionsState, type ActionLaunch } from "./actions/file.js";
+import { FileActions, type ActionsState, type ActionLaunch, type CodeCheck } from "./actions/file.js";
 import { ID_ACTION } from "./actions/schemas.js";
 import { BUILTIN_COMPONENTS } from "./pages/catalog.js";
 import { readAgentComponents } from "./pages/agent-components.js";
@@ -205,7 +213,7 @@ export type PageAction = {
 export interface KernelActions {
   list(): Promise<ReadAction[]>;
   /** Launches the action (trigger « manuelle » by default); if it is running or waiting already, returns that one (`deja`). */
-  launch(id: string, o: { input?: string; trigger?: Execution["trigger"] }): ActionLaunch;
+  launch(id: string, o: { input?: string; trigger?: Execution["trigger"]; check?: CodeCheck }): ActionLaunch;
   stop(id: string): void;
   direct(): ActionsState;
   onLive(callback: (e: ActionsState) => void): () => void;
@@ -232,6 +240,26 @@ export interface Kernel {
   search: SearchSessions;
   /** What the agent read and the user typed, per window (outflow rules); the host feeds the typed side. */
   outflow: Outflow;
+  /** The label tables of the conversations: every MCP result leaves masked through them (spec § 5.3). */
+  masker: Masker;
+  /** The user's passports the masker applies (the host's store when it gave one, else the kernel's own). */
+  passport: PassportStore;
+  /**
+   * The profile's whole passport (design § 5.3). A search form no profile had marks every open conversation that already
+   * masked a text « non couverte » and takes its Claude conversation out of covered.json; `uncovered`: how many.
+   */
+  replacePassport(profile: string, entries: readonly PassportEntry[]): Promise<{ uncovered: number }>;
+  /** Locked by a reveal until the user lifts it (spec § 3); a lift re-applies the container's network. */
+  workspaceLock: WorkspaceLock;
+  /** Lifting the workspace lock (spec § 3): what changed since the reveal, the lift itself, the quarantine. */
+  masking: {
+    changedFiles(): Promise<ChangedFile[]>;
+    /** A changed file's start, for « Garder les fichiers et déverrouiller ». */
+    file(path: string): Promise<DiffFile>;
+    /** Refused while a conversation is open or opening; the sessions that open meanwhile wait for it. */
+    lift(o: { choice: LiftChoice; remove?: string[] }): Promise<void>;
+    quarantine: { list(): Promise<QuarantinedFile[]>; restore(id: string): Promise<void> };
+  };
   /** Name of the agent of this kernel's profile (the one that holds the accesses). */
   agent: string;
   /** The Mac port of the MCP server: the only one besides the relay's that the agent's container may reach. */
@@ -315,6 +343,11 @@ export async function createKernel(o: {
   workshop?: Workshop;
   /** MCP tools of the applications (launch, stop, log). */
   apps?: AppsTools;
+  /**
+   * At a reveal, after the lock file and the network cut, before the value leaves: what the browser stops while the
+   * workspace is locked (the agent's apps, its extensions, its pages' CDNs and WebRTC). A failure refuses the reveal.
+   */
+  onLock?: () => Promise<void>;
   /** Wraps the sweep before a first session (stopAgentProcesses): the host stops its apps cleanly around it. */
   aroundSweep?: (sweep: () => Promise<void>) => Promise<void>;
   /** Ports on which a local demo opened by the agent is « built » (by default those of the container, containerPortRange). */
@@ -333,6 +366,11 @@ export async function createKernel(o: {
   actionsFolder: string;
   /** Folder of the recaps the agent publishes (the browser gives `<profil>/recaps`). Absent: no recap tool. */
   recapsFolder?: string;
+  /**
+   * Folder of the workspace lock (`lock.json`), outside the workspace and never mounted (the browser gives
+   * `<profil>/masking`). The host's container network reads the same file (AgentNetwork.locked).
+   */
+  maskingFolder: string;
   /** Length of a day for the recap sweep (default a real day; tests shorten it). */
   recapsDayMs?: number;
   /** Called with the recap's id after each successful publication. */
@@ -349,6 +387,8 @@ export async function createKernel(o: {
   onChange?: () => void;
   /** Tests only: the harvests may read local addresses (the test server). */
   localAddresses?: boolean;
+  /** The host's passports, created before any kernel so a restart keeps them (ruling F1); absent: an empty store of its own. */
+  passport?: PassportStore;
   /** Tests only: the base of the DuckDuckGo searches (a recorded page served locally). */
   searchUrl?: string;
   /** End notification of a watch that has new items (the browser shows it, see SchedulerOptions). */
@@ -423,7 +463,7 @@ export async function createKernel(o: {
       if ("error" in a) return { name: id, account: true, input: null };
       return { name: a.declaration.name, account: grant || a.declaration.sources.account.length > 0, input: a.declaration.input?.label ?? null };
     },
-    launch: (id, input) => actions.launch(id, { ...(input !== undefined ? { input: input } : {}), trigger: "agent" }).end,
+    launch: (id, input, check) => actions.launch(id, { ...(input !== undefined ? { input: input } : {}), trigger: "agent", ...(check ? { check } : {}) }).end,
     runs: (id) => actions.runs(id),
     async run(id, execution) {
       const e = await actions.run(id, execution);
@@ -432,7 +472,9 @@ export async function createKernel(o: {
       return { ...e, plan: r?.plan ?? null };
     },
   };
-  const recaps = o.recapsFolder ? createRecaps({ folder: o.recapsFolder }) : null;
+  const workspaceLock = new WorkspaceLock(join(o.maskingFolder, "lock.json"));
+  const covered = new CoveredConversations(join(o.maskingFolder, "covered.json"));
+  const recaps = o.recapsFolder ? createRecaps({ folder: o.recapsFolder, locked: () => workspaceLock.locked() }) : null;
   // A recap no one looked at during 7 days of use is forgotten; one on screen never is.
   const dayMs = o.recapsDayMs ?? 86_400_000;
   const sweepRecaps = async () => {
@@ -455,7 +497,7 @@ export async function createKernel(o: {
   const notes = new BrowsingNotes(join(paths.internal, "browsing-notes.md"), () => {
     const base = templates ?? DEFAULT_TEMPLATES;
     return readFile(join(base, loc(), "browsing-notes.md"), "utf8").catch(() => readFile(join(base, "en", "browsing-notes.md"), "utf8"));
-  });
+  }, undefined, () => workspaceLock.locked());
   await notes.ensure().catch((e) => console.error("[ressac] browsing notes:", e));
   // Fail closed: an instruction file that cannot be read or put back never lets a Navigateur session start.
   const instructionsIo = (e: unknown): never => {
@@ -468,7 +510,42 @@ export async function createKernel(o: {
     loc,
   );
   const outflow = new Outflow();
+  const passport = o.passport ?? new PassportStore({ localAddresses: o.localAddresses === true });
+  const masker = new Masker({ locale: loc, workspace: workspaceLock, passport });
+  /** Every widget's and action's code as it is at the first lock: code changed after it stays paused while locked. */
+  const currentCodes = async (): Promise<Record<string, string>> => {
+    const widgets = (await readHome(paths, widgetsFolder, loc(), false)).widgets;
+    const entries = await Promise.all([
+      ...widgets.map(async (w) => [`widget:${w.id}`, await codeHash(w.folder)] as const),
+      ...(await readActions(paths)).map(async (a) => [`action:${a.id}`, await codeHash(a.folder)] as const),
+      // The site apps' tweaks as the host injects them (host/sites.ts tweakFiles checks tweaksPaused).
+      ...(await readSites(paths, { localAddresses: o.localAddresses === true })).map(async (site) => {
+        const t = "error" in site ? null : await readTweaks(site).catch(() => null);
+        return t && !("error" in t) ? ([`site:${site.id}`, tweaksHash(t)] as const) : null;
+      }),
+    ]);
+    return Object.fromEntries(entries.filter((e) => e !== null));
+  };
+  const codeChanged = async (key: string, folder: string | null) => {
+    const info = workspaceLock.info();
+    return info !== null && (folder === null || info.codes[key] !== (await codeHash(folder)));
+  };
   const server = await startMcpServer({
+    masker: masker,
+    // Before the value leaves: the lock file, the stamp the lift compares files with, then the network cut to the model
+    // domains (the host's AgentNetwork reads the same file). Any failure refuses the reveal.
+    workspaceLock: {
+      async lock({ names }) {
+        await workspaceLock.lock({ names, codes: await currentCodes() });
+        await workshop.stampReveal();
+        await workshop.secureNetwork();
+        await o.onLock?.();
+        // The revealing conversation is the only one open (a reveal is refused otherwise): resumed later, it reads « non couverte ».
+        for (const c of claudeOpen.values()) await covered.remove(c);
+      },
+    },
+    // The revealing session is one of them: any second one, open or opening, shares the container (a reveal is refused).
+    otherSessions: () => openSessions.size + opening > 1,
     bridge: o.bridge,
     policy: policy,
     search: search,
@@ -559,6 +636,7 @@ export async function createKernel(o: {
     },
     // Kept apart from `demarrage` (which ouvrirSessionAgent resets to null): the harvests wait for the first startup.
     ready: workshopReady,
+    paused: (w, folder) => codeChanged(`widget:${w.id}`, folder ?? w.folder),
     ...(o.clock ? { clock: o.clock } : {}),
     ...(o.localAddresses ? { localAddresses: true } : {}),
     // A single pacing for the whole application (all kernels, tries included): one search at a time, one
@@ -579,6 +657,7 @@ export async function createKernel(o: {
     bridge: o.bridge,
     dispatcher: aiDispatcher,
     ready: workshopReady,
+    paused: async (id, folder) => workspaceLock.locked() && codeChanged(`action:${id}`, folder ?? (await readAction(paths, id))?.folder ?? null),
     ...(o.clock ? { clock: o.clock } : {}),
     ...(o.localAddresses ? { localAddresses: true } : {}),
     pacing: DEFAULT_PACING,
@@ -595,7 +674,7 @@ export async function createKernel(o: {
   });
   const actions: KernelActions = {
     list: () => readActions(paths),
-    launch: (id, l) => fileActions.launch(id, { input: l.input ?? null, trigger: l.trigger ?? "manual" }),
+    launch: (id, l) => fileActions.launch(id, { input: l.input ?? null, trigger: l.trigger ?? "manual", ...(l.check ? { check: l.check } : {}) }),
     stop: (id) => void fileActions.stop(id),
     direct: () => fileActions.direct(),
     onLive(callback) {
@@ -661,9 +740,16 @@ export async function createKernel(o: {
 
   // Cleanups of the sessions with a window still open, also done at the kernel's shutdown.
   const openSessions = new Set<() => Promise<void>>();
+  /** The Claude conversation id of each open session, by session (a reveal or a passport addition uncovers it). */
+  const claudeOpen = new Map<string, string>();
+  // A lift (or a lock) re-applies the container's network: a lift gives the code and user domains back.
+  const offLock = workspaceLock.onChange(() => void workshop.secureNetwork().catch((e) => console.error("[ressac] network after a workspace lock change:", e)));
   // Sessions being opened, and the sweep the first of them started: the others wait for it, never run after it.
   let opening = 0;
   let sweep: Promise<void> = Promise.resolve();
+  /** The lift under way: a session opening meanwhile waits for it, so the agent never runs beside the moves. */
+  let lifting: Promise<void> | null = null;
+  let liftingKey = "";
 
   return {
     paths: paths,
@@ -671,6 +757,39 @@ export async function createKernel(o: {
     policy: policy,
     search: search,
     outflow: outflow,
+    masker: masker,
+    passport,
+    async replacePassport(profile, entries) {
+      const { added } = passport.replace(profile, entries);
+      if (!added.length) return { uncovered: 0 };
+      const touched = masker.touchedSessions();
+      for (const s of touched) {
+        masker.markUncovered(s, added.map((id) => ({ profile, id })));
+        const c = claudeOpen.get(s);
+        // A failed write only makes a later resume of it read as covered: said, never thrown at the save.
+        if (c) await covered.remove(c).catch((e) => console.error("[ressac] covered conversations:", (e as Error)?.name));
+      }
+      return { uncovered: touched.length };
+    },
+    workspaceLock: workspaceLock,
+    masking: {
+      changedFiles: () => changedFiles(workshop),
+      file: (path) => changedFileDiff(workshop, path),
+      lift({ choice, remove }) {
+        // The same lift asked twice (a double press) shares the run; another choice meanwhile is refused.
+        const key = JSON.stringify([choice, remove ?? []]);
+        if (lifting) return key === liftingKey ? lifting : Promise.reject(new Error(say(loc(), "kernel-mask-lift-busy")));
+        const sessionOpen = () => openSessions.size + opening > 0;
+        liftingKey = key;
+        lifting = liftWorkspace({ lock: workspaceLock, workshop, folder: o.maskingFolder, choice, ...(remove ? { remove } : {}), sessionOpen, locale: loc, ...(o.aroundSweep ? { around: o.aroundSweep } : {}) }).finally(() => (lifting = null));
+        return lifting;
+      },
+      quarantine: {
+        list: () => listQuarantine(o.maskingFolder),
+        restore: (id) =>
+          restoreQuarantined({ folder: o.maskingFolder, workshop, id, locale: loc, busy: async () => openSessions.size + opening > 0 || lifting !== null || (await workshop.agentRunning()) }),
+      },
+    },
     agent: profile.name,
     mcpPort: server.port,
     workshopState: () => workshop.state(),
@@ -702,6 +821,7 @@ export async function createKernel(o: {
       } catch (e) {
         throw new WorkshopError("started", (e as Error).message);
       }
+      while (lifting) await lifting.catch(() => {});
       // No session running: nothing the agent left behind keeps running into this conversation (stopAgentProcesses).
       if (openSessions.size === 0 && opening === 0) sweep = o.aroundSweep ? o.aroundSweep(() => workshop.stopAgentProcesses()) : workshop.stopAgentProcesses();
       opening++;
@@ -713,6 +833,7 @@ export async function createKernel(o: {
       const clean = (): Promise<void> => {
         if (sessionToken === undefined) return Promise.resolve();
         server.closeSession(sessionToken);
+        masker.close(id);
         sessionToken = undefined;
         return rm(configSession, { force: true }).catch((e) => console.error("[ressac] session config deletion:", e));
       };
@@ -736,7 +857,15 @@ export async function createKernel(o: {
         // The outflow's reads are kept: a profile switched back resumes a conversation with its reads in context (over-retaining only over-blocks); the host forgets them when the window closes.
         // What the user typed is theirs to send for this conversation only: a new one forgets it (a profile switch over-blocks, acceptable).
         if (win !== undefined && !resume) outflow.forgetTyped(win);
-        if (win !== undefined) sessionToken = server.openSession(win, chosen.name);
+        const byId = conversation !== undefined && program === "claude" && /^[0-9a-f-]{36}$/.test(conversation);
+        const resumed = resume === true && (byId || chosen.resume !== undefined);
+        if (win !== undefined) {
+          sessionToken = server.openSession(win, chosen.name, id);
+          // A resume is covered only if its conversation started under masking: a Codex resume never is (no id).
+          masker.open(id, win, { uncovered: resumed && !(byId && covered.has(conversation!)) });
+        }
+        // A failed write only makes a later resume of it read as not covered.
+        if (byId && !resumed) await covered.add(conversation!).catch((e) => console.error("[ressac] covered conversations:", (e as Error).message));
         let mcpConfig: string;
         let env: Record<string, string> = {};
         if (chosen.mcpConfig === "codex-toml") {
@@ -751,7 +880,6 @@ export async function createKernel(o: {
         // Reply language, for the shipped programs only (a custom profile command is the user's). Read now: an open session keeps its language.
         const reply = replyLanguageLine(loc());
         const language = program === "claude" ? ["--append-system-prompt", reply] : program === "codex" ? ["-c", `developer_instructions=${JSON.stringify(reply)}`] : [];
-        const byId = conversation !== undefined && program === "claude" && /^[0-9a-f-]{36}$/.test(conversation);
         const built = buildCommand(chosen, resume && chosen.resume && !byId ? "resume" : "interactive", { mcpConfig: mcpConfig });
         const conversationArgs = byId ? [resume ? "--resume" : "--session-id", conversation] : [];
         // Right after the program: the profile's own arguments keep their order (the MCP config stays last).
@@ -771,8 +899,10 @@ export async function createKernel(o: {
         const command = [built[0]!, ...language, ...conversationArgs, ...claudeNoShell, ...built.slice(1), ...codexNoShell, ...(extra?.args ?? [])];
         const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols, rows, env: env, stopRemote: () => workshop.stopSession(id) });
         openSessions.add(clean);
+        if (byId) claudeOpen.set(id, conversation!);
         session.onEnd(() => {
           openSessions.delete(clean);
+          claudeOpen.delete(id);
           void clean();
         });
         return session;
@@ -838,6 +968,7 @@ export async function createKernel(o: {
       report();
     },
     async stop() {
+      offLock();
       if (sweeper) clearInterval(sweeper);
       tracking?.stop();
       await Promise.all([...openSessions].map((clean) => clean()));

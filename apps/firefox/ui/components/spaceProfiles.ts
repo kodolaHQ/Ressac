@@ -34,14 +34,26 @@ export function losesConnections(spaces: Space[], space: Space): boolean {
   return space.profile !== DEFAULT_PROFILE && !spaces.some((e) => e.id !== space.id && e.profile === space.profile);
 }
 
-/** What deleting `space` (with `tabs` open tabs) loses, or null when it loses nothing and needs no confirmation. */
-export function deletionLosses(spaces: Space[], space: Space, tabs: number): { tabs: number; logins: boolean; pinned: number; folders: number } | null {
-  const lost = { tabs, logins: losesConnections(spaces, space), pinned: space.pinned.length, folders: space.folders.length };
+/**
+ * What deleting `space` (with `tabs` open tabs) loses, or null when it loses nothing and needs no confirmation.
+ * `passport`: the entries of its profile's passport (`passportCount`), counted only when the profile goes with it.
+ */
+export function deletionLosses(
+  spaces: Space[],
+  space: Space,
+  tabs: number,
+  passportCount = 0,
+): { tabs: number; logins: boolean; pinned: number; folders: number; passport: number } | null {
+  const logins = losesConnections(spaces, space);
+  const lost = { tabs, logins, pinned: space.pinned.length, folders: space.folders.length, passport: logins ? passportCount : 0 };
   return lost.tabs > 0 || lost.logins || lost.pinned > 0 || lost.folders > 0 ? lost : null;
 }
 
-/** Setting space `espaceId` to profile `choix` erases its sign-ins: it leaves a profile it was the last one on. */
-export function choiceLosesConnections(spaces: Space[], spaceId: SpaceId | null, choice: ProfileChoice): boolean {
+/**
+ * Setting space `espaceId` to profile `choix` erases its sign-ins (it leaves a profile it was the last one on), and
+ * with them its passport's `passportCount` entries; null when it loses nothing.
+ */
+export function choiceLosesConnections(spaces: Space[], spaceId: SpaceId | null, choice: ProfileChoice, passportCount = 0): { passport: number } | null {
   const space = spaces.find((e) => e.id === spaceId);
-  return !!space && choice !== space.profile && losesConnections(spaces, space);
+  return !!space && choice !== space.profile && losesConnections(spaces, space) ? { passport: passportCount } : null;
 }

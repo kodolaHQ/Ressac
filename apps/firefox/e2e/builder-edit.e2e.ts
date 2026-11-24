@@ -523,7 +523,7 @@ describe("the workflow builder", () => {
     await writeFile(memory, JSON.stringify({ version: 1, blocks: { tri: { type: "ai.sort", value: { seen: ["a"] } }, textes: { type: "code", value: { seen: ["b"] } } } }));
     await builder("seuil");
     // No block selected: the widget's panel, read only.
-    await waitContains("widget-panel", "Pour changer les sources ou la configuration, demande-le à l'agent.");
+    await waitContains("widget-panel", "Pour changer les sources ou la configuration, demandez-le à l'agent.");
     await waitContains("widget-config", `"url": "${site.url}/liens"`);
 
     await click(m, '[data-testid="node-tri"]');

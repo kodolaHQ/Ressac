@@ -32,12 +32,15 @@ describe("Firefox copy", () => {
 
   it("refusals: a right agent extensions cannot use, or a manifest key that grants a power", () => {
     const right = (n: string) => `Droit non pris en charge par Ressac : ${n}`;
-    const allowed = ["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback"];
+    const allowed = ["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback"];
     expect(firefoxDenial({ version: "1", permissions: allowed }, [])).toEqual([]);
     expect(firefoxDenial({ version: "1", permissions: ["storage", "identity", "notifications", "dns", "find", "activeTab", "https://x.test/*"] }, [])).toEqual(
       ["identity", "notifications", "dns", "find", "activeTab", "https://x.test/*"].map(right),
     );
     expect(firefoxDenial({ version: "1", optional_permissions: ["menus"] }, [])).toEqual([right("menus")]);
+    // Masking: its events carry a sensitive target address before canAccessTab can see it.
+    expect(firefoxDenial({ version: "1", permissions: ["webNavigation"] }, [])).toEqual([right("webNavigation")]);
+    expect(firefoxDenial({ version: "1", optional_permissions: ["webNavigation"] }, [])).toEqual([right("webNavigation")]);
     expect(firefoxDenial({ version: "1", chrome_settings_overrides: {}, protocol_handlers: [], user_scripts: {} }, [])).toEqual(
       ["chrome_settings_overrides", "protocol_handlers", "user_scripts"].map(right),
     );

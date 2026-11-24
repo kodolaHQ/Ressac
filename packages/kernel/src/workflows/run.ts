@@ -44,7 +44,7 @@ import { REPLAY_TOO_BIG } from "./replay.js";
 import type { OutputKind, Owner } from "./schema.js";
 import { WEB_REQUIRED, type ValidWorkflow } from "./validate.js";
 import { workflowBytesHash } from "./read.js";
-import { findSecrets, mask } from "../outflow/detect.js";
+import { findSecrets } from "../outflow/detect.js";
 import { outflowLabel } from "../outflow/outflow.js";
 
 /** The run's process (the `docker run -i` client): its only channel with the kernel is stdin / stdout. */
@@ -136,6 +136,8 @@ export interface WorkflowContext {
   unrestricted?: boolean;
   /** On the staged copy, before anything runs: a refusal text stops the run as `grant-required` with `codeChanged`. */
   checkStaged?(staged: string): Promise<string | null>;
+  /** On the staged copy too: a text while the workspace is locked and this code differs from the lock's (the run stops in error). */
+  lockedCode?(staged: string): Promise<string | null>;
   /** Re-read at each read with an account; null = grant gone. */
   grant(): Promise<{ profile: string } | null>;
   /** The browser refuses the grant's profile (deleted, became private). */
@@ -361,6 +363,8 @@ export async function runWorkflow(
     const stagedWorkflow = await readFile(join(staged, "workflow.json")).then(workflowBytesHash, () => null);
     const refused = stagedWorkflow !== ctx.workflowHash ? say(locale(), "kernel-err-code-changed") : await ctx.checkStaged?.(staged);
     if (refused) return conclude({ t: "stop", status: "grant-required", error: refused, codeChanged: true });
+    const paused = await ctx.lockedCode?.(staged);
+    if (paused) return conclude({ t: "stop", status: "error", error: paused });
     const [cmd, ...argv] = infra.workshop.harvestCommand(ctx.owner, staged, infra.engine, delays.containerS);
     process = (infra.launch ?? defaultLaunch)(cmd!, argv);
   } catch (e) {
@@ -508,7 +512,8 @@ export async function runWorkflow(
     if (searches >= MAX_SEARCHES) throw new Error(SEARCHES_CAP);
     // Rule 1 of the outflow: a secret never leaves in a query. No pause card in a workflow, so the search is refused.
     const secret = findSecrets(request)[0];
-    if (secret) throw new Error(say(locale(), "kernel-outflow-refused", { what: outflowLabel(locale(), secret.kind), masked: mask(secret.value) }));
+    // No part of the value: the run log reaches the agent, and its answer would differ with the value (spec § 9).
+    if (secret) throw new Error(say(locale(), "kernel-outflow-refused", { what: outflowLabel(locale(), secret.kind) }));
     const readHtml = infra.bridge.readHtmlInvisible?.bind(infra.bridge);
     if (!readHtml) throw new Error(SEARCH_UNAVAILABLE);
     searches++;

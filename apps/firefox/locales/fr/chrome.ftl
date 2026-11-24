@@ -182,3 +182,33 @@ chrome-pill-hide = Masquer
 chrome-vim-paused = vim en pause · ⇧Échap pour reprendre
 chrome-host-stopped = Le noyau de l'agent s'est arrêté.
 chrome-display-denied = Affichage refusé : il contient &lt;link&gt;, &lt;meta http-equiv&gt; ou des règles de spéculation, qui feraient sortir des données. Voir guides/widgets.md.
+
+# Touch ID après le « Oui » d'une carte de masquage : macOS l'affiche « Ressac essaie de … ».
+chrome-mask-reauth-reveal = montrer { $name } à l'agent
+chrome-mask-reauth-fill = remplir { $name } sur { $where }
+chrome-mask-reauth-devtools = débloquer les outils de développement sur { $site }
+chrome-mask-reauth-lift = lever le verrou de l'atelier
+chrome-mask-fill-kind = Remplir { $name } sur { $site } ?
+chrome-mask-fill-rows = Remplir { $n } champs sur { $site } avec votre passeport ?
+chrome-mask-fill-row = { $field } : { $name }
+chrome-mask-fill-remember = Retenir { $site } pour { $name }
+chrome-mask-fill-remember-failed = Le site n'a pas pu être retenu.
+chrome-mask-fill-other-profile = Cette donnée vient de votre passeport « { $profile } », pas de celui de cet onglet.
+chrome-mask-fill-missing =
+    Votre passeport n'a pas { $kind ->
+        [prenoms] de prénom
+        [nom_famille] de nom de famille
+        [nom_complet] de nom
+        [naissance] de date de naissance
+        [adresse] d'adresse
+        [adresse_voie] de rue
+        [code_postal] de code postal
+        [ville] de ville
+        [tel] de téléphone
+        [email] d'e-mail
+        [iban] d'IBAN
+        [secu] de numéro de sécu
+        [piece] de numéro de pièce d'identité
+        [plaque] de plaque d'immatriculation
+       *[other] cette donnée
+    }.

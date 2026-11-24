@@ -1,3 +1,4 @@
+import { readActionCode } from "./read.js";
 import type { SpacePaths } from "../paths.js";
 import type { Workshop } from "../container/workshop.js";
 import type { AiDispatcher } from "../ai/dispatcher.js";
@@ -53,13 +54,22 @@ export interface OptionsFileActions {
   stopWaitMs?: number;
   /** Tests: replaces the real run of an action. */
   run?: (o: OptionsAction) => Promise<LaunchResult>;
+  /**
+   * The workspace lock holds and this action's code (in `folder`, its own by default; the staged copy before it runs)
+   * changed since: its runs and trials are skipped (a failure counts as paused).
+   */
+  paused?: (id: string, folder?: string) => Promise<boolean>;
 }
+
+/** An agent launch's check of the code it runs (`readActionCode`), on the staged copy: false refuses the run. */
+export type CodeCheck = (texts: string[]) => Promise<boolean>;
 
 type Request = {
   id: string;
   input: string | null;
   trigger: Execution["trigger"];
   attempt: { origin: string; start: string } | null;
+  check?: CodeCheck;
   ctl: AbortController;
   end: Promise<LaunchResult>;
   since: string;
@@ -87,8 +97,8 @@ export class FileActions {
     this.o = { ...o, clock: o.clock ?? (() => new Date()), run: o.run ?? runAction };
   }
 
-  launch(id: string, o: { input: string | null; trigger: Execution["trigger"] }): ActionLaunch {
-    return this.ask(id, { input: cutInput(o.input), trigger: o.trigger, attempt: null });
+  launch(id: string, o: { input: string | null; trigger: Execution["trigger"]; check?: CodeCheck }): ActionLaunch {
+    return this.ask(id, { input: cutInput(o.input), trigger: o.trigger, attempt: null, ...(o.check ? { check: o.check } : {}) });
   }
 
   /** Builder trial: replays from `depart` with the upstream outputs of run `origine`. */
@@ -137,7 +147,7 @@ export class FileActions {
     await Promise.all(this.running.map((d) => this.o.workshop.deleteHarvest({ type: "action", id: d.id }).catch(() => {})));
   }
 
-  private ask(id: string, o: Pick<Request, "input" | "trigger" | "attempt">): ActionLaunch {
+  private ask(id: string, o: Pick<Request, "input" | "trigger" | "attempt" | "check">): ActionLaunch {
     const existing = this.perAction.get(id);
     // A builder try never stands for a real run: the run starts once the try has ended (it is not visible to stop
     // meanwhile; the next ask, after the try, sees a stop or a deleted action). A try during a run is « already running ».
@@ -208,6 +218,12 @@ export class FileActions {
     this.signalDirect();
   }
 
+  private async stagedCode(d: Request, staged: string): Promise<string | null> {
+    if (this.o.paused && (await this.o.paused(d.id, staged).catch(() => true))) return say(this.locale(), "kernel-mask-run-paused");
+    if (d.check && !(await readActionCode(staged).then(d.check).catch(() => false))) return say(this.locale(), "kernel-err-code-refused");
+    return null;
+  }
+
   private async run(d: Request): Promise<LaunchResult> {
     const start = this.o.clock().toISOString();
     const tracking: DirectAction = { action: d.id, start: start, input: d.input, attempt: d.attempt !== null, step: "workflow", blocks: {} };
@@ -216,6 +232,7 @@ export class FileActions {
     if (!(await this.o.workshop.harvestReady().catch(() => false))) {
       return { status: "failed", error: WORKSHOP_STOPPED_ERROR(this.locale()), kernelError: true };
     }
+    if (this.o.paused && (await this.o.paused(d.id).catch(() => true))) return { status: "failed", error: say(this.locale(), "kernel-mask-run-paused"), kernelError: true };
     const onTrace = (t: TraceAction) => {
       if (d.direct !== tracking) return;
       const b = tracking.blocks[t.block];
@@ -253,6 +270,9 @@ export class FileActions {
         onStep: onStep,
         ...(d.attempt ? { attempt: d.attempt } : {}),
         interrupted: () => this.isStopped,
+        // Checked again on the copy that runs: a shell could swap the files between the first check and the staging. The
+        // agent's code check reads that copy too: what it passed is what runs.
+        ...(this.o.paused || d.check ? { lockedCode: (staged: string) => this.stagedCode(d, staged) } : {}),
         ...(this.o.localAddresses ? { localAddresses: true } : {}),
         ...(this.o.pacing ? { pacing: this.o.pacing } : {}),
         ...(this.o.searchUrl !== undefined ? { searchUrl: this.o.searchUrl } : {}),

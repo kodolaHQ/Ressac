@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, expect, test } from "vitest";
 import { KEY_INVALID, SiteMemory, NON_JSON_VALUE } from "../../../packages/kernel/src/index";
-import { createPositions, memoryOp, MEMORY_DENIAL } from "../host/site-memory";
+import { createPositions, memoryOp, MEMORY_DENIAL, MEMORY_LOCKED } from "../host/site-memory";
 
 // The site memory, on the host's memoireOp: the sender checks
 // (sub-frame, sign-in window, page off the site, no grant) are the chrome's, in site-frames.test.ts.
@@ -27,6 +27,15 @@ test("remember takes the address the chrome gives; read, forget", async () => {
   expect(await op({ op: "read", key: "absente" })).toEqual({ ok: true, value: null });
   expect(await op({ op: "forget", key: "encours.the-bear" })).toEqual({ ok: true });
   expect(memory.content().values).toEqual({});
+});
+
+test("while the workspace is locked: remember and forget are refused, nothing changes; read still answers", async () => {
+  expect(await op({ op: "remember", key: "k", value: 1 })).toEqual({ ok: true });
+  const locked = (d: object) => memoryOp(async () => memory, { id: "vidola", url: "/series/x", ...d }, () => true);
+  expect(await locked({ op: "remember", key: "k", value: 2 })).toEqual({ ok: false, error: MEMORY_LOCKED });
+  expect(await locked({ op: "forget", key: "k" })).toEqual({ ok: false, error: MEMORY_LOCKED });
+  expect(await locked({ op: "read", key: "k" })).toEqual({ ok: true, value: 1 });
+  expect(memory.content().values.k).toMatchObject({ value: 1 });
 });
 
 test("the memory's named refusals (key, non-JSON value)", async () => {
