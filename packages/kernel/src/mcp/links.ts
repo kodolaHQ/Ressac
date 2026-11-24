@@ -58,7 +58,7 @@ export const withoutHash = (url: string) => {
  * zone, the page itself and links without text dropped, main content first then by zone, document order within a zone.
  */
 export function rankLinks(links: readonly PageLink[], pageUrl: string): PageLink[] {
-  const self = withoutHash(pageUrl);
+  const self = withoutHash(unwrapLink(pageUrl));
   const best = new Map<string, PageLink & { rank: number; order: number }>();
   links.forEach((l, order) => {
     const text = l.text.trim();

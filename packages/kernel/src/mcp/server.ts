@@ -1307,7 +1307,7 @@ export function createToolsServer(
     "fill_field",
     {
       description:
-        "Remplit un champ d'un onglet (`field` : son numéro dans « Champs » de la dernière lecture ; entre deux champs semblables, prends celui qui n'est pas « hors de l'écran » : c'est celui que l'utilisateur regarde). `value` : ton texte, où le navigateur remplace chaque étiquette ⟨type-…⟩ " +
+        "Remplit un champ d'un onglet (`field` : son numéro dans « Champs » de la dernière lecture ; entre deux champs semblables, prends celui qui n'est pas « hors de l'écran » : c'est celui que l'utilisateur regardait à ta lecture, un indice, pas une règle). `value` : ton texte, où le navigateur remplace chaque étiquette ⟨type-…⟩ " +
         "par sa vraie valeur sans qu'elle passe par toi ; ou `saved_login: true` : l'identifiant et le mot de passe que l'utilisateur a enregistrés pour ce site. " +
         "Un seul appel `saved_login` sur le champ identifiant ou mot de passe d'un formulaire de connexion remplit les deux. " +
         "`passport` : une sorte de donnée du passeport de l'utilisateur (prenoms, nom_famille, nom_complet, naissance, adresse, adresse_voie, code_postal, ville, tel, email, iban, secu, piece, plaque), " +

@@ -65,4 +65,6 @@ test("tracking parameters are dropped from a link (Google's srsltid, utm_*…), 
   expect(withoutTracking("https://ex.fr/?utmost=1&source=2")).toBe("https://ex.fr/?utmost=1&source=2");
   expect(withoutTracking("pas une adresse")).toBe("pas une adresse");
   expect(rankLinks([{ text: "Ressac", url: "https://getressac.app/?srsltid=abc" }], "https://www.google.com/search?q=ressac").map((l) => l.url)).toEqual(["https://getressac.app/"]);
+  // A page opened with trackers is still itself: its link to itself stays out.
+  expect(rankLinks([{ text: "Accueil", url: "https://ex.fr/" }], "https://ex.fr/?utm_source=a")).toEqual([]);
 });
