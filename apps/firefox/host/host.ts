@@ -1137,11 +1137,7 @@ const rpc = createRpc({
       ? {
           "debug.locale": () => ({ locale: hostLocale(), relocalized }),
           "debug.log": (p: { text: string }) => console.log(p.text),
-          "debug.outflowCheck": async (p: { window: string; text: string }) => {
-            // A notification runs one microtask after it arrives (shared/rpc.ts): yield so the ones sent before are applied.
-            await null;
-            return kernel?.outflow.check(p.window, p.text) ?? null;
-          },
+          "debug.outflowCheck": (p: { window: string; text: string }) => kernel?.outflow.check(p.window, p.text) ?? null,
         }
       : {}),
   },
