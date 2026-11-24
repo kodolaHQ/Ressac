@@ -89,11 +89,14 @@ function piecesOf(root: Element, fields = false): { nodes: (Text | Element)[]; p
     if (isBlock) block = true;
     const v = cs.visibility === "visible" && (alpha(cs.color) > 0 || cs.backgroundClip === "text");
     // The marks' walk only: a text field's value (the agent's text read skips it, its HTML read masks it) as its own block.
-    const value = fields && v && fieldValue(el);
-    if (value) {
-      pieces.push({ text: value, block: true, field: true });
-      nodes.push(el);
-      block = true;
+    if (fields && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) {
+      // Its value, never its markup's default text (a cleared textarea keeps it as children).
+      const value = v && fieldValue(el);
+      if (value) {
+        pieces.push({ text: value, block: true, field: true });
+        nodes.push(el);
+        block = true;
+      }
       return;
     }
     const shadow = ownRoot(el);
@@ -115,16 +118,21 @@ function fieldValue(el: Element): string {
   return el.tagName === "INPUT" && TEXT_TYPES.has((el as HTMLInputElement).type) ? (el as HTMLInputElement).value : "";
 }
 
-/** The width a field's value is drawn at, placed by its text-align in the content box: a one-line field's hatch covers the text, a textarea's its box. */
-function fieldBox(el: Element): Rect {
+/**
+ * Where a one-line field draws its value's [from, to), placed by its text-align and scroll, clipped to its content box;
+ * a textarea's whole box (once per run). `g`: a canvas context reused across the answer.
+ * shortcut: letter-spacing, text-transform and right-to-left text are not measured; upgrade if a site's hatch drifts.
+ */
+function fieldBox(el: Element, from: number, to: number, g: CanvasRenderingContext2D): Rect | null {
   const box = contentBox(el);
   if (el.tagName === "TEXTAREA") return box;
-  const cs = styleOf(el);
-  const g = el.ownerDocument.createElement("canvas").getContext("2d")!;
+  const cs = styleOf(el), value = (el as HTMLInputElement).value;
   g.font = cs.font;
-  const width = Math.min(box.width, g.measureText((el as HTMLInputElement).value).width);
-  const align = cs.textAlign === "center" ? (box.width - width) / 2 : cs.textAlign === "right" || cs.textAlign === "end" ? box.width - width : 0;
-  return { ...box, x: box.x + align - el.scrollLeft, width };
+  const all = g.measureText(value).width;
+  const align = all >= box.width ? 0 : cs.textAlign === "center" ? (box.width - all) / 2 : cs.textAlign === "right" || cs.textAlign === "end" ? box.width - all : 0;
+  const x = box.x + align - el.scrollLeft + g.measureText(value.slice(0, from)).width;
+  const left = Math.max(box.x, x), right = Math.min(box.x + box.width, x + g.measureText(value.slice(from, to)).width);
+  return right > left ? { ...box, x: left, width: right - left } : null;
 }
 
 /**
@@ -279,13 +287,17 @@ export class RessacHideChild extends JSWindowActorChild {
   private rects(slices: unknown): { rects: (Rect & { field?: true })[][]; gone: boolean } {
     if (!Array.isArray(slices)) return { rects: [], gone: false };
     const range = this.document.createRange();
+    let g: CanvasRenderingContext2D | undefined;
     let gone = false;
     const rects = slices.map((run) =>
       (Array.isArray(run) ? run : []).flatMap((s: any) => {
         const node = this.nodes[s?.piece];
         if (!node?.isConnected) gone = true;
         if (!node?.isConnected || !Number.isInteger(s.from) || !Number.isInteger(s.to)) return [];
-        if (node.nodeType === Node.ELEMENT_NODE) return [{ ...fieldBox(node as Element), field: true as const }];
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const r = fieldBox(node as Element, s.from, s.to, (g ??= this.document.createElement("canvas").getContext("2d")!));
+          return r ? [{ ...r, field: true as const }] : [];
+        }
         const len = (node as Text).data.length;
         range.setStart(node, Math.min(Math.max(0, s.from), len));
         range.setEnd(node, Math.min(Math.max(0, s.to), len));

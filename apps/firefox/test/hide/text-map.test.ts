@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { colourAlpha, joinPieces, runsToPieces } from "../../core/hide/text-map";
 
 describe("joinPieces", () => {
+  it("keeps a field's value apart from the text around it: a run never crosses a field's edge", () => {
+    // piecesOf gives a field `block: true` and marks the next piece as a block too.
+    const j = joinPieces([
+      { text: "Nom :", block: true },
+      { text: "Camille Aubrac", block: true, field: true },
+      { text: "suite", block: true },
+    ]);
+    expect(j.text).toBe("Nom :\nCamille Aubrac\nsuite");
+    expect(runsToPieces([{ start: 6, end: 20 }], j.starts, [5, 14, 5])).toEqual([[{ piece: 1, from: 0, to: 14 }]]);
+  });
+
   it("joins inline pieces with nothing and block boundaries with a newline", () => {
     const j = joinPieces([
       { text: "Jean ", block: true },

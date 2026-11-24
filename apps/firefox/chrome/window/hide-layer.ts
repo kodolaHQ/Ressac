@@ -630,8 +630,9 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
     }
     const z = b.fullZoom || 1;
     const a = b.getBoundingClientRect();
-    // Only what is in view: a long page's runs further down cost no drawing.
-    return (got ?? []).flat().map((r) => scaled(r, z)).filter((r) => r.x < a.width && r.y < a.height && r.x + r.width > 0 && r.y + r.height > 0);
+    // Only what is in view: a long page's runs further down cost no drawing. A textarea's runs share its box: drawn once.
+    const seen = new Set<string>();
+    return (got ?? []).flat().map((r) => scaled(r, z)).filter((r) => r.x < a.width && r.y < a.height && r.x + r.width > 0 && r.y + r.height > 0 && !seen.has(JSON.stringify(r)) && !!seen.add(JSON.stringify(r)));
   }
   const marks = createMarks({ measure, draw, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (x) => clearTimeout(x as ReturnType<typeof setTimeout>) });
 
