@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { AccessPolicy, DEV_RIGHTS } from "../../src/access/policy.js";
 import type { TabInfo } from "../../src/mcp/bridge.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
-import { carrier, generateToken, sourceZone, startMcpServer, type ActionsTools, type SitesTools, type WidgetsTools } from "../../src/mcp/server.js";
+import { carrier, generateToken, MOVING_TEXT, sourceZone, startMcpServer, type ActionsTools, type SitesTools, type WidgetsTools } from "../../src/mcp/server.js";
 import { Masker } from "../../src/mask/masker.js";
 import { PassportStore } from "../../src/mask/passport.js";
 import { CARD, IBAN, PHONE, windows } from "../mask/values.js";
@@ -501,7 +501,7 @@ test("dev tools on a web tab ask no unlock card and stay in clear there (no orac
 });
 
 /** The user's shop tab; while the read card is up the user goes to their account page (same origin, sensitive by path). */
-async function movedDuringCard(tool: "read_tab" | "capture_screen", moveTo: string | null) {
+async function movedDuringCard(tool: "read_tab" | "capture_screen", moveTo: string | null, always = false) {
   const contact = `Vos coordonnées\nTéléphone : ${PHONE}`;
   const shop: TabInfo = { id: "shop", title: "Boutique", url: "https://shop.example/", space: "perso", agentReached: false };
   const bridge = new FakeBridge([shop], { active: "other", allow: true });
@@ -511,6 +511,10 @@ async function movedDuringCard(tool: "read_tab" | "capture_screen", moveTo: stri
     if (moveTo) bridge.editTab("shop", { url: moveTo });
     return ask(o, signal);
   };
+  // A page that never settles (a redirect loop within its origin): every look at the tab finds a new address.
+  let hops = 0;
+  const list = bridge.listTabs.bind(bridge);
+  if (always) bridge.listTabs = async () => (bridge.editTab("shop", { url: `https://shop.example/page/${++hops}` }), list());
   const masker = new Masker();
   const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
   masker.open("A", "W1");
@@ -547,4 +551,12 @@ test("a tab that moves within its origin during the read itself is masked as the
     };
     expect((await call("read_tab", { id: "shop" })).text).not.toContain(PHONE);
   });
+});
+
+test("a tab that keeps moving on every card is not read, and the agent is not told the user refused", async () => {
+  for (const tool of ["read_tab", "capture_screen"] as const) {
+    const r = await movedDuringCard(tool, "https://shop.example/page", true);
+    expect(r.text).toBe(MOVING_TEXT);
+    expect(r.image).toBe(false);
+  }
 });
