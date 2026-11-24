@@ -7,6 +7,15 @@ export type ReleaseVideo = { url: string; title: string; poster?: "passport" };
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[]; video?: ReleaseVideo }[] = [
   {
+    version: "0.1.26",
+    date: "novembre 2026",
+    items: [
+      "Ressac passe à Firefox 161, avec ses correctifs de sécurité.",
+      "Masquage : un IBAN, un numéro de carte ou de sécurité sociale coupé en cases (un tableau, une suite de champs) est maintenant reconnu, tout comme un RIB donné en morceaux (banque, guichet, compte, clé), les codes de vérification annoncés en allemand ou en espagnol, et les numéros de téléphone américains et britanniques.",
+      "Sécurité : les outils de développement qui agissent sur le navigateur lui-même sont désactivés par défaut, comme dans Firefox. Les outils de développement de l'agent ne changent pas.",
+    ],
+  },
+  {
     version: "0.1.25",
     date: "novembre 2026",
     video: { url: "https://updates.getressac.app/videos/ressac-passeport.mp4", title: "Découvrir le passeport en vidéo", poster: "passport" },
