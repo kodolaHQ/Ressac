@@ -34,22 +34,25 @@ const designShortcut = (win: Window) => void ChromeUtils.importESModule(STORE).r
 export function showHalo(win: Window, id: string): void {
   void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").RessacStore) => {
     if (win.closed) return;
-    // The marks of what the agent receives masked follow the halo (hide-layer.ts mountMarks).
-    const site = id.slice(SITE_PREFIX.length);
-    const marks = mountMarks(win, store, {
-      windows: () => store.state.windows.map((w) => w.id),
-      agentReached: () => sitesModule().forAgent().find((s) => s.id === site)?.agentReached ?? true,
-      aura: () => sitesModule().controller(site)?.aura() ?? DEFAULT_AURA,
-    });
+    // A site app's marks of what the agent receives masked follow the halo (hide-layer.ts mountMarks). An agent app
+    // (`app:`) is the agent's own page: no marks.
+    const site = id.startsWith(SITE_PREFIX) ? id.slice(SITE_PREFIX.length) : null;
+    const marks =
+      site === null
+        ? null
+        : mountMarks(win, store, {
+            agentReached: () => sitesModule().forAgent().find((s) => s.id === site)?.agentReached ?? true,
+            aura: () => sitesModule().controller(site)?.aura() ?? DEFAULT_AURA,
+          });
     const halo = createHalo((on) => {
       win.document.documentElement.toggleAttribute("ressac-agent-working", on);
-      if (on) marks.start(id);
-      else marks.stop();
+      if (on) marks?.start(id);
+      else marks?.stop();
     });
     const update = () => halo.update(!!store.access.tabs[id]?.running);
     const offs = [store.agent.on("access", update), store.agent.on(HOST_EXITED, update)];
     update();
-    win.addEventListener("unload", () => (offs.forEach((off) => off()), halo.dispose(), marks.dispose()), { once: true });
+    win.addEventListener("unload", () => (offs.forEach((off) => off()), halo.dispose(), marks?.dispose()), { once: true });
   });
 }
 

@@ -71,14 +71,15 @@ const RUNS_CHARS = 200_000;
 /**
  * Where the window's agent would see labels in each of `texts`, read from tab `tab` on `url` (chrome's marks): the
  * session's table, the zone the kernel gives its reads of that tab (`agentReached`: chrome's flag; a site app the agent
- * navigated in this conversation is no source either). Issues no label. No session (or no kernel): no run.
+ * navigated in this conversation is no source either). Issues no label. No session (or no kernel): `runs: null`, so a
+ * caller asking several windows can tell « no conversation » from « nothing masked ».
  */
-export function maskRuns(kernel: Pick<Kernel, "masker" | "tabZone"> | null, p: unknown): { runs: MaskedRun[][] } {
+export function maskRuns(kernel: Pick<Kernel, "masker" | "tabZone"> | null, p: unknown): { runs: MaskedRun[][] | null } {
   const { window: win, tab, url, agentReached, texts } = (p ?? {}) as Record<string, unknown>;
   if (typeof win !== "string" || typeof tab !== "string" || typeof url !== "string" || typeof agentReached !== "boolean" || !Array.isArray(texts) || texts.length > RUNS_TEXTS || !texts.every((t) => typeof t === "string" && t.length <= RUNS_CHARS))
     throw new Error("mask.runs: invalid params");
   const session = kernel?.masker.sessionOf(win) ?? null;
-  if (!kernel || session === null) return { runs: texts.map(() => []) };
+  if (!kernel || session === null) return { runs: null };
   // A site app's window is the tab `site:<id>` (`siteTab`).
   const site = tab.startsWith(SITE_PREFIX) ? tab.slice(SITE_PREFIX.length) : undefined;
   const zone = kernel.tabZone(session, { id: tab, url, agentReached, ...(site !== undefined ? { site } : {}) });

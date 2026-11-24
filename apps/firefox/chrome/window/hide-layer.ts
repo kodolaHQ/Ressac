@@ -4,7 +4,7 @@ import { format } from "../../shared/i18n";
 import { siteOf, tabProfile, type TabId, type WindowId } from "../../shared/model";
 import { tabInfos } from "../../core/agent/bridge";
 import { joinPieces, runsToPieces } from "../../core/hide/text-map";
-import { createMarks, MARKS_EVERY_MS } from "../../core/hide/marks";
+import { commonRuns, createMarks, MARKS_EVERY_MS } from "../../core/hide/marks";
 import { cleanOrigin, FIELD_LABEL, originMatches, PASSPORT_FIELDS, PASSPORT_LIMITS, splitName, type MaskedRun, type PassportField } from "../shims/kernel";
 import type { RessacHideParent } from "../agent/hide-actor";
 import type { RessacStore } from "../store";
@@ -350,8 +350,8 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     const url = String(p.browser.currentURI?.spec ?? store.state.tabs[p.tab]?.url ?? "");
     const value = p.text.trim();
     const runs = await store.agent
-      .request<{ runs: MaskedRun[][] }>("mask.runs", { window: windowId, tab: p.tab, url, agentReached: reachedNow, texts: [value] })
-      .then((x) => x.runs[0] ?? [], () => []);
+      .request<{ runs: MaskedRun[][] | null }>("mask.runs", { window: windowId, tab: p.tab, url, agentReached: reachedNow, texts: [value] })
+      .then((x) => x.runs?.[0] ?? [], () => []);
     if (g !== gen || !ctx) return;
     const host = p.origin === null ? null : cleanOrigin(p.origin);
     const siteMatches = host !== null && originMatches(host, originOf(url));
@@ -466,27 +466,20 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
 /** How long a page text's masked runs are reused while it does not change (a new passport entry shows within this). */
 const RUNS_FRESH_MS = 1000;
 
-/** Runs of several answers as one sorted set, overlaps merged. */
-function mergeRuns(runs: MaskedRun[]): { start: number; end: number }[] {
-  const out: { start: number; end: number }[] = [];
-  for (const r of [...runs].sort((a, b) => a.start - b.start)) {
-    const last = out.at(-1);
-    if (last && r.start <= last.end) last.end = Math.max(last.end, r.end);
-    else out.push({ start: r.start, end: r.end });
-  }
-  return out;
-}
+/** host/masking.ts RUNS_CHARS: a longer page text gets no runs, so it is not walked again until a new document. */
+const TEXT_CAP = 200_000;
 
 /**
  * « Voir ce qu'il ne voit pas »: while the agent's aura is on the shown tab (`start(tab)`, `stop()`), a hatch over each
  * text of its top document the agent would receive masked (the kernel's mask.runs on the page's visible text, measured
  * by the RessacHide actor). Page-proof: the actor only answers; nothing listens in the page. The parent re-measures every
  * MARKS_EVERY_MS (a scroll, a resize or a change shows within it, the page sends nothing) and starts over at each new
- * document. `windows`: the Ressac windows whose conversation reads this tab (a site app's: any).
+ * document. Any window's conversation may run the tool behind the aura, so only what every conversation masks is
+ * hatched (commonRuns).
  * shortcut: frames are not marked (their text is not in the top document's pieces); upgrade by walking the tab's
  * browsing contexts with RessacHideParent.offsetOf and clipping to each frame's box.
  */
-export function mountMarks(win: Window, store: RessacStore, o: { windows(): WindowId[]; agentReached(tab: string): boolean; aura(): AuraId }): { start(tab: string): void; stop(): void; dispose(): void } {
+export function mountMarks(win: Window, store: RessacStore, o: { agentReached(tab: string): boolean; aura(): AuraId }): { start(tab: string): void; stop(): void; dispose(): void } {
   const doc = win.document;
   let tab: string | null = null;
   let rects: HideRect[] | null = null;
@@ -494,6 +487,8 @@ export function mountMarks(win: Window, store: RessacStore, o: { windows(): Wind
   let poll: ReturnType<typeof setInterval> | undefined;
   let exitTimer: ReturnType<typeof setTimeout> | undefined;
   let cache: { key: string; at: number; runs: { start: number; end: number }[] } | null = null;
+  /** The shown document's text is over TEXT_CAP: not walked again until the next document. */
+  let tooLong = false;
   const listeners = new Set<() => void>();
   const api: MarksApi = {
     marks: () => rects,
@@ -519,13 +514,14 @@ export function mountMarks(win: Window, store: RessacStore, o: { windows(): Wind
     doc.getElementById("browser")!.append(f);
     const mayLoad = cutFrameNetwork(f);
     f.ressacMarks = { api };
-    const own = f;
-    own.addEventListener("load", () => {
-      const w = own.contentWindow;
-      if (!w?.location.href.startsWith("chrome:")) return;
-      for (const [k, v] of Object.entries(auraVariables(o.aura()))) w.document.documentElement.style.setProperty(k, v);
-    }, true);
+    f.addEventListener("load", tint, true);
     if (mayLoad) f.src = SRC + "hide-marks";
+  }
+  /** The aura's colours, at the frame's load and at each start (the space or its aura may have changed since). */
+  function tint() {
+    const w = f?.contentWindow;
+    if (!w?.location.href.startsWith("chrome:")) return;
+    for (const [k, v] of Object.entries(auraVariables(o.aura()))) w.document.documentElement.style.setProperty(k, v);
   }
   function draw(r: HideRect[] | null) {
     rects = r;
@@ -548,28 +544,28 @@ export function mountMarks(win: Window, store: RessacStore, o: { windows(): Wind
   }
 
   async function runsOf(t: string, url: string, text: string): Promise<{ start: number; end: number }[]> {
-    const windows = o.windows();
+    const windows = store.state.windows.map((w) => w.id);
     const agentReached = o.agentReached(t);
     const key = JSON.stringify([windows, t, url, agentReached, text]);
     if (cache?.key === key && Date.now() - cache.at < RUNS_FRESH_MS) return cache.runs;
-    // shortcut: a site app's marks merge every window's conversation (in practice one runs at a time); two
-    // conversations at once could mark a value only one of them masks.
+    // null: that window has no conversation. A failed answer counts as masking nothing (no hatch rather than a wrong one).
     const all = await Promise.all(
       windows.map((window) =>
-        store.agent.request<{ runs: MaskedRun[][] }>("mask.runs", { window, tab: t, url, agentReached, texts: [text] }).then((x) => x.runs[0] ?? [], () => []),
+        store.agent.request<{ runs: MaskedRun[][] | null }>("mask.runs", { window, tab: t, url, agentReached, texts: [text] }).then((x) => (x.runs === null ? null : x.runs[0] ?? []), () => []),
       ),
     );
-    const runs = mergeRuns(all.flat());
+    const runs = commonRuns(all);
     cache = { key, at: Date.now(), runs };
     return runs;
   }
   async function measure(): Promise<HideRect[]> {
     const t = tab, b = browser();
     const actor = actorOf(b?.browsingContext?.currentWindowGlobal);
-    if (!t || !actor) return [];
+    if (!t || !actor || tooLong) return [];
     const pieces = await actor.pieces();
     const { text, starts } = joinPieces(pieces);
-    if (!text.trim()) return [];
+    if (text.length > TEXT_CAP) tooLong = true;
+    if (!text.trim() || tooLong) return [];
     const runs = await runsOf(t, String(b.currentURI?.spec ?? ""), text);
     if (!runs.length) return [];
     // Same actor as `pieces`: its slices index into that answer's text nodes.
@@ -585,6 +581,7 @@ export function mountMarks(win: Window, store: RessacStore, o: { windows(): Wind
   const progress = {
     onLocationChange(b: any, wp: any, _req: unknown, _loc: unknown, flags: number) {
       if (tab && b === browser() && wp?.isTopLevel && !(flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)) {
+        tooLong = false;
         marks.stop();
         marks.start();
       }
@@ -606,11 +603,13 @@ export function mountMarks(win: Window, store: RessacStore, o: { windows(): Wind
       stop();
       tab = t;
       cache = null;
+      tooLong = false;
       if (!listening && win.gBrowser) {
         win.gBrowser.addTabsProgressListener(progress);
         listening = true;
       }
       frame();
+      tint();
       marks.start();
       poll = setInterval(marks.nudge, MARKS_EVERY_MS);
     },

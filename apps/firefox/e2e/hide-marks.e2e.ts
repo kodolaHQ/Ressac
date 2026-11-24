@@ -127,15 +127,15 @@ it("the marks hatch what the agent receives masked, follow a scroll, fade with t
   await inPage("window.__seen.length = 0; return true;");
 
   // The IBAN (a detector's form) and the passport's name are hatched; the plain line is not.
-  const [iban, nom, plain] = [await rectOf("iban"), await rectOf("nom"), await inPage<Rect>(`const p = document.querySelectorAll("p")[2].getBoundingClientRect(); return { x: p.x, y: p.y, width: p.width, height: p.height };`)];
-  const first = await until(marks, (rs) => covers(rs, iban) && covers(rs, nom), "the hatches over the IBAN and the name");
+  const [iban, name, plain] = [await rectOf("iban"), await rectOf("nom"), await inPage<Rect>(`const p = document.querySelectorAll("p")[2].getBoundingClientRect(); return { x: p.x, y: p.y, width: p.width, height: p.height };`)];
+  const first = await until(marks, (rs) => covers(rs, iban) && covers(rs, name), "the hatches over the IBAN and the name");
   expect(covers(first, plain)).toBe(false);
 
-  // A scroll of the page: the hatches follow within about MARKS_EVERY_MS plus a measure, waited on up to 1 s.
+  // A scroll of the page: the hatches follow (their rects move with the text; the re-measure's rhythm is the unit test's).
   await inPage("window.scrollBy(0, 200); return true;");
-  const [iban2, nom2] = [await rectOf("iban"), await rectOf("nom")];
+  const [iban2, name2] = [await rectOf("iban"), await rectOf("nom")];
   expect(iban2.y).toBeCloseTo(iban.y - 200, 0);
-  await until(marks, (rs) => covers(rs, iban2) && covers(rs, nom2) && !covers(rs, iban), "the hatches after the scroll", 1_000);
+  await until(marks, (rs) => covers(rs, iban2) && covers(rs, name2) && !covers(rs, iban), "the hatches after the scroll");
 
   // The aura goes off (another tab shown, at once): the hatches fade (an opacity transition ends) and are gone.
   await m.execute(`const d = document.getElementById("ressac-hide-marks").contentDocument;
@@ -153,7 +153,8 @@ it("the marks hatch what the agent receives masked, follow a scroll, fade with t
   await waitFor(m, working, (v) => v === true, 20_000);
   const back = [await rectOf("iban"), await rectOf("nom")];
   await until(marks, (rs) => back.every((r) => covers(rs, r)), "the hatches back with the aura");
-  // The page saw none of it: no mutation, selection, transition or pointer event, over the whole run on this page.
+  // The page saw none of it: no mutation, selection, transition or pointer event. Read only now, after several
+  // measures (the first show, the scroll, the fade, the show again), so every kind of refresh had its chance to leak.
   expect(await inPage<string[]>("return window.__seen;")).toEqual([]);
 
   // A new page with the aura on: only its own hatches, none left from the old page.
@@ -161,6 +162,8 @@ it("the marks hatch what the agent receives masked, follow a scroll, fade with t
   await waitFor(m, `return ${B}.currentURI.spec.endsWith("/compte/autre.html") && !${B}.webProgress.isLoadingDocument`, (v) => v === true, 15_000);
   const next = await rectOf("iban");
   await until(marks, (rs) => rs.length > 0 && rs.every((r) => meets(r, next)), "only the new page's hatches");
-  expect(await m.execute<boolean>(working)).toBe(true);
+  // The aura is still on over the new page (the profile runs on): the old page's hatches went for the new document,
+  // not because the aura went out.
+  await waitFor(m, working, (v) => v === true, 20_000);
   expect(await inPage<string[]>("return window.__seen;")).toEqual([]);
 }, 180_000);

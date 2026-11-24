@@ -242,7 +242,6 @@ export function createController(
   // The agent's halo: lit while one of its tools runs on the displayed tab (a tab or space switch is a state change).
   // Under it, what the agent receives masked from that tab (hide-layer.ts mountMarks), on and off with it.
   const marks = mountMarks(window, store, {
-    windows: () => [windowId],
     agentReached: (id) => tabInfos(store.state).find((t) => t.id === id)?.agentReached ?? true,
     aura: () => auraOf(store.state),
   });

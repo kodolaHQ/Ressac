@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { createMarks, MARKS_EVERY_MS } from "../core/hide/marks";
+import { commonRuns, createMarks, MARKS_EVERY_MS } from "../core/hide/marks";
 
 type Rect = { x: number; y: number; width: number; height: number };
 const R: Rect = { x: 1, y: 2, width: 3, height: 4 };
@@ -96,4 +96,15 @@ test("a measure that fails draws nothing over the page", async () => {
   marks().start();
   await vi.advanceTimersByTimeAsync(0);
   expect(draw.mock.calls).toEqual([[[]]]);
+});
+
+test("commonRuns: only what every window with a session masks; a window without one is left out", () => {
+  const run = (start: number, end: number) => ({ start, end });
+  expect(commonRuns([])).toEqual([]);
+  expect(commonRuns([null, null])).toEqual([]);
+  expect(commonRuns([[run(5, 9), run(0, 3)], null])).toEqual([run(0, 3), run(5, 9)]);
+  // One conversation masks the name, another masks nothing: no hatch.
+  expect(commonRuns([[run(0, 14)], []])).toEqual([]);
+  expect(commonRuns([[run(0, 10), run(8, 14)], [run(4, 20)], null])).toEqual([run(4, 14)]);
+  expect(commonRuns([[run(0, 5), run(10, 15)], [run(3, 12)]])).toEqual([run(3, 5), run(10, 12)]);
 });

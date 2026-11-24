@@ -208,7 +208,7 @@ it("pushPassports: no passport file, the hosts are known at once", async () => {
   await vi.waitFor(() => expect(onPassportHost("https://any.test/")).toBe(false));
 });
 
-it("mask.runs: the window's session, the zone its passport origins give the tab, no label issued; no session, no run", () => {
+it("mask.runs: the window's session, the zone its passport origins give the tab, no label issued; no session, null", () => {
   const store = hostPassport({});
   const created = "2026-11-23T10:00:00.000Z";
   store.replace("perso", [{ id: "0000000000000001", field: "nom", value: { given: "Camille", family: "Aubrac" }, variants: [], origins: ["banque.example"], how: "typed", created, updated: created }]);
@@ -220,7 +220,7 @@ it("mask.runs: the window's session, the zone its passport origins give the tab,
   const kernel = { masker, tabZone: (s: string | null, t: Parameters<typeof tabZone>[0]) => tabZone(t, agentSites, 3, masker.originsOf(s)) };
   const iban = "FR76 3000 6000 " + "0112 3456 7890 189";
   const text = `Camille Aubrac, ${iban}`;
-  const spans = (r: { runs: { start: number; end: number; type: string }[][] }) => r.runs.map((rs) => rs.map((x) => [text.slice(x.start, x.end), x.type]));
+  const spans = (r: { runs: { start: number; end: number; type: string }[][] | null }) => r.runs!.map((rs) => rs.map((x) => [text.slice(x.start, x.end), x.type]));
   const runs = (p: Record<string, unknown>) => spans(maskRuns(kernel, { window: "f1", tab: "t1", url: "https://banque.example/compte", agentReached: false, texts: [text, "rien"], ...p }));
   expect(runs({})).toEqual([[["Camille Aubrac", "nom"], [iban, "iban"]], []]);
   // Reached by the agent, or off the passport's origins: the web zone, no name.
@@ -231,8 +231,8 @@ it("mask.runs: the window's session, the zone its passport origins give the tab,
   expect(runs({ tab: "site:banque" })).toEqual([[[iban, "iban"]], []]);
   const table = masker.table("s1");
   expect([table.entries("sources").length, table.entries("web").length]).toEqual([0, 0]);
-  expect(runs({ window: "f2" })).toEqual([[], []]);
-  expect(maskRuns(null, { window: "f1", tab: "t1", url: "https://banque.example/", agentReached: false, texts: [text] })).toEqual({ runs: [[]] });
+  expect(maskRuns(kernel, { window: "f2", tab: "t1", url: "https://banque.example/compte", agentReached: false, texts: [text] })).toEqual({ runs: null });
+  expect(maskRuns(null, { window: "f1", tab: "t1", url: "https://banque.example/", agentReached: false, texts: [text] })).toEqual({ runs: null });
   expect(() => maskRuns(kernel, { window: "f1", tab: "t1", url: "https://banque.example/", texts: [text] })).toThrow();
   expect(() => maskRuns(kernel, { window: "f1", url: "https://banque.example/", agentReached: false, texts: [text] })).toThrow();
   expect(() => maskRuns(kernel, { window: "f1", tab: "t1", url: "https://banque.example/", agentReached: false, texts: [42] })).toThrow();

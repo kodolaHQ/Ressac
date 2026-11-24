@@ -61,3 +61,34 @@ export function createMarks(o: { measure(): Promise<Rect[]>; draw(rects: Rect[] 
     },
   };
 }
+
+type Run = { start: number; end: number };
+
+/** One answer's runs, sorted, overlaps merged. */
+function merged(runs: Run[]): Run[] {
+  const out: Run[] = [];
+  for (const r of [...runs].sort((a, b) => a.start - b.start)) {
+    const last = out.at(-1);
+    if (last && r.start <= last.end) last.end = Math.max(last.end, r.end);
+    else out.push({ start: r.start, end: r.end });
+  }
+  return out;
+}
+
+/**
+ * What every conversation masks: the spans common to each window's answer that has a session (null: no session, left
+ * out). A tab's tool may come from any window's conversation, so a hatch only where all of them mask. No session: none.
+ */
+export function commonRuns(answers: (Run[] | null)[]): Run[] {
+  const held = answers.filter((a): a is Run[] => a !== null).map(merged);
+  if (!held.length) return [];
+  return held.reduce((acc, b) => {
+    const out: Run[] = [];
+    for (const x of acc)
+      for (const y of b) {
+        const start = Math.max(x.start, y.start), end = Math.min(x.end, y.end);
+        if (end > start) out.push({ start, end });
+      }
+    return out;
+  });
+}
