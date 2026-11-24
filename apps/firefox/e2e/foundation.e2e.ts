@@ -34,7 +34,7 @@ describe("Ressac foundation", () => {
       await w.marionette.execute(
         "return [Services.prefs.getBoolPref('devtools.chrome.enabled'), Services.prefs.getBoolPref('devtools.debugger.remote-enabled'), Services.prefs.getIntPref('browser.tabs.inTitlebar')]",
       ),
-    ).toEqual([true, true, 1]);
+    ).toEqual([false, false, 1]);
   });
 
   it("ships the first-run prefs as defaults, not only through Marionette", async () => {

@@ -1,7 +1,7 @@
 import { ascii } from "../outflow/spelled.js";
 import { numerals } from "./numerals.js";
 
-export type Projection = { kind: "nfkc" | "percent" | "escapes" | "compact" | "digits" | "numerals" | "folded"; text: string; start: Int32Array; end: Int32Array };
+export type Projection = { kind: "nfkc" | "percent" | "escapes" | "compact" | "gaps" | "digits" | "numerals" | "folded"; text: string; start: Int32Array; end: Int32Array };
 
 /** Collects projected text with the original span of each UTF-16 unit. */
 class Builder {
@@ -178,6 +178,12 @@ function compact(src: Projection): Projection[] {
   if (src.text.search(DIGIT_GAP) >= 0) out.push(rewrite(rewrite(rewrite(src, DIGIT_GAP, " "), IGNORABLES), SPACED_SEP));
   return out;
 }
+
+// A tab, a line break or several spaces between two letters or digits: how a table's cells or a form's boxes come out
+// of a page's text (« FR76\t3000\t6000 »). Only checksummed numbers are read through it (detectors.ts).
+const GAP_RUN = /(?<=[\p{L}\p{N}])(?:[ \t]*[\t\r\n][ \t\r\n]*| {2,})(?=[\p{L}\p{N}])/gu;
+/** `src` with each such gap made one space, when it has any. Not in `projections()`: the passport must not join two lines. */
+export const gaps = (src: Projection): Projection[] => (src.text.search(GAP_RUN) < 0 ? [] : [{ ...rewrite(src, GAP_RUN, " "), kind: "gaps" }]);
 
 /** Text projections the detectors scan: always nfkc and digits; percent, escapes, compact and numerals when they apply. */
 export function projections(text: string): Projection[] {

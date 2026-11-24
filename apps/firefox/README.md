@@ -224,7 +224,7 @@ Limits:
 
 The agent reads a tab's console and network, runs JS, reloads, profiles and compares memory (`read_console`, `read_network`, `run_js`, `profile_performance`, `memory_snapshot`, `compare_memory`). The agent asks first through a consent card.
 
-- No debugging port. `chrome/store/devtools.ts` plugs a DevTools client into Firefox's DevTools server through an in-memory pipe, the way the toolbox does. `devtools.debugger.remote-enabled` stays true, but nothing listens.
+- No debugging port. `chrome/store/devtools.ts` plugs a DevTools client into Firefox's DevTools server through an in-memory pipe, the way the toolbox does. `devtools.debugger.remote-enabled` is false, so no socket can open.
 - The user's DevTools toolbox works on the same tab at the same time. `DevToolsBusy` is never raised.
 - A tab other than the agent's local demos (`localhost`/`127.0.0.1` on the demo and app ports) needs the consent card; a private-space tab is refused before any client exists.
 - The raw profile is a converted `.cpuprofile`. The raw memory snapshot is census JSON (`format: "ressac-firefox-census"`).
