@@ -1,4 +1,4 @@
-import type { HideApi, OverlayApi } from "../shared/api";
+import type { HideApi, MarksApi, OverlayApi } from "../shared/api";
 import { local } from "./design-api";
 
 // The chrome outlives this document: a listener into a dead document would throw on every call.
@@ -41,4 +41,9 @@ export function wrapHideApi(raw: HideApi, untilUnload: (unsubscribe: () => void)
     undo: () => Promise.resolve(raw.undo()).then(() => {}),
     onChange: (cb) => untilUnload(raw.onChange(() => cb())),
   };
+}
+
+/** The API of the marks frame (HideMarks.svelte). */
+export function wrapMarksApi(raw: MarksApi, untilUnload: (unsubscribe: () => void) => () => void = untilWindowUnload): MarksApi {
+  return { marks: () => structuredClone(raw.marks()), onChange: (cb) => untilUnload(raw.onChange(() => cb())) };
 }

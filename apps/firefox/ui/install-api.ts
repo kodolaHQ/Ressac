@@ -1,8 +1,8 @@
 import { createApi, type ApiFirefox } from "./api";
 import { settingsPageDocument } from "./settings-api";
-import type { HideApi, OverlayApi } from "../shared/api";
+import type { HideApi, MarksApi, OverlayApi } from "../shared/api";
 import { createBadgeApi } from "./badge-api";
-import { wrapHideApi, wrapOverlayApi } from "./overlay-api";
+import { wrapHideApi, wrapMarksApi, wrapOverlayApi } from "./overlay-api";
 import { createSiteApi, inertRessac } from "./site-api";
 import type { BadgeChrome } from "../chrome/store/apps";
 
@@ -34,6 +34,11 @@ if (params.has("site")) {
   const hide = (window.frameElement as (Element & { ressacHide?: { api: HideApi } }) | null)?.ressacHide;
   if (!hide) throw new Error("Ressac hide layer loaded before its window controller");
   window.ressac = inertRessac(wrapHideApi(hide.api)) as ApiFirefox;
+} else if (params.has("hide-marks")) {
+  // « Voir ce qu'il ne voit pas »: only the rects to draw.
+  const marks = (window.frameElement as (Element & { ressacMarks?: { api: MarksApi } }) | null)?.ressacMarks;
+  if (!marks) throw new Error("Ressac marks loaded before their window controller");
+  window.ressac = inertRessac(wrapMarksApi(marks.api)) as ApiFirefox;
 } else {
   const win = window.parent.ressacWindow;
   if (!win) throw new Error("Ressac UI loaded before its window controller");

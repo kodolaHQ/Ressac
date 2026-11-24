@@ -1,8 +1,10 @@
-import type { HideApi, HideContext, HideRect } from "../../shared/api";
-import { auraVariables, DEFAULT_AURA } from "../../shared/aura";
+import type { HideApi, HideContext, HideRect, MarksApi } from "../../shared/api";
+import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { format } from "../../shared/i18n";
 import { siteOf, tabProfile, type TabId, type WindowId } from "../../shared/model";
 import { tabInfos } from "../../core/agent/bridge";
+import { joinPieces, runsToPieces } from "../../core/hide/text-map";
+import { createMarks, MARKS_EVERY_MS } from "../../core/hide/marks";
 import { cleanOrigin, FIELD_LABEL, originMatches, PASSPORT_FIELDS, PASSPORT_LIMITS, splitName, type MaskedRun, type PassportField } from "../shims/kernel";
 import type { RessacHideParent } from "../agent/hide-actor";
 import type { RessacStore } from "../store";
@@ -78,6 +80,13 @@ const originOf = (url: string) => {
   }
 };
 const scaled = (r: HideRect, z: number): HideRect => ({ x: r.x * z, y: r.y * z, width: r.width * z, height: r.height * z });
+const actorOf = (wg: any): RessacHideParent | null => {
+  try {
+    return wg?.getActor("RessacHide") ?? null;
+  } catch {
+    return null; // not an http(s) document
+  }
+};
 
 export interface HideControl {
   /** The toolbar button: arms the viewfinder, or leaves it on a second press. */
@@ -111,13 +120,6 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
   const webPage = (b: any) => {
     const s = b?.currentURI;
     return !!s && (s.schemeIs("http") || s.schemeIs("https"));
-  };
-  const actorOf = (wg: any): RessacHideParent | null => {
-    try {
-      return wg?.getActor("RessacHide") ?? null;
-    } catch {
-      return null; // not an http(s) document
-    }
   };
   const aura = () => {
     const f = store.state.windows.find((x) => x.id === windowId);
@@ -456,6 +458,169 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
       item.remove();
       layer?.remove();
       bubble?.remove();
+      listeners.clear();
+    },
+  };
+}
+
+/** How long a page text's masked runs are reused while it does not change (a new passport entry shows within this). */
+const RUNS_FRESH_MS = 1000;
+
+/** Runs of several answers as one sorted set, overlaps merged. */
+function mergeRuns(runs: MaskedRun[]): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  for (const r of [...runs].sort((a, b) => a.start - b.start)) {
+    const last = out.at(-1);
+    if (last && r.start <= last.end) last.end = Math.max(last.end, r.end);
+    else out.push({ start: r.start, end: r.end });
+  }
+  return out;
+}
+
+/**
+ * « Voir ce qu'il ne voit pas »: while the agent's aura is on the shown tab (`start(tab)`, `stop()`), a hatch over each
+ * text of its top document the agent would receive masked (the kernel's mask.runs on the page's visible text, measured
+ * by the RessacHide actor). Page-proof: the actor only answers; nothing listens in the page. The parent re-measures every
+ * MARKS_EVERY_MS (a scroll, a resize or a change shows within it, the page sends nothing) and starts over at each new
+ * document. `windows`: the Ressac windows whose conversation reads this tab (a site app's: any).
+ * shortcut: frames are not marked (their text is not in the top document's pieces); upgrade by walking the tab's
+ * browsing contexts with RessacHideParent.offsetOf and clipping to each frame's box.
+ */
+export function mountMarks(win: Window, store: RessacStore, o: { windows(): WindowId[]; agentReached(tab: string): boolean; aura(): AuraId }): { start(tab: string): void; stop(): void; dispose(): void } {
+  const doc = win.document;
+  let tab: string | null = null;
+  let rects: HideRect[] | null = null;
+  let f: (HTMLIFrameElement & { ressacMarks?: { api: MarksApi } }) | undefined;
+  let poll: ReturnType<typeof setInterval> | undefined;
+  let exitTimer: ReturnType<typeof setTimeout> | undefined;
+  let cache: { key: string; at: number; runs: { start: number; end: number }[] } | null = null;
+  const listeners = new Set<() => void>();
+  const api: MarksApi = {
+    marks: () => rects,
+    onChange(cb) {
+      listeners.add(cb);
+      return () => void listeners.delete(cb);
+    },
+  };
+  const browser = () => win.gBrowser?.selectedBrowser;
+
+  function place() {
+    const b = browser();
+    if (!f || !b) return;
+    const a = b.getBoundingClientRect();
+    Object.assign(f.style, { left: `${a.left}px`, top: `${a.top}px`, width: `${a.width}px`, height: `${a.height}px` });
+  }
+  function frame() {
+    if (f?.isConnected) return;
+    f = doc.createElementNS(XHTML, "iframe") as NonNullable<typeof f>;
+    f.id = "ressac-hide-marks";
+    // Under the gesture's frames (z-index 3), never in the way of a click.
+    f.style.cssText = "position: fixed; z-index: 2; border: 0; background: transparent; display: none; pointer-events: none";
+    doc.getElementById("browser")!.append(f);
+    const mayLoad = cutFrameNetwork(f);
+    f.ressacMarks = { api };
+    const own = f;
+    own.addEventListener("load", () => {
+      const w = own.contentWindow;
+      if (!w?.location.href.startsWith("chrome:")) return;
+      for (const [k, v] of Object.entries(auraVariables(o.aura()))) w.document.documentElement.style.setProperty(k, v);
+    }, true);
+    if (mayLoad) f.src = SRC + "hide-marks";
+  }
+  function draw(r: HideRect[] | null) {
+    rects = r;
+    clearTimeout(exitTimer);
+    if (f) {
+      if (r) {
+        place();
+        f.style.display = "";
+      } else
+        exitTimer = setTimeout(() => {
+          if (!rects && f) f.style.display = "none";
+        }, EXIT_MS);
+    }
+    for (const cb of listeners)
+      try {
+        cb();
+      } catch (e) {
+        console.error("[marks] listener failed:", e);
+      }
+  }
+
+  async function runsOf(t: string, url: string, text: string): Promise<{ start: number; end: number }[]> {
+    const windows = o.windows();
+    const agentReached = o.agentReached(t);
+    const key = JSON.stringify([windows, t, url, agentReached, text]);
+    if (cache?.key === key && Date.now() - cache.at < RUNS_FRESH_MS) return cache.runs;
+    // shortcut: a site app's marks merge every window's conversation (in practice one runs at a time); two
+    // conversations at once could mark a value only one of them masks.
+    const all = await Promise.all(
+      windows.map((window) =>
+        store.agent.request<{ runs: MaskedRun[][] }>("mask.runs", { window, tab: t, url, agentReached, texts: [text] }).then((x) => x.runs[0] ?? [], () => []),
+      ),
+    );
+    const runs = mergeRuns(all.flat());
+    cache = { key, at: Date.now(), runs };
+    return runs;
+  }
+  async function measure(): Promise<HideRect[]> {
+    const t = tab, b = browser();
+    const actor = actorOf(b?.browsingContext?.currentWindowGlobal);
+    if (!t || !actor) return [];
+    const pieces = await actor.pieces();
+    const { text, starts } = joinPieces(pieces);
+    if (!text.trim()) return [];
+    const runs = await runsOf(t, String(b.currentURI?.spec ?? ""), text);
+    if (!runs.length) return [];
+    // Same actor as `pieces`: its slices index into that answer's text nodes.
+    const got = await actor.rects(runsToPieces(runs, starts, pieces.map((p) => p.text.length)));
+    const z = b.fullZoom || 1;
+    const a = b.getBoundingClientRect();
+    // Only what is in view: a long page's runs further down cost no drawing.
+    return got.flat().map((r) => scaled(r, z)).filter((r) => r.x < a.width && r.y < a.height && r.x + r.width > 0 && r.y + r.height > 0);
+  }
+  const marks = createMarks({ measure, draw, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (x) => clearTimeout(x as ReturnType<typeof setTimeout>) });
+
+  // A new document in the shown tab: the old page's marks fade at once, the new page is measured from scratch.
+  const progress = {
+    onLocationChange(b: any, wp: any, _req: unknown, _loc: unknown, flags: number) {
+      if (tab && b === browser() && wp?.isTopLevel && !(flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)) {
+        marks.stop();
+        marks.start();
+      }
+    },
+  };
+  // Added at the first start: a site app's window may get its tabbrowser after this mount.
+  let listening = false;
+  const onResize = () => rects && place();
+  win.addEventListener("resize", onResize);
+
+  function stop() {
+    tab = null;
+    clearInterval(poll);
+    marks.stop();
+  }
+  return {
+    start(t) {
+      if (tab === t) return;
+      stop();
+      tab = t;
+      cache = null;
+      if (!listening && win.gBrowser) {
+        win.gBrowser.addTabsProgressListener(progress);
+        listening = true;
+      }
+      frame();
+      marks.start();
+      poll = setInterval(marks.nudge, MARKS_EVERY_MS);
+    },
+    stop,
+    dispose() {
+      stop();
+      clearTimeout(exitTimer);
+      if (listening) win.gBrowser?.removeTabsProgressListener(progress);
+      win.removeEventListener("resize", onResize);
+      f?.remove();
       listeners.clear();
     },
   };

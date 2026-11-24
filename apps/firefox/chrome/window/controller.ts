@@ -6,6 +6,7 @@ import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { toUrl } from "../../core/url";
 import { searchTemplate } from "../../shared/search";
 import { createHalo } from "../../core/halo";
+import { tabInfos } from "../../core/agent/bridge";
 import { TabCycle } from "../../core/tab-cycle";
 import { toNeighbour, toNextSpace, toNth } from "../../core/shortcuts";
 import { effectiveBindings } from "../../shared/shortcuts";
@@ -19,7 +20,7 @@ import { setupAnchors } from "./anchor";
 import { mountSiteBanner } from "./site-banner";
 import { mountSearchBand } from "./search-band";
 import { mountAgentPill } from "./agent-pill";
-import { mountHideLayer, type HideControl } from "./hide-layer";
+import { mountHideLayer, mountMarks, type HideControl } from "./hide-layer";
 import { visibleFrame } from "./frame";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
@@ -239,7 +240,17 @@ export function createController(
   markWebPage(store.state);
   unsubscribe.push(store.subscribe(markWebPage));
   // The agent's halo: lit while one of its tools runs on the displayed tab (a tab or space switch is a state change).
-  const halo = createHalo((on) => document.documentElement.toggleAttribute("ressac-agent-working", on));
+  // Under it, what the agent receives masked from that tab (hide-layer.ts mountMarks), on and off with it.
+  const marks = mountMarks(window, store, {
+    windows: () => [windowId],
+    agentReached: (id) => tabInfos(store.state).find((t) => t.id === id)?.agentReached ?? true,
+    aura: () => auraOf(store.state),
+  });
+  const halo = createHalo((on) => {
+    document.documentElement.toggleAttribute("ressac-agent-working", on);
+    if (on && haloTab) marks.start(haloTab);
+    else marks.stop();
+  });
   let haloTab: TabId | null | undefined;
   const updateHalo = () => {
     const f = store.state.windows.find((x) => x.id === windowId);
@@ -251,7 +262,7 @@ export function createController(
     else halo.update(!!(shown && store.access.tabs[shown]?.running));
   };
   updateHalo();
-  unsubscribe.push(store.subscribe(updateHalo), store.agent.on("access", updateHalo), store.agent.on(HOST_EXITED, updateHalo), () => halo.dispose());
+  unsubscribe.push(store.subscribe(updateHalo), store.agent.on("access", updateHalo), store.agent.on(HOST_EXITED, updateHalo), () => halo.dispose(), () => marks.dispose());
   // After a tab switch Firefox gives the keyboard to the selected browser; the parking tab is no page, the UI keeps it.
   window.addEventListener("TabSwitchDone", () => {
     if (!tabs.displayed()) frame.focus();

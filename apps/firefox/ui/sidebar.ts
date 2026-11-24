@@ -5,6 +5,7 @@ import { mount } from "svelte";
 import "../ui/theme.css";
 import DesignApp from "../ui/DesignApp.svelte";
 import HideApp from "./HideApp.svelte";
+import HideMarks from "./HideMarks.svelte";
 import AppBadge from "./BadgeApp.svelte";
 import AgentPill from "./AgentPill.svelte";
 import App from "./App.svelte";
@@ -35,6 +36,10 @@ else if (params.has("tabhome")) {
   // sidebar.html?hide / ?hide-bubble: « Cacher pour l'agent »'s layer over the page and its bubble (transparent).
   document.documentElement.style.background = document.body.style.background = "transparent";
   mount(HideApp, { target: document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" })), props: { part: params.has("hide") ? "layer" : "bubble" } });
+} else if (params.has("hide-marks")) {
+  // sidebar.html?hide-marks: the hatches over what the agent receives masked, while its aura is on (transparent).
+  document.documentElement.style.background = document.body.style.background = "transparent";
+  mount(HideMarks, { target: document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" })) });
 } else if (params.has("badge") || params.has("overlay") || params.has("agentview")) {
   document.documentElement.style.background = "transparent";
   document.body.style.background = "transparent";

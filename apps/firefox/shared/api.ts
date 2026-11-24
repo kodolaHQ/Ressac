@@ -1105,6 +1105,11 @@ export type HideApi = {
   undo(): Promise<void>;
   onChange(cb: () => void): () => void;
 };
+/** « Voir ce qu'il ne voit pas » (chrome/window/hide-layer.ts mountMarks): the rects the agent receives masked; null while the aura is off. */
+export type MarksApi = {
+  marks(): HideRect[] | null;
+  onChange(cb: () => void): () => void;
+};
 /** Text of a note: bounded at the entry of the main process. */
 export const REMARK_TEXT_MAX = 4000;
 
