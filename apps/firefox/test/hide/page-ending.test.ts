@@ -38,7 +38,13 @@ describe("maskedOnPage", () => {
     const o = { agentReached: false, runs: [run(0, 14)], length: 14, siteMatches: true };
     expect(ending({ ...o, onPage: false })).toBe("notHere");
     expect(ending({ ...o, onPage: true })).toBe("hidden");
-    expect(ending({ ...o, runs: [], onPage: false })).toBe("next");
+  });
+
+  it("next only when the next conversation's table (the main token) masks the value on the page: glued, notHere", () => {
+    const o = { agentReached: false, runs: [], length: 14, siteMatches: true };
+    expect(ending({ ...o, nextOnPage: false })).toBe("notHere");
+    expect(ending({ ...o, nextOnPage: true })).toBe("next");
+    expect(ending({ ...o, siteMatches: false, nextOnPage: true })).toBe("notHere");
   });
 });
 

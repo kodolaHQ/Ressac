@@ -54,13 +54,13 @@ function covers(runs: Run[], from: number, to: number): boolean {
  * here when the kernel's runs cover all of the trimmed value (`length`) and the page as the agent reads it masks it
  * too (`onPage`, maskedOnPage); masked alone but not on the page (glued to a neighbour), it is not masked here; else
  * it is hidden here from the next conversation when the entry has the page's site (`siteMatches`: added or already
- * there, and matching the top URL); otherwise it is in the passport but not masked on this page (an http page: the
- * passport's sites are https only).
+ * there, and matching the top URL) and the next conversation's table masks it on the page (`nextOnPage`); otherwise it
+ * is in the passport but not masked on this page (glued, or an http page: the passport's sites are https only).
  */
-export function ending(o: { agentReached: boolean; runs: Run[]; length: number; siteMatches: boolean; onPage?: boolean }): Ending {
+export function ending(o: { agentReached: boolean; runs: Run[]; length: number; siteMatches: boolean; onPage?: boolean; nextOnPage?: boolean }): Ending {
   if (o.agentReached) return "agentReached";
   if (covers(o.runs, 0, o.length)) return o.onPage === false ? "notHere" : "hidden";
-  return o.siteMatches ? "next" : "notHere";
+  return o.siteMatches && o.nextOnPage !== false ? "next" : "notHere";
 }
 
 /**
@@ -437,22 +437,24 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
       return set({ ...ctx, phase: r.error === "invalid" ? "bubble" : "error", error: r.error });
     }
     // The ending asks the kernel about the page as it is now (its url, whether the agent reached it since): the value
-    // alone, and the page's own text (each document's, top and frames), where a neighbour glued to it unmasks it.
+    // alone, and the page's own text (each document's, top and frames), where a neighbour glued to it unmasks it. The
+    // main token alone (no window) has the passport's sites now: the table a next conversation starts from.
     const url = String(p.browser.currentURI?.spec ?? store.state.tabs[p.tab]?.url ?? "");
     const value = p.text.trim();
-    const ask = (text: string) => runsForAll((m, q) => store.agent.request(m, q), store.state.windows.map((w) => w.id), { tab: p.tab, url, agentReached: reachedNow, text });
+    const ask = (text: string, windows = store.state.windows.map((w) => w.id)) => runsForAll((m, q) => store.agent.request(m, q), windows, { tab: p.tab, url, agentReached: reachedNow, text });
     const contexts: any[] = p.browser.browsingContext?.getAllBrowsingContextsInSubtree?.() ?? [];
     const [runs, docs] = await Promise.all([
       ask(value),
       Promise.all(contexts.map(async (bc) => {
         const { text } = joinPieces((await actorOf(bc.currentWindowGlobal)?.pieces()) ?? []);
-        return { text, runs: text.trim() ? await ask(text) : [] };
+        const [runs, next] = text.trim() ? await Promise.all([ask(text), ask(text, [])]) : [[], []];
+        return { text, runs, next };
       })),
     ]);
     if (g !== gen || !ctx) return;
     const host = p.origin === null ? null : cleanOrigin(p.origin);
     const siteMatches = host !== null && originMatches(host, originOf(url));
-    const end = ending({ agentReached: p.agentReached || reachedNow, runs, length: coverLength(choice.field, value), siteMatches, onPage: maskedOnPage(docs, value, choice.field) });
+    const end = ending({ agentReached: p.agentReached || reachedNow, runs, length: coverLength(choice.field, value), siteMatches, onPage: maskedOnPage(docs, value, choice.field), nextOnPage: maskedOnPage(docs.map((d) => ({ text: d.text, runs: d.next })), value, choice.field) });
     const undoable = r.created || r.addedOrigin;
     if (undoable) saved.open({ profile: p.profile, id: r.id, created: r.created, addedOrigin: r.addedOrigin, updated: r.updated, origin: p.origin });
     pick = null;

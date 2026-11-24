@@ -41,7 +41,8 @@ const SPY = `${PAGE}<style>body{height:4000px} #name{transition:color 1ms} #name
 </script>`;
 // The known value glued to a neighbour with no whitespace node, only CSS spacing: the page text is « Jeanne DurandRéf ».
 const GLUED = `<!doctype html><meta charset="utf-8"><title>Colle</title><body style="margin:0;font:16px/20px sans-serif">
-<div style="position:absolute;left:100px;top:100px"><span id="glued">Jeanne Durand</span><span style="display:inline-block;margin-left:8px">Réf</span></div>`;
+<div style="position:absolute;left:100px;top:100px"><span id="glued">Jeanne Durand</span><span style="display:inline-block;margin-left:8px">Réf</span></div>
+<div style="position:absolute;left:100px;top:160px"><span id="glued-new">Camille Aubrac</span><span style="display:inline-block;margin-left:8px">Réf</span></div>`;
 const FRAME = `<!doctype html><meta charset="utf-8"><body style="margin:0;font:16px sans-serif"><span id="far" style="position:absolute;left:40px;top:40px">Lucie Martin</span>`;
 const WITH_FRAME = (frame: string) => `${PAGE}<iframe src="${frame}" style="position:absolute;left:400px;top:340px;width:300px;height:120px;border:0"></iframe>`;
 
@@ -79,7 +80,7 @@ beforeAll(async () => {
   execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "2", "-subj", "/CN=127.0.0.1"], { stdio: "ignore" });
   tls = { key: readFileSync(key), cert: readFileSync(cert) };
   frameSite = await startHttps({ "/cadre.html": FRAME }, "localhost");
-  server = await startHttps({ "/fiche.html": PAGE, "/espion.html": SPY, "/cadre-page.html": WITH_FRAME(`${frameSite.url}/cadre.html`) });
+  server = await startHttps({ "/fiche.html": PAGE, "/espion.html": SPY, "/cadre-page.html": WITH_FRAME(`${frameSite.url}/cadre.html`), "/colle.html": GLUED });
   known = await startHttps({ "/fiche.html": PAGE, "/colle.html": GLUED });
   plain = await startServer({ routes: { "/fiche.html": (_req: unknown, res: ServerResponse) => html(res, PAGE) } });
 });
@@ -226,6 +227,17 @@ it("a known value glued to a neighbour on the page: masked alone, not on this pa
   await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
   expect(await endingShown()).toBe("notHere");
   expect(await bubbleText("hide-toast")).toContain("Pas masqué sur cette page.");
+});
+
+it("a new value glued to a neighbour: the site is added, but the next conversation would not mask it here either, so notHere, never next", { timeout: 120_000 }, async () => {
+  await start();
+  await tab(`${server.url}/colle.html`);
+  await pick("#glued-new");
+  expect(await bubbleText("hide-question")).toBe("Cacher « Camille Aubrac » pour l'agent ?");
+  await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
+  expect(await endingShown()).toBe("notHere");
+  expect(await bubbleText("hide-toast")).toContain("pas masqué sur cette page.");
+  await expect.poll(async () => (await entryOf("Camille"))?.origins, { timeout: 15_000 }).toEqual([new URL(server.url).host]);
 });
 
 it("the agent reaches the tab while the bubble is up: the site is not added, ending agentReached", { timeout: 120_000 }, async () => {
