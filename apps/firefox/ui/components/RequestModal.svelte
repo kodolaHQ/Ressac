@@ -10,6 +10,7 @@
   import DevToolsRequest from "./DevToolsRequest.svelte";
   import MaskRequest from "./MaskRequest.svelte";
   import MaskReveal from "./MaskReveal.svelte";
+  import { dangerLines } from "./danger-lines";
   import FrozenBackground from "./FrozenBackground.svelte";
 
   /** `ongletId`: the page shown at opening, captured for the background (null: none, or a panel hides it). */
@@ -207,7 +208,8 @@
           <p class="address" data-testid="address-request-url">{request.origin}</p>
           {#if addressLabels.length}<MaskReveal text={request.origin} labels={addressLabels} see="home-request-mask-see-address" hide="home-request-mask-hide-address" />{/if}
           {#if agentReason}<p class="reason">{t("home-request-address-reason", { reason: agentReason })}</p>{/if}
-          {#if request.danger}<p class="reason danger" role="alert" data-testid="address-request-danger">{t("home-request-address-danger", { danger: request.danger.slice(0, UNLOCK_REASON_LENGTH) })}</p>{/if}
+          <!-- One line each, bounded on its own: a long handle host never cuts the lock line (the kernel puts it first). -->
+          {#each dangerLines(request.danger) as line, i (i)}<p class="reason danger" role="alert" data-testid="address-request-danger">{t("home-request-address-danger", { danger: line })}</p>{/each}
           <button class="why-toggle" data-testid="address-request-why" aria-expanded={why} aria-controls="address-request-why" onclick={() => (why = !why)}>{t("home-request-why")}</button>
           <div class="why" class:open={why} id="address-request-why" aria-hidden={!why}>
             <div>

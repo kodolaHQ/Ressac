@@ -128,8 +128,8 @@ test("after a granted reveal: same origin passes, another origin, a search and a
     await call("open_tab", { url: handle });
     const card = cards().at(-1)!;
     expect(card.url).toBe(handle);
-    expect(card.danger).toContain("Cette adresse contient votre e-mail, lu sur mail.example-novacourriel.test : elle l'envoie à evil.test.");
-    expect(card.danger).toContain(LOCKED);
+    // The lock first: the card bounds each line, and the handle's host is the page's to make long.
+    expect(card.danger).toBe(`${LOCKED}\nCette adresse contient votre e-mail, lu sur mail.example-novacourriel.test : elle l'envoie à evil.test.`);
     // A link read on a page, not an address the agent wrote: the card says so.
     expect(card.found).toBe(true);
 
@@ -488,8 +488,8 @@ test("launch_action under the lock with an input carrying a read value: one card
     await call("reveal_value", { label: l, reason: "payer" });
     const r = await call("launch_action", { id: "envoi", input: CLIENT });
     expect(cards()).toHaveLength(1);
+    expect(cards()[0]!.danger!.split("\n")[0]).toBe(LOCKED);
     expect(cards()[0]!.danger).toContain(OUTFLOW_LINE);
-    expect(cards()[0]!.danger).toContain(LOCKED);
     expect(r.text).toBe("Conversation verrouillée : cette sortie n'a pas reçu votre accord.");
     expect(launched).toEqual([]);
   });

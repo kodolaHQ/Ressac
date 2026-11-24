@@ -729,7 +729,7 @@ export function createToolsServer(
   const withMask = <C extends { url: string; danger?: string }>(card: C, url: string): C => {
     const m = marked.get(url);
     // `found`: a link read on a page (a handle), not an address the agent wrote: the card says so.
-    return m ? { ...card, url: m.shown, danger: [card.danger, ...m.lines].filter(Boolean).join("\n"), ...(m.found ? { found: true as const } : {}) } : card;
+    return m ? { ...card, url: m.shown, danger: [...m.lines, card.danger].filter(Boolean).join("\n"), ...(m.found ? { found: true as const } : {}) } : card;
   };
   /** The key of `url`'s card: a marked one is this session's own, never shared with an unmarked card for it. */
   const cardKey = (url: string, otherwise: string) => (marked.has(url) ? `mask:${session}:${url}` : otherwise);
@@ -779,10 +779,10 @@ export function createToolsServer(
     if (dests !== null) {
       for (const d of dests) {
         const to = originOf(d.real);
-        const lines: string[] = [];
+        // The lock first: the card bounds each line, and a handle's host is the page's to make long.
+        const lines: string[] = allows(to) ? [] : [lockedLine()];
         // The shown host, not the real one: a value in the host stays masked on the card too.
         if (d.read !== undefined && to !== d.read) lines.push(l10n("kernel-mask-handle-danger", { ...named(issuedNames(d.shown)), from: siteOf(d.read), to: siteOf(d.shown) }));
-        if (!allows(to)) lines.push(lockedLine());
         if (lines.length) marked.set(d.real, { shown: d.shown, lines, locked: !allows(to), found: !d.composed });
       }
       return null;
@@ -829,7 +829,7 @@ export function createToolsServer(
     if (!bridge.askAddress) return refused;
     const why = typeof a.reason === "string" ? a.reason : typeof a.goal === "string" ? a.goal : "";
     const url = `${tool} ${JSON.stringify(a)}`.slice(0, URL_MAX);
-    const danger = [hit ? OUTFLOW_DANGER(locale(), hit) : "", locked ? lockedLine() : ""].filter(Boolean).join("\n");
+    const danger = [locked ? lockedLine() : "", hit ? OUTFLOW_DANGER(locale(), hit) : ""].filter(Boolean).join("\n");
     const card = { url, reason: why.slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", danger };
     // During a search, a step like the other cards: the idle delay does not end the search under the card.
     const cur = searching?.sessions.current(key);
