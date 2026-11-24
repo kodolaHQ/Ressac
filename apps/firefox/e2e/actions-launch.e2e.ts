@@ -136,7 +136,8 @@ describe("launching from the empty page", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(await q.count(tid("suggestions-actions"))).toBe(0);
     await pressKeys(m, "Enter");
-    for (const deadline = Date.now() + 10_000; !(await tabUrls()).includes("https://exemple.org/"); await new Promise((r) => setTimeout(r, 100)))
+    // http: a bare domain loads over http, and HTTPS-First upgrades it only when https answers (core/url.ts).
+    for (const deadline = Date.now() + 10_000; !(await tabUrls()).includes("http://exemple.org/"); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error(`not opened: ${JSON.stringify(await tabUrls())}`);
   });
 

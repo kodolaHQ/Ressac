@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import type { BrowserState } from "../shared/model";
-import { HIDDEN_CATEGORIES, HIDDEN_GROUPS } from "../chrome/store/preferences-cleanup";
+import { HIDDEN_CATEGORIES, HIDDEN_GROUPS, HIDDEN_PANES } from "../chrome/store/preferences-cleanup";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
@@ -52,21 +52,29 @@ async function openPrefs(): Promise<void> {
   await waitFor(m, "return gBrowser.selectedBrowser.contentDocument?.readyState === 'complete' && !!gBrowser.selectedBrowser.contentDocument.defaultView.gotoPref", (v) => v === true);
 }
 
-const GENERAL = ["downloads", "fonts", "zoom", "browserLanguage", "networkProxy"];
-const PRIVACY = ["passwords", "cookiesAndSiteData"];
-const SEARCH = ["defaultEngine"];
+/** The settings Ressac keeps, by the Firefox 161 pane that shows them. */
+const KEPT = [
+  ["paneDownloads", ["downloads"]],
+  ["paneAccessibility", ["fonts", "zoom"]],
+  ["paneLanguages", ["browserLanguage"]],
+  ["paneConnectionSecurity", ["networkProxy"]],
+  ["panePasswordsAutofill", ["passwords"]],
+  ["panePrivacy", ["cookiesAndSiteData2"]],
+  ["paneSearch", ["defaultEngine"]],
+] as const;
 
 it("hidden: Firefox's panes and groups that contradict Ressac are not shown", async () => {
   await launch();
   await openPrefs();
-  for (const [pane, rendered] of [["paneGeneral", GENERAL], ["panePrivacy", PRIVACY], ["paneSearch", SEARCH]] as const) {
+  for (const [pane, rendered] of KEPT) {
     await showPane(pane, [...rendered]);
     const visible = await inPrefs<string[]>(
-      `const [categories, groups] = arguments;
-       return [...categories.map((id) => doc.getElementById(id)), ...groups.flatMap((g) => [...doc.querySelectorAll('setting-group[groupid="' + g + '"], [data-srd-groupid="' + g + '"]')])]
+      `const [categories, groups, panes] = arguments;
+       return [...categories.map((id) => doc.getElementById(id)), ...groups.flatMap((g) => [...doc.querySelectorAll('setting-group[groupid="' + g + '"], [data-srd-groupid="' + g + '"]')]),
+               ...panes.flatMap((p) => [...doc.querySelectorAll('[data-category="' + p + '"]')])]
          .filter((e) => e && doc.defaultView.getComputedStyle(e).display !== "none")
-         .map((e) => e.id || e.getAttribute("groupid") || e.getAttribute("data-srd-groupid"));`,
-      [HIDDEN_CATEGORIES, HIDDEN_GROUPS],
+         .map((e) => e.id || e.getAttribute("groupid") || e.getAttribute("data-srd-groupid") || e.getAttribute("data-category"));`,
+      [HIDDEN_CATEGORIES, HIDDEN_GROUPS, HIDDEN_PANES],
     );
     expect(visible, pane).toEqual([]);
   }
@@ -76,18 +84,16 @@ it("kept: the browser's own settings stay", async () => {
   await launch();
   await openPrefs();
   // showPane waits for each of them to be shown with content.
-  await showPane("paneGeneral", GENERAL);
-  await showPane("panePrivacy", PRIVACY);
-  await showPane("paneSearch", SEARCH);
+  for (const [pane, rendered] of KEPT) await showPane(pane, [...rendered]);
 });
 
 // Kept despite its « Firefox Relay » (email masks): the passwords group is a setting Ressac keeps.
 const BRANDED = '[groupid="passwords"], [data-srd-groupid="passwords"]';
 
-it("no brand: General and Privacy name neither Firefox nor Mozilla", async () => {
+it("no brand: the panes Ressac keeps name neither Firefox nor Mozilla", async () => {
   await launch();
   await openPrefs();
-  for (const [pane, rendered] of [["paneGeneral", GENERAL], ["panePrivacy", PRIVACY]] as const) {
+  for (const [pane, rendered] of KEPT) {
     await showPane(pane, [...rendered]);
     const text = await inPrefs<string>(`return deepText(doc.querySelector(".main-content"), arguments[0]).replace(/\\s+/g, " ");`, [BRANDED]);
     expect(text.match(/.{0,60}(Firefox|Mozilla).{0,60}/g), pane).toBeNull();
@@ -101,7 +107,7 @@ it("logins tab: the saved passwords open in a store tab of the current space", a
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"open-advanced\"]')");
   await click(m, '[data-testid="open-advanced"]');
   await waitFor(m, "return gBrowser.selectedBrowser.contentDocument?.readyState === 'complete' && !!gBrowser.selectedBrowser.contentDocument.defaultView.gotoPref", (v) => v === true);
-  await showPane("panePrivacy", PRIVACY);
+  await showPane("panePasswordsAutofill", ["passwords"]);
   await inPrefs(`deepFind(doc.documentElement, "#showPasswords, #manageSavedPasswords").click();`);
   const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).state)();`, (s) => !!activeTab(s)?.url.startsWith("about:logins"));
   expect(activeTab(s)!.spaceId).toBe(s.windows[0]!.activeSpace);

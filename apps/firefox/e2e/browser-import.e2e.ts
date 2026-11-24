@@ -48,7 +48,8 @@ function fakeChrome(): void {
   chromeBookmarks([{ name: "Exemple B", url: "https://b.example/page" }]);
   const db = new DatabaseSync(join(profile, "History"));
   db.exec("CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, title TEXT, visit_count INTEGER DEFAULT 0, typed_count INTEGER DEFAULT 0, last_visit_time INTEGER, hidden INTEGER DEFAULT 0)");
-  db.exec("CREATE TABLE visits (id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER)");
+  // transition: Chrome's column, which Firefox 161 reads (0 = a followed link).
+  db.exec("CREATE TABLE visits (id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER, transition INTEGER DEFAULT 0)");
   const day = 86_400_000;
   const add = db.prepare("INSERT INTO urls (url, title, visit_count, last_visit_time) VALUES (?, ?, 1, ?)");
   add.run("https://h1.example/lu", "Page lue un", chromeTime(new Date(Date.now() - 2 * day)));

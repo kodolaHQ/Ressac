@@ -14,8 +14,22 @@ const CATEGORIES: Record<string, string> = {
   "category-more-from-mozilla": "paneMoreFromMozilla",
   // Firefox's AI features: the agent is Ressac's.
   "category-ai-features": "paneAi",
+  // Firefox 161: notifications, site permissions and data collection, all kept by Ressac (see HIDDEN_GROUPS).
+  "category-permissions-data": "panePermissionsData",
 };
 export const HIDDEN_CATEGORIES = Object.keys(CATEGORIES);
+
+/** Firefox 161's sub-panes with no button of their own, reached from a hidden pane or group. */
+export const HIDDEN_PANES = [
+  // Ressac keeps its own history.
+  "paneHistory",
+  // Profiles, the home page, Mozilla's VPN, and the AI « Smart Window » and its memories.
+  "paneProfiles",
+  "paneCustomHomepage",
+  "paneVpnSiteRules",
+  "panePersonalizeSmartWindow",
+  "paneManageMemories",
+];
 
 export const HIDDEN_GROUPS = [
   // Startup, tabs and their layout: the store manages them.
@@ -27,8 +41,9 @@ export const HIDDEN_GROUPS = [
   "profiles",
   // Default browser: external links would open tabs outside the store.
   "defaultBrowser",
-  // Ressac keeps its own history.
+  // Ressac keeps its own history (« history2 » since Firefox 161).
   "history",
+  "history2",
   // Site permissions are kept by Ressac (copied into Firefox), listed and revoked in its Settings page.
   "permissions",
   // Mozilla's data collection and services.
@@ -36,15 +51,20 @@ export const HIDDEN_GROUPS = [
   "backup",
   "ipprotection",
   "firefoxSuggest",
+  "recommendations",
 ];
+
+export const HIDDEN_CONTROLS = ["relayIntegration"];
 
 /** The stylesheet, for the preferences pages only. */
 export function preferencesSheet(): string {
   const selectors = [
     ...HIDDEN_CATEGORIES.map((id) => `#${id}`),
-    ...Object.values(CATEGORIES).map((pane) => `[data-category="${pane}"]`),
+    ...[...Object.values(CATEGORIES), ...HIDDEN_PANES].map((pane) => `[data-category="${pane}"]`),
     // A group not yet migrated to setting-group is a groupbox naming it.
     ...HIDDEN_GROUPS.flatMap((g) => [`setting-group[groupid="${g}"]`, `[data-srd-groupid="${g}"]`]),
+    // Firefox Relay (Mozilla's e-mail masks, with a Mozilla account), in Privacy since Firefox 161; its group keeps GPC and DNT.
+    ...HIDDEN_CONTROLS.map((id) => `#${id}`),
   ];
   return `@-moz-document url-prefix("about:preferences"), url-prefix("about:settings") {\n${selectors.join(",\n")} { display: none !important }\n}\n`;
 }
