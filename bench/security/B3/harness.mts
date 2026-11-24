@@ -251,7 +251,7 @@ export async function runCase(c: Case, o: Opts): Promise<Record<string, unknown>
         // Firefox's login form detection, as the fill actor reports it: a login field's partner is the form's other one.
         const login = (f: { type: string; autocomplete?: string }) => (f.type === "password" ? "p" : f.autocomplete === "username" ? "u" : null);
         const p = login(field) && form.fields.findIndex((f) => login(f) && login(f) !== login(field));
-        return { seal, origin: origin(x.url), path: new URL(x.url).pathname, frames: [origin(x.url)], type: field.type, autocomplete: field.autocomplete ?? "",
+        return { seal, origin: origin(x.url), path: new URL(x.url).pathname, frames: [origin(x.url)], type: field.type, autocomplete: field.autocomplete ?? "", label: field.label,
           action: form.action ?? null, logins: (form.logins ?? []).map((l) => ({ username: fillIn(l, P.values) })), agentReached: x.agentReached,
           ...(typeof p === "number" && p >= 0 ? { partner: `${x.url}#${p}` } : {}) };
       },
