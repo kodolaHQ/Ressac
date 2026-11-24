@@ -200,7 +200,12 @@ export function createPassportSettings(o: {
           const e = all.find((x) => x.id === u.id);
           if (u.created && e?.updated === u.updated) return all.filter((x) => x !== e);
           if (!u.addedOrigin || !host || !e?.origins.includes(host)) return all;
-          return all.map((x) => (x === e ? { ...x, origins: x.origins.filter((k) => k !== host) } : x));
+          // The site taken back is no longer where the entry came from either.
+          return all.map((x) => {
+            if (x !== e) return x;
+            const { from, ...rest } = x;
+            return { ...rest, origins: x.origins.filter((k) => k !== host), ...(from !== undefined && from !== host ? { from } : {}) };
+          });
         });
         if (!r.ok) return false;
         if (r.written) await o.request("passport.replace", { profile: u.profile, entries: r.entries }).catch((err) => void console.error("[ressac] passport push after an unhide failed:", (err as Error)?.name));

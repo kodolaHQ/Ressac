@@ -532,6 +532,16 @@ describe("« Cacher pour l'agent »: hide and unhide (chrome only)", () => {
     expect(request).toHaveBeenCalledWith("passport.replace", { profile: "default", entries: [mail("0000000000000003", ["a.example"])] });
   });
 
+  it("a site taken back (the agent reached the tab) leaves the entry, and its `from` no longer names that site", async () => {
+    const { s, files } = setup();
+    const clicked = { ...mail("0000000000000003", ["www.boutique.example"]), how: "click" as const, from: "www.boutique.example" };
+    files.load.mockResolvedValueOnce(loaded([clicked]));
+    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: false, addedOrigin: true, updated: "2026-11-23", origin: "https://www.boutique.example" })).toBe(true);
+    const [kept] = written(files) as Record<string, unknown>[];
+    expect(kept).toMatchObject({ id: "0000000000000003", origins: [] });
+    expect(kept).not.toHaveProperty("from");
+  });
+
   it("unhide with nothing it added writes nothing; an unreadable file is a failure", async () => {
     const { s, files } = setup();
     files.load.mockResolvedValueOnce(loaded([mail("0000000000000003", ["a.example"])]));
