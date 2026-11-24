@@ -18,6 +18,7 @@ export const RELEASE_NOTES: { version: string; date: string; items: string[]; vi
       "Vos mots de passe se gèrent dans Réglages › Mots de passe : les voir, les copier, les ajouter, les modifier ou les supprimer, avec Touch ID, sans passer par les réglages de Firefox.",
       "Sécurité : les captures d'écran de l'agent vérifient aussi les champs et les cadres d'une page, ses outils de développement demandent Touch ID sur vos sites, et plus de codes de vérification, numéros d'identité et noms dans les mails sont reconnus.",
       "Ressac consomme moins de mémoire au fil des jours : plusieurs fuites corrigées (fenêtres fermées, outils de développement de l'agent, recherches), et la mémoire anti-fuite de l'agent passe de 25 à 9 Mo par fenêtre.",
+      "Une adresse tapée sans « https:// » s'ouvre même si le site ne répond qu'en http, comme la page de votre box : Ressac essaie d'abord https, puis http s'il échoue.",
     ],
   },
   {
