@@ -1474,8 +1474,13 @@ export function createToolsServer(
         .filter((e) => e.zone === "sources" && !passportOrigins(e).includes(seal.origin))
         // A passport value was not read anywhere: the card names the sites it is meant for, each once.
         .map((e) => l10n(`kernel-mask-fill-foreign-${e.passport?.length ? "passport" : "danger"}${reached ? "" : "-user"}`, { ...named([valueName(e.type, e.zone, locale())]), from: [...new Set(passportOrigins(e).map(siteOf))].join(", ") || "?", to: siteOf(seal.origin) }));
-      // A field in a frame of another site (even an invisible one): the card names the frame's site, and here the page around it.
-      const framed = [...new Set(seals.flatMap((s) => (s.frames.length && s.frames.at(-1) !== s.origin ? [l10n("kernel-mask-fill-framed", { frame: siteOf(s.origin), top: siteOf(s.frames.at(-1)!) })] : [])))];
+      // A field in a frame of another site, or under one (even an invisible one): the card names the frame's site and the page around it.
+      const framed = [...new Set(seals.flatMap((s) => {
+        const top = s.frames.at(-1);
+        // The field's own frame when it is foreign to the page; else the foreign frame it sits under.
+        const frame = top !== s.origin ? s.origin : s.frames.find((f) => f !== s.origin);
+        return top !== undefined && frame !== undefined ? [l10n("kernel-mask-fill-framed", { frame: siteOf(frame), top: siteOf(top) })] : [];
+      }))];
       const danger = [hit && OUTFLOW_DANGER(locale(), hit), ...elsewhere, ...foreign, ...framed, acts, locked && lockedLine()].filter(Boolean).join("\n");
       // Design § 8.1: a passport value off all its origins asks Touch ID, once per origin for TOUCH_ID_WINDOW_MS (ruling F16:
       // the window spares only that reason; a tab the agent reached still asks).

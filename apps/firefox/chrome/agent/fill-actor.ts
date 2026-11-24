@@ -45,10 +45,11 @@ const clean = (s: unknown) => String(s ?? "").replace(/[«»]/g, "").replace(/\s
 const labelOf = (el: any): string => {
   const own = clean(el.labels?.[0]?.textContent || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("name"));
   const legend = el.type === "radio" ? clean(el.closest("fieldset")?.querySelector("legend")?.textContent) : "";
-  return (legend ? `${legend} : ${own}` : own).slice(0, LABEL_MAX);
+  // Trimmed after the cut, as boundFields does: a sealed label compares equal to the one read.
+  return (legend ? `${legend} : ${own}` : own).slice(0, LABEL_MAX).trim();
 };
 /** What a select's option says: what the user sees in the list, as compared again before the choice. */
-const optionText = (o: any): string => clean(o.label || o.text).slice(0, LABEL_MAX);
+const optionText = (o: any): string => clean(o.label || o.text).slice(0, LABEL_MAX).trim();
 /** The form a control belongs to (inside it or tied with `form=`); an editing host has none. */
 const formOf = (el: any): any => (el.localName === "input" || el.localName === "textarea" || el.localName === "select" ? (el.form ?? null) : null);
 /** A box to tick or a list to choose from: what the agent sets, never types. */

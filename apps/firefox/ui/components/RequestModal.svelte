@@ -106,7 +106,10 @@
     if (e.key === "Escape") {
       e.preventDefault();
       deny();
-    } else if (e.key === " " && !armed) {
+    } else if (e.key === " " && armed) {
+      // A key up lost (the window left while Space was held) never swallows a later press.
+      spaceEarly = false;
+    } else if (e.key === " ") {
       // Space presses a focused button on its key up: pressed before the delay, it grants nothing (`spaceEarly`).
       e.preventDefault();
       spaceEarly = true;

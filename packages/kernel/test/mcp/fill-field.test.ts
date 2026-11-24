@@ -1139,3 +1139,12 @@ test("a field in a frame of another site: the card names the frame and the page 
     expect(String((of("askFill")[0]![0] as { danger?: string }).danger)).toContain("Ce champ est dans un cadre de cadre.test, intégré à la page de mail.example-novacourriel.test.");
   });
 });
+
+test("a field of the top page's site under a frame of another site: the card names that frame", async () => {
+  await serve({}, async ({ call, bridge, of }) => {
+    const l = (await call("read_tab", { id: "mail" })).text.match(/⟨code-[a-z0-9]{8}⟩/)![0];
+    bridge.seals.set("7:0", { frames: [HOST, "https://cadre.test", HOST] });
+    await call("fill_field", { id: "mail", field: 0, value: l });
+    expect(String((of("askFill")[0]![0] as { danger?: string }).danger)).toContain("Ce champ est dans un cadre de cadre.test, intégré à la page de mail.example-novacourriel.test.");
+  });
+});

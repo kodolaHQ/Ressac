@@ -54,8 +54,10 @@ const CHOICES = `<title>Inscription</title><form><label><input type="checkbox" i
 <script>window.seen = 0; document.addEventListener("change", () => window.seen++);</script>`;
 // A page of 45 filter boxes before its form: over the 40-field cap, the form's text fields stay listed.
 const FILTERS = `<title>Filtres</title>${Array.from({ length: 45 }, (_, i) => `<label><input type="checkbox"> Filtre ${i}</label>`).join("")}<form><label for="nom">Nom</label><input id="nom"><label for="ville">Ville</label><input id="ville"></form>`;
+// A label cut at 80 characters right before a space: the sealed label must still equal the one read.
+const LONG = `<title>Long</title><form><label for="q">${"x".repeat(79)} suite du libellé</label><input id="q"></form>`;
 beforeAll(async () => {
-  a = await startServer({ routes: { "/log": logRoute(logs.a), "/fill/compte/mail.html": mail, "/fill/deux.html": (_req: unknown, res: ServerResponse) => html(res, TWO_FORMS), "/fill/choix.html": (_req: unknown, res: ServerResponse) => html(res, CHOICES), "/fill/filtres.html": (_req: unknown, res: ServerResponse) => html(res, FILTERS) } });
+  a = await startServer({ routes: { "/log": logRoute(logs.a), "/fill/compte/mail.html": mail, "/fill/deux.html": (_req: unknown, res: ServerResponse) => html(res, TWO_FORMS), "/fill/choix.html": (_req: unknown, res: ServerResponse) => html(res, CHOICES), "/fill/filtres.html": (_req: unknown, res: ServerResponse) => html(res, FILTERS), "/fill/long.html": (_req: unknown, res: ServerResponse) => html(res, LONG) } });
   b = await startServer({ routes: { "/log": logRoute(logs.b), "/fill/client.html": client } });
 });
 afterAll(() => Promise.all([a?.close(), b?.close()]));
@@ -245,6 +247,14 @@ it("Shift+Tab then Space before the card's delay: nothing granted (a page times 
   await press("Refuser");
   await reply;
   expect(await inPage(id, `return document.getElementById("cgu").checked`)).toBe(false);
+});
+
+it("a field whose label is cut at 80 characters on a space still fills", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/long.html`);
+  expect((await read(id)).split("\n")).toContain(`0. text — ${"x".repeat(79)}`);
+  expect((await call("fill_field", { id, field: 0, value: "bonjour" })).text).toBe(FILLED);
+  expect(await valueOf(id, "q")).toBe("bonjour");
 });
 
 it("a list reordered between the read and the card's yes: nothing chosen", async () => {
