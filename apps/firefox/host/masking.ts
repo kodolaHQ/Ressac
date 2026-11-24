@@ -1,11 +1,12 @@
-import type { Masker, WorkspaceLock } from "../../../packages/kernel/src/index.ts";
+import type { Kernel, Masker, WorkspaceLock } from "../../../packages/kernel/src/index.ts";
 import { PassportStore } from "../../../packages/kernel/src/mask/passport.ts";
-import { passportReady, sourceZone } from "../../../packages/kernel/src/mcp/server.ts";
+import { originOf, passportReady } from "../../../packages/kernel/src/mcp/server.ts";
 import { maskedRuns, type MaskedRun } from "../../../packages/kernel/src/mask/mask.ts";
 import { guessField, PASSPORT_LIMITS, splitName, type PassportField } from "../../../packages/kernel/src/mask/passport-fields.ts";
 import { LABEL_SOURCE } from "../../../packages/kernel/src/mask/table.ts";
 import { nameAgreement } from "../../../packages/kernel/src/mask/names.ts";
 import { hostLocale } from "./locale.ts";
+import { SITE_PREFIX } from "../core/agent/bridge.ts";
 import type { MaskingStatus } from "../shared/api.ts";
 
 /** A label as the masker issues it: anything else is not looked up. */
@@ -68,26 +69,21 @@ const RUNS_TEXTS = 2000;
 const RUNS_CHARS = 200_000;
 
 /**
- * Where the window's agent would see labels in each of `texts`, read from `url` (chrome's marks): the session's table,
- * the zone its passport origins give the tab. Issues no label. No session (or no kernel): no run.
+ * Where the window's agent would see labels in each of `texts`, read from tab `tab` on `url` (chrome's marks): the
+ * session's table, the zone the kernel gives its reads of that tab (`agentReached`: chrome's flag; a site app the agent
+ * navigated in this conversation is no source either). Issues no label. No session (or no kernel): no run.
  */
-export function maskRuns(masker: Pick<Masker, "sessionOf" | "table" | "originsOf"> | null, p: unknown): { runs: MaskedRun[][] } {
-  const { window: win, url, agentReached, texts } = (p ?? {}) as Record<string, unknown>;
-  if (typeof win !== "string" || typeof url !== "string" || typeof agentReached !== "boolean" || !Array.isArray(texts) || texts.length > RUNS_TEXTS || !texts.every((t) => typeof t === "string" && t.length <= RUNS_CHARS))
+export function maskRuns(kernel: Pick<Kernel, "masker" | "tabZone"> | null, p: unknown): { runs: MaskedRun[][] } {
+  const { window: win, tab, url, agentReached, texts } = (p ?? {}) as Record<string, unknown>;
+  if (typeof win !== "string" || typeof tab !== "string" || typeof url !== "string" || typeof agentReached !== "boolean" || !Array.isArray(texts) || texts.length > RUNS_TEXTS || !texts.every((t) => typeof t === "string" && t.length <= RUNS_CHARS))
     throw new Error("mask.runs: invalid params");
-  const session = masker?.sessionOf(win) ?? null;
-  if (!masker || session === null) return { runs: texts.map(() => []) };
-  const zone = sourceZone({ url, agentReached }, false, masker.originsOf(session));
-  const ctx = { table: masker.table(session), zone, origin: originOf(url) };
+  const session = kernel?.masker.sessionOf(win) ?? null;
+  if (!kernel || session === null) return { runs: texts.map(() => []) };
+  // A site app's window is the tab `site:<id>` (`siteTab`).
+  const site = tab.startsWith(SITE_PREFIX) ? tab.slice(SITE_PREFIX.length) : undefined;
+  const zone = kernel.tabZone(session, { id: tab, url, agentReached, ...(site !== undefined ? { site } : {}) });
+  const ctx = { table: kernel.masker.table(session), zone, origin: originOf(url) };
   return { runs: (texts as string[]).map((t) => maskedRuns(t, ctx)) };
-}
-
-function originOf(url: string): string | null {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return null;
-  }
 }
 
 /** The passport field a clicked text looks like, and its name parts when it is a name. */

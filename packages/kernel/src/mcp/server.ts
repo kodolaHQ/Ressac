@@ -206,6 +206,11 @@ export function sourceZone(o: Pick<TabInfo, "url" | "site" | "agentReached">, ag
   return !reached && (isSensitive(o.url) || origins?.isOrigin(o.url) === true) ? "sources" : "web";
 }
 
+/** A tab's zone in conversation `conversation`: a site app the agent navigated in it (`agentSites`) is no source. Every read's zone. */
+export function tabZone(o: Pick<TabInfo, "id" | "url" | "site" | "agentReached">, agentSites: ReadonlySet<string>, conversation: number, origins?: Pick<PassportOrigins, "isOrigin">): Zone {
+  return sourceZone(o, agentSites.has(`${conversation}:${o.id}`), origins);
+}
+
 /**
  * A tab that shows the user's data (spec § 5.5): its capture and dev tools lock. On a web-zone page only high-risk
  * shapes count, never the table's entries or the passport: a refusal must not tell a page that a value is the user's.
@@ -232,7 +237,7 @@ function urlWeb(url: string): boolean {
   }
 }
 
-function originOf(url: string): string | null {
+export function originOf(url: string): string | null {
   try {
     return new URL(url).origin;
   } catch {
@@ -599,7 +604,7 @@ export function createToolsServer(
   /** A tab's zone, a site app's taking into account the agent's navigations in this conversation. */
   /** This conversation's passport origins, as at its first read (a site remembered since counts from the next conversation). Read past the passport gate, never when this server is built. */
   const started = () => masker.originsOf(session);
-  const zoneOf = (o: TabInfo) => sourceZone(o, agentSites.has(`${policy.conversation}:${o.id}`), started());
+  const zoneOf = (o: TabInfo) => tabZone(o, agentSites, policy.conversation, started());
   /**
    * A value's origins (design § 8.1): where it was read in this conversation, plus, for a passport value, each entry's
    * « Remplissable sur » hosts both at the conversation's first read and now (fail safe: an added host still asks Touch ID, a
@@ -2618,7 +2623,7 @@ export async function startMcpServer(o: {
   otherSessions?: () => boolean;
   /** The workspace lock a reveal awaits before giving the value (Task 10); a no-op without it. */
   workspaceLock?: WorkspaceLockHook;
-}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string): string; closeSession(token: string): void; stop(): Promise<void> }> {
+}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string): string; closeSession(token: string): void; tabZone(session: string | null, tab: Pick<TabInfo, "id" | "url" | "site" | "agentReached">): Zone; stop(): Promise<void> }> {
   const expected = Buffer.from(o.token);
   // Session tokens: one per window agent. Security note: their config files are readable by the
   // agents in the container; a session token gives nothing more than the main token, otherwise the link to
@@ -2680,6 +2685,8 @@ export async function startMcpServer(o: {
     closeSession(token) {
       sessions.delete(token);
     },
+    /** The zone `session`'s reads of `tab` get now (chrome's marks). */
+    tabZone: (session, tab) => tabZone(tab, agentSites, o.policy.conversation, masker.originsOf(session)),
     stop: () =>
       new Promise<void>((ok) => {
         http.closeAllConnections();

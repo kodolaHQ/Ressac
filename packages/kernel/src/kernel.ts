@@ -18,7 +18,8 @@ import { createRunner, type Runner } from "./container/runner.js";
 import { SessionAgent } from "./pty/session.js";
 import { AccessPolicy } from "./access/policy.js";
 import { SearchSessions } from "./search/sessions.js";
-import type { BrowserBridge } from "./mcp/bridge.js";
+import type { BrowserBridge, TabInfo } from "./mcp/bridge.js";
+import type { Zone } from "./mask/detectors.js";
 import type { ExtensionsTools } from "./mcp/extensions.js";
 import { Masker } from "./mask/masker.js";
 import { PassportStore } from "./mask/passport.js";
@@ -244,6 +245,8 @@ export interface Kernel {
   masker: Masker;
   /** The user's passports the masker applies (the host's store when it gave one, else the kernel's own). */
   passport: PassportStore;
+  /** The zone `session`'s reads of `tab` get now, the agent's site app navigations counted: chrome's « Cacher » marks. */
+  tabZone(session: string | null, tab: Pick<TabInfo, "id" | "url" | "site" | "agentReached">): Zone;
   /**
    * The profile's whole passport (design § 5.3). A search form no profile had marks every open conversation that already
    * masked a text « non couverte » and takes its Claude conversation out of covered.json; `uncovered`: how many.
@@ -759,6 +762,7 @@ export async function createKernel(o: {
     outflow: outflow,
     masker: masker,
     passport,
+    tabZone: (session, tab) => server.tabZone(session, tab),
     async replacePassport(profile, entries) {
       const { added } = passport.replace(profile, entries);
       if (!added.length) return { uncovered: 0 };

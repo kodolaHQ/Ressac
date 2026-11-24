@@ -8,7 +8,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { AccessPolicy, DEV_RIGHTS } from "../../src/access/policy.js";
 import type { TabInfo } from "../../src/mcp/bridge.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
-import { createToolsServer, generateToken, sourceZone, startMcpServer } from "../../src/mcp/server.js";
+import { createToolsServer, generateToken, sourceZone, startMcpServer, tabZone } from "../../src/mcp/server.js";
 import { Masker } from "../../src/mask/masker.js";
 import { PassportStore } from "../../src/mask/passport.js";
 import { SearchSessions } from "../../src/search/sessions.js";
@@ -109,6 +109,13 @@ test("sourceZone: a site app window is the user's until the agent navigates it, 
   expect(sourceZone(site, true)).toBe("web");
   expect(sourceZone({ ...site, agentReached: true })).toBe("web");
   expect(sourceZone({ ...site, agentReached: false })).toBe("sources");
+});
+
+test("tabZone: a site app the agent navigated in this conversation is no source; in an earlier one, it is again", () => {
+  const site = { id: "site:poste", url: `${HOST}/inbox`, site: "poste" };
+  expect(tabZone(site, new Set(["2:site:poste"]), 2)).toBe("web");
+  expect(tabZone(site, new Set(["1:site:poste"]), 2)).toBe("sources");
+  expect(tabZone({ ...site, agentReached: true }, new Set(), 2)).toBe("web");
 });
 
 test("invariant 1: every registered tool is behind the masker, and no result of any of them holds the IBAN", async () => {

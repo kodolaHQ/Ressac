@@ -1044,7 +1044,7 @@ const rpc = createRpc({
     // A paste held by the terminal: the masked text and what it hid, never the original (the UI keeps it for « Coller en clair »).
     "agent.maskPaste": (p: { window?: unknown; text?: unknown }) => maskPaste(() => kernel?.masker ?? null, passport, p?.window, p?.text),
     // Chrome's « Cacher pour l'agent » marks: where the window's agent sees labels, never a label or a value.
-    "mask.runs": (p: unknown) => maskRuns(kernel?.masker ?? null, p),
+    "mask.runs": (p: unknown) => maskRuns(kernel ?? null, p),
     "mask.guess": (p: unknown) => maskGuess(p),
     "agent.revealLogins": (p: { window?: unknown; ref?: unknown }) => bridge.loginsFor(p?.ref, p?.window),
     // A fill card's passport value (ruling F10): to that card's own window only, never logged.
