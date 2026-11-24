@@ -194,6 +194,7 @@ chrome-mask-fill-row = { $field } : { $name }
 chrome-mask-fill-remember = Retenir { $site } pour { $name }
 chrome-mask-fill-remember-failed = Le site n'a pas pu être retenu.
 chrome-mask-fill-other-profile = Cette donnée vient de votre passeport « { $profile } », pas de celui de cet onglet.
+chrome-mask-fill-no-passport = Cet onglet n'a pas de passeport : c'est un onglet de l'agent ou une appli de site. Remplissez ce champ vous-même, ou ouvrez la page dans un de vos espaces.
 chrome-mask-fill-missing =
     Votre passeport n'a pas { $kind ->
         [prenoms] de prénom

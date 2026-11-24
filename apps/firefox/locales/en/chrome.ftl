@@ -194,6 +194,7 @@ chrome-mask-fill-row = { $field }: { $name }
 chrome-mask-fill-remember = Remember { $site } for { $name }
 chrome-mask-fill-remember-failed = The site could not be remembered.
 chrome-mask-fill-other-profile = This comes from your “{ $profile }” passport, not this tab's.
+chrome-mask-fill-no-passport = This tab has no passport: it is the agent's tab or a site app. Fill this field yourself, or open the page in one of your spaces.
 chrome-mask-fill-missing =
     Your passport has no { $kind ->
         [prenoms] first name

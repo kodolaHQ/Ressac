@@ -131,7 +131,7 @@
     <MaskReveal text={labels.join("\n")} {labels} bind:seeing />
   {/if}
   <div class="actions">
-    {#if missing}<button data-testid="mask-request-open-passport" onclick={openPassport}>{t("agent-mask-passport-open")}</button>{/if}
+    {#if missing && mask.profile}<button data-testid="mask-request-open-passport" onclick={openPassport}>{t("agent-mask-passport-open")}</button>{/if}
     <button data-main onclick={() => answer("deny")}>{t("home-deny")}</button>
     {#if !missing}<button class="allow" disabled={unpicked} onclick={() => answer("allow")}>{t(ALLOW[kind ?? ""] ?? "home-allow")}</button>{/if}
   </div>

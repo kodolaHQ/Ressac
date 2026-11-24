@@ -164,7 +164,7 @@ it("several fields on one card: its title, a line per row, one Touch ID, the pic
 
 it("a kind with nothing to pick: « n'a pas de », and even a yes refuses, with no Touch ID", async () => {
   const { questions, reauth, win } = passportSetup();
-  const answer = questions.askFill({ ...passportFill, touchId: true, rows: [{ field: "IBAN", name: "votre IBAN", kind: "iban", choices: [] }] }, win);
+  const answer = questions.askFill({ ...passportFill, touchId: true, profile: "default", rows: [{ field: "IBAN", name: "votre IBAN", kind: "iban", choices: [] }] }, win);
   expect(only(questions).mask?.rows).toEqual([{ line: "IBAN : votre IBAN", missing: "Votre passeport n'a pas d'IBAN." }]);
   questions.answer(only(questions).id, "allow");
   expect(await answer).toEqual({ yes: false });
@@ -186,6 +186,14 @@ it("« Ouvrir le passeport » opens the other profile's passport, else the tab's
   questions.answer(only(questions).id, "deny");
   void questions.askFill({ ...passportFill, labels: [LABEL], passportProfile: "p-work" }, win);
   expect(only(questions).mask?.profile).toBe("p-work");
+});
+
+it("a tab with no passport (the agent's, a site app's): the card says so and offers no « Ouvrir le passeport »", () => {
+  const { questions, win } = passportSetup();
+  void questions.askFill({ ...passportFill, rows: [{ field: "Email", name: "votre e-mail", kind: "email", choices: [] }] }, win);
+  const p = only(questions);
+  expect(p.mask?.rows?.[0]?.missing).toBe("Cet onglet n'a pas de passeport : c'est un onglet de l'agent ou une appli de site. Remplissez ce champ vous-même, ou ouvrez la page dans un de vos espaces.");
+  expect(p.mask?.profile).toBeUndefined();
 });
 
 it("a kind the passport lacks: the sentence for each kind, and a plain one for an unknown kind", () => {
