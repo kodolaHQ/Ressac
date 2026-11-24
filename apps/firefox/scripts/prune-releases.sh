@@ -15,11 +15,13 @@ key=${RESSAC_UPDATE_KEY:-}
 [[ $key =~ '^[a-z0-9]{24,64}$' ]] || fail "RESSAC_UPDATE_KEY must be the feed's key (24 to 64 lowercase letters or digits)"
 [[ $keep =~ '^[0-9]+$' ]] && (( keep >= 2 )) || fail "RESSAC_KEEP_RELEASES must be 2 or more"
 [[ -f $r2env ]] || fail "$r2env is missing (R2 API token, see scripts/vm/publish-image.sh)"
-source $r2env
-for v in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ENDPOINT; do [[ -n ${(P)v:-} ]] || fail "$v is empty in $r2env"; done
+. $r2env # not exported: only the print builtin in s3() reads the key
+[[ -n ${R2_ACCESS_KEY_ID:-} && -n ${R2_SECRET_ACCESS_KEY:-} && ${R2_ENDPOINT:-} == https://* ]] || fail "$r2env needs R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_ENDPOINT"
+endpoint=${R2_ENDPOINT%/}
 
 prefix=updates/$key/releases/
-s3() { curl -sf --max-time 60 --aws-sigv4 "aws:amz:auto:s3" --user "$R2_ACCESS_KEY_ID:$R2_SECRET_ACCESS_KEY" "$@" }
+# The key goes through curl's config on stdin, never on the command line (ps shows arguments to every process).
+s3() { print -r -- "user = \"$R2_ACCESS_KEY_ID:$R2_SECRET_ACCESS_KEY\"" | curl -K - -sf --max-time 60 --aws-sigv4 "aws:amz:auto:s3" "$@" }
 
 # Every key under the prefix (pages of 1000).
 keys=()
@@ -27,8 +29,8 @@ token=""
 while :; do
   query="list-type=2&prefix=${prefix//\//%2F}"
   [[ -n $token ]] && query+="&continuation-token=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' $token)"
-  page=$(s3 "$R2_ENDPOINT/$bucket?$query") || fail "cannot list $bucket/$prefix"
-  keys+=(${(f)"$(print -r -- $page | grep -oE '<Key>[^<]+</Key>' | sed -E 's/<\/?Key>//g')"})
+  page=$(s3 "$endpoint/$bucket?$query") || fail "cannot list $bucket/$prefix"
+  keys+=(${(f)"$(print -r -- $page | grep -oE '<Key>[^<]+</Key>' | sed -E 's/<\/?Key>//g' || true)"})
   token=$(print -r -- $page | grep -oE '<NextContinuationToken>[^<]+' | sed 's/<NextContinuationToken>//' || true)
   [[ -n $token ]] || break
 done
@@ -42,5 +44,5 @@ for k in $keys; do
   v=${${k#$prefix}%%/*}
   (( ${old[(Ie)$v]} )) || continue
   if [[ -n ${RESSAC_PUBLISH_DRY_RUN:-} ]]; then print -r -- "delete $bucket/$k"
-  else s3 -X DELETE "$R2_ENDPOINT/$bucket/$k" >/dev/null || fail "cannot delete $k"; fi
+  else s3 -X DELETE "$endpoint/$bucket/$k" >/dev/null || fail "cannot delete $k"; fi
 done
