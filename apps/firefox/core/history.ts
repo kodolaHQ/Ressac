@@ -67,7 +67,7 @@ export class History {
     | "keep" | "updateTitleText" | "isPrivate" | "forgetText" | "forgetSpaceTexts" | "eraseTextsSince"
     | "eraseOrphanTexts" | "clearAllTexts" | "purgeBefore" | "purgeVisitsBefore" | "totalBytes" | "oldTexts" | "forgetTextId"
     | "keptText" | "visitsOf" | "excerpt" | "importVisit" | "noteIcon" | "icon" | "clearIcons" | "eraseOrphanIcons"
-    | "pendingVectors" | "saveVector" | "similar" | "dropVector" | "textByUser",
+    | "pendingVectors" | "saveVector" | "similar" | "similarPage" | "dropVector" | "textByUser",
     StatementSync
   >;
   private byteCap: number;
@@ -153,10 +153,12 @@ export class History {
         ON CONFLICT (url, space_id) DO UPDATE SET vec = excluded.vec`),
       dropVector: this.db.prepare("DELETE FROM vectors WHERE url = ? AND space_id = ?"),
       similar: this.db.prepare(`
-        SELECT v.url, v.space_id AS spaceId, v.title, v.last_visit AS lastVisit, v.visits, x.vec, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt
+        SELECT v.url, v.space_id AS spaceId, v.last_visit AS lastVisit, v.visits, x.vec
         FROM vectors x JOIN visits v ON v.url = x.url AND v.space_id = x.space_id
-        LEFT JOIN texts t ON t.url = x.url AND t.space_id = x.space_id
         WHERE v.private = 0 AND v.last_visit >= :since AND v.last_visit <= :until`),
+      similarPage: this.db.prepare(`
+        SELECT v.title, COALESCE(substr(t.text, 1, ${VECTOR_EXCERPT}), '') AS excerpt
+        FROM visits v LEFT JOIN texts t ON t.url = v.url AND t.space_id = v.space_id WHERE v.url = ? AND v.space_id = ?`),
       textByUser: this.db.prepare("SELECT by_user FROM texts WHERE id = ?"),
       excerpt: this.db.prepare(
         `SELECT snippet(texts_fts, 2, '', '', '…', ${SNIPPET_WORDS}) AS excerpt FROM texts_fts WHERE texts_fts MATCH ? AND rowid = ?`,
@@ -486,7 +488,7 @@ export class History {
    * The pages nearest to `vec` (L2-normalised: the dot product is the cosine), one per URL with its best score, with
    * non-private visits only, within [since, until], optionally on `sites` (a host or its subdomains).
    * The vectors are read one row at a time (unsorted: sorting them all costs a temp B-tree), grouped per URL in a Map of
-   * small hits, and only the `limit` best pages are kept.
+   * small hits (numbers and the spaces to read from), and only the `limit` best pages get their title and excerpt.
    * shortcut: every vector in the period is read and compared in JS (3 KB per page): ~0.7 s and ~460 MB read per question
    * at 149k vectors. Past ~50k pages, keep the vectors in memory or use a vector index. Cutting them to 256 dims
    * (Matryoshka) was measured on bench-cmdt v4 and costs quality (hard set best 78.2 % → 75.9 %, threshold 0.31 → 0.36);
@@ -496,9 +498,10 @@ export class History {
     if (!this.db.isOpen) return [];
     const sites = (q.sites ?? []).map((s) => s.toLowerCase());
     const rows = this.req.similar.iterate({ since: q.since?.toISOString() ?? "", until: q.until?.toISOString() ?? "\uffff" }) as Iterable<{
-      url: string; spaceId: string; title: string; lastVisit: string; visits: number; vec: Uint8Array; excerpt: string;
+      url: string; spaceId: string; lastVisit: string; visits: number; vec: Uint8Array;
     }>;
-    type Hit = PageHit & { score: number };
+    // titleSpace: the latest visit's row (its title); bestSpace: the best-scoring row (its excerpt).
+    type Hit = { url: string; score: number; visits: number; lastVisit: string; titleSpace: string; bestSpace: string };
     const hits = new Map<string, Hit>();
     const stale: [url: string, spaceId: string][] = [];
     for (const r of rows) {
@@ -514,12 +517,12 @@ export class History {
       for (let i = 0; i < page.length; i++) score += page[i]! * vec[i]!;
       const hit = hits.get(r.url);
       if (!hit) {
-        hits.set(r.url, { url: r.url, title: r.title, lastVisit: r.lastVisit, visits: r.visits, excerpt: r.excerpt, favicon: null, score });
+        hits.set(r.url, { url: r.url, lastVisit: r.lastVisit, visits: r.visits, score, titleSpace: r.spaceId, bestSpace: r.spaceId });
         continue;
       }
       hit.visits += r.visits;
-      if (r.lastVisit > hit.lastVisit) Object.assign(hit, { title: r.title, lastVisit: r.lastVisit });
-      if (score > hit.score) Object.assign(hit, { score, excerpt: r.excerpt });
+      if (r.lastVisit > hit.lastVisit) Object.assign(hit, { titleSpace: r.spaceId, lastVisit: r.lastVisit });
+      if (score > hit.score) Object.assign(hit, { score, bestSpace: r.spaceId });
     }
     const top: Hit[] = []; // best first (equal scores by URL), at most q.limit
     for (const hit of hits.values()) {
@@ -529,7 +532,10 @@ export class History {
       if (top.length > q.limit) top.pop();
     }
     if (stale.length) this.transaction(() => { for (const [url, spaceId] of stale) this.req.dropVector.run(url, spaceId); });
-    return top.map((x) => ({ ...x, favicon: this.favicon(x.url) }));
+    const page = (url: string, spaceId: string) => this.req.similarPage.get(url, spaceId) as { title: string; excerpt: string } | undefined;
+    return top.map(({ url, score, visits, lastVisit, titleSpace, bestSpace }) => ({
+      url, score, visits, lastVisit, title: page(url, titleSpace)?.title ?? "", excerpt: page(url, bestSpace)?.excerpt ?? "", favicon: this.favicon(url),
+    }));
   }
 
   /** Substring insensitive to case and accents on the URL and title; `%`, `_` and `\` are literal. */

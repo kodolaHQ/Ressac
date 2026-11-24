@@ -734,15 +734,15 @@ describe("page vectors", () => {
       expect(h.findSimilar(v(1, 0), { limit: 1 })).toHaveLength(1);
     });
 
-    test("a small limit gives the full ranking's best pages; a URL in two spaces keeps its best score, its latest title and both visits", () => {
+    test("a small limit gives the full ranking's best pages; a URL in two spaces keeps its best score, its latest title, the best row's excerpt and both visits", () => {
       for (let i = 0; i < 40; i++) visit(`https://p${i}.fr/`, `P${i}`, { date: d(1 + (i % 5)) });
-      visit("https://two.fr/", "Two old", { spaceId: "a", date: d(2) });
+      visit("https://two.fr/", "Two old", { spaceId: "a", text: "meilleur", date: d(2) });
       visit("https://two.fr/", "Two", { spaceId: "b", date: d(3) });
       h.saveVectors(h.pendingVectors(1000).map((r, i) => ({ ...r, vec: r.url === "https://two.fr/" ? (r.spaceId === "a" ? v(0.995, 0.0998) : v(0, 1)) : v(Math.cos(i / 10), Math.sin(i / 10)) })));
       const all = h.findSimilar(v(1, 0), { limit: 100 });
       expect(all).toHaveLength(41);
       expect(h.findSimilar(v(1, 0), { limit: 5 })).toEqual(all.slice(0, 5));
-      expect(all.find((x) => x.url === "https://two.fr/")).toMatchObject({ title: "Two", visits: 2 });
+      expect(all.find((x) => x.url === "https://two.fr/")).toMatchObject({ title: "Two", excerpt: "meilleur", visits: 2 });
       expect(all.find((x) => x.url === "https://two.fr/")!.score).toBeCloseTo(0.995);
     });
 
