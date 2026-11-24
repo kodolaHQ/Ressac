@@ -1107,3 +1107,12 @@ test("a field relabelled since the read (« Newsletter » become « Supprimer mo
     expect(of("fill.commit")).toEqual([]);
   });
 });
+
+test("a code read in the mail, filled into a page the user opened elsewhere (a phishing link clicked): the card says where it was read", async () => {
+  await servePassport({ text: `Ton code : ${CODE}.`, tabs: [ptab("mail", `${P_MAIL}/inbox`), ptab("phish", "https://rnabanque.example/verif")] }, async ({ call, cards }) => {
+    const code = (await call("read_tab", { id: "mail" })).text.match(/⟨code-[a-z0-9]{8}⟩/)![0];
+    await call("read_tab", { id: "phish" });
+    await call("fill_field", { id: "phish", field: 0, value: code });
+    expect(cards()[0]!.danger).toBe("Cette page est sur rnabanque.example, et votre code a été lu sur mail.example : vérifiez que c'est bien le site attendu.");
+  });
+});

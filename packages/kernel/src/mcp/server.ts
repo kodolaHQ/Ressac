@@ -1466,14 +1466,14 @@ export function createToolsServer(
       const offered = [...new Set(rows.flatMap((r) => r.entries))];
       const locked = !allows(seal.origin) || actions.some((a) => !allows(a));
       const elsewhere = [...new Set(asked.flatMap((r, i) => ((r.passport || usedOf(r.value).length) && actions[i] !== seal.origin ? [l10n("kernel-mask-fill-action-danger", { to: actions[i] ?? String(seals[i]!.action) })] : [])))];
-      // Rule 2 for a label: a value of the user's sources onto a page the agent reached, off every origin it was read on
-      // (B3, the « fill » family: a granted plain card gave the attacker's form the code). The user's own page stays plain.
+      // Rule 2 for a label: a value of the user's sources off every origin it was read on (B3, the « fill » family: a
+      // granted plain card gave the attacker's form the code). The user's own tab says it too, without « opened by the
+      // agent »: a phishing link the user clicked is a page they reached.
       const reached = seals.some((s) => s.agentReached);
-      const foreign = reached
-        ? offered.filter((e) => e.zone === "sources" && !passportOrigins(e).includes(seal.origin))
-            // A passport value was not read anywhere: the card names the sites it is meant for, each once.
-            .map((e) => l10n(e.passport?.length ? "kernel-mask-fill-foreign-passport" : "kernel-mask-fill-foreign-danger", { ...named([valueName(e.type, e.zone, locale())]), from: [...new Set(passportOrigins(e).map(siteOf))].join(", ") || "?", to: siteOf(seal.origin) }))
-        : [];
+      const foreign = offered
+        .filter((e) => e.zone === "sources" && !passportOrigins(e).includes(seal.origin))
+        // A passport value was not read anywhere: the card names the sites it is meant for, each once.
+        .map((e) => l10n(`kernel-mask-fill-foreign-${e.passport?.length ? "passport" : "danger"}${reached ? "" : "-user"}`, { ...named([valueName(e.type, e.zone, locale())]), from: [...new Set(passportOrigins(e).map(siteOf))].join(", ") || "?", to: siteOf(seal.origin) }));
       const danger = [hit && OUTFLOW_DANGER(locale(), hit), ...elsewhere, ...foreign, acts, locked && lockedLine()].filter(Boolean).join("\n");
       // Design § 8.1: a passport value off all its origins asks Touch ID, once per origin for TOUCH_ID_WINDOW_MS (ruling F16:
       // the window spares only that reason; a tab the agent reached still asks).

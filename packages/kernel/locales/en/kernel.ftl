@@ -174,6 +174,10 @@ kernel-mask-fill-foreign-danger = This page, opened by the agent, is on { $to }:
        *[one-m] was
     } read on { $from }.
 kernel-mask-fill-foreign-passport = This page, opened by the agent, is on { $to }, not on one of the sites your passport sets for { $name } ({ $from }).
+kernel-mask-fill-foreign-danger-user = This page is on { $to }, and { $name } { $agreement ->
+       *[one-m] was
+    } read on { $from }: check it is the site you expect.
+kernel-mask-fill-foreign-passport-user = This page is on { $to }, not on one of the sites your passport sets for { $name } ({ $from }).
 kernel-mask-fill-check = tick
 kernel-mask-fill-uncheck = untick
 kernel-mask-fill-option = choose « { $option } »
