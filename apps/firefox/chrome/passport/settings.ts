@@ -299,13 +299,13 @@ export const pagePassport = ({ addOrigin: _a, hide: _h, unhide: _u, ...pages }: 
 export type PagePassport = ReturnType<typeof pagePassport>;
 
 /** `RESSAC_TEST_PASSPORT_TIMES` (dev builds): « unlockMs,showMs », so an e2e waits for the relock and the remask. */
-function testTimes(): { unlockMs: number; showMs: number } | undefined {
+export function testTimes(): { unlockMs: number; showMs: number } | undefined {
   const [unlockMs, showMs] = (testEnv("RESSAC_TEST_PASSPORT_TIMES") ?? "").split(",").map(Number);
   return unlockMs! > 0 && showMs! > 0 ? { unlockMs: unlockMs!, showMs: showMs! } : undefined;
 }
 
 /** macOS's « CGSSessionScreenIsLocked » through ctypes (CoreGraphics and CoreFoundation); false when it cannot tell. */
-function macScreenLocked(): () => boolean {
+export function macScreenLocked(): () => boolean {
   let read: (() => boolean) | null = null;
   return () => {
     try {
