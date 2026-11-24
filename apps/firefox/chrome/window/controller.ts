@@ -6,6 +6,7 @@ import { auraVariables, DEFAULT_AURA, type AuraId } from "../../shared/aura";
 import { toUrl } from "../../core/url";
 import { searchTemplate } from "../../shared/search";
 import { createHalo } from "../../core/halo";
+import { tabInfos } from "../../core/agent/bridge";
 import { TabCycle } from "../../core/tab-cycle";
 import { toNeighbour, toNextSpace, toNth } from "../../core/shortcuts";
 import { effectiveBindings } from "../../shared/shortcuts";
@@ -19,6 +20,7 @@ import { setupAnchors } from "./anchor";
 import { mountSiteBanner } from "./site-banner";
 import { mountSearchBand } from "./search-band";
 import { mountAgentPill } from "./agent-pill";
+import { mountHideLayer, mountMarks, type HideControl } from "./hide-layer";
 import { visibleFrame } from "./frame";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
@@ -36,11 +38,12 @@ export interface WindowController {
   /**
    * The agent's naviguer: an http(s) URL loaded with a content principal of the tab's container, without taking the
    * keyboard (the user may be typing in the agent panel). A tab without a XUL tab gets majOnglet{url}, loaded the same
-   * way when TabSync creates its XUL tab.
+   * way when TabSync creates its XUL tab. `allow` (agent/load-guard.ts): where its hops may go; the promise rejects with
+   * LoadRefused when one is cancelled, and never resolves.
    */
-  navigateForAgent(tabId: TabId, url: string): void;
+  navigateForAgent(tabId: TabId, url: string, allow?: string[] | null): Promise<never>;
   /** As `navigateForAgent`, resolved once the new address has finished loading (15 s at most): a read after it never sees the previous page. */
-  navigateForAgentLoaded(tabId: TabId, url: string): Promise<void>;
+  navigateForAgentLoaded(tabId: TabId, url: string, allow?: string[] | null): Promise<void>;
   /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
   ensure(tabId: TabId): Promise<any>;
   /** The browser of a tab if it already has a XUL tab, never created for the asking. */
@@ -99,6 +102,8 @@ export interface WindowController {
   tabSwitch(m: TabCycleMessage): void;
   /** The sidebar's add-on strip: buttons, pins, popups and pending updates. */
   readonly addons: WindowAddons;
+  /** « Cacher pour l'agent » over this window's tab (hide-layer.ts). */
+  readonly hide: HideControl;
 }
 
 /** Binds this browser window to the state window it claimed (store.windows.claim). */
@@ -110,7 +115,7 @@ export function createController(
   windowId: WindowId,
 ): WindowController {
   const tabs = new TabSync(gBrowser, store, windowId);
-  trackVisits(gBrowser, store.history, (id) => historyContext(store.state, id));
+  trackVisits(gBrowser, store.history, (id) => historyContext(store.state, id), (a) => void store.dispatch(a));
   // Prompts and add-on popups anchor on the sidebar, Firefox's toolbar being hidden (the action anchor: add-on popups).
   const anchors = setupAnchors(window, frame);
   routeAddonsManager(window, store, windowId, tabs);
@@ -235,7 +240,25 @@ export function createController(
   markWebPage(store.state);
   unsubscribe.push(store.subscribe(markWebPage));
   // The agent's halo: lit while one of its tools runs on the displayed tab (a tab or space switch is a state change).
-  const halo = createHalo((on) => document.documentElement.toggleAttribute("ressac-agent-working", on));
+  // Under it, what the agent receives masked from that tab (hide-layer.ts mountMarks), on and off with it; also while
+  // « Cacher pour l'agent » picks on the shown tab, so the user sees what is already hidden before hiding more.
+  const marks = mountMarks(window, store, {
+    agentReached: (id) => tabInfos(store.state).find((t) => t.id === id)?.agentReached ?? true,
+    aura: () => auraOf(store.state),
+  });
+  let haloOn = false;
+  /** The tab the viewfinder was armed on: a tab switch closes it, and the new tab is never measured meanwhile. */
+  let picking: TabId | null = null;
+  const syncMarks = () => {
+    const t = haloOn ? haloTab : picking;
+    if (t) marks.start(t);
+    else marks.stop();
+  };
+  const halo = createHalo((on) => {
+    document.documentElement.toggleAttribute("ressac-agent-working", on);
+    haloOn = on;
+    syncMarks();
+  });
   let haloTab: TabId | null | undefined;
   const updateHalo = () => {
     const f = store.state.windows.find((x) => x.id === windowId);
@@ -247,7 +270,7 @@ export function createController(
     else halo.update(!!(shown && store.access.tabs[shown]?.running));
   };
   updateHalo();
-  unsubscribe.push(store.subscribe(updateHalo), store.agent.on("access", updateHalo), store.agent.on(HOST_EXITED, updateHalo), () => halo.dispose());
+  unsubscribe.push(store.subscribe(updateHalo), store.agent.on("access", updateHalo), store.agent.on(HOST_EXITED, updateHalo), () => halo.dispose(), () => marks.dispose());
   // After a tab switch Firefox gives the keyboard to the selected browser; the parking tab is no page, the UI keeps it.
   window.addEventListener("TabSwitchDone", () => {
     if (!tabs.displayed()) frame.focus();
@@ -410,6 +433,16 @@ export function createController(
   const asking = new Set<TabId>();
   const calls = mountCalls(window, store);
   unsubscribe.push(calls.dispose);
+  const hide = mountHideLayer(window, store, windowId);
+  unsubscribe.push(
+    hide.onChange(() => {
+      if (!!picking === hide.picking()) return;
+      const f = store.state.windows.find((x) => x.id === windowId);
+      picking = hide.picking() ? (f?.active[f.activeSpace] ?? null) : null;
+      syncMarks();
+    }),
+    hide.dispose,
+  );
   const showSidebarWidth = (px: number) => {
     barWidth = px;
     document.documentElement.style.setProperty("--ressac-sidebar-w", `${px}px`);
@@ -452,7 +485,11 @@ export function createController(
     navigate(tabId, input) {
       const url = toUrl(input, searchTemplate(store.state.settings));
       if (!url) return;
-      if (!tabId) return void store.dispatch({ type: "openTab", windowId: windowId, url });
+      // The user's own top-level navigation: a new tab is theirs; an agent's tab becomes theirs once this load commits
+      // (visits.ts → locationCommitted), never for its own address again (spec § 5.3).
+      if (!tabId) return void store.dispatch({ type: "openTab", windowId: windowId, url, agentReached: false });
+      store.loadGuard.forget(tabId);
+      store.dispatch({ type: "userNavigating", id: tabId, url: Services.io.newURI(url).spec });
       if (revive(tabId, url)) return;
       const browser = browserOf(tabId);
       if (!browser) return void store.dispatch({ type: "updateTab", id: tabId, fields: { url } });
@@ -460,28 +497,39 @@ export function createController(
       browser.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
       browser.focus();
     },
-    navigateForAgent(tabId, url) {
+    navigateForAgent(tabId, url, allow = null) {
       const uri = Services.io.newURI(url);
       if (!uri.schemeIs("http") && !uri.schemeIs("https")) throw new Error(`URL refusée (http ou https uniquement) : ${url}`);
+      // Before the load: its visit, a redirect's landing included, is noted as the agent's.
+      store.dispatch({ type: "agentNavigated", id: tabId });
       // Revived at its old URL, then loaded below like any agent load: never with the system principal.
       revive(tabId);
+      // Before the load starts, in the store's registry (this window's bundle has its own copy of load-guard.ts).
+      const refused = store.loadGuard.expect(tabId, url, allow);
       const tab = tabs.tab(tabId);
-      if (!tab) return void store.dispatch({ type: "updateTab", id: tabId, fields: { url } });
+      if (!tab) {
+        store.dispatch({ type: "updateTab", id: tabId, fields: { url } });
+        return refused;
+      }
       const triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: tab.userContextId });
       tab.linkedBrowser.loadURI(uri, { triggeringPrincipal });
+      return refused;
     },
-    async navigateForAgentLoaded(tabId, url) {
+    async navigateForAgentLoaded(tabId, url, allow = null) {
       const browser = tabs.tab(tabId)?.linkedBrowser;
       // Only the fragment changes: a same-document navigation, no load to wait for.
       const base = (u: string) => u.replace(/#.*/, "");
       const sameDocument = url.includes("#") && base(url) === base(browser?.currentURI?.spec ?? "");
       const loaded = browser && !sameDocument ? tabs.nextLoad(tabId, browser) : Promise.resolve();
-      controller.navigateForAgent(tabId, url);
-      await loaded;
+      // A fragment change has no request to judge.
+      const refused = controller.navigateForAgent(tabId, url, sameDocument ? null : allow);
+      await Promise.race([loaded, refused]);
     },
     ensure: (tabId) => tabs.ensure(tabId),
     browserOf,
     command(tabId, c) {
+      // The user's own back, forward or reload: what follows is theirs.
+      store.loadGuard.forget(tabId);
       if (c !== "stop" && revive(tabId)) return;
       const browser = browserOf(tabId);
       if (!browser) return;
@@ -599,6 +647,7 @@ export function createController(
     },
     tabSwitch: (m) => walk.message(windowId, m),
     addons: createAddons({ win: window, gBrowser, tabs, anchors, store, windowId: windowId }),
+    hide,
   };
   return controller;
 }

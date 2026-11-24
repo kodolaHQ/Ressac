@@ -169,7 +169,6 @@ export class SearchSessions {
     const { path, resolve } = s.hand;
     s.hand = undefined;
     const kept = path.slice(-PATH_MAX);
-    if (kept.length) this.allow(tabId, kept[kept.length - 1]!);
     this.resume(s);
     resolve({ outcome: "continue", path: kept });
   }

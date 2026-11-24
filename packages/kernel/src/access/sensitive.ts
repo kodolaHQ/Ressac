@@ -1,7 +1,7 @@
 // Why: a granted site must still be re-asked before the agent reads a tab where a leak is costly
 // (mail, bank, payroll, passwords, account settings).
 // shortcut: hard-coded list, misses unlisted banks; let the user add sites if testers report misses
-const HOSTS = [
+export const SENSITIVE_HOSTS: readonly string[] = [
   // webmail
   "mail.google.com", "outlook.live.com", "outlook.office.com", "outlook.office365.com", "mail.proton.me",
   "mail.yahoo.com", "icloud.com", "webmail.orange.fr", "messagerie.orange.fr", "webmail.sfr.fr", "imp.free.fr",
@@ -41,7 +41,7 @@ export function isSensitive(url: string, depth = 0): boolean {
   if (u.protocol === "view-source:" || u.protocol === "blob:" || reader !== null) return depth >= 3 || isSensitive(reader ?? u.pathname, depth + 1);
   if (u.protocol === "about:") return /^(logins|preferences)$/.test(u.pathname.toLowerCase());
   const host = u.hostname.toLowerCase().replace(/\.+$/, ""); // "mail.google.com." loads the same site
-  if (HOSTS.some((d) => host === d || host.endsWith("." + d))) return true;
+  if (SENSITIVE_HOSTS.some((d) => host === d || host.endsWith("." + d))) return true;
   // a webmail on its own host (mail.ovh.net, webmail.gandi.net)
   if (/^(?:web)?mail\./.test(host)) return true;
   const parts = decodedPath(u.pathname).split("/").map((p) => p.split(";")[0]!).filter(Boolean);

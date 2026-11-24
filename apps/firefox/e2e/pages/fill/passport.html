@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Commande</title>
+<!-- An order form the passport fills: the page shows what its fields hold, the agent's next read must see labels only. -->
+<form action="/fill/next.html">
+  <label for="nom">Nom</label><input id="nom">
+  <label for="adresse">Adresse</label><textarea id="adresse"></textarea>
+  <label for="ville">Ville</label><input id="ville">
+  <label for="iban">IBAN</label><input id="iban">
+</form>
+<p id="echo"></p>
+<script>addEventListener("input", () => (document.getElementById("echo").textContent = [...document.querySelectorAll("input, textarea")].map((i) => i.value).filter(Boolean).join(" · ")));</script>

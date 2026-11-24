@@ -38,6 +38,8 @@ async function start(o: {
   profiles?: Partial<ReturnType<typeof profileFiles>>;
   /** Answer of the site app's card (absent: no card, refusal). */
   site?: boolean;
+  /** Answer of the unlock card of a tab that shows the user's data (absent: no card, refusal). */
+  devUnlock?: boolean;
 } = {}) {
   bridge = new FakeBridge([github, gmail, appTodo, vidola], {
     active: "github",
@@ -46,6 +48,7 @@ async function start(o: {
     ...(o.grantDev ? { grantDev: o.grantDev } : {}),
     ...(o.block ? { block: true } : {}),
     ...(o.site !== undefined ? { widgetData: o.site } : {}),
+    ...(o.devUnlock !== undefined ? { devUnlock: o.devUnlock } : {}),
   });
   policy = new AccessPolicy();
   root = await tempFolder();
@@ -80,7 +83,7 @@ test("without bridge.outilsDev, no dev tool is listed", async () => {
   const names = (await client!.listTools()).tools.map((t) => t.name);
   expect(names).not.toContain("read_console");
   expect(names).not.toContain("request_devtools");
-  expect(names).toHaveLength(6);
+  expect(names).toHaveLength(8);
 });
 
 test("with bridge.outilsDev, the nine dev tools are listed", async () => {
@@ -324,7 +327,8 @@ test("two simultaneous requests for the same tab: a single card", async () => {
 });
 
 test("DevToolsTracking: attaches at the first right, detaches when everything is cut; DevToolsBusy → the tool returns the message", async () => {
-  await start({ grantDev: ["console"] });
+  // Gmail shows the user's data: its unlock card, granted, before the busy tools answer.
+  await start({ grantDev: ["console"], devUnlock: true });
   tracking = new DevToolsTracking(policy, bridge.devTools!, () => bridge.listTabs());
   const callsOf = (m: string, id: string) => bridge.calls.filter((a) => a.method === m && a.args[0] === id).length;
 
@@ -652,6 +656,18 @@ test("read_console with the dev right but without the site's grant: the app's ca
   expect(bridge.calls.some((a) => a.method === "console")).toBe(false);
   expect(await invoke("request_devtools", { id: "site:vidola", rights: ["network"], reason: "voir" })).toBe(DENIAL);
   expect(devRequests()).toHaveLength(0);
+});
+
+test("run_js in a site app window: its page is no longer the user's source, as after navigate (spec § 5.3)", async () => {
+  await start({ grantDev: ["act"], site: true, devUnlock: true });
+  // A webmail host: sensitive, so the user's own window is a source, where a phone is masked.
+  bridge.editTab("site:vidola", { url: "https://mail.vidola-a.example/inbox" });
+  bridge.pages.set("site:vidola", { text: "Tél : 0612345678" });
+  expect(await invoke("read_tab", { id: "site:vidola" })).toMatch(/⟨tel-[a-z0-9]{8}⟩/);
+  await invoke("run_js", { id: "site:vidola", code: "1" });
+  const after = await invoke("read_tab", { id: "site:vidola" });
+  expect(after).toContain("0612345678");
+  expect(after).not.toMatch(/⟨tel-/);
 });
 
 test("read_console on a site app whose site.json was rewritten (other hash): the app's card comes back first", async () => {

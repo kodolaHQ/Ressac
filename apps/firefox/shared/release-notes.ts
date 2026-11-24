@@ -1,5 +1,26 @@
+/**
+ * A video shown on a version's notes: a card that opens `url` in a tab (the UI itself never loads from the network,
+ * ui-network.ts). `poster`: a key of ReleaseNotes.svelte's bundled images (inlined in the UI's script).
+ */
+export type ReleaseVideo = { url: string; title: string; poster?: "passport" };
+
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
-export const RELEASE_NOTES: { version: string; date: string; items: string[] }[] = [
+export const RELEASE_NOTES: { version: string; date: string; items: string[]; video?: ReleaseVideo }[] = [
+  {
+    version: "0.1.25",
+    date: "novembre 2026",
+    video: { url: "https://updates.getressac.app/videos/ressac-passeport.mp4", title: "Découvrir le passeport en vidéo", poster: "passport" },
+    items: [
+      "Le passeport : l'agent travaille avec votre nom, votre adresse, votre téléphone ou votre IBAN sans jamais les voir. Il lit des étiquettes à leur place, et chaque valeur ne part que vers les sites que vous avez choisis, après votre accord (Réglages › Passeport).",
+      "« Cacher pour l'agent » : cliquez sur une information d'une page pour la cacher à l'agent. Elle rejoint votre passeport, et un message vous dit si elle est bien masquée sur cette page.",
+      "« Voir ce qu'il ne voit pas » : pendant que l'agent travaille, les informations qu'il ne voit pas sont hachurées sur la page.",
+      "L'agent sait maintenant cocher des cases et choisir dans des listes. Sur vos propres onglets, il vous demande d'abord votre accord, et il ne valide jamais un formulaire à votre place.",
+      "Vos mots de passe se gèrent dans Réglages › Mots de passe : les voir, les copier, les ajouter, les modifier ou les supprimer, avec Touch ID, sans passer par les réglages de Firefox.",
+      "Sécurité : les captures d'écran de l'agent vérifient aussi les champs et les cadres d'une page, ses outils de développement demandent Touch ID sur vos sites, et plus de codes de vérification, numéros d'identité et noms dans les mails sont reconnus.",
+      "Ressac consomme moins de mémoire au fil des jours : plusieurs fuites corrigées (fenêtres fermées, outils de développement de l'agent, recherches), et la mémoire anti-fuite de l'agent passe de 25 à 9 Mo par fenêtre.",
+      "Une adresse tapée sans « https:// » s'ouvre même si le site ne répond qu'en http, comme la page de votre box : Ressac essaie d'abord https, puis http s'il échoue.",
+    ],
+  },
   {
     version: "0.1.24",
     date: "novembre 2026",

@@ -135,6 +135,11 @@ export interface SchedulerOptions {
    * run at a later check; manual and agent ones never wait. Absent: always calm.
    */
   calm?: () => Promise<boolean>;
+  /**
+   * The workspace lock holds and this widget's code (in `folder`, its own by default; the staged copy before it runs)
+   * changed since: its harvests and trials are skipped (a failure counts as paused).
+   */
+  paused?: (w: WidgetRead, folder?: string) => Promise<boolean>;
 }
 
 /**
@@ -526,6 +531,8 @@ export class WidgetsScheduler {
       ...(this.o.searchUrl !== undefined ? { searchUrl: this.o.searchUrl } : {}),
       interrupted: () => this.stopped,
       onTrace: onTrace,
+      // Checked again on the copy that runs: a shell could swap the files between the first check and the staging.
+      ...(this.o.paused ? { lockedCode: async (staged: string) => ((await this.isPaused(w, staged)) ? say(this.locale(), "kernel-mask-run-paused") : null) } : {}),
     };
   }
 
@@ -559,8 +566,18 @@ export class WidgetsScheduler {
     }
   }
 
+  private isPaused(w: WidgetRead, folder?: string): Promise<boolean> {
+    return this.o.paused ? this.o.paused(w, folder).catch(() => true) : Promise.resolve(false);
+  }
+
   private async run(w: WidgetRead, trigger: Execution["trigger"], start: Date): Promise<{ result: WidgetState & { run?: string }; issue: HourOutcome }> {
     const before = await readWidgetState(this.o.widgetsFolder, w.id);
+    if (await this.isPaused(w)) {
+      const state: WidgetState = { status: "error", lastUpdate: before.lastUpdate, lastAttempt: start.toISOString(), error: say(this.locale(), "kernel-mask-run-paused"), kernelError: true };
+      await writeWidgetState(this.o.widgetsFolder, w.id, state);
+      this.o.onChange?.();
+      return { result: state, issue: "no-effect" };
+    }
     let state: WidgetState;
     let run: string | undefined;
     let fresh: number | undefined;
@@ -644,6 +661,7 @@ export class WidgetsScheduler {
         if (this.stopped) return { ok: false, error: INTERRUPTED_ERROR(this.locale()) };
         if (!(await this.workshopStarted())) return { ok: false, error: WORKSHOP_STOPPED_ERROR(this.locale()) };
         if (this.stopped) return { ok: false, error: INTERRUPTED_ERROR(this.locale()) };
+        if (await this.isPaused(w)) return { ok: false, error: say(this.locale(), "kernel-mask-run-paused") };
         try {
           return await this.follow(
             id,

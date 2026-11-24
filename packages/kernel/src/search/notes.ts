@@ -24,6 +24,8 @@ export class BrowsingNotes {
     /** The notebook's header, written when it is created (localised). */
     private readonly header: () => Promise<string>,
     private readonly now: () => Date = () => new Date(),
+    /** The workspace lock holds: no lesson is written (the MCP gate refuses `note_lesson` first, this is the store's own refusal). */
+    private readonly locked: () => boolean = () => false,
   ) {}
 
   /** A `lost` hand-over ended on `urls` (the tab's page, then the user's path): one lesson may follow, in this window. */
@@ -39,7 +41,7 @@ export class BrowsingNotes {
   /** Writes the window's pending lesson; false without a `lost` hand-over before it. */
   async add(win: string, lesson: string): Promise<boolean> {
     const sites = this.pending.get(win);
-    if (!sites) return false;
+    if (!sites || this.locked()) return false;
     this.pending.delete(win);
     const line = lesson.replace(/\s+/g, " ").replace(/·/g, "-").trim().slice(0, LESSON_MAX);
     const day = this.now().toISOString().slice(0, 10);

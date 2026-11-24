@@ -3,7 +3,7 @@ import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import type { Action } from "../../shared/api";
 import { siteOf, urlRecap, type BrowserState } from "../../shared/model";
-import { waitForRights, waitForResponse, policyChanges, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace, boundLinks, boundCapture, closedRecaps, activeRecap, shownRecaps } from "../../core/agent/bridge";
+import { waitForRights, waitForResponse, policyChanges, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace, boundLinks, boundCapture, boundFields, closedRecaps, activeRecap, shownRecaps } from "../../core/agent/bridge";
 
 /** Sets a space's private flag, leaving the rest untouched. */
 function setPrivate(e: BrowserState, ag: (a: Action) => unknown, id: string, isPrivate: boolean) {
@@ -29,7 +29,55 @@ test("tabInfos: all tabs of all windows, espace = name", () => {
     { url: "https://a.test/", space: "Perso" },
     { url: "https://b.test/", space: "Perso" },
   ]);
-  expect(tabInfos(e())[0]).toEqual({ id: expect.any(String), title: "https://a.test/", url: "https://a.test/", space: "Perso" });
+  expect(tabInfos(e())[0]).toEqual({ id: expect.any(String), title: "https://a.test/", url: "https://a.test/", space: "Perso", agentReached: true, profile: "default" });
+});
+
+test("tabInfos: profile is the tab's login profile (its space's, or its own: `agent` for an agent search tab)", () => {
+  const { e, ag, F } = prepare();
+  ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "new", windowId: F });
+  ag({ type: "openTab", windowId: F, url: "https://w.test/" });
+  ag({ type: "openTab", windowId: F, url: "https://s.test/", profile: "agent" });
+  const profileOf = (url: string) => tabInfos(e()).find((o) => o.url === url)!.profile;
+  const work = e().spaces.find((x) => x.name === "Boulot")!.profile;
+  expect(work).not.toBe("default");
+  expect([profileOf("https://a.test/"), profileOf("https://w.test/"), profileOf("https://s.test/")]).toEqual(["default", work, "agent"]);
+});
+
+test("tabInfos: the agent's own tab carries its window's active space's profile, never a private space's", () => {
+  const { e, ag, F } = prepare();
+  ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "new", windowId: F });
+  ag({ type: "openTab", windowId: F, url: "https://s.test/", profile: "agent" });
+  ag({ type: "openTab", windowId: F, url: "https://w.test/" });
+  const of = (url: string) => tabInfos(e()).find((o) => o.url === url)!;
+  const work = e().spaces.find((x) => x.name === "Boulot")!.profile;
+  expect(of("https://s.test/").activeProfile).toBe(work);
+  // A user tab keeps its own passport and borrows none.
+  expect(of("https://w.test/").activeProfile).toBeUndefined();
+  ag({ type: "createSpace", name: "Secret", icon: "🔒", private: true, profile: "default", windowId: F });
+  expect(of("https://s.test/").activeProfile).toBeUndefined();
+});
+
+test("tabInfos carries agentReached; a tab in the agent's own profile is always the agent's", () => {
+  const { e, ag, F } = prepare();
+  ag({ type: "openTab", windowId: F, url: "https://u.test/", agentReached: false });
+  const user = Object.keys(e().tabs).at(-1)!;
+  ag({ type: "openTab", windowId: F, url: "https://s.test/", profile: "agent", agentReached: false });
+  const search = Object.keys(e().tabs).at(-1)!;
+  const reached = (id: string) => tabInfos(e()).find((o) => o.id === id)!.agentReached;
+  expect(reached(user)).toBe(false);
+  expect(reached(search)).toBe(true);
+  ag({ type: "agentNavigated", id: user });
+  expect(reached(user)).toBe(true);
+  expect(activeTabOf(e(), F)?.agentReached).toBe(true);
+  // A tab without the field (a state from elsewhere): the agent's, fail closed.
+  const bare = structuredClone(e());
+  delete (bare.tabs[user] as Partial<typeof bare.tabs[string]>).agentReached;
+  bare.tabs[user]!.everAgent = false;
+  expect(tabInfos(bare).find((o) => o.id === user)!.agentReached).toBe(true);
+  // An essential's tweak with script, while applied.
+  const tweaked = structuredClone(e());
+  Object.assign(tweaked.tabs[user]!, { agentReached: false, tweakScript: true });
+  expect(tabInfos(tweaked).find((o) => o.id === user)!.agentReached).toBe(true);
 });
 
 test("activeTabOf: null on an empty page, the active space's active tab otherwise", () => {
@@ -371,6 +419,12 @@ test("siteTab: site:<id>, title = app name, empty space, site, current domain an
   });
 });
 
+test("siteTab: a window the agent navigated says so; otherwise nothing (the kernel's own count decides)", () => {
+  const s = { id: "vidola", name: "Vidola", url: "https://vidola-a.example/", domain: "vidola-a.example", hash: "e1" };
+  expect(siteTab({ ...s, agentReached: true }).agentReached).toBe(true);
+  expect(siteTab({ ...s, agentReached: false })).not.toHaveProperty("agentReached");
+});
+
 test("staleSiteQuestion: a question on site:<id> lapses with its window; the dev-tools one too when leaving for another origin", () => {
   const opened = [{ id: "vidola", name: "Vidola", url: "https://vidola-a.example/film/1", domain: "vidola-a.example" }];
   const dev = { id: "d", tabId: null, target: "site:vidola", origin: "https://vidola-a.example", permissions: ["devtools" as const], rights: ["console" as const] };
@@ -435,4 +489,35 @@ test("boundCapture caps what a web process sends and drops wrong types", () => {
   expect(c.passwords).toBe(2);
   expect(boundCapture(null)).toEqual({});
   expect(boundCapture({ status: 404, passwords: -1 })).toEqual({ status: 404 });
+});
+
+test("boundFields: a web process's field list, checked and bounded; each handle names its document", () => {
+  const raw = [
+    { n: 0, type: "password", autocomplete: "current-password", label: "  Mot   de passe " },
+    { n: 3, type: "contenteditable", autocomplete: "", label: "x".repeat(200) },
+    // Dropped: a type no field has, a handle that is no number, an autocomplete too long to compare.
+    { n: 1, type: "hidden", autocomplete: "", label: "a" },
+    { n: "2", type: "text", autocomplete: "", label: "b" },
+    { n: -1, type: "text", autocomplete: "", label: "c" },
+    { n: 4, type: "text", autocomplete: "a".repeat(101), label: "d" },
+    null,
+  ];
+  expect(boundFields(raw, 17)).toEqual([
+    { handle: "17:0", type: "password", autocomplete: "current-password", label: "Mot de passe" },
+    { handle: "17:3", type: "contenteditable", autocomplete: "", label: "x".repeat(80) },
+  ]);
+  expect(boundFields(Array.from({ length: 60 }, (_, n) => ({ n, type: "text", autocomplete: "", label: "" })), 1)).toHaveLength(40);
+  expect(boundFields("nope", 1)).toEqual([]);
+  // A box's state and a list's options, only on their own types, bounded; a chosen index off the list is none.
+  expect(boundFields([
+    { n: 0, type: "checkbox", autocomplete: "", label: "Oui", checked: true, options: ["x"] },
+    { n: 1, type: "select", autocomplete: "", label: "Pays", options: ["  France ", "y".repeat(90), ...Array.from({ length: 60 }, () => "z")], selected: 70 },
+    { n: 2, type: "text", autocomplete: "", label: "Ville", checked: true, options: ["a"] },
+  ], 3)).toEqual([
+    { handle: "3:0", type: "checkbox", autocomplete: "", label: "Oui", checked: true },
+    { handle: "3:1", type: "select", autocomplete: "", label: "Pays", options: ["France", "y".repeat(80), ...Array.from({ length: 48 }, () => "z")], selected: -1 },
+    { handle: "3:2", type: "text", autocomplete: "", label: "Ville" },
+  ]);
+  // Out of view: kept only as `true`.
+  expect(boundFields([{ n: 0, type: "email", autocomplete: "", label: "", offscreen: true }, { n: 1, type: "email", autocomplete: "", label: "", offscreen: "yes" }], 2).map((f) => f.offscreen)).toEqual([true, undefined]);
 });

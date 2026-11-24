@@ -50,28 +50,40 @@ test("sign-ins are lost with the last space of a non-default profile", () => {
 
 test("settings: leaving the last use of a non-default profile loses the sign-ins, keeping it does not", () => {
   const spaces = [space("a", "Perso", "default"), space("b", "Travail", "p1"), space("c", "Clients", "p1"), space("d", "Banque", "p2")];
-  expect(choiceLosesConnections(spaces, "d", "p2")).toBe(false);
-  expect(choiceLosesConnections(spaces, "d", "default")).toBe(true);
-  expect(choiceLosesConnections(spaces, "d", "new")).toBe(true);
+  expect(choiceLosesConnections(spaces, "d", "p2")).toBeNull();
+  expect(choiceLosesConnections(spaces, "d", "default")).toEqual({ passport: 0 });
+  expect(choiceLosesConnections(spaces, "d", "new")).toEqual({ passport: 0 });
   // Shared profile: the other spaces keep it.
-  expect(choiceLosesConnections(spaces, "b", "default")).toBe(false);
+  expect(choiceLosesConnections(spaces, "b", "default")).toBeNull();
   // The default profile is never erased; a new space has nothing to lose.
-  expect(choiceLosesConnections(spaces, "a", "p1")).toBe(false);
-  expect(choiceLosesConnections(spaces, null, "default")).toBe(false);
+  expect(choiceLosesConnections(spaces, "a", "p1")).toBeNull();
+  expect(choiceLosesConnections(spaces, null, "default")).toBeNull();
 });
 
 test("new space: no preselected profile, and « à choisir » is never an option nor a loss", () => {
   const spaces = [space("a", "Perso", "default"), space("d", "Banque", "p2")];
   expect(PROFILE_TO_CHOOSE).toBe("");
   expect(profileOptions(spaces, profiles, null, "fr").map((o) => o.value)).not.toContain(PROFILE_TO_CHOOSE);
-  expect(choiceLosesConnections(spaces, null, PROFILE_TO_CHOOSE)).toBe(false);
+  expect(choiceLosesConnections(spaces, null, PROFILE_TO_CHOOSE)).toBeNull();
 });
 
 test("deleting a space with pinned sites or folders but no open tab asks first, and says how many", () => {
   const a = space("a", "Perso", "default");
   const b = { ...space("b", "Lectures", "default"), pinned: [{ id: "f1", url: "https://a.example/", title: "A", favicon: null, folder: "d1" }], folders: [{ id: "d1", name: "Presse", collapsed: false }] };
-  expect(deletionLosses([a, b], b, 0)).toEqual({ tabs: 0, logins: false, pinned: 1, folders: 1 });
+  expect(deletionLosses([a, b], b, 0)).toEqual({ tabs: 0, logins: false, pinned: 1, folders: 1, passport: 0 });
   expect(deletionLosses([a, b], a, 0)).toBeNull();
   expect(format("fr", "sidebar-space-delete-pinned", { pinned: 3, folders: 1 })).toBe("3 sites épinglés et 1 dossier seront perdus.");
   expect(format("en", "sidebar-space-delete-pinned", { pinned: 1, folders: 2 })).toBe("1 pinned site and 2 folders will be lost.");
+});
+
+test("the last space of a profile takes its passport's entry count with it; a shared or default profile keeps it (design § 4.4)", () => {
+  const spaces = [space("a", "Perso", "default"), space("b", "Travail", "p1"), space("c", "Clients", "p1"), space("d", "Banque", "p2")];
+  expect(deletionLosses(spaces, spaces[3]!, 0, 3)).toEqual({ tabs: 0, logins: true, pinned: 0, folders: 0, passport: 3 });
+  expect(deletionLosses(spaces, spaces[1]!, 2, 3)).toEqual({ tabs: 2, logins: false, pinned: 0, folders: 0, passport: 0 });
+  expect(deletionLosses(spaces, spaces[0]!, 0, 3)).toBeNull();
+  expect(choiceLosesConnections(spaces, "d", "default", 3)).toEqual({ passport: 3 });
+  expect(choiceLosesConnections(spaces, "b", "default", 3)).toBeNull();
+  expect(format("fr", "sidebar-space-passport-count", { count: 3 })).toBe("Son passeport contient 3 données.");
+  expect(format("fr", "sidebar-space-passport-drop")).toBe("Supprimer aussi son passeport");
+  expect(format("fr", "sidebar-space-passport")).toBe("Passeport");
 });

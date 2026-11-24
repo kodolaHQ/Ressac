@@ -3,7 +3,7 @@
   import { SETTINGS_SECTIONS, type SettingsSection } from "../../shared/commands";
 
   // The sections' list is shared with ⌘T and the menu's « Réglages › … » (shared/commands.ts): only their icons here.
-  const ICONS: Record<SettingsSection, IconName> = { general: "settings", agent: "agent", ai: "cpu", workshop: "box", shortcuts: "keyboard", privacy: "lock", data: "database", about: "info" };
+  const ICONS: Record<SettingsSection, IconName> = { general: "settings", agent: "agent", ai: "cpu", workshop: "box", shortcuts: "keyboard", privacy: "lock", passport: "id-card", passwords: "key", data: "database", about: "info" };
   const SECTIONS = SETTINGS_SECTIONS.map((id) => ({ id, icon: ICONS[id] }));
   export { showSection } from "./settings-section.svelte";
 </script>
@@ -18,10 +18,12 @@
   import SettingsWorkshop from "./SettingsWorkshop.svelte";
   import SettingsShortcuts from "./SettingsShortcuts.svelte";
   import SettingsPrivacy from "./SettingsPrivacy.svelte";
+  import SettingsPassport from "./SettingsPassport.svelte";
+  import SettingsPasswords from "./SettingsPasswords.svelte";
   import SettingsData from "./SettingsData.svelte";
   import SettingsAbout from "./SettingsAbout.svelte";
 
-  const PAGES = { general: SettingsGeneral, agent: SettingsAgent, ai: SettingsLocalAi, workshop: SettingsWorkshop, shortcuts: SettingsShortcuts, privacy: SettingsPrivacy, data: SettingsData, about: SettingsAbout };
+  const PAGES = { general: SettingsGeneral, agent: SettingsAgent, ai: SettingsLocalAi, workshop: SettingsWorkshop, shortcuts: SettingsShortcuts, privacy: SettingsPrivacy, passport: SettingsPassport, passwords: SettingsPasswords, data: SettingsData, about: SettingsAbout };
   const Page = $derived(PAGES[currentSection()]);
 </script>
 

@@ -70,6 +70,9 @@ function originOf(url: string): string | null {
 const profileName = (tool: string, extension: string): string =>
   `${new Date().toISOString().replaceAll(":", "")}-${tool}.${extension}`;
 
+/** The dev tools that see the page raw (spec § 5.5); compare_memory diffs snapshots that hold its strings (ruling). */
+const LOCKED = new Set(["run_js", "read_network", "read_request", "read_console", "memory_snapshot", "compare_memory"]);
+
 const headerLines = (h: Record<string, string>): string[] =>
   Object.entries(h).map(([name, value]) => `  ${name}: ${truncate(value)}`);
 
@@ -92,6 +95,15 @@ export function registerDevTools(
     activity?: (tab: string, label: string) => void;
     /** The activity label of run_js and reload, in the user's language. */
     acting?: string;
+    /** run_js is about to run in this tab or window: its code can rewrite the page (no longer a source, spec § 5.3). */
+    acted?: (o: TabInfo) => void;
+    /** A LOCKED tool may run on this tab: false when it shows the user's data and its unlock card was refused (spec § 5.5). */
+    unlocked: (o: TabInfo) => Promise<boolean>;
+    /**
+     * Tags a result built from tab `o` with its masking zone and origin, as a read of the tab is (`Segments.wrap`); taken
+     * when the call starts, before run_js can rewrite the page. Absent: masked as the web with no origin.
+     */
+    place?: (o: TabInfo) => (text: string) => string;
   } & ProfileFiles,
 ): void {
   const { bridge, policy, requests } = c;
@@ -178,6 +190,12 @@ export function registerDevTools(
     if (!got.held.includes(right)) return text(TOOL_DENIAL_TEXT);
     const origin = originOf(got.tab.url);
     const o = await tab(id);
+    try {
+      if (LOCKED.has(tool) && !(await c.unlocked(o))) return text(TOOL_DENIAL_TEXT);
+    } catch (e) {
+      if (e instanceof SiteChanged) return text(SITE_CHANGED_TEXT);
+      throw e;
+    }
     const controller = new AbortController();
     const { signal } = controller;
     const check = () => {
@@ -209,13 +227,14 @@ export function registerDevTools(
       // The site may have changed since the grant: the bridge is not called at all.
       if (signal.aborted) return await interruptionResponse();
       if (label) c.activity?.(id, label);
+      const placed = c.place?.(o) ?? ((t: string) => t);
       const abandon = new Promise<never>((_, ko) => signal.addEventListener("abort", () => ko(new Cut()), { once: true }));
       // Non-null: a page without an origin holds no right, so check() has already aborted.
       const call = f(o, signal, write, originOf(o.url)!);
       call.catch(() => {}); // a late result after abandonment is ignored
       const r = await Promise.race([call, abandon]);
       if (signal.aborted) throw new Cut();
-      return r;
+      return { ...r, content: r.content.map((x) => ({ ...x, text: placed(x.text) })) };
     } catch (e) {
       await Promise.all(files.map(clear));
       if (e instanceof SiteChanged) return text(SITE_CHANGED_TEXT);
@@ -426,7 +445,8 @@ export function registerDevTools(
       inputSchema: { id, code: z.string() },
     },
     protect(async ({ id, code }) =>
-      withRight(id, "act", "run_js", async (_o, signal, _write, at) => {
+      withRight(id, "act", "run_js", async (o, signal, _write, at) => {
+        c.acted?.(o);
         const r = await tools.run(id, at, code, signal);
         return "exception" in r ? text(`Exception : ${truncate(r.exception)}`) : text(truncate(r.value));
       }, c.acting),

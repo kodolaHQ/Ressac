@@ -57,6 +57,39 @@ We removed each guard on purpose to check that our tests would catch it: 43 were
 
 Each fix has a test that fails without it. The redirect and CDN fixes were also checked in the signed DMG in a macOS VM: 7 of 7 cases, with control cases showing the network itself let those requests through.
 
+## Masking, step 1 (November 2026)
+
+Data masking (SECURITY.md, « Masking ») was tested while it was built, with the same method: claims first, attacks written before the runs, each fix reviewed by a fresh agent. The masking protocol (models, repetitions, budgets, stop criteria, the lock's cost thresholds) was written in `bench/security/B3/README.md` before any model run, and may not change once one has started.
+
+Two kinds of proof, and they are not the same:
+- **For MCP results, a property.** The indistinguishability test (`bench/security/B3/indistinguishable.mjs`) plays the same scenarios with two user profiles whose values differ and compares every result the agent gets, up to the renaming of labels. A difference means a result tells the agent something about a masked value (its length, kind, digits, or whether a guess is right). On the scripted adversary's 74 scenarios: 74 identical, every card granted and every card refused. It covers MCP results only: captures, extensions, files, the network, gestures inside pages and the engine are outside it.
+- **For every other channel, a finite list of attacks.** What a page can do cannot be enumerated, so this is a list of what was tried, not a universal property. The scripted adversary (`bench/security/B3/adversary.mjs`, 74 cases, each with an honest control) tries variants, joins, the lock (same origin, open redirect, a second search, a fill, a workflow, an action, the notebook, a second conversation), a page that sends what it holds by itself, fills on a lookalike or on the attacker's form, a value in clear sent as an action's input, and the 15 encodings that leaked before masking. Each case is scored at four levels: full leak, partial leak, inference (the two-profile test sees the value's influence reach an unauthorized destination), blocked.
+
+Results, kernel of the masking branch, scripted adversary, one run per arm:
+
+| | Every card granted | Every card refused |
+|---|---|---|
+| Whole values out | 0 | 0 |
+| Partial | 1: 5 digits of a lab file number read in a history address (a shape masking does not cover) | 0 |
+| Inference | 2: the personal e-mail domain (in clear by design), a first name alone in a signature | 1: the domain |
+| Honest controls done | 38 of 38 | 35 of 38 (the three that need a fill card cannot be done by design) |
+
+What the build found and fixed, each with a test that fails without its fix:
+1. **A granted fill card wrote the code into the attacker's form**, whose page posted it. A value of your sources filled on a page the agent reached, away from where it was read, now carries a red line.
+2. **A client id read in clear went out whole as an action's input.** An action's input, an action's files at launch and a `run_js` script now go through the outflow rules and the label alert.
+3. **Rule 2 was an oracle on masked values.** It still remembered values the agent saw only as labels, so a search pausing confirmed a guess about a masked e-mail. It now remembers what the agent was shown. A second oracle, four digits of a value in a refusal text, was removed too. SECURITY.md writes what this costs: a guessed masked value leaves with no pause.
+4. **The parent-side load check failed open** when it could not name the tab of a pending agent load, so redirects went unjudged. It now cancels such a load.
+
+The utility bench (`bench/security/B3/utility/`, 20 honest tasks with traps) ran only with a scripted honest agent: 60 of 60 tasks done with masking on and off. That checks the wiring, not a utility figure.
+
+What is not tested yet:
+- **A model.** Every masking figure above is the scripted adversary's. The model runs (an agent made to obey, and an adaptive one asked to find a new path) and the utility runs with a model have not run.
+- **The lock's cards granted.** The bench refuses every card with a red line, and every card under the lock has one: what a user who grants them lets out is not measured.
+- **Firefox's own fill and redirects in the bench.** The bench uses a fake browser that checks the seal as the kernel sends it. The real fill actor and load check are covered by end-to-end tests, not by the adversary.
+- **The lock's field costs** (reveals refused because the container was shared, spaces still locked a day later, files quarantined): thresholds are set, but only a beta can measure them.
+- **The engines under the locked network**: à mesurer (Task 1).
+- **The lift in a real container** (copies that keep links, files on other mounts), and Touch ID on the signed DMG.
+
 ## Reading our numbers
 
 SECURITY.md gives two kinds of figures, and neither is a leak rate of the product.

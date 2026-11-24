@@ -108,7 +108,7 @@ export class RessacVimParent extends JSWindowActorParent {
       const url = (m as { data?: { url?: unknown } }).data?.url;
       const space = t.controller.store.state.tabs[t.tabId]?.spaceId;
       if (typeof url === "string" && /^https?:\/\//i.test(url) && space)
-        t.controller.store.dispatch({ type: "openTab", windowId: t.controller.windowId, url, spaceId: space, after: t.tabId, activate: false });
+        t.controller.store.dispatch({ type: "openTab", windowId: t.controller.windowId, url, spaceId: space, after: t.tabId, opener: t.tabId, activate: false });
     } else if (m.name === "vim:style") {
       // The window's tokens (window.css), in its theme; the displayed tab's space is the active one, whose aura's accent
       // the controller sets on the root. With Geist Mono's bytes: a web process cannot read chrome:// itself.

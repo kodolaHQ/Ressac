@@ -93,3 +93,130 @@ kernel-writer-limit = Your subscription limit is reached: summaries will resume 
 kernel-writer-images = Images are not supported by writing
 kernel-writer-failed-badge = AI writing failed: see the widget log
 kernel-writer-failed = The AI could not write: { $reason }
+
+# Masking: how a card names a masked value without showing it (your sources, then the rest of the web).
+kernel-mask-name-code = your code
+    .de = of your code
+kernel-mask-name-iban = your IBAN
+    .de = of your IBAN
+kernel-mask-name-carte = your card
+    .de = of your card
+kernel-mask-name-tel = your phone number
+    .de = of your phone number
+kernel-mask-name-email = your e-mail
+    .de = of your e-mail
+kernel-mask-name-adresse = your address
+    .de = of your address
+kernel-mask-name-nom = your name
+    .de = of your name
+kernel-mask-name-id = your identifier
+    .de = of your identifier
+kernel-mask-name-secu = your social security number
+    .de = of your social security number
+kernel-mask-name-motdepasse = your password
+    .de = of your password
+kernel-mask-name-masque = your masked value
+    .de = of your masked value
+kernel-mask-name-date = your date
+    .de = of your date
+kernel-mask-name-web-code = a code
+    .de = of a code
+kernel-mask-name-web-iban = an IBAN
+    .de = of an IBAN
+kernel-mask-name-web-carte = a card number
+    .de = of a card number
+kernel-mask-name-web-tel = a phone number
+    .de = of a phone number
+kernel-mask-name-web-email = an e-mail
+    .de = of an e-mail
+kernel-mask-name-web-adresse = an address
+    .de = of an address
+kernel-mask-name-web-nom = a name
+    .de = of a name
+kernel-mask-name-web-id = an identifier
+    .de = of an identifier
+kernel-mask-name-web-secu = a social security number
+    .de = of a social security number
+kernel-mask-name-web-motdepasse = a password
+    .de = of a password
+kernel-mask-name-web-masque = a masked value
+    .de = of a masked value
+kernel-mask-name-web-date = a date
+    .de = of a date
+
+# Masking: revealing a value and the conversation's lock.
+kernel-mask-reveal-card = The agent wants to see { $name } for this task. Then the conversation and the workshop stay locked until you lift the lock.
+kernel-mask-reveal-shared = Another conversation is using the workshop: the agent cannot see { $name } while it runs.
+kernel-mask-locked-danger = Conversation locked: { $name } { $agreement ->
+        [other-m] were
+        [other-f] were
+       *[one-m] was
+    } revealed. This outflow needs your approval.
+kernel-mask-locked-refused = Conversation locked: this outflow did not get your approval.
+kernel-mask-handle-danger = This address holds { $name }, read on { $from }: it sends { $agreement ->
+        [other-m] them
+        [other-f] them
+       *[one-m] it
+    } to { $to }.
+kernel-mask-label-alert = The agent sends the { $agreement ->
+        [other-m] labels { $de } (not the values)
+        [other-f] labels { $de } (not the values)
+       *[one-m] label { $de } (not the value)
+    } to { $destination }.
+kernel-mask-destination-engine = your search engine
+kernel-mask-destination-page = the page of tab { $id }
+kernel-mask-unknown-label = Label from an earlier conversation or unknown: read the page again.
+kernel-mask-fill-blocked = Filling blocked for this conversation: too many unknown labels. A new conversation unblocks it.
+kernel-mask-no-login = No saved login for this site: nothing was filled.
+kernel-mask-fill-changed = The field changed before filling: nothing was written. Ask again.
+kernel-mask-fill-action-danger = This form sends to { $to }, not to the field's site.
+kernel-mask-fill-foreign-danger = This page, opened by the agent, is on { $to }: { $name } { $agreement ->
+       *[one-m] was
+    } read on { $from }.
+kernel-mask-fill-foreign-passport = This page, opened by the agent, is on { $to }, not on one of the sites your passport sets for { $name } ({ $from }).
+kernel-mask-fill-foreign-danger-user = This page is on { $to }, and { $name } { $agreement ->
+       *[one-m] was
+    } read on { $from }: check it is the site you expect.
+kernel-mask-fill-foreign-passport-user = This page is on { $to }, not on one of the sites your passport sets for { $name } ({ $from }).
+kernel-mask-fill-framed = This field is in a frame from { $frame }, inside the page of { $top }.
+kernel-mask-fill-check = tick
+kernel-mask-fill-uncheck = untick
+kernel-mask-fill-option = choose « { $option } »
+kernel-mask-fill-choice-acts = On your tab, ticking or choosing can act at once: a setting saved, or even the form sent.
+kernel-mask-fill-choice-acts-agent = On this agent tab, an account you signed into may still be open: ticking or choosing can act at once, a setting saved, or even the form sent.
+kernel-mask-name-fill-text = a text from the agent
+kernel-mask-fill-login-pair = your username and your password
+kernel-mask-capture-refused = Capture refused: this tab shows your data.
+kernel-mask-devtools-card = The developer tools would see your data in clear.
+kernel-mask-store-locked = The workshop is locked since a reveal: nothing is written to what outlives the conversation until you lift the lock.
+kernel-mask-apps-locked = The workshop is locked since a reveal: no app starts until you lift the lock.
+kernel-mask-reveal-cut-failed = The workshop could not be locked: the agent cannot see { $name }.
+kernel-mask-run-paused = Paused: its code changed since a reveal, it resumes when you lift the workshop's lock.
+kernel-err-code-refused = Launch refused when its code was checked: nothing ran.
+kernel-mask-design-locked = Ressac's workshop is locked since a reveal: the external MCP answers again once the user lifts the lock.
+kernel-mask-lift-session = Stop the conversation to lift the lock
+kernel-mask-lift-move-failed = The lock stays: { $path } could not be moved ({ $error }).
+kernel-mask-lift-workshop = The lock stays: the workshop does not answer ({ $state }).
+kernel-mask-lift-busy = The lock is already being lifted.
+kernel-mask-restore-busy = Stop the conversation and the agent's apps to give this file back.
+# Masking: « of » before a name that is not a known value.
+kernel-mask-de = of { $name }
+
+# Passport: how a card names a passport value, by field then by kind (design § 9.5).
+kernel-mask-passport-name-nom = your name
+kernel-mask-passport-name-naissance = your date of birth
+kernel-mask-passport-name-proche = a relative's name
+kernel-mask-passport-name-adresse = your address
+kernel-mask-passport-name-tel = your phone number
+kernel-mask-passport-name-email = your e-mail
+kernel-mask-passport-name-iban = your IBAN
+kernel-mask-passport-name-piece = your ID document number
+kernel-mask-passport-name-secu = your social security number
+kernel-mask-passport-name-plaque = your licence plate
+kernel-mask-passport-name-libre = an item of your passport
+kernel-mask-passport-name-prenoms = your first name
+kernel-mask-passport-name-nom_famille = your family name
+kernel-mask-passport-name-nom_complet = your name
+kernel-mask-passport-name-adresse_voie = your street
+kernel-mask-passport-name-code_postal = your postcode
+kernel-mask-passport-name-ville = your city

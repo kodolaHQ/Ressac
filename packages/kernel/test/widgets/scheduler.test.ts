@@ -1335,3 +1335,31 @@ test("notification: the widget name is cleaned (controls and invisible character
   await p.harvestNow("veille");
   expect(notifications).toEqual([{ widget: "veille", title: "Vélos d'occasion", text: "2 nouveaux éléments" }]);
 });
+
+test("a widget paused by the workspace lock is not harvested nor tried: its state says so, the harvester never runs", async () => {
+  let paused = true;
+  const { p, harvests, attempts } = await prepare({ options: { paused: async (w) => paused && w.id === "actus" } });
+  const r = await p.harvestNow("actus", "agent");
+  expect(r).toMatchObject({ status: "error", kernelError: true, error: "En pause : son code a changé depuis une révélation, il reprendra quand vous lèverez le verrou de l'atelier." });
+  expect(await p.replay("actus", "x", "y")).toEqual({ ok: false, error: r.error });
+  expect(harvests).toEqual([]);
+  expect(attempts).toEqual([]);
+  paused = false;
+  expect((await p.harvestNow("actus")).status).toBe("ok");
+});
+
+test("a paused check that fails counts as paused", async () => {
+  const { p, harvests } = await prepare({ options: { paused: async () => { throw new Error("unreadable"); } } });
+  expect((await p.harvestNow("actus")).status).toBe("error");
+  expect(harvests).toEqual([]);
+});
+
+test("a harvest that passes the first check gets the lock's check of its staged copy", async () => {
+  const seen: (string | undefined)[] = [];
+  const { p, harvest } = await prepare({ options: { paused: async (_w, folder) => (seen.push(folder), folder === "/staged") } });
+  expect((await p.harvestNow("actus")).status).toBe("ok");
+  const lockedCode = harvest.mock.calls[0]![0].lockedCode!;
+  expect(await lockedCode("/staged")).toBe("En pause : son code a changé depuis une révélation, il reprendra quand vous lèverez le verrou de l'atelier.");
+  expect(await lockedCode("/other")).toBeNull();
+  expect(seen).toEqual([undefined, "/staged", "/other"]);
+});

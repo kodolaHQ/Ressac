@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Vérification</title>
+<!-- Case 2: a legitimate action, and a script that sends the field's value on input (the delegation documented). -->
+<form action="/fill/next.html"><label for="code">Code de vérification</label><input id="code"></form>
+<script>
+  // What the page sees in its fields, sent to its own server on each input: the test reads it there.
+  addEventListener("input", (e) => fetch("/log?" + new URLSearchParams({ f: e.target.id, v: e.target.value })));
+</script>

@@ -9,7 +9,7 @@ import type { PendingRequest } from "../../shared/model";
 export const modal = $state<{ maskers: number; zone: BoundsRange | null }>({ maskers: 0, zone: null });
 
 /**
- * The agent's requests (read, dev tools, widget data) and the extensions' grant cards open as a modal; those from
+ * The agent's requests (read, dev tools, widget data, masking) and the extensions' grant cards open as a modal; those from
  * sites stay a banner.
  */
 export const isAgentRequest = (d: PendingRequest) =>
@@ -18,4 +18,5 @@ export const isAgentRequest = (d: PendingRequest) =>
   d.permissions.includes("widget-data") ||
   d.permissions.includes("extension") ||
   d.permissions.includes("extension-console") ||
-  d.permissions.includes("agent-address");
+  d.permissions.includes("agent-address") ||
+  d.permissions.some((p) => p.startsWith("mask-"));

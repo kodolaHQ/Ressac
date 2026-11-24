@@ -74,6 +74,8 @@ function createTab(d: Draft, genId: () => string, o: Partial<Tab> & Pick<Tab, "w
     favicon: null,
     link: null,
     openedByAgent: false,
+    agentReached: true,
+    everAgent: true,
     loading: false,
     canGoBack: false,
     canGoForward: false,
@@ -90,14 +92,16 @@ function open(
   d: Draft,
   genId: () => string,
   f: WindowState,
-  a: { url: string; spaceId?: SpaceId; activate?: boolean; openedByAgent?: boolean; after?: TabId; title?: string; profile?: ProfileId },
+  a: { url: string; spaceId?: SpaceId; activate?: boolean; openedByAgent?: boolean; agentReached?: boolean; opener?: TabId; after?: TabId; title?: string; profile?: ProfileId },
 ): Tab | null {
   // A link opened from a tab stays in that tab's space (its login profile), even in the background;
   // an essential, shared between spaces, opens in the displayed space if it is the active tab there.
   const parent = a.after && f.active[f.activeSpace] !== a.after ? d.tabs[a.after]?.spaceId : undefined;
   const space = a.spaceId ?? parent ?? f.activeSpace;
   if (!d.spaces.some((e) => e.id === space)) return null;
-  const o = createTab(d, genId, { windowId: f.id, spaceId: space, url: a.url, openedByAgent: a.openedByAgent ?? false, ...(a.title ? { title: a.title } : {}), ...(a.profile ? { profile: a.profile } : {}) });
+  // A page's tab is what its opener is (an unknown opener: the agent's); otherwise the agent's unless the UI says not.
+  const agentReached = a.opener !== undefined ? (d.tabs[a.opener]?.agentReached ?? true) : (a.agentReached ?? true);
+  const o = createTab(d, genId, { windowId: f.id, spaceId: space, url: a.url, openedByAgent: a.openedByAgent ?? false, agentReached, everAgent: agentReached, ...(a.title ? { title: a.title } : {}), ...(a.profile ? { profile: a.profile } : {}) });
   const l = list(f, space);
   const i = a.after ? l.indexOf(a.after) : -1;
   l.splice(i >= 0 ? i + 1 : l.length, 0, o.id);
@@ -119,7 +123,7 @@ function openInternalPage(d: Draft, genId: () => string, windowId: string, url: 
     f.active[space] = existing;
     return true;
   }
-  const o = open(d, genId, f, { url });
+  const o = open(d, genId, f, { url, agentReached: false });
   if (o) o.title = title;
   return !!o;
 }
@@ -145,7 +149,7 @@ function openAction(d: Draft, genId: () => string, a: { windowId: string; id: st
     f.active[space] = existing;
     return true;
   }
-  const o = open(d, genId, f, { url: urlAction(a.id, a.run) });
+  const o = open(d, genId, f, { url: urlAction(a.id, a.run), agentReached: false });
   if (o) o.title = a.name;
   return !!o;
 }
@@ -303,7 +307,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       if (!f || !last) return false;
       f.recentlyClosed = rest;
       const space = d.spaces.some((e) => e.id === last.spaceId) ? last.spaceId : f.activeSpace;
-      open(d, genId, f, { url: last.url, spaceId: space });
+      open(d, genId, f, { url: last.url, spaceId: space, agentReached: false });
       f.activeSpace = space;
       return true;
     }
@@ -331,6 +335,45 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       // The agent's own profile is not the user's: those tabs are kept as a copy (TabList).
       if (!o?.openedByAgent || o.profile === AGENT_PROFILE) return false;
       o.openedByAgent = false;
+      return true;
+    }
+    case "agentNavigated": {
+      const o = d.tabs[a.id];
+      if (!o || (o.agentReached && o.everAgent && o.userLoad === undefined)) return false;
+      o.agentReached = o.everAgent = true;
+      delete o.userLoad;
+      return true;
+    }
+    case "userNavigating": {
+      const o = d.tabs[a.id];
+      // A user tab needs nothing; the agent's own address entered again (a reload) stays the agent's.
+      if (!o || !o.agentReached || o.url === a.url || o.userLoad === a.url) return false;
+      o.userLoad = a.url;
+      return true;
+    }
+    case "locationCommitted": {
+      const o = d.tabs[a.id];
+      if (!o) return false;
+      const before = [o.agentReached, o.userLoad];
+      // A back/forward entry of a tab the agent ever reached may be the agent's page.
+      if (a.history && o.everAgent) o.agentReached = true;
+      // The next top-level commit ends the user's load: theirs only if it is that load (its original address).
+      else if (!a.history && !a.sameDocument && o.userLoad === a.url) o.agentReached = false;
+      if (!a.sameDocument || a.history) delete o.userLoad;
+      return before[0] !== o.agentReached || before[1] !== o.userLoad;
+    }
+    case "tweakScript": {
+      const o = d.tabs[a.id];
+      const script = a.script || (!a.main && !!o?.tweakScript);
+      if (!o || script === !!o.tweakScript) return false;
+      if (script) o.tweakScript = true;
+      else delete o.tweakScript;
+      return true;
+    }
+    case "loadStopped": {
+      const o = d.tabs[a.id];
+      if (o?.userLoad === undefined) return false;
+      delete o.userLoad;
       return true;
     }
     case "setAgentSearch": {
@@ -369,6 +412,8 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
           title: favorite.title,
           favicon: favorite.favicon,
           link: { type: a.kind, id: favorite.id },
+          agentReached: false,
+          everAgent: false,
           ...(site ? { profile: siteProfile(site) } : {}),
         });
       f.active[favoriteSpace] = o.id;

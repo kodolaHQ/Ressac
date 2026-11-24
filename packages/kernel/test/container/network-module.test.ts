@@ -4,7 +4,7 @@ import { connect, createServer as createTcp } from "node:net";
 import http from "node:http";
 import { validDomain as kernelValidDomain } from "../../src/container/workshop.js";
 // @ts-expect-error plain .mjs that runs inside the image, no type declarations
-import { validDomain, allowed, rules, BASE_DOMAINS, createProxy, localAddress } from "../../docker/ressac-network.mjs";
+import { validDomain, allowed, rules, BASE_DOMAINS, MODEL_DOMAINS, domainList, pidsOf, cutTunnels, createProxy, localAddress } from "../../docker/ressac-network.mjs";
 
 describe("validDomain", () => {
   test.each(["example.com", "*.example.com", "a-b.example.co.uk"])("accepts %s", (d) => {
@@ -29,6 +29,49 @@ describe("allowed", () => {
     // An exact domain matches itself only, not a name ending with it.
     expect(allowed("evilgithub.com", ["github.com"])).toBe(false);
   });
+});
+
+describe("domainList (what apply writes to domains.json)", () => {
+  test("unlocked: the base list and the user's valid domains", () => {
+    expect(domainList({ domains: ["ok.example.com", "Bad"], locked: false })).toEqual([...BASE_DOMAINS, "ok.example.com"]);
+  });
+  test("locked: the model domains only, no base list, no user domain", () => {
+    expect(domainList({ domains: ["ok.example.com"], locked: true })).toEqual(MODEL_DOMAINS);
+    expect(MODEL_DOMAINS).not.toContain("registry.npmjs.org");
+    expect(MODEL_DOMAINS).not.toContain("api.github.com");
+    for (const d of ["claude.ai", "console.anthropic.com", "statsig.anthropic.com", "api.openai.com"]) { expect(MODEL_DOMAINS).not.toContain(d); expect(BASE_DOMAINS).toContain(d); }
+    for (const d of MODEL_DOMAINS) expect(BASE_DOMAINS).toContain(d);
+  });
+  test.each([undefined, "true", 1, null])("a locked flag that is not a boolean (%j) is refused", (locked) => {
+    expect(() => domainList({ domains: [], locked })).toThrow(/invalid locked/);
+  });
+});
+
+test("pidsOf lists the numeric entries owned by the uid (what apply kills to drop the tunnels opened before a lock)", async () => {
+  const { mkdtemp, mkdir } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const proc = await mkdtemp(`${tmpdir()}/proc-`);
+  for (const n of ["12", "345", "self", "net"]) await mkdir(`${proc}/${n}`);
+  expect(pidsOf(process.getuid!(), proc).sort()).toEqual(["12", "345"]);
+  expect(pidsOf(process.getuid!() + 1, proc)).toEqual([]);
+});
+
+test("cutTunnels kills once per locked list, and again when an apply died before the marker", async () => {
+  const { mkdtemp, readFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const marker = `${await mkdtemp(`${tmpdir()}/net-`)}/locked-applied`;
+  let kills = 0;
+  let listening = true;
+  const kill = () => (kills++, (listening = false));
+  const stillListening = async () => listening;
+  // The apply dies during the kill: no marker, so the next locked apply kills again.
+  await expect(cutTunnels(["a.test"], { marker, kill: () => { throw new Error("died"); }, stillListening })).rejects.toThrow("died");
+  expect(await cutTunnels(["a.test"], { marker, kill, stillListening })).toBe(true);
+  expect(await readFile(marker, "utf8")).toBe(JSON.stringify(["a.test"]));
+  listening = true;
+  expect(await cutTunnels(["a.test"], { marker, kill, stillListening })).toBe(false);
+  expect(await cutTunnels(["b.test"], { marker, kill, stillListening })).toBe(true);
+  expect(kills).toBe(2);
 });
 
 test("rules", () => {

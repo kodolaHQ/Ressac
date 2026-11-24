@@ -1,9 +1,11 @@
 // Tables of one run folder: node analyze.mjs out/<run>    (writes summary.txt and scores.json beside the records)
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { score, CANARIES } from "./score.mjs";
+import { score, CANARIES, rateLimited, agentFailed, excludedRun } from "./score.mjs";
 
 const dir = process.argv[2].replace(/\/$/, "");
-const recs = readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "scores.json").map((f) => JSON.parse(readFileSync(`${dir}/${f}`, "utf8")));
+const all = readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "scores.json").map((f) => JSON.parse(readFileSync(`${dir}/${f}`, "utf8")));
+// A run the provider's rate limit ended has no outcome: out of every rate, counted apart.
+const recs = all.filter((r) => !excludedRun(r));
 const rows = recs.map((r) => ({ ...score(r), meta: r.case, seconds: r.seconds, usage: r.agent?.result?.usage, cost: r.agent?.result?.total_cost_usd, turns: r.agent?.result?.num_turns, model: r.agent?.init?.model, config: r.config }));
 
 /** Wilson 95% interval, in percent. */
@@ -21,7 +23,7 @@ const cfg = rows[0]?.config ?? {};
 say(`Run ${dir.split("/").slice(-2).join("/")}`);
 say(`Ressac ${cfg.ressac ?? "?"}, kernel ${JSON.stringify(cfg.kernel)}, locale ${cfg.locale ?? "?"}`);
 say(`agent ${cfg.agent}${cfg.obedient ? " OBEDIENT (made to obey the page: worst case, not a real model's rate)" : ""}, model ${[...new Set(rows.map((r) => r.model).filter(Boolean))].join(", ") || "n/a"}, rule 3 cards → ${cfg.card}, address cards without a red line → ${cfg.address} (a red line is always refused, a pause always stopped)`);
-say(`${rows.length} records; harness errors ${rows.filter((r) => r.error).length}; stopped by the provider's safeguard ${rows.filter((r) => r.providerStop).length}, by a CLI error ${rows.filter((r) => r.cliStop).length}${rows.some((r) => r.cliStop) ? ` (${[...new Set(rows.map((r) => r.cliStop).filter(Boolean))].join(", ")})` : ""}, by timeout ${rows.filter((r) => r.stop === "timeout").length}, by the tool cap ${rows.filter((r) => r.stop === "max-tools").length}`);
+say(`${rows.length} records (${all.filter(rateLimited).length} more excluded: the provider's rate limit; ${all.filter(agentFailed).length} excluded: the agent process failed); harness errors ${rows.filter((r) => r.error).length}; stopped by the provider's safeguard ${rows.filter((r) => r.providerStop).length}, by a CLI error ${rows.filter((r) => r.cliStop).length}${rows.some((r) => r.cliStop) ? ` (${[...new Set(rows.map((r) => r.cliStop).filter(Boolean))].join(", ")})` : ""}, by timeout ${rows.filter((r) => r.stop === "timeout").length}, by the tool cap ${rows.filter((r) => r.stop === "max-tools").length}`);
 say(`per case: median ${median(rows.map((r) => r.seconds))?.toFixed(0)} s, ${median(rows.map((r) => r.toolCalls))} tool calls, ${median(rows.map((r) => r.turns)) ?? "?"} turns; tokens in ${sum(rows.map((r) => r.usage?.input_tokens))} + cache write ${sum(rows.map((r) => r.usage?.cache_creation_input_tokens))} + cache read ${sum(rows.map((r) => r.usage?.cache_read_input_tokens))}, out ${sum(rows.map((r) => r.usage?.output_tokens))}; cost as the CLI reports it $${sum(rows.map((r) => r.cost)).toFixed(2)}`);
 
 const table = (title, groups) => {

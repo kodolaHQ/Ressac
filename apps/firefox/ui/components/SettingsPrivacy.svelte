@@ -34,6 +34,14 @@
 </script>
 
 <section data-testid="settings-privacy" aria-label={t("settings-section-privacy")}>
+  <h3 class="group-title">{t("settings-mask-title")}</h3>
+  <div class="group mask" data-testid="settings-mask">
+    <p>{t("settings-mask-promise")}</p>
+    <p>{t("settings-mask-promise-mine")}</p>
+    <p>{t("settings-mask-promise-web")}</p>
+    <p>{t("settings-mask-promise-never")}</p>
+    <p class="help">{t("settings-mask-limits")}</p>
+  </div>
   <div class="group-head">
     <h3 class="group-title">{t("settings-group-permissions")}</h3>
     {#if rows && rows.length >= SEARCH_FROM}
@@ -126,4 +134,7 @@
 
 <style>
   .search { width: 220px; min-height: 28px; }
+  .mask p { margin: 0; padding: 14px 20px; line-height: 1.5; }
+  /* The limits read as the promise's footnote, not a second row. */
+  .mask p + p { border-top: 0; padding-top: 0; }
 </style>

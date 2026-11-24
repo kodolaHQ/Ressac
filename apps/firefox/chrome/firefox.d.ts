@@ -3,9 +3,10 @@ declare const IOUtils: {
   readUTF8(path: string): Promise<string>;
   /** `decompress`: a mozlz4 file (`.jsonlz4`). */
   readJSON(path: string, options?: { decompress?: boolean }): Promise<unknown>;
-  writeUTF8(path: string, text: string, options?: { flush?: boolean; mode?: "overwrite" | "append" | "appendOrCreate" | "create" }): Promise<number>;
+  writeUTF8(path: string, text: string, options?: { flush?: boolean; tmpPath?: string; mode?: "overwrite" | "append" | "appendOrCreate" | "create" }): Promise<number>;
+  setPermissions(path: string, permissions: number): Promise<void>;
   exists(path: string): Promise<boolean>;
-  move(from: string, to: string): Promise<void>;
+  move(from: string, to: string, options?: { noOverwrite?: boolean }): Promise<void>;
   copy(from: string, to: string, options?: { noOverwrite?: boolean; recursive?: boolean }): Promise<void>;
   makeDirectory(path: string, options?: { createAncestors?: boolean; ignoreExisting?: boolean }): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
@@ -49,6 +50,7 @@ declare class JSWindowActorParent {
   readonly manager: any;
   readonly browsingContext: any;
   sendAsyncMessage(name: string, data?: unknown): void;
+  sendQuery(name: string, data?: unknown): Promise<unknown>;
 }
 declare class JSProcessActorParent {
   readonly manager: { childID: number; remoteType: string };
@@ -62,6 +64,7 @@ declare class JSWindowActorChild {
   readonly document: Document;
   readonly contentWindow: Window;
   readonly docShell: any;
+  readonly windowContext: any;
   sendQuery(name: string, data?: unknown): Promise<unknown>;
   sendAsyncMessage(name: string, data?: unknown): void;
 }

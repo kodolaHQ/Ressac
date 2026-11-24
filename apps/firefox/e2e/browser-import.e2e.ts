@@ -330,6 +330,8 @@ describe("import from another browser", () => {
     await click(m, '[data-testid="settings-release-notes"]');
     await shows("release-notes", "Nouveautés");
     await shows("release-notes", "Import depuis un autre navigateur");
+    // The newest version's video is a card (a click opens it in a tab: not pressed here, it would reach the real web).
+    await shows("release-video", "Découvrir le passeport en vidéo");
     if (process.env.RESSAC_SHOT) await new Promise((r) => setTimeout(r, 1_000));
     if (process.env.RESSAC_SHOT) writeFileSync(process.env.RESSAC_SHOT + ".notes.png", Buffer.from((await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value, "base64"));
   });

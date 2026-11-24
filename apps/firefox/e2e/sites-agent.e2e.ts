@@ -105,7 +105,7 @@ describe("the agent on a site app window", () => {
 
     // The app's card, in the main window; refused → refusal, nothing read.
     let reading = call("read_tab", { id: "site:vidola" });
-    expect(await cardText()).toBe("L'agent veut voir l'appli de site « Vidola » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.");
+    expect(await cardText()).toBe("L'agent veut voir l'appli de site « Vidola » (connectée à votre compte) : ses pages et sa mémoire, pour cette conversation.");
     await answer("Refuser");
     expect(await reading).toEqual({ text: DENIAL, error: false });
     await gone(CARD);

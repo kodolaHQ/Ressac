@@ -1,7 +1,8 @@
 import { createApi, type ApiFirefox } from "./api";
-import type { OverlayApi } from "../shared/api";
+import { settingsPageDocument } from "./settings-api";
+import type { HideApi, MarksApi, OverlayApi } from "../shared/api";
 import { createBadgeApi } from "./badge-api";
-import { wrapOverlayApi } from "./overlay-api";
+import { wrapHideApi, wrapMarksApi, wrapOverlayApi } from "./overlay-api";
 import { createSiteApi, inertRessac } from "./site-api";
 import type { BadgeChrome } from "../chrome/store/apps";
 
@@ -28,10 +29,21 @@ if (params.has("site")) {
   const overlay = (window.frameElement as (Element & { ressacOverlay?: { api: OverlayApi } }) | null)?.ressacOverlay;
   if (!overlay) throw new Error("Ressac design overlay loaded before its window controller");
   window.ressac = inertRessac(wrapOverlayApi(overlay.api)) as ApiFirefox;
+} else if (params.has("hide") || params.has("hide-bubble")) {
+  // « Cacher pour l'agent »'s layer and bubble (chrome/window/hide-layer.ts): only the gesture's endpoints.
+  const hide = (window.frameElement as (Element & { ressacHide?: { api: HideApi } }) | null)?.ressacHide;
+  if (!hide) throw new Error("Ressac hide layer loaded before its window controller");
+  window.ressac = inertRessac(wrapHideApi(hide.api)) as ApiFirefox;
+} else if (params.has("hide-marks")) {
+  // « Voir ce qu'il ne voit pas »: only the rects to draw.
+  const marks = (window.frameElement as (Element & { ressacMarks?: { api: MarksApi } }) | null)?.ressacMarks;
+  if (!marks) throw new Error("Ressac marks loaded before their window controller");
+  window.ressac = inertRessac(wrapMarksApi(marks.api)) as ApiFirefox;
 } else {
   const win = window.parent.ressacWindow;
   if (!win) throw new Error("Ressac UI loaded before its window controller");
-  window.ressac = createApi(win);
+  // The passport's Settings API exists only in the document that shows ressac://settings (design § 9.2), not the agent panel's.
+  window.ressac = createApi(win, { settingsPage: settingsPageDocument(location) });
   // Its aura and the window's key and mouse listeners: the controller does not see this frame's load.
   win.uiStarted(window);
 }

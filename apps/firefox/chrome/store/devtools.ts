@@ -289,7 +289,7 @@ export function createDevTools(o: {
   store: Store;
   windows: WindowRegistry;
   isPrivate(tabId: string): boolean;
-  sites?: { viewFor(id: string): { browser: any; window: Window } | undefined; markWanted(id: string): void; onClosed(cb: () => void): unknown };
+  sites?: { viewFor(id: string): { browser: any; window: Window } | undefined; markWanted(id: string): void; markAgentReached(id: string): void; onClosed(cb: () => void): unknown };
   apps?: { viewFor(folder: string): { browser: any; window: Window } | undefined; onClosed(cb: () => void): unknown };
 }): DevTools {
   /** The top-level reload of the agent's dev tools; on a site app it is Ressac's load, so the M1 net spares it under the home. */
@@ -366,6 +366,9 @@ export function createDevTools(o: {
     try {
       const { targetCommand, resourceCommand } = commands;
       await targetCommand.startListening();
+      // Firefox keeps every response body whole by default (0 = no limit): capped at what `body` returns. Before
+      // watchResources, the network watcher reads it at its creation.
+      await commands.targetConfigurationCommand.updateConfiguration({ networkBodyLimit: BODY_MAX });
       await targetCommand.watchTargets({
         types: [targetCommand.TYPES.FRAME],
         onAvailable: ({ targetFront }: any) => {
@@ -376,6 +379,10 @@ export function createDevTools(o: {
         },
       });
       const { TYPES } = resourceCommand;
+      // shortcut: the resource command caches every resource until a navigation, with no public way to drop one; this
+      // reaches its private cache, keyed `${resourceType}:${resourceId}` (resource-command.js cacheKey, Firefox 160); a late
+      // update for a resource gone from it is skipped there without a word. Does nothing if that ever changes.
+      const uncache = (r: any) => resourceCommand._cache?.delete?.(`${r.resourceType}:${r.resourceId}`);
       // ignoreExistingResources: only what happens after the attachment.
       await resourceCommand.watchResources([TYPES.CONSOLE_MESSAGE, TYPES.ERROR_MESSAGE, TYPES.NETWORK_EVENT, TYPES.DOCUMENT_EVENT], {
         ignoreExistingResources: true,
@@ -383,6 +390,7 @@ export function createDevTools(o: {
           for (const r of list) {
             if (s.dropped) return;
             if (r.resourceType === TYPES.DOCUMENT_EVENT) {
+              uncache(r); // an iframe's loads bring them too, never purged without a top-level navigation
               if (r.name !== "will-navigate" || r.targetFront?.isTopLevel === false) continue;
               // Same site: the messages stay, marked. Another site: they are worth nothing, the session goes.
               if (originOf(String(r.newURI ?? "")) === s.origin) s.buffer.reload();
@@ -392,11 +400,17 @@ export function createDevTools(o: {
               const id = String(r.resourceId);
               s.requests.set(id, r);
               if (s.requests.size > MAX_REQUESTS) {
-                const oldest = s.requests.keys().next().value!;
+                const [oldest, dropped] = s.requests.entries().next().value!;
                 s.requests.delete(oldest);
                 s.headers.delete(oldest);
+                // Its actor holds its body until the page navigates: released, then forgotten by the resource command.
+                void commands.client.request({ to: dropped.actor, type: "release" }).catch(() => {});
+                uncache(dropped);
               }
-            } else feedConsole(s.buffer, r, TYPES);
+            } else {
+              feedConsole(s.buffer, r, TYPES);
+              uncache(r); // in our bounded buffer now
+            }
           }
         },
       });
@@ -568,6 +582,9 @@ export function createDevTools(o: {
     async run(id: string, expect: string, code: string, signal?: AbortSignal): Promise<JsResult> {
       if (signal?.aborted) throw abortError(signal);
       const s = await session(id, String(expect));
+      // The agent's code can rewrite the page or navigate it: the tab is the agent's from now on (spec § 5.3).
+      if (id.startsWith(SITE_PREFIX)) o.sites?.markAgentReached(id.slice(SITE_PREFIX.length));
+      else if (!isWindow(id)) o.store.dispatch({ type: "agentNavigated", id });
       const stop = new AbortController();
       const work = evaluate(s, String(code), stop.signal);
       work.catch(() => {}); // a late result is dropped

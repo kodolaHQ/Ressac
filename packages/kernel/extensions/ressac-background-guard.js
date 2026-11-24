@@ -363,22 +363,38 @@
     return r;
   };
   const request = tabs && typeof tabs.query === "function" ? tabs.query : null;
-  /** True if tab `id` is a tab view (never an invisible read) of a granted site; otherwise the refusal. */
-  const tabVerdict = (id) =>
+  /**
+   * The frames an injection targets, as the main process's isTab reads them (`<tab>:<frame>`, `*` every frame): the
+   * main process refuses a frame whose own document is sensitive (masking). null: a malformed list.
+   */
+  const framesOf = (d) => {
+    if (d === null || typeof d !== "object") return ["0"];
+    if (d.allFrames === true) return ["*"];
+    const f = d.frameIds !== undefined ? d.frameIds : d.frameId !== undefined ? [d.frameId] : null;
+    if (f === null) return ["0"];
+    if (!isList(f) || f.length === 0 || f.length > MAX_LIST) return null;
+    const r = [];
+    for (let i = 0; i < f.length; i++) {
+      if (typeof f[i] !== "number") return null;
+      r[r.length] = `${f[i]}`;
+    }
+    return r;
+  };
+  /** True if each targeted frame of tab `id` is a tab view (never an invisible read) of a granted site; otherwise the refusal. */
+  const tabVerdict = (id, frames) =>
     new P((ok) => {
-      thenOf(
-        isTabOf(id),
-        (tab_) => {
-          if (!tab_) return ok(TAB_REFUSED);
-          thenOf(hostAllowed_(id), (v) => ok(v ? true : SITE_REFUSED), () => ok(SITE_REFUSED));
-        },
-        () => ok(TAB_REFUSED),
-      );
+      if (frames === null) return ok(TAB_REFUSED);
+      let i = 0;
+      const nextFrame = () => {
+        if (i >= frames.length) return thenOf(hostAllowed_(id), (v) => ok(v ? true : SITE_REFUSED), () => ok(SITE_REFUSED));
+        thenOf(isTabOf(`${id}:${frames[i++]}`), (tab_) => (tab_ ? nextFrame() : ok(TAB_REFUSED)), () => ok(TAB_REFUSED));
+      };
+      nextFrame();
     });
   /** The targeted tab: the one given, otherwise the active tab of the current window (like Chrome). */
-  const tabAllowed = (id) =>
+  const tabAllowed = (id, frames) =>
     new P((ok) => {
-      if (typeof id === "number") return thenOf(tabVerdict(id), ok, () => ok(false));
+      if (typeof id === "number") return thenOf(tabVerdict(id, frames), ok, () => ok(false));
       if (!request) return ok(false);
       let r;
       try {
@@ -391,7 +407,7 @@
         (list) => {
           const active = list && list[0];
           if (!active || typeof active.id !== "number") return ok(false);
-          thenOf(tabVerdict(active.id), ok, () => ok(false));
+          thenOf(tabVerdict(active.id, frames), ok, () => ok(false));
         },
         () => ok(false),
       );
@@ -416,7 +432,7 @@
     isolatedWorld(d);
     return d;
   };
-  const checkTarget = (args) => (typeof args[0].target.tabId === "number" ? tabAllowed(args[0].target.tabId) : SITE_REFUSED);
+  const checkTarget = (args) => (typeof args[0].target.tabId === "number" ? tabAllowed(args[0].target.tabId, framesOf(args[0].target)) : SITE_REFUSED);
   /** The ids of the documents returned by executeScript: all of them, or null (a single missing one is enough). */
   const documentsOf = (results) => {
     if (!isList(results)) return null;
@@ -644,7 +660,7 @@
     // MV2 (absent in MV3): the tab is checked; executeScript first passes the page guards into the same
     // frames, and only accepts a file of the table.
     const detailsOf = (args) => (typeof args[0] === "number" || args[0] === undefined || args[0] === null ? args[1] : args[0]);
-    const checkTab = (args) => tabAllowed(typeof args[0] === "number" ? args[0] : undefined);
+    const checkTab = (args) => tabAllowed(typeof args[0] === "number" ? args[0] : undefined, framesOf(detailsOf(args)));
     const executeInTab = tabs.executeScript;
     if (typeof executeInTab === "function") {
       freeze(
@@ -786,8 +802,9 @@
               ko(e);
             }
           });
+        // The sender's own frame (`*` if unknown): the main process refuses it when its document is sensitive (masking).
         thenOf(
-          isTabOf(id),
+          isTabOf(`${id}:${typeof frame === "number" ? frame : "*"}`),
           (v) => {
             if (v !== true) return response(false);
             thenOf(inject(), () => response(true), () => response(true));

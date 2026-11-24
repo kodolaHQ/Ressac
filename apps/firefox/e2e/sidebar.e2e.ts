@@ -1,4 +1,5 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import type { BrowserState } from "../shared/model";
@@ -7,6 +8,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pixel, pressKeys, typeText, waitUi } from "./ui";
+import { writePassport, type PassportEntry } from "./passport-file";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedRessac;
@@ -436,6 +438,65 @@ describe("Ressac sidebar", () => {
     await remove(work);
     await click(m, `${dialog} button.danger`);
     await gone(work);
+  });
+
+  describe("a space's passport (design § 4.4, § 9.1)", () => {
+    // The passport needs the memory cipher (chrome/passport/cipher.ts): this test's own launch.
+    beforeEach(async () => {
+      await w.close();
+      w = await launchRessac({ env: { RESSAC_TEST_PASSPORT_CIPHER: "memory", RESSAC_TEST_REAUTH: "pass" } });
+      m = w.marionette;
+      await m.setContext("chrome");
+      await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+      await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
+    });
+    const FAMILY = ["Fon", "taine"].join("");
+    const entries: PassportEntry[] = [
+      { id: "n", field: "nom", value: { given: "Margaux", family: FAMILY }, origins: [] },
+      { id: "a", field: "adresse", value: { text: "12 rue des Lilas, 44000 Nantes" }, origins: [] },
+    ];
+    const dialog = '[role="alertdialog"]';
+    const file = (profile: string) => join(w.profile, "ressac", "passport", `${profile}.json`);
+    /** A space on its own new profile, with a passport of two entries. */
+    async function spaceWithPassport(): Promise<{ id: string; profile: string }> {
+      const before = new Set((await state(m)).spaces.map((s) => s.id));
+      await dispatch(m, { type: "createSpace", name: "Banque", icon: "💼", private: false, profile: "new", windowId: (await win()).id });
+      const space = (await state(m)).spaces.find((s) => !before.has(s.id))!;
+      await writePassport(w.profile, entries, space.profile);
+      await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="space-${space.id}"]`]);
+      return { id: space.id, profile: space.profile };
+    }
+    const askDelete = async (id: string) => {
+      await click(m, `[data-testid="space-${id}"]`, { button: 2 });
+      await click(m, '[role="menuitem"]', { text: "Supprimer" });
+      return waitUi<string>(m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim()", [dialog]);
+    };
+    const gone = (id: string) => waitState((s) => s.spaces.some((e) => e.id === id), (has) => !has);
+
+    it("« Passeport » in the space menu opens Réglages › Passeport on that space's profile", async () => {
+      const { id, profile } = await spaceWithPassport();
+      await click(m, `[data-testid="space-${id}"]`, { button: 2 });
+      await click(m, '[role="menuitem"]', { text: "Passeport" });
+      await waitUi(m, "return doc.querySelector(arguments[0])?.value === arguments[1]", ['[data-testid="passport-profiles"]', profile]);
+    });
+
+    it("deleting the last space of a profile: its passport is kept by default", async () => {
+      const { id, profile } = await spaceWithPassport();
+      expect(await askDelete(id)).toContain("Son passeport contient 2 données.");
+      expect(await inUi(m, "return doc.querySelector(arguments[0])?.checked", ['[data-testid="space-delete-passport"]'])).toBe(false);
+      await click(m, `${dialog} button.danger`);
+      await gone(id);
+      expect(existsSync(file(profile))).toBe(true);
+    });
+
+    it("deleting the last space of a profile with « Supprimer aussi son passeport » ticked deletes the file", async () => {
+      const { id, profile } = await spaceWithPassport();
+      await askDelete(id);
+      await click(m, '[data-testid="space-delete-passport"]');
+      await click(m, `${dialog} button.danger`);
+      await gone(id);
+      await expect.poll(() => existsSync(file(profile)), { timeout: 10_000 }).toBe(false);
+    });
   });
 
   it("a page's big icon (over 16 KB) shows redrawn small, not as the page's initial", async () => {

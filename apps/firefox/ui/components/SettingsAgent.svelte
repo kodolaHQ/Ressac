@@ -4,6 +4,8 @@
   import { aiOn, api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import AiAsleep from "./AiAsleep.svelte";
+  import LiftLock from "./LiftLock.svelte";
+  import type { QuarantinedFile } from "../../shared/api";
   import SettingsEngine from "./SettingsEngine.svelte";
   import SettingsMozilla from "./SettingsMozilla.svelte";
   import SettingsRow from "./SettingsRow.svelte";
@@ -67,6 +69,29 @@
   async function login(id: string) {
     logins[id] = null;
     logins[id] = await s.login(id);
+  }
+  /** The workspace lock (its names) and the files a lift put in quarantine: read again on each masking change. */
+  let locked = $state<string[] | null>(null);
+  let lifting = $state(false);
+  let quarantined = $state<QuarantinedFile[]>([]);
+  let restoreError = $state<string | null>(null);
+  const readLock = () => {
+    void api.agent.masking().then((m) => {
+      locked = m.locked;
+      if (!m.locked) lifting = false;
+    });
+    void api.agent.lock.quarantine().then((q) => (quarantined = q));
+  };
+  $effect(() => {
+    if (!aiOn()) return;
+    readLock();
+    return api.agent.onMasking(readLock);
+  });
+  async function restore(id: string) {
+    restoreError = null;
+    const r = await api.agent.lock.restore(id);
+    if (!r.ok) restoreError = r.error;
+    readLock();
   }
   // Claude on Ollama or an API starts without its subscription: no nudge to sign in.
   const claudeSubscription = $derived((appState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription");
@@ -158,6 +183,33 @@
         {/snippet}
       </SettingsRow>
     </div>
+    {#if locked}
+      <h3 class="group-title appear" out:fade={{ duration: 150 }}>{t("settings-lock-title")}</h3>
+      <div class="group appear" data-testid="settings-lock" out:fade={{ duration: 150 }}>
+        {#if lifting}
+          <LiftLock names={locked} onClose={() => (lifting = false)} />
+        {:else}
+          <SettingsRow label={t("agent-lift-title")}>
+            <button data-testid="settings-lift-open" onclick={() => (lifting = true)}>{t("agent-lift-open")}</button>
+          </SettingsRow>
+        {/if}
+      </div>
+    {/if}
+    {#if quarantined.length}
+      <h3 class="group-title appear" out:fade={{ duration: 150 }}>{t("settings-quarantine-title")}</h3>
+      <div class="group appear" data-testid="settings-quarantine" out:fade={{ duration: 150 }}>
+        <p class="help">{t("settings-quarantine-help")}</p>
+        {#each quarantined as q (q.id)}
+          <div data-testid="settings-quarantine-file" data-path={q.path} out:fade={{ duration: 150 }}>
+            <SettingsRow label={q.path}>
+              <button data-testid="settings-quarantine-reveal" onclick={() => s.reveal(`${s.dataDir()}/masking/quarantine/${q.id}`)}>{t("agent-data-reveal")}</button>
+              <button data-testid="settings-quarantine-restore" onclick={() => void restore(q.id)}>{t("settings-quarantine-restore")}</button>
+            </SettingsRow>
+          </div>
+        {/each}
+        {#if restoreError}<span class="alert appear">{t("settings-error", { error: restoreError })}</span>{/if}
+      </div>
+    {/if}
     <SettingsMozilla />
   {/if}
 </section>

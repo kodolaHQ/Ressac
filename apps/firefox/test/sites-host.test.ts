@@ -43,7 +43,7 @@ const declaration = {
   resume: true,
 };
 
-function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLinks: (page: string, signal?: AbortSignal) => Promise<string[]> = async () => []) {
+function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLinks: (page: string, signal?: AbortSignal) => Promise<string[]> = async () => [], extra: Partial<Parameters<typeof createSites>[0]> = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "sites-host-")));
   const paths = spacePaths(join(root, "workspace"));
   const dataDir = join(root, "profil");
@@ -119,7 +119,7 @@ function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLink
   const broadcast = vi.fn();
   const prefill = vi.fn();
   const memories: { id: string; message: unknown }[] = [];
-  const sites = createSites({ paths: paths, dataDir, localAddresses: false, readLinks: readLinks, chrome, broadcast, prefill: prefill, notifyMemory: (id, message) => void memories.push({ id, message }) });
+  const sites = createSites({ paths: paths, dataDir, localAddresses: false, readLinks: readLinks, chrome, broadcast, prefill: prefill, notifyMemory: (id, message) => void memories.push({ id, message }), ...extra });
   cleanup.push(async () => {
     await sites.stop();
     rmSync(root, { recursive: true, force: true });
@@ -628,6 +628,42 @@ describe("accorder", () => {
     await deletion;
     expect(await grants(m)).toEqual({});
     expect(m.calls.after).toEqual([]);
+  });
+});
+
+describe("workspace lock", () => {
+  it("tweaks the lock holds back are not injected, the app opens without them and its console says why; unpaused they are", async () => {
+    let paused = true;
+    const m = mount(undefined, undefined, { tweaksPaused: (id, t) => paused && id === "vidola" && t.js["a.js"] === "A", pausedText: () => "En pause" });
+    m.write("vidola", JSON.stringify({ ...declaration, tweaks: [{ matches: ["/*"], js: ["a.js"] }] }));
+    mkdirSync(join(m.paths.sites, "vidola", "tweaks"), { recursive: true });
+    writeFileSync(join(m.paths.sites, "vidola", "tweaks", "a.js"), "A");
+    await m.sites.openById("vidola");
+    expect(m.calls.open.at(-1)![2]).toEqual({ js: {}, css: {} });
+    expect(await m.sites.tools.errors("vidola")).toEqual([{ when: expect.any(String), text: "En pause", source: "ressac-tweak://vidola/", sourceVerified: false }]);
+    paused = false;
+    expect((await m.sites.tabSite("vidola"))!.tweaks).toEqual({ js: { "a.js": "A" }, css: {} });
+    expect(await m.sites.tools.errors("vidola")).toEqual([]);
+  });
+
+  it("a lift gives an open app its paused tweaks back at once; an app not paused is left alone", async () => {
+    let paused = true;
+    const m = mount(undefined, undefined, { tweaksPaused: (id) => paused && id === "vidola", pausedText: () => "En pause" });
+    m.write("vidola", JSON.stringify({ ...declaration, tweaks: [{ matches: ["/*"], js: ["a.js"] }] }));
+    mkdirSync(join(m.paths.sites, "vidola", "tweaks"), { recursive: true });
+    writeFileSync(join(m.paths.sites, "vidola", "tweaks", "a.js"), "A");
+    await m.sites.openById("vidola");
+    expect(m.calls.open.at(-1)![2]).toEqual({ js: {}, css: {} });
+    paused = false;
+    const before = m.calls.tweaks.length;
+    m.sites.lockLifted();
+    await vi.waitFor(() => expect(m.calls.tweaks.at(-1)).toEqual({ js: { "a.js": "A" }, css: {} }));
+    expect(m.calls.tweaks.length).toBe(before + 1);
+    expect(await m.sites.tools.errors("vidola")).toEqual([]);
+    // Nothing paused any more: a second lift reads nothing again.
+    m.sites.lockLifted();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(m.calls.tweaks.length).toBe(before + 1);
   });
 });
 

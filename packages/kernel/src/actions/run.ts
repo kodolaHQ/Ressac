@@ -54,6 +54,8 @@ export interface OptionsAction {
   paths: SpacePaths;
   /** Runs, results, memory and grants of actions, outside the workspace (`<profile>/actions`). */
   actionsFolder: string;
+  /** The workspace lock's check on the staged copy (runWorkflow's `lockedCode`): what is hashed is what runs. */
+  lockedCode?: (staged: string) => Promise<string | null>;
   engine: string;
   workshop: Pick<Workshop, "stageHarvest" | "harvestCommand" | "deleteHarvest">;
   launch?: ProcessLauncher;
@@ -178,6 +180,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       memory: plan ? {} : await readMemory(dataFolder),
       ...grantContext,
       ...codeCheck(actionsFolder, id, declaration, loc()),
+      ...(o.lockedCode ? { lockedCode: o.lockedCode } : {}),
       unrestricted: await readsUnrestricted(actionsFolder, id, declaration),
       trigger: o.trigger,
       ...(plan ? { replay: { reruns: plan.reruns, outputs: plan.outputs, resumed: plan.resumed } } : {}),

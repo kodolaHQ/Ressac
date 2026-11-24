@@ -53,7 +53,7 @@ agent-data-none = No backups.
 agent-data-export = Export
 agent-data-exported = Exported to { $path }
 agent-data-reset = Reset
-agent-data-reset-confirm = Reset Ressac? Its data (spaces, tabs, history, settings, widget and action data) is set aside in a backup, then Ressac restarts from scratch. These stay in place: the workspace folder (your projects and what the agent created), the local AI models, the Claude and Codex sign-ins (Sign out buttons, Agent section), Codex's compatible API key (macOS Keychain), the browser's cookies and passwords (the browser's advanced settings).
+agent-data-reset-confirm = Reset Ressac? Its data (spaces, tabs, history, settings, widget and action data) is set aside in a backup, then Ressac restarts from scratch. These stay in place: the workspace folder (your projects and what the agent created), the local AI models, the Claude and Codex sign-ins (Sign out buttons, Agent section), Codex's compatible API key (macOS Keychain), the browser's cookies and passwords (the browser's advanced settings), your passports (to delete in Settings › Passport).
 agent-data-reset-go = Reset and restart
 agent-data-reset-cancelled = Restart cancelled: nothing was reset.
 agent-cancel = Cancel
@@ -254,3 +254,51 @@ agent-vim-4-1 = Resume (or pause)
 agent-vim-4-2 = Leave the letters or a pending prefix
 agent-vim-4-3 = Show this help
 agent-vim-key-escape = Esc
+
+# Masking banners in the agent panel.
+agent-mask-locked = Conversation locked: { $names } { $agreement ->
+        [other-m] were
+        [other-f] were
+       *[one-m] was
+    } revealed
+agent-mask-locked-unnamed = Conversation locked: a value was revealed
+agent-mask-uncovered = Conversation not covered: started before masking, it may have seen your data in clear.
+agent-mask-uncovered-passport = This conversation may have read in clear a value you have since added to your passport: the agent may know it. Everything else is still masked.
+# The item's name in the « not covered » banner's tooltip (the fill cards' names).
+agent-mask-passport-field-nom = your name
+agent-mask-passport-field-naissance = your date of birth
+agent-mask-passport-field-proche = a relative's name
+agent-mask-passport-field-adresse = your address
+agent-mask-passport-field-tel = your phone number
+agent-mask-passport-field-email = your e-mail
+agent-mask-passport-field-iban = your IBAN
+agent-mask-passport-field-piece = your ID document number
+agent-mask-passport-field-secu = your social security number
+agent-mask-passport-field-plaque = your licence plate
+agent-mask-passport-field-libre = an item of your passport
+agent-mask-passport-unknown = a value of your passport
+agent-mask-extension = An agent extension can read pages outside your sources.
+agent-mask-passport-unreadable = Your passport “{ $profile }” could not be read: its data is not masked from the agent.
+agent-mask-passport-open = Open the passport
+agent-mask-passport-no-space = No space
+agent-mask-typed-reminder = What you type here, the agent sees
+agent-mask-paste-names = This paste contains { $names }.
+agent-mask-paste-unchecked = Ressac could not check this paste: nothing is sent until you choose.
+agent-mask-paste-masked = Paste masked
+agent-mask-paste-clear = Paste in clear
+agent-mask-paste-cancel = Cancel
+agent-mask-bubble-hide = Hide
+agent-mask-bubble-unknown = This label does not belong to this conversation.
+agent-lift-open = Lift the lock
+agent-lift-title = Lift the lock
+agent-lift-body = The workshop may hold { $names } in a form Ressac does not recognise. These files changed since the reveal:
+agent-lift-unnamed = a revealed value
+agent-lift-quarantine = Quarantine and unlock
+agent-lift-keep = Keep the files and unlock
+agent-lift-delete = Delete the files and unlock
+agent-lift-checking = Looking for changed files…
+agent-lift-none = No file changed.
+agent-lift-keep-help = Tick the files to delete, then press « Keep the files and unlock » again: the others stay in the workshop.
+agent-lift-remove = Delete
+agent-lift-see = Show
+agent-lift-hide = Hide

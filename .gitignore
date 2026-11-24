@@ -20,6 +20,8 @@ apps/firefox/src/browser/base/content/ressac/design-actor.sys.mjs
 apps/firefox/src/browser/base/content/ressac/vim-actor.sys.mjs
 apps/firefox/src/browser/base/content/ressac/call-actor.sys.mjs
 apps/firefox/src/browser/base/content/ressac/frame-actor.sys.mjs
+apps/firefox/src/browser/base/content/ressac/fill-actor.sys.mjs
+apps/firefox/src/browser/base/content/ressac/hide-actor.sys.mjs
 
 # Specs, plans and notes live outside the repo (../Ressac-docs); docs/superpowers is a local link to them
 docs/superpowers

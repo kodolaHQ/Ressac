@@ -120,7 +120,7 @@ describe("recap tab", () => {
     expect((await activeTab(m))!.title).toBe("Vélos cargo");
     await q.waitText(tid("block-title"), "Vélos cargo", 15_000);
     expect(await q.text(tid("page-recap"))).toContain("Récap de l'agent");
-    expect(await q.text(tid("page-recap"))).toContain("Ce récap disparaît quand tu fermes l'onglet.");
+    expect(await q.text(tid("page-recap"))).toContain("Ce récap disparaît quand vous fermez l'onglet.");
     const highlight = tid("block-highlight");
     expect(await q.text(highlight)).toContain("Meilleure affaire");
     // The card's address was never read: text, not a button.

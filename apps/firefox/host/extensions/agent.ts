@@ -128,12 +128,18 @@ const activeIn = (e: ExtensionsState, x: ExtensionEntry | undefined) => !!x?.gra
 
 /** What the chrome's guard checkpoints read (`extensions.scopes`): each granted agent extension by its add-on id. */
 export type Scopes = Record<string, { key: string; grant: Scope; profiles: string[]; active: boolean }>;
-export function scopesOf(e: ExtensionsState): Scopes {
+export function scopesOf(e: ExtensionsState, allowed = true): Scopes {
   const r: Scopes = {};
   for (const [key, x] of Object.entries(e.extensions))
-    if (x.source === "agent" && x.grant) r[addonIdOf(key.slice("agent:".length))] = { key: key, grant: x.grant, profiles: x.profiles, active: activeIn(e, x) };
+    if (x.source === "agent" && x.grant) r[addonIdOf(key.slice("agent:".length))] = { key: key, grant: x.grant, profiles: x.profiles, active: allowed && activeIn(e, x) };
   return r;
 }
+
+/**
+ * Masking: an agent extension reads pages past the masker, so it runs only in Atelier and never while the workspace lock
+ * holds. The lock is its file, read here kernel or not: unreadable or invalid reads as locked (fail closed).
+ */
+export const extensionsAllowed = (mode: "browser" | "workshop", lock: { locked(): boolean }): boolean => mode === "workshop" && !lock.locked();
 
 /**
  * The agent's extensions (registry `<dossier>/state.json`, copies, signed .xpi), kept in the kernel host; the chrome
@@ -158,7 +164,11 @@ export class ExtensionsAgent {
   /** Keys whose source changed while closed and that ran nowhere at startup: signed when next activated (appliquer). */
   private readonly toSign = new Set<string>();
 
-  constructor(private readonly o: { folder: string; agentFolder: string; rpc: Rpc; env?: NodeJS.ProcessEnv }) {
+  /** `allowed()` as the last scopes sent carried it; null before start (which applies every extension itself). */
+  private lastAllowed: boolean | null = null;
+
+  /** `allowed`: extensionsAllowed now; `onScopes`: after each new set of scopes (the panel's notice reads `running`). */
+  constructor(private readonly o: { folder: string; agentFolder: string; rpc: Rpc; allowed: () => boolean; onScopes?: () => void; env?: NodeJS.ProcessEnv }) {
     this.env = o.env ?? process.env;
   }
 
@@ -169,7 +179,7 @@ export class ExtensionsAgent {
     if (Object.entries((await readExtensionsState(this.o.folder)).extensions).some(renamed))
       await changeExtensionsState(this.o.folder, (e) => ({ ...e, extensions: Object.fromEntries(Object.entries(e.extensions).filter((x) => !renamed(x))) }), () => new Set());
     // First: the chrome's checkpoints wait for it (an add-on kept by Firefox starts before this host).
-    this.o.rpc.notify("extensions.scopes", scopesOf(await readExtensionsState(this.o.folder)));
+    this.notifyScopes(await readExtensionsState(this.o.folder));
     for (const [sub, rest] of [
       ["copies", /\.(tmp|ancienne|pending)$/],
       ["signed", /\.(pending|upload)\.xpi$/],
@@ -797,9 +807,45 @@ export class ExtensionsAgent {
     const privates = privateProfilesOf(await this.browser());
     const e = await changeExtensionsState(this.o.folder, change, () => privates);
     this.checkUnlocks(e, privates);
-    this.o.rpc.notify("extensions.scopes", scopesOf(e));
+    this.notifyScopes(e);
     this.o.rpc.notify("extensions.change");
     return e;
+  }
+
+  private notifyScopes(e: ExtensionsState): void {
+    this.lastAllowed = this.o.allowed();
+    this.o.rpc.notify("extensions.scopes", scopesOf(e, this.lastAllowed));
+    this.o.onScopes?.();
+  }
+
+  /**
+   * The mode or the workspace lock changed: every agent extension follows `allowed` again. One after the other, so a
+   * caller that awaits (the reveal, before the value leaves) returns only once an earlier run has applied too.
+   */
+  reevaluate(): Promise<void> {
+    const run = this.reevaluating.catch(() => {}).then(() => this.reevaluateNow());
+    this.reevaluating = run;
+    return run;
+  }
+  private reevaluating: Promise<void> = Promise.resolve();
+
+  private async reevaluateNow(): Promise<void> {
+    if (this.lastAllowed === null || this.o.allowed() === this.lastAllowed) return;
+    const e = await readExtensionsState(this.o.folder);
+    this.notifyScopes(e);
+    // In parallel: one key held (an open grant card) must not keep the others running under a lock.
+    await Promise.all(
+      Object.keys(e.extensions).map((key) => {
+        const id = this.id(key);
+        return id ? this.queued(key, () => this.apply(id, key)) : undefined;
+      }),
+    );
+  }
+
+  /** An agent extension runs now (the panel's notice). */
+  async running(): Promise<boolean> {
+    const e = await readExtensionsState(this.o.folder);
+    return this.o.allowed() && Object.values(e.extensions).some((x) => x.source === "agent" && activeIn(e, x));
   }
 
   private browser(): Promise<Browser> {
@@ -808,7 +854,7 @@ export class ExtensionsAgent {
 
   private async active(key: string): Promise<boolean> {
     const e = await readExtensionsState(this.o.folder);
-    return activeIn(e, e.extensions[key]);
+    return this.o.allowed() && activeIn(e, e.extensions[key]);
   }
 
   /** As the registry says (decision 4): active → the kept signed .xpi installed if missing, then enabled; inactive → disabled, never installed fresh. */
@@ -895,7 +941,7 @@ export class ExtensionsAgent {
       await this.apply(id, key);
       return { ok: true, analysis: analysis };
     } else {
-      const r = await this.signAndInstall(id, p, o.activate ? true : await this.active(key));
+      const r = await this.signAndInstall(id, p, o.activate ? this.o.allowed() : await this.active(key));
       if (!r.ok) {
         await clear();
         return r;

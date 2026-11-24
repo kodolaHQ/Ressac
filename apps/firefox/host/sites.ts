@@ -35,7 +35,7 @@ import {
   readFiles,
   type ReadFiles,
 } from "../../../packages/kernel/src/index.ts";
-import { urlChanged, urlUnchanged, urlNotFound, ICON_MAX, editWithAgent, type ActionSite, type BarNotice, type SiteGrantRequest, type SiteStartRequest, type MessageToHome, type ShownSite } from "../shared/sites.ts";
+import { urlChanged, urlUnchanged, urlNotFound, ICON_MAX, editWithAgent, tweakSource, type ActionSite, type BarNotice, type SiteGrantRequest, type SiteStartRequest, type MessageToHome, type ShownSite } from "../shared/sites.ts";
 import type { FrameBounds } from "../shared/model.ts";
 import type { TweakError, MemoryResponse, OpenableSite } from "../core/sites/injection.ts";
 import { UrlTracking } from "../core/sites/tracking.ts";
@@ -131,6 +131,8 @@ export interface SitesHost {
   urlAllowed(id: string, url: string): boolean;
   tools: SitesTools;
   resync(): Promise<void>;
+  /** The workspace lock was lifted: the open apps whose tweaks it held back get them again. */
+  lockLifted(): void;
   stop(): Promise<void>;
 }
 
@@ -248,6 +250,15 @@ export function createSites(o: {
   onDeleted?(id: string): void;
   /** The deletion `surSupprimee` began is over (folder in the trash, or failed): a review snapshot taken meanwhile is erased. */
   afterDelete?(id: string): void;
+  /** The workspace is locked after a reveal: the apps' memories take no write (a tweak is agent-written). */
+  locked?: () => boolean;
+  /**
+   * While locked, tweaks that are not the ones recorded at the lock (kernel `tweaksPaused`): not injected, the app opens
+   * as if it had none, and its console says why. Absent: never paused.
+   */
+  tweaksPaused?: (id: string, t: TweaksRead) => boolean;
+  /** The console line of an app whose tweaks are paused. */
+  pausedText?: () => string;
 }): SitesHost {
   const sitesFolder = join(o.dataDir, "sites");
   const siteRecords = new SiteRecords(o.dataDir);
@@ -258,6 +269,8 @@ export function createSites(o: {
   /** The open apps as last sent to the chrome, and their tweaks' files. */
   const openSites = new Map<string, SiteChrome>();
   const tweaks = new Map<string, TweaksRead>();
+  /** Apps whose tweaks the workspace lock holds back (tweakFiles). */
+  const pausedTweaks = new Set<string>();
   const subscriptions = new Map<string, () => void>();
   /** Address follow: the reading under way, the last notice, and the changes made (a reading begun before one is redone). */
   const searches = new Map<string, AbortController>();
@@ -352,7 +365,14 @@ export function createSites(o: {
   async function tweakFiles(parsed: Extract<SiteRead, { declaration: unknown }>): Promise<TweaksRead> {
     if (parsed.declaration.tweaks.length === 0) return { js: {}, css: {} };
     const r = await readTweaks(parsed).catch((e: unknown) => ({ error: String(e) }));
-    if (!("error" in r)) return r;
+    if (!("error" in r)) {
+      if (!o.tweaksPaused?.(parsed.id, r)) {
+        pausedTweaks.delete(parsed.id);
+        return r;
+      }
+      pausedTweaks.add(parsed.id);
+      return { js: {}, css: {} };
+    }
     console.warn(`[sites] ${parsed.id}: tweaks not injected: ${r.error}`);
     return { js: {}, css: {} };
   }
@@ -748,7 +768,10 @@ export function createSites(o: {
       },
       errors: async (id) => {
         if (!(await list()).some((s) => s.id === id)) return null;
-        return opened.has(id) ? o.chrome.errors(id).catch(() => []) : [];
+        if (!opened.has(id)) return [];
+        const errors = await o.chrome.errors(id).catch(() => []);
+        const paused: TweakError = { when: new Date().toISOString(), text: o.pausedText?.() ?? "", source: tweakSource(id, ""), sourceVerified: false };
+        return pausedTweaks.has(id) ? [paused, ...errors] : errors;
       },
     },
     lookupAddress: searchUrl,
@@ -787,9 +810,11 @@ export function createSites(o: {
     },
     // Checked again here: only an open app whose tweaks are granted has a memory for its page.
     // After a resync began, its open apps are not known until it ends: their requests wait for it instead of being refused.
-    memoryOp: (d) => synced.then(() => memoryOp((id) => (granted(id) ? memory(id) : Promise.reject(new Error("pas d'accord"))), d)),
-    position: (d) => synced.then(() => positions.position(d)),
+    memoryOp: (d) => synced.then(() => memoryOp((id) => (granted(id) ? memory(id) : Promise.reject(new Error("pas d'accord"))), d, o.locked)),
+    // A position is a number a page script (a tweak) chooses: not noted while locked.
+    position: (d) => synced.then(() => (o.locked?.() ? undefined : positions.position(d))),
     resume: (d) => synced.then(() => positions.resume(d)),
+    lockLifted: () => [...pausedTweaks].forEach((id) => void reread(id)),
     resync() {
       const r = resyncNow();
       // Bounded: a chrome that never answers must not hold these requests forever; after the bound they are checked (and refused) as before.

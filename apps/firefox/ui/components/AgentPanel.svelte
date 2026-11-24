@@ -5,10 +5,16 @@
   import AiAsleep from "./AiAsleep.svelte";
   import { t } from "../i18n.svelte";
   import type { AgentAccount } from "../../shared/settings";
+  import type { MaskingStatus } from "../../shared/api";
+  import { passportName } from "../../shared/model";
+  import { NO_MASKING } from "../api";
   import { focusAgent } from "./agent.svelte";
   import * as terminalAgent from "./terminalAgent.svelte";
   import FirstTimeNote from "./FirstTimeNote.svelte";
   import InstructionReview from "./InstructionReview.svelte";
+  import LiftLock from "./LiftLock.svelte";
+  import MaskBubble from "./MaskBubble.svelte";
+  import { passportTip, uncoveredText } from "./maskBanner";
   import { firstTimePending } from "./hints";
 
   let {
@@ -26,11 +32,12 @@
   /** The agent's first-time note waits, unseen, while AI is off. */
   const notePending = () => aiOn() && firstTimePending("agent");
   /** Réglages on its Agent section: the window's UI frame owns the section shown, as for the menu's « Réglages › … ». */
-  const openAgentSettings = () => {
+  const openSettings = (r: "settings:agent" | `settings:passport:${string}`) => {
     const win = window.parent.ressacWindow;
-    if (win) win.shortcut({ type: "shortcut", r: "settings:agent" });
+    if (win) win.shortcut({ type: "shortcut", r });
     else api.dispatch({ type: "openSettings", windowId: api.windowId });
   };
+  const openAgentSettings = () => openSettings("settings:agent");
 
   /** The panel is on the left when the sidebar is on the right: the handle follows the panel's inner edge. */
   const sidebarRight = $derived(browserState.value?.settings.sidebarSide === "right");
@@ -55,7 +62,8 @@
     handle.addEventListener("pointerup", drop);
     handle.addEventListener("pointercancel", drop);
   }
-  let hostEl: HTMLDivElement;
+  // State: the bubble shows in the panel whose host holds the terminal.
+  let hostEl = $state<HTMLDivElement>() as HTMLDivElement;
   const appState = $derived(terminalAgent.agent.state);
   let engineNotice = $state<HTMLElement>();
   /** Ticks while a build step shows, so the elapsed minutes count up. */
@@ -75,6 +83,49 @@
     const timer = setInterval(check, 2_000);
     return () => clearInterval(timer);
   });
+
+  /** The masking banners (lock, conversation not covered, kernel notice): read again on each change the host tells. */
+  let masking = $state<MaskingStatus>(NO_MASKING);
+  let maskReads = 0;
+  const readMasking = () => {
+    const n = ++maskReads;
+    void api.agent.masking().then((m) => void (n === maskReads && (masking = m)));
+  };
+  $effect(() => {
+    if (!aiOn()) return void (masking = NO_MASKING);
+    untrack(readMasking);
+    return api.agent.onMasking(readMasking);
+  });
+  // A new session (relaunch, resume) changes what the window's conversation is.
+  $effect(() => {
+    void appState;
+    if (aiOn()) untrack(readMasking);
+  });
+  /** The lift card is open (« Lever le verrou »): it goes with the lock. */
+  let lifting = $state(false);
+  $effect(() => {
+    if (!masking.locked) lifting = false;
+  });
+  const uncoveredKey = $derived(uncoveredText(masking));
+  /** The passport banner's tooltip: the added entries' names and masked displays, read from the chrome's passport on demand. */
+  let tip = $state<string | null>(null);
+  let tips = 0;
+  const showTip = () => {
+    const n = ++tips;
+    void api.agent.passportShown($state.snapshot(masking.uncoveredPassport)).then((shown) => void (n === tips && (tip = passportTip(shown, (id) => t(id)))));
+  };
+  const hideTip = () => {
+    tips++;
+    tip = null;
+  };
+  // A banner that leaves or changes takes its tooltip with it: the next one starts without.
+  $effect(() => {
+    void uncoveredKey;
+    void masking.uncoveredPassport;
+    untrack(hideTip);
+  });
+  const nameOf = (profile: string) => passportName(browserState.value?.spaces ?? [], profile, t("agent-mask-passport-no-space"));
+  const lockedText = $derived(masking.locked && (masking.locked.length ? t("agent-mask-locked", { names: masking.locked.slice(0, 10).map((n) => n.slice(0, 60)).join(", "), agreement: masking.lockedAgreement }) : t("agent-mask-locked-unnamed")));
 
   let profiles = $state<{ id: string; name: string }[]>([]);
   let accounts = $state<AgentAccount[]>([]);
@@ -127,6 +178,11 @@
     void readCurrent();
     void refreshAccounts();
   }
+
+  // Hidden, the panel drops its bubble: a revealed value or a held paste never waits off screen.
+  $effect(() => {
+    if (!visible) untrack(() => terminalAgent.bubble.current?.host === hostEl && terminalAgent.dismissBubble());
+  });
 
   // The window's terminal comes here on the first opening of this panel, then stays attached: closing the panel only
   // hides it, the conversation goes on. The « Agent » tab borrows it while it is shown.
@@ -248,6 +304,38 @@
       </div>
     {/if}
   </header>
+  <!-- A fade never ends in a hidden panel (no frames): off screen, a banner leaves at once. -->
+  {#if lockedText}
+    <div class="mask-banner lock" data-testid="agent-mask-locked-banner" out:fade={{ duration: visible ? 150 : 0 }}>
+      <p role="status" data-testid="agent-mask-locked">{lockedText}</p>
+      {#if !lifting}<button class="lift-open" data-testid="agent-lift-open" out:fade={{ duration: visible ? 150 : 0 }} onclick={() => (lifting = true)}>{t("agent-lift-open")}</button>{/if}
+    </div>
+  {/if}
+  {#if lifting && masking.locked}
+    <LiftLock names={masking.locked} onClose={() => (lifting = false)} />
+  {/if}
+  {#if uncoveredKey === "agent-mask-uncovered"}
+    <p class="mask-banner" role="status" data-testid="agent-mask-uncovered" out:fade={{ duration: visible ? 150 : 0 }}>{t("agent-mask-uncovered")}</p>
+  {:else if uncoveredKey}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex: the tooltip opens on focus too -->
+    <p class="mask-banner tipped" role="status" tabindex="0" aria-describedby="agent-mask-uncovered-tip" data-testid="agent-mask-uncovered-passport" out:fade={{ duration: visible ? 150 : 0 }}
+      onmouseenter={showTip} onfocus={showTip} onmouseleave={hideTip} onblur={hideTip}>
+      {t(uncoveredKey)}
+      {#if tip}<span class="mask-tip" id="agent-mask-uncovered-tip" role="tooltip" data-testid="agent-mask-uncovered-tip" out:fade={{ duration: visible ? 150 : 0 }}>{tip}</span>{/if}
+    </p>
+  {/if}
+  {#each masking.passportUnreadable as profile (profile)}
+    <div class="mask-banner lock" data-testid="agent-mask-passport-unreadable" out:fade={{ duration: visible ? 150 : 0 }}>
+      <p role="status">{t("agent-mask-passport-unreadable", { profile: nameOf(profile) })}</p>
+      <button class="lift-open" data-testid="agent-mask-passport-open" onclick={() => openSettings(`settings:passport:${profile}`)}>{t("agent-mask-passport-open")}</button>
+    </div>
+  {/each}
+  {#if masking.extensionReads}
+    <p class="mask-banner" role="status" data-testid="agent-mask-extension" out:fade={{ duration: visible ? 150 : 0 }}>{t("agent-mask-extension")}</p>
+  {/if}
+  {#if masking.notice}
+    <p class="mask-banner" role="status" data-testid="agent-mask-notice" out:fade={{ duration: visible ? 150 : 0 }}>{masking.notice.slice(0, 300)}</p>
+  {/if}
   {#if signedOutCodex}
     <p class="message">{t("agent-panel-codex-signed-out")}</p>
     <button data-testid="agent-login-settings" onclick={openAgentSettings}>{t("agent-panel-login")}</button>
@@ -283,6 +371,13 @@
   <!-- Asleep: a click wakes the agent too (a TUI without mouse reporting sends nothing for it). -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="terminal" bind:this={hostEl} hidden={!aiOn()} class:masked={appState.state !== "active" && appState.state !== "done" && !waking} onpointerdown={() => appState.state === "asleep" && api.agent.write("")}></div>
+  {#if terminalAgent.bubble.current && terminalAgent.bubble.current.host === hostEl}
+    <MaskBubble b={terminalAgent.bubble.current} {visible} />
+  {/if}
+  {#if aiOn()}
+    <!-- Keys typed in the terminal go to the agent as they are (spec § 5.4 bis): said, always. -->
+    <p class="typed" data-testid="agent-typed-reminder">{t("agent-mask-typed-reminder")}</p>
+  {/if}
 </section>
 
 <style>
@@ -319,5 +414,14 @@
   .mode button { margin: 0; padding: 4px 10px; border-radius: 8px; background: transparent; color: var(--text-muted); font: 600 12px/1.2 var(--font-ui); transition: transform var(--tap), background var(--tap), color var(--tap); }
   .mode button[aria-checked="true"] { background: var(--glass); color: var(--text); box-shadow: var(--lift), inset 0 0 0 1px var(--glass-edge); }
   .engine-changed { display: flex; flex-direction: column; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  /* What masking says about this conversation: an error-tinted line set in the glass, on the spring (DESIGN.md). */
+  .mask-banner { flex: none; margin: 0 8px 8px; padding: 7px 10px; border-radius: 10px; background: color-mix(in srgb, var(--in-error) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--in-error) 28%, transparent); color: var(--text); font-size: 12.5px; line-height: 1.4; overflow-wrap: anywhere; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  /* The passport banner's tooltip: under the line, on the spring, out by a fade (DESIGN.md). */
+  .mask-banner.tipped { position: relative; }
+  .mask-tip { position: absolute; z-index: 2; left: 8px; right: 8px; top: calc(100% + 4px); padding: 6px 9px; border-radius: 8px; background: var(--glass-hi); box-shadow: 0 0 0 1px var(--border); color: var(--text); font-size: 12px; white-space: pre-line; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .mask-banner.lock { display: flex; align-items: center; gap: 8px; }
+  .mask-banner.lock p { flex: 1; min-width: 0; margin: 0; }
+  .mask-banner .lift-open { flex: none; margin: 0; padding: 4px 10px; font-size: 12px; }
   .terminal[hidden] { display: none; }
+  .typed { flex: none; margin: -2px 14px 6px; color: var(--text-muted); font-size: 11.5px; line-height: 1.3; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
 </style>

@@ -4,6 +4,9 @@ import type { MemoryResponse } from "../core/sites/injection.ts";
 // The host's side of the site apps' injection channels (core/sites/injection.ts): the chrome checks the sender
 // (the app view's main document), the grant and the relative address, the host does the memory work.
 
+/** The refusal of a memory write while the workspace is locked after a reveal (another space would read it back). */
+export const MEMORY_LOCKED = "Mémoire de l'appli : l'atelier est verrouillé depuis une révélation, rien ne s'écrit tant que le verrou n'est pas levé";
+
 /** The refusal of a memory request from anywhere but the app's main page. */
 export const MEMORY_DENIAL = "Mémoire de l'appli : seulement depuis la page principale de l'appli";
 
@@ -22,10 +25,12 @@ function memoryRequest(d: unknown): MemoryRequest | null {
  * `sites.memoryOp {id, url, op, key, value?}`: the memory work past the sender checks. `memory(id)`
  * rejects while the app is being deleted: nothing is read or written then.
  */
-export async function memoryOp(memory: (id: string) => Promise<SiteMemory>, raw: unknown): Promise<MemoryResponse> {
+export async function memoryOp(memory: (id: string) => Promise<SiteMemory>, raw: unknown, locked: () => boolean = () => false): Promise<MemoryResponse> {
   const p = raw && typeof raw === "object" ? (raw as { id?: unknown; url?: unknown }) : {};
   const d = memoryRequest(raw);
   if (typeof p.id !== "string" || typeof p.url !== "string" || !d) return { ok: false, error: MEMORY_DENIAL };
+  // A forget writes too: one bit is still a channel.
+  if (d.op !== "read" && locked()) return { ok: false, error: MEMORY_LOCKED };
   const m = await memory(p.id).catch(() => null);
   if (!m) return { ok: false, error: MEMORY_DENIAL };
   if (d.op === "remember") {

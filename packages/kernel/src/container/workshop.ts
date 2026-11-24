@@ -12,6 +12,7 @@ import { CODE_TIMEOUT_EXCEEDED, createRunner, type RunResult, type Runner } from
 import { inFolder, listFolder, readFiles, type ReadFiles } from "../workspace/confined.js";
 import { realInternal } from "../workspace/initialize.js";
 import type { Snapshot } from "../workspace/instructions.js";
+import type { StoreId } from "../mask/inventory.js";
 import { LIMITS, readInstructionFiles, writeInstructionFiles } from "./instruction-files.js";
 
 export const CONTAINER_NAME = "ressac-workshop";
@@ -148,9 +149,47 @@ export function validDomain(d: string): boolean {
   return labels.length >= 2 && labels.every((l) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(l) && l.length <= 63) && !/^[0-9.]+$/.test(name);
 }
 
+/** The first reveal's time, in the container (the lift's reference). */
+export const REVEAL_STAMP = "/run/ressac-reveal-stamp";
+
+/**
+ * The stores a lift scans, by their root in the container (spec § 3), the most specific first. `.ressac` is read-only to
+ * the agent (the host writes it, so it always looks changed): left out, but its `logs` mount, which the apps write, is in.
+ */
+export const CHANGED_ROOTS: readonly (readonly [string, StoreId])[] = [
+  [`${CONTAINER_PATH}/.ressac/logs`, "ressac-logs"],
+  [CONTAINER_PATH, "workspace"],
+  ["/home/node", "agent-home"],
+  ["/tmp", "container-tmp"],
+  ["/var/tmp", "container-tmp"],
+  ["/dev/shm", "container-tmp"],
+  ["/run/lock", "container-tmp"],
+  ["/var/lock", "container-tmp"],
+];
+/** The directories under CHANGED_ROOTS at the first reveal, root-owned beside the stamp. */
+export const REVEAL_DIRS = "/run/ressac-reveal-dirs";
+/**
+ * Shell: `$roots`, the CHANGED_ROOTS that exist as real directories (Debian's /var/lock is a link to /run/lock). find's
+ * -xdev holds per start point: each root is walked on its own device only.
+ */
+const SCAN_ROOTS = `roots=; for r in ${CHANGED_ROOTS.map(([root]) => root).join(" ")}; do [ -d "$r" ] && [ ! -L "$r" ] && roots="$roots $r"; done`;
+/** `<type> <size> <path>\0` entries, as find prints them. */
+const entries = (out: string) =>
+  out
+    .split("\0")
+    .filter((entry) => entry !== "")
+    .map((entry) => {
+      const [type = "", size = "", ...rest] = entry.split(" ");
+      return { type, size: Number(size), path: rest.join(" ") };
+    });
+/** A whole home volume can hold many files: the scan gets more than a probe's time. */
+const SCAN_DELAY_MS = 120_000;
+
 export interface AgentNetwork {
   ports: number[];
   domains: string[];
+  /** The workspace is locked after a reveal: the proxy keeps the model domains only (ressac-network.mjs MODEL_DOMAINS). */
+  locked?: boolean;
 }
 
 /** `machine-stopped`: the engine is Ressac's machine and it is not running (startable); `docker-absent`: the same for Docker. */
@@ -423,6 +462,118 @@ export class Workshop {
     return JSON.parse(r.stdout) as T;
   }
 
+  /**
+   * At a reveal, as root: the list of the directories under CHANGED_ROOTS (one missing from it at the lift is new or
+   * renamed: its name may hold the value), then the stamp the lift compares the entries with (changed since the reveal).
+   * Done once: an existing list ends it, and an existing stamp is never moved forward. The list is always written, find's
+   * errors ignored (an entry gone mid-walk): a directory missing from it only means more quarantine. A list written after
+   * the stamp (a stamp left by a failed reveal) is "late": the lift trusts none of its directories changed since the stamp.
+   */
+  async stampReveal(): Promise<void> {
+    if (!this.docker) return;
+    const script =
+      `test -e ${REVEAL_DIRS} && exit 0; ${SCAN_ROOTS}; ` +
+      `find $roots -xdev -path ${CONTAINER_PATH}/.ressac -prune -o -type d -printf '%p\\0' > ${REVEAL_DIRS}.tmp 2>/dev/null; ` +
+      `mv ${REVEAL_DIRS}.tmp ${REVEAL_DIRS} && { test -e ${REVEAL_STAMP} || touch ${REVEAL_STAMP}; }`;
+    const r = await this.launch(["exec", "--privileged", "-u", "root", "-w", "/", containerName(), "sh", "-c", script], SCAN_DELAY_MS);
+    if (r.code !== 0) throw new Error(`reveal stamp: ${tail(r.stderr) || `code ${r.code}`}`);
+  }
+
+  /**
+   * The lift's scan, as root (the agent's modes cannot hide an entry). Every non-directory of CHANGED_ROOTS whose ctime is
+   * after the reveal stamp (an agent can set an mtime back, not a ctime), every directory (`D` changed since the stamp, `d`
+   * not), and the directories listed at the reveal (null without that list; `late`: written after the stamp). Without the
+   * stamp, everything counts (fail closed). null: no engine at all. A stopped or removed container is started first: a
+   * fresh one has neither stamp nor list.
+   */
+  async changedSince(): Promise<{ entries: { type: string; size: number; path: string }[]; snapshot: { dirs: string[]; late: boolean } | null } | null> {
+    if (!this.docker) return null;
+    let state = await this.state();
+    if (state !== "started") state = await this.ensureStarted();
+    if (state !== "started") throw new Error(say(this.locale(), "kernel-mask-lift-workshop", { state }));
+    const script =
+      `${SCAN_ROOTS}; ` +
+      // -cnewer reads the stamp's mtime: safe only because /run is root-owned, so the agent cannot move it.
+      `if [ -e ${REVEAL_STAMP} ]; then set -- -cnewer ${REVEAL_STAMP}; else set --; fi; ` +
+      `exec find $roots -xdev -path ${CONTAINER_PATH}/.ressac -prune -o -type d "$@" -printf 'D 0 %p\\0' -o -type d -printf 'd 0 %p\\0' -o "$@" -printf '%y %s %p\\0'`;
+    const r = await this.launch(["exec", "--privileged", "-u", "root", "-w", "/", containerName(), "sh", "-c", script], SCAN_DELAY_MS);
+    if (r.code !== 0) throw new Error(`changed files: ${tail(r.stderr) || `code ${r.code}`}`);
+    const listed = await this.launch(
+      ["exec", "-u", "root", "-w", "/", containerName(), "sh", "-c", `test -e ${REVEAL_DIRS} || exit 3; if [ ${REVEAL_DIRS} -nt ${REVEAL_STAMP} ]; then printf 'late\\0'; else printf 'first\\0'; fi; exec cat ${REVEAL_DIRS}`],
+      SCAN_DELAY_MS,
+    );
+    if (listed.code !== 0 && listed.code !== 3) throw new Error(`changed files: ${tail(listed.stderr) || `code ${listed.code}`}`);
+    if (listed.code === 3) return { entries: entries(r.stdout), snapshot: null };
+    const [when, ...dirs] = listed.stdout.split("\0").filter((d) => d !== "");
+    return { entries: entries(r.stdout), snapshot: { dirs, late: when !== "first" } };
+  }
+
+  /** Everything under new directories, as root: non-directories (`%y`) and empty directories (`e`), whose names count too. */
+  async listUnder(dirs: string[]): Promise<{ type: string; size: number; path: string }[]> {
+    if (dirs.length === 0) return [];
+    const r = await this.launch(
+      ["exec", "--privileged", "-u", "root", "-w", "/", containerName(), "find", ...dirs, "-xdev", "!", "-type", "d", "-printf", "%y %s %p\\0", "-o", "-type", "d", "-empty", "-printf", "e 0 %p\\0"],
+      SCAN_DELAY_MS,
+    );
+    if (r.code !== 0) throw new Error(tail(r.stderr) || `code ${r.code}`);
+    return entries(r.stdout);
+  }
+
+  /** The first `bytes` (+1, to tell a longer file) of a container file, read as root: the lift card shows it. */
+  async readStart(path: string, bytes: number): Promise<string> {
+    const r = await this.launch(["exec", "--privileged", "-u", "root", "-w", "/", containerName(), "head", "-c", String(bytes + 1), "--", path], PROBE_DELAY_MS);
+    if (r.code !== 0) throw new Error(tail(r.stderr) || `code ${r.code}`);
+    return r.stdout;
+  }
+
+  /** A container file or symbolic link (copied as a link, never followed) copied to the Mac (`dest`'s folder exists). */
+  async copyOut(path: string, dest: string): Promise<void> {
+    const r = await this.launch(["cp", `${containerName()}:${path}`, dest], PROBE_DELAY_MS);
+    if (r.code !== 0) throw new Error(tail(r.stderr) || `code ${r.code}`);
+  }
+
+  /** A container entry removed (a directory with what it holds, a link without its target), as root. */
+  async remove(path: string): Promise<void> {
+    const r = await this.launch(["exec", "--privileged", "-u", "root", "-w", "/", containerName(), "rm", "-rf", "--", path], PROBE_DELAY_MS);
+    if (r.code !== 0) throw new Error(tail(r.stderr) || `code ${r.code}`);
+  }
+
+  /** After the moves: the folders left empty, deepest first (the caller orders them and leaves the roots out). */
+  async removeEmptyFolders(dirs: string[]): Promise<void> {
+    if (dirs.length === 0) return;
+    const r = await this.launch(["exec", "--privileged", "-u", "root", "-w", "/", containerName(), "rmdir", "--ignore-fail-on-non-empty", "--", ...dirs], PROBE_DELAY_MS);
+    if (r.code !== 0) throw new Error(tail(r.stderr) || `code ${r.code}`);
+  }
+
+  /**
+   * A file given back (« Rendre à l'atelier »), written as the agent's user from stdin (base64): never as root, so a link
+   * the agent put on the way reaches only what it could write anyway. `link`: a symbolic link to that target instead.
+   * shortcut: the whole file goes through one string; stream it if large files show up.
+   */
+  async writeAsAgent(path: string, o: { content: Buffer } | { link: string }): Promise<void> {
+    const make = `mkdir -p -- "$(dirname -- "$1")" && ` + ("link" in o ? `ln -sfn -- "$2" "$1"` : `base64 -d > "$1"`);
+    const r = await this.launch(
+      ["exec", "-i", "-u", "node", "-w", "/", containerName(), "sh", "-c", make, "ressac-restore", path, ...("link" in o ? [o.link] : [])],
+      PROBE_DELAY_MS,
+      "link" in o ? "" : o.content.toString("base64"),
+    );
+    if (r.code !== 0) throw new Error(tail(r.stderr) || `code ${r.code}`);
+  }
+
+  /** An agent session or app process lives in the workshop (a doubt counts as one). */
+  async agentRunning(): Promise<boolean> {
+    if (!this.docker || (await this.state()) !== "started") return false;
+    const found = await this.launch(["exec", containerName(), "sh", "-c", `${marks(`${VARIABLE_SESSION}=.*`)}; ${marks(`${VARIABLE_APPLICATION}=.*`)}; true`], PROBE_DELAY_MS);
+    return found.code !== 0 || found.stdout.trim() !== "";
+  }
+
+  /** After a lift: the next reveal stamps and lists anew (stampReveal keeps an existing stamp). */
+  async clearRevealStamp(): Promise<void> {
+    if (!this.docker) return;
+    const r = await this.launch(["exec", "-u", "root", "-w", "/", containerName(), "rm", "-f", REVEAL_STAMP, REVEAL_DIRS], PROBE_DELAY_MS);
+    if (r.code !== 0) throw new Error(`reveal stamp: ${tail(r.stderr) || `code ${r.code}`}`);
+  }
+
   /** One run at a time, shared: two sessions opening together apply the rules once. */
   secureNetwork(): Promise<void> {
     if (!this.network) return Promise.resolve();
@@ -453,11 +604,11 @@ export class Workshop {
     this.secured = false;
     const rules = this.network!();
     this.applying = JSON.stringify(rules);
-    const { ports, domains } = rules;
+    const { ports, domains, locked } = rules;
     const apply = await this.launch(
       ["exec", "--privileged", "-u", "root", "-w", "/", "-i", containerName(), "node", "/opt/ressac/ressac-network.mjs", "apply"],
       PROBE_DELAY_MS,
-      JSON.stringify({ ports, domains: domains.filter(validDomain) }),
+      JSON.stringify({ ports, domains: domains.filter(validDomain), locked: locked === true }),
     );
     if (apply.code !== 0) fail(tail(apply.stderr) || `code ${apply.code}`);
     const probe = await this.launch(["exec", containerName(), "curl", "-s", "--noproxy", "*", "--max-time", "3", "https://1.1.1.1"], PROBE_DELAY_MS);

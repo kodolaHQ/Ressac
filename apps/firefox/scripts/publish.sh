@@ -84,4 +84,6 @@ if [[ -z ${RESSAC_PUBLISH_DRY_RUN:-} ]]; then
   else git rev-parse -q --verify "refs/tags/v$version" >/dev/null || git tag "v$version" $release
     git push -q origin "v$version" || print -r -- "warning: tag v$version not pushed"; fi
 fi
+# Older releases only take room: the feed points at the newest MAR alone. A failed prune never fails the release.
+scripts/prune-releases.sh || print -r -- "warning: old releases not pruned (scripts/prune-releases.sh)"
 print -r -- "==> Ressac $version published. A tester's download link: pnpm run release:invite"

@@ -32,11 +32,12 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync, readFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE } = await import("../../../packages/kernel/src/index.ts");
+const { passportReady, ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE, WorkspaceLock, tweaksPaused } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
+const { hostPassport, maskGuess, maskingStatus, maskPaste, maskRuns, revealLocal } = await import("./masking.ts");
 const { createSites } = await import("./sites.ts");
 const { copyComponentRequest, copyHomeRequest } = await import("./home-copy.ts");
 const { createAsk } = await import("./ask.ts");
@@ -49,7 +50,7 @@ const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, memoryAllows, memo
 const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
-const { ExtensionsAgent } = await import("./extensions/agent.ts");
+const { ExtensionsAgent, extensionsAllowed } = await import("./extensions/agent.ts");
 const { CLAUDE_KEY, amoKeychain, keychain } = await import("./keychain.ts");
 const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
@@ -137,6 +138,21 @@ const actionsFolder = join(dataDir, "actions");
 const actionsContext = { paths: paths, actionsFolder: actionsFolder };
 // The agent's recaps: the kernel publishes, this instance (same folder) serves the pages and erases, kernel or not.
 const recapsFolder = join(dataDir, "recaps");
+// The workspace lock after a reveal: the kernel writes it, this instance (same file, read at each call) cuts the container's
+// network, refuses the site apps' memory writes and the external MCP, kernel or not.
+const maskingFolder = join(dataDir, "masking");
+const workspaceLock = new WorkspaceLock(join(maskingFolder, "lock.json"));
+/** The kernel's notice for each conversation (session id), shown in its window's panel: a new conversation has none. */
+// shortcut: entries of ended conversations stay (a few short texts per conversation); drop them on session close if it grows.
+const maskNotices = new Map<string, string>();
+/** The user's passports, pushed by the chrome at each host start; every kernel of this process gets this one (ruling F1). */
+const passport = hostPassport(process.env);
+/** Any failure of a passport.* call: a fixed text, never the value (invariant 7). */
+const PASSPORT_INVALID = "invalid passport";
+/** The panels read their masking status again (a reveal, a lift, a session opened or closed, a notice). */
+const maskingChanged = () => rpc.notify("agent.masking");
+/** The workspace lock to the chrome's agent page guard (chrome/agent/page-guard.ts), locked there until told. */
+const pushPagesLock = () => rpc.request("agent.pagesLocked", [workspaceLock.locked()]);
 const recaps = createRecaps({ folder: recapsFolder });
 const idRecap = (v: unknown): v is string => typeof v === "string" && ID_RECAP.test(v);
 // One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (kernel.ts:389).
@@ -208,7 +224,7 @@ const engines = createEngines({
   copyLogins: () => copyLogins({ docker: dockerContainers.binary()!, podman: machine.binary(), podmanArgs: machine.args(), run: runTool }),
   marker: join(testMachine ? dataDir : MACHINE_HOME, "logins-copied"),
 });
-const workshop = new Workshop({ paths: paths, locale: () => hostLocale(), engine: () => engines.current(), network: () => ({ ports: [kernel?.mcpPort, relay.port].filter((p): p is number => typeof p === "number"), domains: agentDomains }) });
+const workshop = new Workshop({ paths: paths, locale: () => hostLocale(), engine: () => engines.current(), network: () => ({ ports: [kernel?.mcpPort, relay.port].filter((p): p is number => typeof p === "number"), domains: agentDomains, locked: workspaceLock.locked() }) });
 
 let kernel: Kernel | null = null;
 let error: string | null = null;
@@ -328,6 +344,8 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     widgetsFolder: widgetsFolder,
     actionsFolder: actionsFolder,
     recapsFolder: recapsFolder,
+    maskingFolder: maskingFolder,
+    passport,
     ...(process.env.RESSAC_TEST_RECAP_DAY_MS ? { recapsDayMs: Number(process.env.RESSAC_TEST_RECAP_DAY_MS) } : {}),
     onRecapChange: (id) => rpc.notify("recaps.changed", { id }),
     onActivity: (a) => rpc.notify("agent.activity", a),
@@ -337,6 +355,10 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     sites: sites.tools,
     workshop: workshop,
     apps: apps.manager,
+    // Before the revealed value leaves: no agent app keeps running, no agent extension, no CDN or WebRTC for agent pages.
+    onLock: async () => {
+      await Promise.all([apps.manager.stopAll(), extensions.reevaluate(), pushPagesLock()]);
+    },
     // The sweep before a first session kills every process of the agent's user: a sign-in by code in progress ends first
     // (the session waits for it, 2 min at most), then the apps stop cleanly (« arrêtée »).
     // shortcut: a sign-in started in the few ms between its end and the sweep is still killed; serialize them if it shows.
@@ -358,7 +380,16 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
         rpc.notify("actions.live", e);
         actions.directSeen(e);
       });
-      unsubscribe = () => (offPolicy(), offDirect(), offActions());
+      const offMasker = n.masker.onChange(maskingChanged);
+      // A lift: the panels read the status again, the site apps whose tweaks the lock held back get them.
+      const offLock = n.workspaceLock.onChange(() => {
+        maskingChanged();
+        reevaluateExtensions();
+        void pushPagesLock().catch((e) => console.error("[ressac] agent pages' lock not sent:", e));
+        if (!workspaceLock.locked()) sites.lockLifted();
+      });
+      unsubscribe = () => (offPolicy(), offDirect(), offActions(), offMasker(), offLock());
+      maskingChanged();
       // A widget added or rewritten, a placement made in another window, a theme: the page reads again.
       // Unguarded, a watch failure would reject `ready` and every host method with it.
       try {
@@ -386,14 +417,17 @@ const stopKernel = async (n: Kernel | null) => {
   await homeStop?.();
   homeStop = undefined;
   broadcastAccess();
+  maskingChanged();
   await n?.stop();
 };
 
-const start = async () => {
+/** The kernel, or the reason it is not there. */
+const liveKernel = async () => {
   const n = await ready;
   if (!n) throw new Error(error ?? hostSay("host-kernel-not-started"));
-  return { agent: n.agent };
+  return n;
 };
+const start = async () => ({ agent: (await liveKernel()).agent });
 
 // Through the kernel, which also writes the grants; without it, the files directly.
 const denyWidget = async (w: string) => {
@@ -506,13 +540,19 @@ const applyAi = async () => {
   await ready;
 };
 
+/** Ressac's own text for a window's agent, as it goes to it: masked with its session's table (nothing to mask without a kernel). */
+const maskForAgent = (win: string, text: string) => kernel?.masker.maskTyped(win, text).text ?? text;
 const sessions = new SessionsAgent({
   defaultProfile: () => defaultProfile,
+  mask: maskForAgent,
   // The mode counts as part of the engine: a change offers « Relancer » in the other windows' panels.
   engineOf: (p) => (p === "claude" ? JSON.stringify([claudeEngine, agentMode]) : p === "codex" ? JSON.stringify([engine, agentMode]) : ""),
   async open(f, t, { profile, resume, conversation, onBuildProgress, review }) {
     if (!aiOn) throw new Error("ai-off");
     await aiSwitch;
+    // Ressac's own texts to the session (prefills, the ⌘T question) are masked as they are written, once it runs: with
+    // the passports, never before them (design § 5.2). At the cap: as without a kernel.
+    if (!(await passportReady(passport))) throw new Error(hostSay("host-kernel-not-started"));
     const n = await ready;
     if (!n) throw new Error(error ?? hostSay("host-kernel-not-started"));
     // AI turned off while waiting: no further docker command.
@@ -597,6 +637,7 @@ const rpc = createRpc({
     "agent.mode": (p: { mode: unknown }) => {
       const was = agentMode;
       agentMode = p?.mode === "workshop" ? "workshop" : "browser";
+      reevaluateExtensions();
       // To Navigateur: no session (custom profiles too) keeps its shell, and no running app keeps running agent-written code.
       if (was === "workshop" && agentMode === "browser") {
         void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
@@ -863,7 +904,11 @@ const rpc = createRpc({
     "actions.delete": (p: { id?: unknown }) => (idAction(p?.id) ? actions.delete(p.id) : { ok: false, error: hostSay("host-invalid-request") }),
     // Site apps (the window is the chrome's). A bad action is ignored.
     // The open apps are known again: the Applications page reads them (it read « fermée » while the host was down).
-    "sites.ready": () => sites.resync().then(() => rpc.notify("sites.change")),
+    // The chrome's handlers are up: its agent page guard learns the lock, its site windows are listed.
+    "sites.ready": () => {
+      void pushPagesLock().catch((e) => console.error("[ressac] agent pages' lock not sent:", e));
+      return sites.resync().then(() => rpc.notify("sites.change"));
+    },
     "sites.list": () => sites.list(),
     "sites.act": (p: { id?: unknown; action?: unknown; window?: unknown }) => {
       const a = SchemaActionSite.safeParse(p);
@@ -906,7 +951,7 @@ const rpc = createRpc({
     },
     "history.title": (p: { url: string; spaceId: string; title: string }) => hist?.updateTitle(p.url, p.spaceId, p.title),
     "history.icon": (p: { url: string; spaceId: string; icon: string }) => hist?.noteIcon(p.url, p.spaceId, p.icon),
-    "history.keep": (p: { url: string; spaceId: string; title: string; text: string }) => {
+    "history.keep": (p: { url: string; spaceId: string; title: string; text: string; byAgent: boolean }) => {
       if (keepable(p.url)) hist?.keep({ ...p, text: String(p.text) });
     },
     "history.makePrivate": (p: { spaceId: string }) => hist?.makePrivate(p.spaceId),
@@ -929,8 +974,9 @@ const rpc = createRpc({
       const question = p.question.slice(0, 2000);
       const win = p.window;
       // Outflow rules: only the question is the user's own text, not the page titles shown with it. Fed as it is written,
-      // after a fresh session's reset (⌘T usually opens the window's agent), not when it is queued.
-      sessions.prefill(win, handOffText(question, shown, hostSay("host-ask-shown-pages")), () => kernel?.outflow.typed(win, question + "\r"), true);
+      // after a fresh session's reset (⌘T usually opens the window's agent), not when it is queued; masked as it is written
+      // (the same value gets the same label in the session's table).
+      sessions.prefill(win, handOffText(question, shown, hostSay("host-ask-shown-pages")), () => kernel?.outflow.typed(win, maskForAgent(win, question) + "\r"), true);
     }),
     stop: async () => {
       try {
@@ -946,6 +992,65 @@ const rpc = createRpc({
       sessions.write(p.window, p.data);
     },
     "agent.resize": (p: { window: string; size: TerminalSize }) => sessions.resize(p.window, p.size),
+    "agent.masking": async (p: { window?: unknown }) => maskingStatus(kernel?.masker ?? null, workspaceLock, maskNotices, String(p?.window), await extensions.running(), passport),
+    // The chrome's passports (design § 5.2, § 5.3): kept by this process whether a kernel runs or not.
+    "passport.replace": async (p: { profile?: unknown; entries?: unknown }) => {
+      try {
+        if (typeof p?.profile !== "string" || !Array.isArray(p.entries)) throw new Error();
+        const { uncovered } = kernel ? await kernel.replacePassport(p.profile, p.entries) : (passport.replace(p.profile, p.entries), { uncovered: 0 });
+        return { ok: true, uncovered };
+      } catch {
+        throw new Error(PASSPORT_INVALID);
+      } finally {
+        maskingChanged();
+      }
+    },
+    "passport.drop": (p: { profile?: unknown }) => {
+      try {
+        if (typeof p?.profile !== "string") throw new Error();
+        passport.drop(p.profile);
+        return { ok: true };
+      } catch {
+        throw new Error(PASSPORT_INVALID);
+      } finally {
+        maskingChanged();
+      }
+    },
+    "passport.ready": (p: { unreadable?: unknown }) => {
+      if (!Array.isArray(p?.unreadable)) throw new Error(PASSPORT_INVALID);
+      passport.markReady(p.unreadable.filter((x): x is string => typeof x === "string"));
+      maskingChanged();
+      return { ok: true };
+    },
+    // Lifting the workspace lock (spec § 3). Touch ID ran in the chrome before « masking.lift » (ui/api.ts): a refusal sends nothing.
+    "masking.changed": async () => (await liveKernel()).masking.changedFiles(),
+    "masking.file": async (p: { path?: unknown }) => {
+      if (typeof p?.path !== "string") throw new Error(hostSay("host-invalid-params"));
+      return (await liveKernel()).masking.file(p.path);
+    },
+    "masking.lift": async (p: { choice?: unknown; remove?: unknown }) => {
+      const choice = p?.choice;
+      if (choice !== "quarantine" && choice !== "keep" && choice !== "delete") throw new Error(hostSay("host-invalid-params"));
+      const remove = Array.isArray(p.remove) ? p.remove.filter((x): x is string => typeof x === "string") : [];
+      await (await liveKernel()).masking.lift({ choice, remove });
+    },
+    "masking.quarantine.list": async () => (await liveKernel()).masking.quarantine.list(),
+    "masking.quarantine.restore": async (p: { id?: unknown }) => {
+      if (typeof p?.id !== "string") throw new Error(hostSay("host-invalid-params"));
+      await (await liveKernel()).masking.quarantine.restore(p.id);
+    },
+    // The value goes back to the window's own UI only: never logged, never in a card's request.
+    "agent.revealLocal": (p: { window?: unknown; label?: unknown }) => revealLocal(kernel?.masker ?? null, p?.window, p?.label),
+    // A paste held by the terminal: the masked text and what it hid, never the original (the UI keeps it for « Coller en clair »).
+    "agent.maskPaste": (p: { window?: unknown; text?: unknown }) => maskPaste(() => kernel?.masker ?? null, passport, p?.window, p?.text),
+    // Chrome's « Cacher pour l'agent » marks: where the window's agent sees labels, never a label or a value.
+    "mask.runs": (p: unknown) => maskRuns(kernel ?? null, p),
+    "mask.guess": (p: unknown) => maskGuess(p),
+    "agent.revealLogins": (p: { window?: unknown; ref?: unknown }) => bridge.loginsFor(p?.ref, p?.window),
+    // A fill card's passport value (ruling F10): to that card's own window only, never logged.
+    "agent.revealPassport": (p: { window?: unknown; ref?: unknown }) => bridge.passportFor(p?.ref, p?.window),
+    // Chrome's « Le site n'a pas pu être retenu. » after a fill card's « Retenir ce site » (task 13b).
+    "mask.notice": (p: { window?: unknown; text?: unknown }) => maskNotice({ text: p?.text ?? "" }, typeof p?.window === "string" ? p.window : undefined, true),
     "agent.closeWindow": (p: { window: string }) => {
       selections.delete(p.window);
       actives.delete(p.window);
@@ -1053,16 +1158,40 @@ process.on("uncaughtException", (e) => {
   // Exit once the notification is flushed: stdout is an asynchronous pipe on macOS.
   writeStdout("", () => process.exit(1));
 });
-const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url));
+/**
+ * A notice on the window's conversation banner, never the agent's: the kernel's lock notice, or chrome's « site non
+ * retenu » (`unless`: never over a notice already there, so a lock notice stays).
+ */
+function maskNotice(o: { text: unknown }, win: string | undefined, unless = false) {
+  const session = win === undefined ? null : (kernel?.masker.sessionOf(win) ?? null);
+  if (session === null || (unless && maskNotices.has(session))) return;
+  maskNotices.set(session, String(o.text).slice(0, 300));
+  maskingChanged();
+}
+const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url), maskNotice);
 const testPacing = new Pacing();
 /** A page request on one extension key: a malformed one is refused as text. */
 const byKey = <T,>(p: { key?: unknown } | undefined, f: (key: string) => T) => (typeof p?.key === "string" ? f(p.key) : { ok: false as const, error: hostSay("host-invalid-params") });
 // Outside the agent's kernel, like the history: granted extensions run even when the kernel does not start.
-const extensions = new ExtensionsAgent({ folder: join(dataDir, "extensions"), agentFolder: paths.extensions, rpc });
+// Masking: off in Navigateur and under the workspace lock (its file, read kernel or not; unreadable reads as locked).
+const extensions = new ExtensionsAgent({
+  folder: join(dataDir, "extensions"),
+  agentFolder: paths.extensions,
+  rpc,
+  allowed: () => extensionsAllowed(agentMode, workspaceLock),
+  onScopes: maskingChanged,
+});
+/** The mode or the lock changed: the agent's extensions follow (Task 15). */
+function reevaluateExtensions(): void {
+  void extensions.reevaluate().catch((e: unknown) => console.error("[extensions] not re-evaluated:", e));
+}
 // Site apps: the Node side (list, memory, deletion); the windows are the chrome's, asked through the RPC.
 const sites = createSites({
   paths: paths,
   dataDir,
+  locked: () => workspaceLock.locked(),
+  tweaksPaused: (id, t) => tweaksPaused(workspaceLock, id, t),
+  pausedText: () => hostSay("kernel-mask-run-paused"),
   localAddresses: process.env.RESSAC_TEST_LOCAL_ADDRESSES === "1",
   chrome: {
     open: (s, frame, tweaks) => rpc.request("sites.open", [s, frame, tweaks]),
@@ -1154,6 +1283,7 @@ const design = createDesignHost({
   chrome: { agentWindow: () => rpc.request("design.agentWindow"), giveAgent: (f) => rpc.notify("design.giveAgent", [f]) },
   notify: notify,
   broadcast: () => (rpc.notify("external.change"), rpc.notify("design.change")),
+  refuse: () => (workspaceLock.locked() ? hostSay("kernel-mask-design-locked") : null),
 });
 // Actions: the kernel and disk half; the chrome keeps the window state (private spaces, tabs, pace of links).
 const actions = createActionsHost({ paths: paths, actionsFolder: actionsFolder, kernel: () => kernel, onChange: () => rpc.notify("actions.change") });

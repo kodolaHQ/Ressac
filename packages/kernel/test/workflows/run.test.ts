@@ -124,7 +124,7 @@ async function bench(
       onProfileDenied: async () => {
         b.denialPending++;
       },
-      grantRequiredMessage: "Accord requis pour lire avec ton compte : app.daily.dev",
+      grantRequiredMessage: "Accord requis pour lire avec votre compte : app.daily.dev",
       trigger: "manual",
     },
     infra: {
@@ -409,8 +409,8 @@ describe("executerWorkflow", () => {
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [] } });
     const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.readPage("https://app.daily.dev/", { account: true });` }, { account: ["app.daily.dev"], grant: null, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
-    expect(r.run).toMatchObject({ status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true });
+    expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: "Accord requis pour lire avec votre compte : app.daily.dev" });
+    expect(r.run).toMatchObject({ status: "grant-required", error: "Accord requis pour lire avec votre compte : app.daily.dev", kernelError: true });
     expect(r.run.blocks[0]!.status).toBe("failed");
     expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(0);
     expect(b.deleted).toEqual(["essai", "essai"]);
@@ -450,7 +450,7 @@ describe("executerWorkflow", () => {
     let reads = 0;
     b.ctx.grant = async () => (reads++ === 0 ? { profile: "perso" } : null);
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: "Accord requis pour lire avec votre compte : app.daily.dev" });
     expect(r.run.status).toBe("grant-required");
     expect(bridge.calls.filter((a) => a.method === "readPageInvisible")).toHaveLength(1);
     expect(b.deleted).toEqual(["essai", "essai"]);
@@ -840,14 +840,14 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(bridge.calls).toEqual([]);
   });
 
-  it("a query carrying a secret is refused before any read, kind and masked value named", async () => {
+  it("a query carrying a secret is refused before any read, its kind named, no part of the value", async () => {
     const secret = "ghp_x7Kq9LmN2pRs4TuVw6YzA8bCdEfGhJ1kMn3P";
     const { b, html } = await webBench(afterwards([`w.searchWeb("fix ${secret}")`, `w.searchWeb("clio", { count: 1 })`]), {
       web: true,
       html: { [searchUrl("clio", BASE)]: page("results.html") },
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(value(r)).toEqual(["erreur: Recherche refusée : elle contient une clé d'accès (ghp_••••Mn3P).", fixtureResults.slice(0, 1)]);
+    expect(value(r)).toEqual(["erreur: Recherche refusée : elle contient une clé d'accès.", fixtureResults.slice(0, 1)]);
     expect(html().map((a) => a.args[0])).toEqual([searchUrl("clio", BASE)]);
   });
 

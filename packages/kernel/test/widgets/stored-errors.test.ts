@@ -13,8 +13,8 @@ test("French errors stored by the version before the languages are still kernel 
     "Interrompue : Ressac s'est arrêté",
     "Ce widget n'a pas de harvest.mjs",
     "Données trop grosses (2 Mo au plus)",
-    "Accord requis pour lire avec ton compte : a.com",
-    "Accord requis pour lire avec ton compte : a.com, b.org…",
+    "Accord requis pour lire avec votre compte : a.com",
+    "Accord requis pour lire avec votre compte : a.com, b.org…",
     "Workflow invalide : x",
   ]) {
     expect(kernelError(error), error).toBe(true);

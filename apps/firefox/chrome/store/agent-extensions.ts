@@ -1,6 +1,8 @@
 import type { Scope } from "../../../../packages/kernel/src/index.ts";
 import type { ExtensionCard } from "../../shared/extensions";
 import { agentAllowedHost, agentAllowedUrl } from "../../core/extensions/network";
+import { isSensitive } from "../../../../packages/kernel/src/access/sensitive";
+import { onPassportHost } from "../passport/hosts";
 import type { AccessState, WindowId, ProfileId } from "../../shared/model";
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
@@ -19,6 +21,7 @@ const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/E
 // Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
 const SUFFIX = "@agent.ressac";
 const isAgentId = (id: string) => id.endsWith(SUFFIX);
+const EXEMPT = "extensions.quarantineIgnoredByUser.";
 const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage", "tabs.saveAsPDF", "tabs.print", "tabs.printPreview", "tabs.toggleReaderMode"]);
 // Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
 const TAB_ID = "ressac-tab-id";
@@ -78,6 +81,14 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     if (typeof addonId !== "string" || !addonId.endsWith(SUFFIX)) throw new Error(`Pas une extension de l'agent : ${addonId}`);
     return addonId;
   };
+  // Firefox's quarantine keeps the agent's extensions off the user's sensitive sites (masking): the per-add-on exemption
+  // about:addons offers never holds for one. Reset at startup, whenever it is set, and on each evaluation (extensions.enable).
+  const noExemption = (addonId: string) => {
+    const pref = EXEMPT + addonId;
+    if (isAgentId(addonId) && Services.prefs.getBoolPref(pref, false)) Services.prefs.setBoolPref(pref, false);
+  };
+  for (const pref of Services.prefs.getChildList(EXEMPT)) noExemption(pref.slice(EXEMPT.length));
+  Services.prefs.addObserver(EXEMPT, (_: unknown, __: string, pref: string) => noExemption(pref.slice(EXEMPT.length)));
 
   const handlers: Record<string, Handler> = {
     // Inactive (decision 4): never installed fresh; an upgrade keeps the disabled state, so it is disabled first.
@@ -112,6 +123,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     },
     "extensions.enable": async (p: { addonId: string; active: boolean }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
+      noExemption(p.addonId);
       if (!addon || addon.userDisabled === !p.active) return;
       await own(addon.id, "disabled", () => (p.active ? addon.enable() : addon.disable()));
     },
@@ -263,18 +275,24 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         } catch {
           return false;
         }
-        return u.protocol === "moz-extension:" ? u.host === host : agentAllowedUrl(u.href, scope.grant, "");
+        // A passport host is a source (design § 6.1): the agent's extensions never reach it.
+        return u.protocol === "moz-extension:" ? u.host === host : agentAllowedUrl(u.href, scope.grant, "") && !onPassportHost(u.href);
       }
       case "hostAllowed": {
         const spec = tabOf(value)?.linkedBrowser?.currentURI?.spec;
-        return typeof spec === "string" && agentAllowedHost(spec, scope.grant);
+        // A sensitive page (a subdomain or a path Firefox's exact-host quarantine misses): never injected, first visit included.
+        return typeof spec === "string" && agentAllowedHost(spec, scope.grant) && !isSensitive(spec) && !onPassportHost(spec);
       }
       case "isTab": {
         // A Ressac tab of a non-private space, in the container of a profile where the extension is active (spec choice
-        // 2: its content scripts follow its spaces).
-        const tab = tabOf(value);
+        // 2: its content scripts follow its spaces). `<tab>:<frame>` from the guard; a bare number comes from a copy signed
+        // before the frame check (Firefox starts it before the host): refused until it is signed again.
+        const target = typeof value === "string" ? /^(\d+):(\d+|\*)$/.exec(value) : null;
+        if (!target) return false;
+        const tab = tabOf(Number(target[1]));
         const t = tabModelOf(tab);
         if (!t || t.space.private || !scope.profiles.includes(t.space.profile) || tab.userContextId !== existingContainer(t.space.profile)) return false;
+        if (!framesReadable(tab, target[2]!)) return false;
         // Its scripts will run there: a tab the agent cannot read masks its console for good.
         if (!access().tabs[t.tab.id]?.read) masked(addonId, t.space.profile);
         ran.set(addonId, (ran.get(addonId) ?? new Set()).add(tab));
@@ -282,6 +300,28 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       }
     }
     return false;
+  }
+
+  /**
+   * Masking: no frame from the targeted one (frameId 0 the top, else its BrowsingContext id; `*` every frame) up to the
+   * top is sensitive, by its principal (an about:blank or srcdoc child inherits its parent's and can read it) and its address.
+   */
+  function framesReadable(tab: any, frame: string): boolean {
+    const top = tab.linkedBrowser?.browsingContext;
+    if (!top) return false;
+    const all: any[] = top.getAllBrowsingContextsInSubtree();
+    const picked = frame === "*" ? all : [frame === "0" ? top : all.find((bc) => String(bc.id) === frame)];
+    const sensitive = (bc: any) => {
+      const w = bc.currentWindowGlobal;
+      const specs = [w?.documentPrincipal?.URI?.spec ?? "", w?.documentURI?.spec ?? ""];
+      // A passport host is a source too: its frames are refused like a sensitive page's.
+      return specs.some((spec) => isSensitive(spec) || (spec !== "" && spec !== "about:blank" && onPassportHost(spec)));
+    };
+    for (let bc of picked) {
+      if (!bc) return false;
+      for (; bc; bc = bc.parent) if (sensitive(bc)) return false;
+    }
+    return true;
   }
 
   /**
@@ -340,13 +380,15 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   // runtime.setUninstallURL: Firefox opens it with a null principal when the add-on goes, so it is read through
   // urlAllowed then (null: no tab). Hooked on each agent extension as it starts, and on those already running.
   // The parking tab is no tab for an agent extension: tabs.query, tabs.get, windows.getAll and the tab events never list it, even with the
-  // tabs right. Nor a tab of a private space: an agent extension never runs in a private space.
+  // tabs right. Nor a tab of a private space: an agent extension never runs in a private space. Nor a sensitive tab (masking).
   // canAccessTab is what Firefox's TabManager asks before it wraps any tab for the extension.
   const guardExtension = (extension: { id: string; uninstallURL: string | null; tabManager: { canAccessTab(tab: any): boolean } }) => {
     if (!isAgentId(extension?.id ?? "")) return;
     const manager = extension.tabManager;
     const canAccess = manager.canAccessTab.bind(manager);
-    manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && !tabModelOf(tab)?.space.private && canAccess(tab);
+    // A sensitive tab too: its address and title (a webmail's is an e-mail address) would reach the agent past the masker.
+    const sensitive = (tab: any) => [tab.linkedBrowser?.currentURI?.spec ?? "", tabModelOf(tab)?.tab.url ?? ""].some((u) => isSensitive(u) || onPassportHost(u));
+    manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && !tabModelOf(tab)?.space.private && !sensitive(tab) && canAccess(tab);
     let url = extension.uninstallURL;
     Object.defineProperty(extension, "uninstallURL", {
       get: () => (url && check(extension.id, "urlAllowed", url) ? url : null),

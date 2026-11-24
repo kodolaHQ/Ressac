@@ -147,7 +147,7 @@ export function planTabImport(state: BrowserState, imported: ImportedSpaces, win
     const space = state.spaces.find((e) => !e.private && e.name.toLowerCase() === key);
     if (!space) continue;
     const open = Object.values(state.tabs).filter((t) => t.spaceId === space.id);
-    for (const t of fresh(s.tabs, open)) actions.push({ type: "openTab", windowId, spaceId: space.id, url: t.url, title: t.title, activate: false });
+    for (const t of fresh(s.tabs, open)) actions.push({ type: "openTab", windowId, spaceId: space.id, url: t.url, title: t.title, activate: false, agentReached: false });
   }
   return actions;
 }

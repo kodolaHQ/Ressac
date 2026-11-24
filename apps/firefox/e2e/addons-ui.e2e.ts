@@ -158,7 +158,7 @@ describe("add-on strip, sidebar", () => {
     await waitUi(m, `return !!doc.querySelector('${MENU} .point')`);
     await openMenu();
     const line = '[data-testid="extension-update"]';
-    await waitUi(m, `return doc.querySelector(${JSON.stringify(line)})?.textContent.includes("Bouton de test : mise à jour en attente de ton accord.")`);
+    await waitUi(m, `return doc.querySelector(${JSON.stringify(line)})?.textContent.includes("Bouton de test : mise à jour en attente de votre accord.")`);
     await click(m, `${line} .link`, { text: "Revoir la mise à jour" });
     await waitFor(m, "return window.reviewed", (l: string[]) => l.length === 1 && l[0] === ID);
   });

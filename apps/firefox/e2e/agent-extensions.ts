@@ -26,13 +26,17 @@ export function testActor(profile: string): { env: Record<string, string>; prefs
   if (process.env.RESSAC_E2E_PACKAGED_ACTOR === "1") return { env: {}, prefs: {} };
   const dir = path.join(realpathSync(profile), "extension-actor");
   mkdirSync(dir, { recursive: true });
-  for (const name of ["extension-actor", "site-actor", "design-actor", "vim-actor", "frame-actor"])
+  // Every actor module chrome/store/index.ts loads through actorModule: one missing fails to load in this setup only.
+  for (const name of ["extension-actor", "site-actor", "design-actor", "vim-actor", "frame-actor", "fill-actor", "hide-actor", "call-actor"])
     writeFileSync(path.join(dir, `${name}.sys.mjs`), readFileSync(path.join(BUILT, `${name}.sys.mjs`), "utf8").replace(/^#define .*\n/, ""));
   return { env: { RESSAC_TEST_EXTENSION_ACTOR: dir }, prefs: { "security.sandbox.content.mac.testing_read_path1": dir } };
 }
 
-/** A fake AMO, then Ressac launched against it (fake keys), in the chrome context with its first window ready. close() stops both. */
-export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0]; dataDir: string; profile: string; prefs?: Record<string, string | number | boolean>; env?: Record<string, string> }): Promise<LaunchedRessac & { amo: FakeAmo }> {
+/**
+ * A fake AMO, then Ressac launched against it (fake keys), in the chrome context with its first window ready. close() stops both.
+ * The agent in `mode` (Atelier by default: its extensions run only there, masking Task 15).
+ */
+export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0]; dataDir: string; profile: string; prefs?: Record<string, string | number | boolean>; env?: Record<string, string>; mode?: "browser" | "workshop" }): Promise<LaunchedRessac & { amo: FakeAmo }> {
   const amo = await startFakeAmo(o.amo);
   let w: LaunchedRessac;
   try {
@@ -49,6 +53,7 @@ export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0
   }
   await w.marionette.setContext("chrome");
   await waitFor(w.marionette, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  await dispatch(w.marionette, { type: "chooseAgentMode", mode: o.mode ?? "workshop" });
   return { ...w, amo, close: () => w.close().finally(() => amo.close()) };
 }
 

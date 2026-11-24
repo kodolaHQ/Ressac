@@ -2,12 +2,56 @@ import { createRpc, type Handler, type Rpc } from "../../shared/rpc";
 import { format } from "../../shared/i18n";
 import { hostCommand } from "./command";
 import { lineSplitter } from "./lines";
+import type { LoadResult, PassportFiles } from "../passport/store";
+import { passportHostsKnown } from "../passport/hosts";
 
 /** The shown text when the host process is gone. */
 export const hostStopped = (locale: string) => format(locale, "chrome-host-stopped");
 /** Pseudo-notification sent to `on()` listeners when the host process exits (no automatic restart). */
 export const HOST_EXITED = "$/exited";
 const STOP_TIMEOUT_MS = 5_000;
+/** A passport read waits this long for the keychain (design § 4.2), then the profile is unreadable for now. */
+const PASSPORT_LOAD_CAP_MS = 20_000;
+
+/**
+ * Design § 5.2, at each host start: every profile's passport (`passport.replace`), then `passport.ready` naming those it
+ * could not read; the host's tools answer nothing before. A read still pending at the cap counts as unreadable, and its
+ * passport follows ready once it completes (a replace lifts the banner, ruling F9). The agent's extensions reach no
+ * host until every load settled (chrome/passport/hosts.ts).
+ */
+export async function pushPassports(request: (method: string, params: unknown) => Promise<unknown>, files: Pick<PassportFiles, "list" | "load">, capMs = PASSPORT_LOAD_CAP_MS): Promise<void> {
+  const replace = (r: LoadResult) => request("passport.replace", { profile: r.profile, entries: r.entries });
+  const unreadable: string[] = [];
+  let readySent!: () => void;
+  const afterReady = new Promise<void>((r) => (readySent = r));
+  const loads: Promise<unknown>[] = [];
+  try {
+    await Promise.all(
+      (await files.list()).map(async (profile) => {
+        const load = files.load(profile);
+        loads.push(load);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const r = await Promise.race([load, new Promise<null>((ok) => (timer = setTimeout(() => ok(null), capMs)))]).finally(() => clearTimeout(timer));
+          if (r === null) {
+            unreadable.push(profile);
+            void Promise.all([load, afterReady]).then(([late]) => (late.state === "unreadable" ? undefined : replace(late))).catch((e) => console.error("[ressac] passport push failed:", (e as Error)?.name));
+          } else if (r.state === "unreadable") unreadable.push(profile);
+          // Refused by the host (it holds nothing for it): unreadable, so ready still comes and the banner says so.
+          else await replace(r).catch(() => void unreadable.push(profile));
+        } catch {
+          // A load that threw: unreadable, so ready still comes.
+          unreadable.push(profile);
+        }
+      }),
+    );
+  } finally {
+    // The hosts are known once every load settled, past the cap too (a load that never settles keeps them all refused).
+    void Promise.allSettled(loads).then(() => passportHostsKnown());
+  }
+  await request("passport.ready", { unreadable });
+  readySent();
+}
 
 /** The Node process running the kernel (apps/firefox/host/host.ts), spoken to in JSON-RPC over its stdin and stdout. */
 export interface AgentHost {
@@ -55,8 +99,8 @@ export function createHost(o: {
   aiEnabled: () => boolean;
   /** The requests the host sends to Firefox (the browser bridge). */
   handlers: Record<string, Handler>;
-  /** Each new process, before any other message: what the host must know first (private tabs mirror). */
-  onStart(notify: (method: string, params?: unknown) => void): void;
+  /** Each new process, before any other message: what the host must know first (private tabs mirror). `request` goes to that process only. */
+  onStart(notify: (method: string, params?: unknown) => void, request: (method: string, params?: unknown) => Promise<unknown>): void;
   /** A process ended without stop() asking it to (a crash, a kill): once per process. */
   onUnexpectedExit?(code: number | null): void;
 }): AgentHost {
@@ -94,7 +138,7 @@ export function createHost(o: {
     };
     void readLines(proc.stdout, (l) => rpc.receive(l)).then(exited);
     void readLines(proc.stderr, (l) => console.warn(`[kernel] ${l}`));
-    o.onStart((method, params) => rpc.notify(method, params));
+    o.onStart((method, params) => rpc.notify(method, params), (method, params) => rpc.request(method, params));
     pid = proc.pid;
     void proc.wait().then(({ exitCode }: { exitCode: number | null }) => {
       exited();

@@ -208,7 +208,7 @@ beforeAll(async () => {
     status: "grant-required",
     lastUpdate: now,
     lastAttempt: now,
-    error: "Accord requis pour lire avec ton compte : 127.0.0.1",
+    error: "Accord requis pour lire avec votre compte : 127.0.0.1",
     kernelError: true,
   });
   // Two past runs, to choose another than the last.
@@ -644,7 +644,7 @@ describe("the workflow builder's runs", () => {
     await waitCount(tid("widget-hours"), 0);
     const search = tid("palette-web.search");
     await waitDisabled(search, true);
-    expect(await inUi(m, `return ${el(search)}.getAttribute("title")`)).toBe('Le widget doit déclarer "web": true : demande-le à l\'agent.');
+    expect(await inUi(m, `return ${el(search)}.getAttribute("title")`)).toBe('Le widget doit déclarer "web": true : demandez-le à l\'agent.');
     // Playwright's force click: the mouse on a disabled button.
     await click(m, search, { force: true });
     await sleep(300);

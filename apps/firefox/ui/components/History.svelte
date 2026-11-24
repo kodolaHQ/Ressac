@@ -57,7 +57,7 @@
   function open(e: MouseEvent, url: string) {
     e.preventDefault();
     if (e.button !== 0) return;
-    api.dispatch({ type: "openTab", windowId: win.id, url });
+    api.dispatch({ type: "openTab", windowId: win.id, url, agentReached: false });
     close();
   }
 

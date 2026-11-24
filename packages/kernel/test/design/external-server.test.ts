@@ -29,7 +29,7 @@ afterEach(async () => {
   for (const f of toClose.splice(0).reverse()) await f().catch(() => undefined);
 });
 
-async function frame() {
+async function frame(refuse?: () => string | null) {
   const base = await tempFolder();
   const folders: DesignFolders = { spaceRemarks: join(base, "Ressac/.ressac/remarks"), private: join(base, "design") };
   const homeDir = join(base, "maison");
@@ -41,7 +41,7 @@ async function frame() {
   const options = { ranges: [[5280, 5299]] as [number, number][], spaceRoot: spaceRoot, home: homeDir };
   const projectFolder = async (name: string) => { const d = join(homeDir, name); await mkdir(d, { recursive: true }); return d; };
   const server = await startExternalServer({
-    registry: registry, remarks: remarks, port: 0,
+    registry: registry, remarks: remarks, port: 0, ...(refuse ? { refuse } : {}),
     declare: async (client, d) => {
       const r = await registry.declare(client.id, d, options);
       return { project: r.project, ...(r.readable ? {} : { warning: UNREADABLE_WARNING }) };
@@ -100,6 +100,25 @@ describe("serveur MCP externe", () => {
     expect(await raw(k.server.port, "/mcp-external", { Authorization: `Bearer ${principal}` })).toBe(401);
     const other = await k.registry.connect("B");
     expect(await raw(internal.port, "/mcp", { Authorization: `Bearer ${other.token}` })).toBe(401);
+  });
+
+  test("refuse returning a text: 423 with that text before any tool runs; null again: served", async () => {
+    let locked: string | null = "verrouillé";
+    let declared = 0;
+    const k = await frame(() => locked);
+    const declare = k.registry.declare.bind(k.registry);
+    k.registry.declare = (...a: Parameters<typeof declare>) => (declared++, declare(...a));
+    const { token } = await k.registry.connect("Claude");
+    const post = (body: string) => fetch(`http://127.0.0.1:${k.server.port}/mcp-external`, { method: "POST", headers: { ...HEADERS, Authorization: `Bearer ${token}` }, body });
+    const call = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "declare_project", arguments: { folder: await k.projectFolder("p"), ports: [3000] } } });
+    const r = await post(call);
+    expect(r.status).toBe(423);
+    expect(await r.text()).toBe("verrouillé");
+    expect(declared).toBe(0);
+    // Without a token, still 401: the refusal never tells an unknown client the lock exists.
+    expect(await raw(k.server.port, "/mcp-external", {})).toBe(401);
+    locked = null;
+    expect(await raw(k.server.port, "/mcp-external", { Authorization: `Bearer ${token}`, Host: `127.0.0.1:${k.server.port}` })).toBe(200);
   });
 
   test("Origin: http://evil.example → 403; Host: host.docker.internal:<port> → 403; Host: localhost:<port> accepted; /mcp → 404", async () => {

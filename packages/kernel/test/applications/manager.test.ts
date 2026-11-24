@@ -127,7 +127,7 @@ test("no more free ports", async () => {
   });
   const { g } = prepare({ paths: c, ports: [5280, 5280], probe: scriptedProbe({ 5280: ["libre", "http"] }) });
   expect(await g.launch("autre")).toMatchObject({ state: "running", port: 5280 });
-  expect(await g.launch("todo")).toMatchObject({ state: "error", error: "Plus de port libre : arrête une application." });
+  expect(await g.launch("todo")).toMatchObject({ state: "error", error: "Plus de port libre : arrêtez une application." });
 });
 
 test("the process exits right away: error without waiting for the delay", async () => {

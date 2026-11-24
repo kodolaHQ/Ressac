@@ -73,7 +73,7 @@ workflows-code-write-failed = Écriture impossible
 
 # Avertissements.
 workflows-warn-streaming = rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément
-workflows-warn-web-no-duration = sans maxDurationMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer maxDurationMinutes
+workflows-warn-web-no-duration = sans maxDurationMinutes, ce widget peut être coupé à 150 s : demandez à l'agent de déclarer maxDurationMinutes
 workflows-warn-input = { "{input}" } : l'action ne déclare pas de saisie (input)
 workflows-warn-domain = domaine non déclaré : { $host }
 workflows-warn-config = config.{ $key } absent de la configuration du widget

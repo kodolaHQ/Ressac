@@ -105,6 +105,17 @@ export interface Tab {
   /** Link to a persistent favorite: the tab materializes an essential or a pinned tab. */
   link: { type: "essential" | "pinned"; id: string } | null;
   openedByAgent: boolean;
+  /**
+   * The agent reached the tab's page (opened it, navigated it, or a tab it reached opened this one): never one of the
+   * user's masking sources (spec § 5.3). Only the user's own top-level navigation from Ressac's UI clears it.
+   */
+  agentReached: boolean;
+  /** The agent ever reached a page of this tab: its back/forward entries may be the agent's (a history load sets agentReached). */
+  everAgent: boolean;
+  /** An essential's site-app tweak with script (core/sites/injection.ts injectsScript) is applied: the agent's while it is; volatile, never saved. */
+  tweakScript?: true;
+  /** The user's own load the tab waits for (its address): its commit clears agentReached; volatile, never saved. */
+  userLoad?: string;
   /** A login profile of the tab's own, winning over its space's (the agent's search tab). */
   profile?: ProfileId;
   loading: boolean;
@@ -206,6 +217,10 @@ export interface Space {
   profile: ProfileId;
   aura: AuraId;
 }
+
+/** A passport is named by the spaces using its profile, in sidebar order (passport design § 3.2); `none` when no space does. */
+export const passportName = (spaces: readonly Pick<Space, "name" | "profile" | "private">[], profile: string, none: string): string =>
+  spaces.filter((s) => s.profile === profile && !s.private).map((s) => s.name).join(", ") || none;
 
 export interface RecentlyClosed {
   url: string;
@@ -342,13 +357,13 @@ export function permissionProfiles(state: Pick<BrowserState, "profiles" | "space
  * essential is seen in the active space —, otherwise its own. Private if that space or the tab's is (unknown: private).
  * A tab in its own login profile (the agent's) records nothing: its pages are not the user's.
  */
-export function historyContext(state: BrowserState, id: TabId): { spaceId: SpaceId; private: boolean } | null {
+export function historyContext(state: BrowserState, id: TabId): { spaceId: SpaceId; private: boolean; byAgent: boolean } | null {
   const o = state.tabs[id];
   if (!o || o.profile) return null;
   const f = state.windows.find((x) => x.id === o.windowId);
   const spaceId = f && f.active[f.activeSpace] === id ? f.activeSpace : o.spaceId;
   const isPrivate = (state.spaces.find((e) => e.id === spaceId)?.private ?? true) || privateTab(state, o);
-  return { spaceId: spaceId, private: isPrivate };
+  return { spaceId: spaceId, private: isPrivate, byAgent: o.agentReached !== false || !!o.tweakScript };
 }
 
 /** The tab's login profile: its own if it has one, else its space's (the default profile if the space is unknown). */
@@ -410,6 +425,14 @@ export type Permission =
   | "extension-console"
   /** The agent wants to open, in its search tab, an address it wrote itself (the whole address and its reason are shown). */
   | "agent-address"
+  /** Masking (spec § 8): the agent wants to see a masked value for this conversation, which then stays locked. */
+  | "mask-reveal"
+  /** Masking: the browser fills a field with the user's value (or saved login), which never goes through the agent. */
+  | "mask-fill"
+  /** Masking: the agent sends a value's label (never the value) in a query or an address it composed. */
+  | "mask-label-alert"
+  /** Masking: the dev tools of a tab that shows the user's data, unlocked for this conversation. */
+  | "mask-devtools"
   | "other";
 export type Decision = "allow" | "deny";
 /** The outcome of a question: the user's decision, or `withdrawn` if it lapsed without their answer (timeout, stale…). */
@@ -445,6 +468,41 @@ export interface Request {
   agent?: string;
   /** « agent-address »: the sensitive data the address carries (already masked), displayed as text. */
   danger?: string;
+  /** « agent-address »: a link the agent read on a page (not one it wrote), stopped for what it carries. */
+  found?: true;
+  /** « mask-* »: how the kernel names the value, never the value itself (a screen capture of the card shows no value). */
+  mask?: {
+    /** The kernel's rendered sentence (reveal, label alert, dev tools). */
+    text?: string;
+    /** « votre code », « votre IBAN ». */
+    name?: string;
+    /** « mask-fill »: the field's label in the last read, and the origin and path it is on. */
+    field?: string;
+    where?: string;
+    /** The labels « Voir » looks up in the window's own session, on click (agent.revealLocal). */
+    labels?: string[];
+    /** « mask-fill » of a saved login: how many to choose from; the usernames stay in the host until « Voir » (agent.revealLogins). */
+    loginCount?: number;
+    /** The host's reference for those usernames, answered only to this window. */
+    loginsRef?: string;
+    /** « mask-fill »: the site's registrable domain (« evil.example » of a long host), shown whole on its own line. */
+    domain?: string;
+    /** « mask-fill » of a passport value from another profile than the tab's: chrome's sentence naming that passport. */
+    note?: string;
+    /** « mask-fill » of the passport: the profile « Ouvrir le passeport » opens (the value's other profile, else the tab's). */
+    profile?: string;
+    /**
+     * « mask-fill » by passport kind or of several fields (`text` is then the title): chrome's line per row, the entries on
+     * offer by reference with their masked display (the values stay in the host until « Voir », agent.revealPassport), or
+     * `missing` when the passport has none of that kind: the card then only refuses.
+     */
+    rows?: { line: string; choices?: { ref: string; shown: string }[]; missing?: string }[];
+    /**
+     * « mask-fill »: the « Retenir ce site » boxes (task 13b), each for its row (0 without `rows`) and, on a kind row, for
+     * one choice only; unticked by default. Chrome keeps the entry they name.
+     */
+    remember?: { row: number; choice?: string; text: string }[];
+  };
   /** « extension »: the grant card, displayed as text. */
   extension?: ExtensionCard;
 }

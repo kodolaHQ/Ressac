@@ -201,7 +201,7 @@ test("labels: unknown right and order", () => {
   expect(scopeLabels(a.scope, "agent")).toEqual([
     "Modifier l'apparence et le contenu des pages",
     "Voir la liste des onglets et leurs adresses",
-    "Agir sur l'onglet affiché quand tu cliques sur son bouton (non pris en charge par Ressac)",
+    "Agir sur l'onglet affiché quand vous cliquez sur son bouton (non pris en charge par Ressac)",
     "Droit « idle »",
   ]);
 });

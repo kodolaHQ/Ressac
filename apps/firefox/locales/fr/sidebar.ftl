@@ -55,6 +55,15 @@ sidebar-space-delete-pinned =
        *[other] { $folders } dossiers
     } seront perdus.
 sidebar-space-delete-logins = Les connexions de cet espace seront perdues.
+sidebar-space-passport = Passeport
+sidebar-space-passport-count =
+    { $count ->
+        [one] Son passeport contient { $count } donnée.
+       *[other] Son passeport contient { $count } données.
+    }
+sidebar-space-passport-drop = Supprimer aussi son passeport
+sidebar-space-passport-drop-failed = Le passeport n'a pas pu être supprimé : rien n'a changé. Réessayez, ou décochez la case pour le garder.
+sidebar-space-passport-dropped-only = Le passeport a été supprimé, mais l'espace n'a pas changé.
 sidebar-space-icon = Icône
 sidebar-space-icons = Icônes proposées
 sidebar-space-name = Nom de l'espace
@@ -65,13 +74,13 @@ sidebar-space-private-label = Espace privé
 sidebar-space-private-note = L'agent ne voit pas ces onglets, ne lit rien, n'a pas les outils de développement, et rien n'est retenu dans sa mémoire.
 sidebar-space-profile = Profil de connexion
 sidebar-space-profile-choose = Choisir un profil…
-sidebar-space-profile-note = Cookies, comptes connectés, autorisations des sites. Changer de profil : les onglets de l'espace se rechargent, tu devras peut-être te reconnecter.
+sidebar-space-profile-note = Cookies, comptes connectés, autorisations des sites. Changer de profil : les onglets de l'espace se rechargent, vous devrez peut-être vous reconnecter.
 sidebar-space-extensions = Extensions
-sidebar-space-extensions-save-first = Enregistre d'abord le changement de profil pour régler ses extensions.
+sidebar-space-extensions-save-first = Enregistrez d'abord le changement de profil pour régler ses extensions.
 sidebar-space-extensions-none = Aucune extension installée.
 sidebar-space-extension-agent = écrite par l'agent
 sidebar-space-extension-also = Active aussi dans « { $spaces } » (même profil)
-sidebar-space-private-shared = Cet espace privé partage son profil avec « { $spaces } » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.
+sidebar-space-private-shared = Cet espace privé partage son profil avec « { $spaces } » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donnez-lui son propre profil.
 sidebar-space-extensions-disabled = En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : { $names }. Les onglets ouverts où elles tournent seront rechargés.
 sidebar-profile-new = Nouveau profil
 sidebar-profile-own = Son propre profil
@@ -185,10 +194,10 @@ sidebar-access-cut = Couper
 sidebar-access-note = Cette conversation · tombe si l'onglet change de site
 sidebar-access-cut-all = Couper l'accès
 
-sidebar-grant-title-action = Autoriser l'action « { $name } » à lire avec ton compte
-sidebar-grant-title-widget = Autoriser « { $name } » à lire avec ton compte
-sidebar-grant-account-action = Cette action veut lire { $domains } avec ton compte, connecté avec le profil choisi.
-sidebar-grant-account-widget = Ce widget veut lire { $domains } avec ton compte, connecté avec le profil choisi.
+sidebar-grant-title-action = Autoriser l'action « { $name } » à lire avec votre compte
+sidebar-grant-title-widget = Autoriser « { $name } » à lire avec votre compte
+sidebar-grant-account-action = Cette action veut lire { $domains } avec votre compte, connecté avec le profil choisi.
+sidebar-grant-account-widget = Ce widget veut lire { $domains } avec votre compte, connecté avec le profil choisi.
 sidebar-grant-public = Et pourra contacter : { $domains }.
 sidebar-grant-public-none = Et ne contactera aucun autre site.
 sidebar-grant-private = Les profils des espaces privés ne sont jamais proposés.
@@ -201,7 +210,7 @@ sidebar-extensions = Extensions
 sidebar-extensions-none = Aucune extension active.
 sidebar-extensions-pin = Épingler
 sidebar-extensions-unpin = Détacher
-sidebar-extensions-update-pending = { $name } : mise à jour en attente de ton accord.
+sidebar-extensions-update-pending = { $name } : mise à jour en attente de votre accord.
 sidebar-extensions-update-review = Revoir la mise à jour
 sidebar-extensions-manage = Gérer les extensions
 

@@ -69,8 +69,8 @@ describe("action results", () => {
     await writeRunnableAction(w.dataDir, "courrier", { name: "Courrier", account: ["127.0.0.1"], code: `export default async () => ({ messages: [{ sujet: "Bonjour" }] });` });
     await openAction(m, "courrier", "Courrier");
     const card = tid("grant-card");
-    await q.waitText(`${card} :is(h1, h2, h3, h4)`, "Autoriser l'action « Courrier » à lire avec ton compte");
-    expect((await q.text(`${card} ${tid("grant-account")}`))?.trim()).toBe("Cette action veut lire 127.0.0.1 avec ton compte, connecté avec le profil choisi.");
+    await q.waitText(`${card} :is(h1, h2, h3, h4)`, "Autoriser l'action « Courrier » à lire avec votre compte");
+    expect((await q.text(`${card} ${tid("grant-account")}`))?.trim()).toBe("Cette action veut lire 127.0.0.1 avec votre compte, connecté avec le profil choisi.");
     expect(await q.value(`${card} input[type="radio"]:checked`)).toBe("default");
     // Nothing runs until the grant.
     await new Promise((r) => setTimeout(r, 500));

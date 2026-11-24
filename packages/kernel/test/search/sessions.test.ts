@@ -95,7 +95,7 @@ describe("SearchSessions", () => {
     expect(s.isFree("t1", "https://arrival.test/final")).toBe(true);
   });
 
-  test("handOver resolves \"continue\" with the URLs navigated meanwhile, at most 20, and frees the last one", async () => {
+  test("handOver resolves \"continue\" with the URLs navigated meanwhile, at most 20 (the kernel frees the last one as shown)", async () => {
     s.start("w", "t1", "g");
     const p = s.handOver("t1", "À vous");
     expect(last()?.state).toBe("yours");
@@ -105,8 +105,6 @@ describe("SearchSessions", () => {
     expect(r.outcome).toBe("continue");
     expect(r.path).toHaveLength(20);
     expect(r.path[19]).toBe("https://n.test/24");
-    expect(s.isFree("t1", "https://n.test/24")).toBe(true);
-    expect(s.isFree("t1", "https://n.test/23")).toBe(false);
     expect(last()?.state).toBe("idle");
   });
 

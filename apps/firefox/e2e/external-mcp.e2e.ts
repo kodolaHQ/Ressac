@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { connect, createServer as tcpServer } from "node:net";
 import os from "node:os";
@@ -130,6 +130,33 @@ it("declare_project: the external-project line shows; one notification only, eve
     expect(await count(tid("external-project"))).toBe(1);
   } finally {
     await c.close();
+  }
+});
+
+// Masking, Task 10: while the workspace lock file says locked, the external MCP refuses every request (423), before any tool.
+it("workspace locked after a reveal: the external MCP answers 423 with the lock text; unlocked, it serves again", async () => {
+  await launch();
+  const { port, token } = await connectClient(m);
+  const lockFile = path.join(w!.dataDir, "masking", "lock.json");
+  mkdirSync(path.dirname(lockFile), { recursive: true });
+  writeFileSync(lockFile, JSON.stringify({ since: new Date().toISOString(), names: ["votre code"], codes: {} }));
+  const c = await mcpClient(port, token).then(
+    () => "connected",
+    (e: Error) => e.message,
+  );
+  expect(c).not.toBe("connected");
+  const r = await fetch(`http://127.0.0.1:${port}/mcp-external`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", Authorization: `Bearer ${token}` }, body: "{}" });
+  expect(r.status).toBe(423);
+  expect(await r.text()).toBe("L'atelier de Ressac est verrouillé depuis une révélation : le MCP externe répondra quand l'utilisateur aura levé le verrou.");
+  // An unreadable lock file reads as locked too.
+  writeFileSync(lockFile, "{pas du json");
+  expect(await rawStatus(port, { Host: `127.0.0.1:${port}`, Authorization: `Bearer ${token}` })).toBe(423);
+  rmSync(lockFile);
+  const ok = await mcpClient(port, token);
+  try {
+    expect(textOf(await ok.callTool({ name: "read_remarks", arguments: { folder: projectDir("verrou") } }))).toContain("pas un projet déclaré");
+  } finally {
+    await ok.close();
   }
 });
 

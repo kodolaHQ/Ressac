@@ -12,6 +12,7 @@ import type { SeenUrls } from "../mcp/seen.js";
 
 export const ID_RECAP = /^[0-9a-f-]{36}$/;
 export const RECAP_UNKNOWN = "Récap introuvable : publie sans id pour en créer un.";
+export const RECAP_LOCKED = "Atelier verrouillé depuis une révélation : aucun récap ne se publie tant que l'utilisateur n'a pas levé le verrou.";
 export const RECAP_TOO_BIG = "Récap trop gros (1 Mo au plus).";
 const RECAP_MAX_BYTES = 1024 * 1024;
 const ALLOWED_MAX = 5000;
@@ -44,7 +45,7 @@ const RecapSchema = z.object({
 export type RecapPublished = { ok: true; id: string; created: boolean; discarded: string[]; unread: string[] } | { ok: false; errors: string[] };
 
 export interface Recaps {
-  publish(o: { id?: string; title: string; results: unknown; plan: unknown; seen: SeenUrls; live?: boolean }): Promise<RecapPublished>;
+  publish(o: { id?: string; title: string; results: unknown; plan: unknown; seen: Pick<SeenUrls, "has">; live?: boolean }): Promise<RecapPublished>;
   read(id: string): Promise<RecapFile | null>;
   /**
    * `gone`: no file (closed, swept). null: not a recap id, or an unreadable file. Stamps the file's mtime (last shown).
@@ -83,7 +84,8 @@ function openable(url: string, httpsOnly: boolean): boolean {
  * Recaps the agent publishes, one JSON file per recap in `folder`. Holds no state outside the folder: the kernel
  * publishes with one instance, the host serves pages and erases with its own.
  */
-export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
+/** `locked`: the workspace lock holds, a publish is refused (the MCP gate refuses `show_recap` first; this is the store's own refusal). */
+export function createRecaps(o: { folder: string; now?: () => Date; locked?: () => boolean }): Recaps {
   const clock = () => (o.now ?? (() => new Date()))();
   const now = () => clock().toISOString();
   const path = (id: string) => join(o.folder, `${id}.json`);
@@ -121,6 +123,7 @@ export function createRecaps(o: { folder: string; now?: () => Date }): Recaps {
   return {
     read,
     async publish(p) {
+      if (o.locked?.()) return { ok: false, errors: [RECAP_LOCKED] };
       const before = p.id === undefined ? null : await read(p.id);
       if (p.id !== undefined && !before) return { ok: false, errors: [RECAP_UNKNOWN] };
       // Local models (Codex on Ollama) often send these objects as JSON text.

@@ -6,7 +6,7 @@ import type { WindowRegistry } from "../chrome/store/windows";
 
 /** Fake DevTools clients (CommandsFactory.forTab): their top-level target is destroyed, as right after a navigation,
  * unless a test sets `liveTarget`. */
-const clients: { destroyed: boolean }[] = [];
+const clients: { destroyed: boolean; steps: string[]; config: unknown[]; requests: unknown[]; cache: Map<string, unknown>; feed: (list: unknown[]) => void }[] = [];
 let liveTarget: unknown = null;
 /** The fake clients' evaluation (scriptCommand.execute). */
 let execute: () => Promise<unknown> = async () => ({ result: 1 });
@@ -17,8 +17,28 @@ let execute: () => Promise<unknown> = async () => ({ result: 1 });
         forTab: async () => {
           const c = {
             destroyed: false,
-            targetCommand: { TYPES: { FRAME: "frame" }, startListening: async () => {}, watchTargets: async () => {}, targetFront: liveTarget ?? { isDestroyed: () => true } },
-            resourceCommand: { TYPES: { CONSOLE_MESSAGE: "c", ERROR_MESSAGE: "e", NETWORK_EVENT: "n", DOCUMENT_EVENT: "d" }, watchResources: async () => {} },
+            steps: [] as string[],
+            config: [] as unknown[],
+            requests: [] as unknown[],
+            // The resource command's cache, as Firefox fills it before onAvailable (`${type}:${id}`).
+            cache: new Map<string, unknown>(),
+            feed: (_list: unknown[]) => {},
+            targetCommand: { TYPES: { FRAME: "frame" }, startListening: async () => void c.steps.push("listen"), watchTargets: async () => {}, targetFront: liveTarget ?? { isDestroyed: () => true } },
+            targetConfigurationCommand: { updateConfiguration: async (o: unknown) => void (c.steps.push("config"), c.config.push(o)) },
+            resourceCommand: {
+              TYPES: { CONSOLE_MESSAGE: "c", ERROR_MESSAGE: "e", NETWORK_EVENT: "n", DOCUMENT_EVENT: "d" },
+              get _cache() {
+                return c.cache;
+              },
+              watchResources: async (_types: string[], o: { onAvailable: (list: any[]) => void }) => {
+                c.steps.push("watch");
+                c.feed = (list: any[]) => {
+                  for (const r of list) c.cache.set(`${r.resourceType}:${r.resourceId}`, r);
+                  o.onAvailable(list);
+                };
+              },
+            },
+            client: { request: async (r: unknown) => void c.requests.push(r) },
             scriptCommand: { execute: () => execute() },
             destroy: async () => void (c.destroyed = true),
           };
@@ -41,6 +61,31 @@ function setup(o: { isPrivate?: boolean; ensure?: (id: string) => Promise<unknow
   return { devtools: createDevTools({ store, windows, isPrivate: () => o.isPrivate ?? false }), loaded };
 }
 const browserAt = (spec: string) => ({ currentURI: { spec } });
+
+it("an attached page keeps no more than the tools return: bodies capped, the oldest request released, console resources not cached", async () => {
+  const browser = browserAt("http://127.0.0.1:5300/");
+  const { devtools } = setup({ ensure: async () => browser });
+  const { token } = devtools.owner();
+  await devtools.call(token, "attach", ["t"]);
+  const c = clients.at(-1)!;
+  // Set before the network watcher is made: it reads the limit once, at its creation.
+  expect(c.steps).toEqual(["listen", "config", "watch"]);
+  expect(c.config).toEqual([{ networkBodyLimit: 100_000 }]);
+  c.feed(Array.from({ length: 501 }, (_, i) => ({ resourceType: "n", resourceId: i, actor: `net${i}`, url: "http://127.0.0.1:5300/x" })));
+  expect(c.requests).toEqual([{ to: "net0", type: "release" }]);
+  expect(c.cache.has("n:0")).toBe(false);
+  expect(c.cache.has("n:1")).toBe(true);
+  c.feed([{ resourceType: "c", resourceId: "m1", level: "log", arguments: ["hi"] }]);
+  expect(c.cache.has("c:m1")).toBe(false);
+  // A page polling and logging for long, with iframes loading: the cache stays at the requests kept.
+  for (let i = 0; i < 20; i++) {
+    c.feed(Array.from({ length: 100 }, (_, j) => ({ resourceType: "n", resourceId: `p${i}-${j}`, actor: "a", url: "http://127.0.0.1:5300/poll" })));
+    c.feed(Array.from({ length: 100 }, (_, j) => ({ resourceType: "e", resourceId: `e${i}-${j}`, pageError: null })));
+    c.feed([{ resourceType: "d", resourceId: `d${i}`, name: "dom-complete", targetFront: { isTopLevel: false } }]);
+  }
+  expect(c.cache.size).toBe(500);
+  expect(await devtools.call(token, "console", ["t", "http://127.0.0.1:5300"])).toMatchObject([{ text: "hi" }]);
+});
 
 it("a private tab is refused before its page is even looked up", async () => {
   const { devtools, loaded } = setup({ isPrivate: true });

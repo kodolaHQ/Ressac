@@ -4,9 +4,10 @@ import { HINT_IDS } from "./hints";
 import { SHORTCUT_IDS, type ShortcutId } from "./shortcuts";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "./search";
 import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type AccessState, type BrowserState, type SpaceId, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
-import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile, type InstructionChange } from "@ressac/kernel";
+import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile, type InstructionChange, type ChangedFile, type LiftChoice, type QuarantinedFile } from "@ressac/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, MachineIdleSchema, type DockerStatus, type MachineShown, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
+import type { PassportEntry, PassportField } from "../../../packages/kernel/src/mask/passport-fields.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
 import type { ExtensionsBar, ExtensionLine, SpaceExtensionLine, SiteExtensionLine } from "./extensions";
@@ -25,6 +26,10 @@ const SchemaOpenTab = z.object({
   spaceId: id.optional(),
   activate: z.boolean().optional(),
   openedByAgent: z.boolean().optional(),
+  /** Absent: reached by the agent (fail closed). Only the UI's own openings say false. */
+  agentReached: z.boolean().optional(),
+  /** The tab whose page opened this one: its agentReached wins over the field above. */
+  opener: id.optional(),
   /** The tab's own login profile, instead of its space's. */
   profile: z.string().min(1).optional(),
   after: id.optional(),
@@ -40,6 +45,22 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("closeTab"), id }),
   /** A tab the agent opened in the user's profile leaves the « Agent » section for the user's tabs. */
   z.object({ type: z.literal("keepTab"), id }),
+  /** The agent navigates the tab (or runs its code there): from now on it is reached by the agent (spec § 5.3). */
+  z.object({ type: z.literal("agentNavigated"), id }),
+  /**
+   * The user starts their own top-level load (address bar, ⌘T): its commit (`locationCommitted`) gives the tab back.
+   * The address the agent's tab already shows (« Recharger », the prefilled address) keeps it the agent's.
+   */
+  z.object({ type: z.literal("userNavigating"), id, url: z.string() }),
+  /**
+   * A top-level location change of the tab: `url` is its load's original address (before redirects), `history` a
+   * back/forward or session-history load.
+   */
+  z.object({ type: z.literal("locationCommitted"), id, url: z.string(), history: z.boolean(), sameDocument: z.boolean() }),
+  /** A site-app tweak was decided for a frame of the tab: `main` resets the tab's state at its page, a subframe only adds script. */
+  z.object({ type: z.literal("tweakScript"), id, script: z.boolean(), main: z.boolean() }),
+  /** A top-level load of the tab stopped: a user load that never committed (a 204, a download, « Rester ») is dropped. */
+  z.object({ type: z.literal("loadStopped"), id }),
   z.object({ type: z.literal("setCall"), id, call: z.object({ mic: z.boolean(), camera: z.boolean() }).nullable() }),
   z.object({
     type: z.literal("setAgentSearch"),
@@ -206,7 +227,7 @@ export type Panel = "history" | "downloads";
  * Menu shortcuts meant for the UI (the web page often has focus). `closeTab`: ⌘W on the builder,
  * which first asks whether some code is unsaved.
  */
-export type ShortcutAction = "search" | "searchNext" | "searchPrevious" | "address" | "command" | "agent" | "closeTab" | "jumpTab" | `settings:${import("./commands").SettingsSection}`;
+export type ShortcutAction = "search" | "searchNext" | "searchPrevious" | "address" | "command" | "agent" | "closeTab" | "jumpTab" | `settings:${import("./commands").SettingsSection}` | `settings:passport:${string}`;
 export interface SearchResult {
   tabId: TabId;
   active: number;
@@ -271,8 +292,11 @@ export interface ApiRessac {
   onDownloads(callback: (list: Download[]) => void): () => void;
   permissions: {
     pending(): Promise<PendingRequest[]>;
-    /** `o.confirme`: the « Je comprends » box of a hardened extension card is checked. */
-    answer(id: string, decision: Decision, rights?: DevRight[], o?: { confirmed?: boolean }): void;
+    /**
+     * `o.confirmed`: the « Je comprends » box of a hardened extension card is checked; `o.login`: the saved login chosen on a
+     * fill card; `o.remember`: its rows ticked « Retenir ce site » (this window's card only).
+     */
+    answer(id: string, decision: Decision, rights?: DevRight[], o?: { confirmed?: boolean; login?: number; picks?: (string | null)[]; remember?: number[] }): void;
   };
   onPermissions(callback: (list: PendingRequest[]) => void): () => void;
   /**
@@ -304,6 +328,36 @@ export interface ApiRessac {
     relaunch(): Promise<void>;
     /** The answer on the changed-instructions card; settles once the host has answered (a failure is logged, never thrown). */
     review(id: number, choice: "keep" | "revert"): Promise<void>;
+    /** What this window's panel says about masking; nothing to say while the host does not answer. */
+    masking(): Promise<MaskingStatus>;
+    /** The masking status may have changed (a reveal, a lift, a new conversation): read it again. */
+    onMasking(callback: () => void): () => void;
+    /**
+     * The value behind a label of this window's own conversation, for « Voir » on a card or in the terminal: shown here
+     * only, never sent to the agent. null when unknown (another conversation's, ended) or the host does not answer.
+     */
+    revealLocal(label: string): Promise<string | null>;
+    /**
+     * A paste held by this window's terminal, masked with its conversation's table: the masked text and the names of
+     * what it hid (« votre IBAN »), never the original. null when the host cannot check it: nothing is pasted on its own.
+     */
+    maskPaste(text: string): Promise<{ text: string; names: string[] } | null>;
+    /** The usernames of a fill card up in this window (`mask.loginsRef`), for its « Voir »; null when gone or another window's. */
+    revealLogins(ref: string): Promise<string[] | null>;
+    /** A passport value a fill card up in this window offers (`mask.rows[].choices[].ref`), for its « Voir »; null when gone or another window's. */
+    revealPassport(ref: string): Promise<string | null>;
+    /** The « non couverte » tooltip: each passport entry's field and masked display, never its value (nulls once removed). */
+    passportShown(refs: { profile: string; id: string }[]): Promise<{ field: string | null; display: string | null }[]>;
+    /** Lifting the workspace lock (spec § 3), from the panel or Réglages › Agent, with or without a conversation. */
+    lock: {
+      changed(): Promise<{ ok: true; files: ChangedFile[] } | { ok: false; error: string }>;
+      /** A changed file's start, shown as added lines; null when it cannot be read. */
+      file(path: string): Promise<DiffFile | null>;
+      /** Touch ID first: refused, nothing goes to the host (`error` null). */
+      lift(choice: LiftChoice, remove?: string[]): Promise<{ ok: true } | { ok: false; error: string | null }>;
+      quarantine(): Promise<QuarantinedFile[]>;
+      restore(id: string): Promise<{ ok: true } | { ok: false; error: string }>;
+    };
   };
   /** The agent's access to tabs (badges and bubble to cut it). */
   access: {
@@ -478,6 +532,8 @@ export interface ApiRessac {
   };
   /** Design mode of this window's active tab, and baskets of notes. */
   design: ApiDesign;
+  /** « Cacher pour l'agent »: the toolbar button arms (or leaves) the viewfinder over this window's tab. */
+  hide: { toggle(): void; picking(): boolean; onChange(cb: () => void): () => void };
   external: ExternalApi;
   review: ReviewApi;
   settings: SettingsApi;
@@ -592,6 +648,75 @@ export interface SettingsApi {
   restartToUpdate(): void;
   /** Opens the latest DMG, next to the update feed this build reads. */
   downloadUpdate(): void;
+  /** Only in the document showing ressac://settings (design § 9.2): absent from the agent panel's API. */
+  passport?: PassportSettingsApi;
+  /** Réglages › Mots de passe: only in the document showing ressac://settings, like `passport`. */
+  passwords?: PasswordsSettingsApi;
+}
+
+/** A saved login as Réglages › Mots de passe lists it: never its password. `host`: the origin itself when not http(s). */
+export type SavedLogin = { guid: string; origin: string; host: string; username: string };
+export type PasswordResult = { ok: true; guid: string } | { ok: false; error: "locked" | "origin" | "password" | "duplicate" | "missing" | "primary" | "write" };
+/**
+ * Réglages › Mots de passe: Firefox's saved logins. The list has no password; showing or copying one and every write
+ * need this page's token from `unlock` (Touch ID, 5 minutes).
+ */
+export interface PasswordsSettingsApi {
+  /** Sorted by host then username; empty while a Firefox primary password is set. */
+  list(): Promise<SavedLogin[]>;
+  /** Touch ID « gérer vos mots de passe »; null when refused or a primary password is set. */
+  unlock(): Promise<{ token: string; until: number; showMs: number } | null>;
+  /** Revokes this page's tokens. */
+  lock(): void;
+  /** The Mac slept or its screen locked: the tokens are gone. */
+  onLocked(callback: () => void): () => void;
+  reveal(token: string, guid: string): Promise<string | null>;
+  copyPassword(token: string, guid: string): Promise<boolean>;
+  copyUsername(guid: string): Promise<boolean>;
+  add(token: string, login: { origin: string; username: string; password: string }): Promise<PasswordResult>;
+  edit(token: string, guid: string, change: { username: string; password: string }): Promise<PasswordResult>;
+  remove(token: string, guid: string): Promise<PasswordResult>;
+  primaryPassword(): boolean;
+}
+
+/** A connection profile's passport as Réglages › Passeport lists it, without its values. */
+export type PassportProfile = { id: string; name: string; count: number; state: "ok" | "unreadable" | "newer"; /** No space uses it: « Sans espace ». */ kept: boolean };
+/**
+ * Réglages › Passeport (design § 9.2), on the settings page's API only. Touch ID gives a token for one profile, valid
+ * until `until` (5 minutes); reading and saving need it.
+ */
+export interface PassportSettingsApi {
+  /** The spaces' profiles in sidebar order (none used only by private spaces), then passports kept without a space. */
+  profiles(): Promise<PassportProfile[]>;
+  /**
+   * Touch ID « ouvrir votre passeport « {profil} » » (`delete`: « supprimer votre passeport », `move`: « déplacer votre
+   * passeport », `restart`: « recréer votre passeport »); null when refused. `showMs`: how long « Voir » shows a
+   * value. A delete, move or restart token serves once and never reads; the page keeps one token per purpose.
+   */
+  unlock(profile: string, purpose?: "open" | "delete" | "move" | "restart"): Promise<{ token: string; until: number; showMs: number } | null>;
+  /** null: no live token for this profile, or the passport cannot be read. */
+  read(profile: string, token: string): Promise<{ entries: PassportEntry[]; revision: string; dropped: number } | null>;
+  /** `uncovered`: the open conversations now marked « non couverte ». `invalid`: an entry failed chrome's validation. */
+  save(profile: string, token: string, entries: PassportEntry[], revision: string): Promise<{ ok: true; revision: string; uncovered: number } | { ok: false; error: "stale" | "write" | "newer" | "full" | "locked" | "invalid" }>;
+  /** Revokes this page's tokens for that profile (only the `purpose` one when given). */
+  lock(profile: string, purpose?: "open" | "delete" | "move" | "restart"): void;
+  /** The Mac slept or its screen locked: every passport is locked again. */
+  onLocked(callback: () => void): () => void;
+  /** Deletes this profile's passport (its space goes, design § 4.4); false when the file could not be removed. */
+  drop(profile: string): Promise<boolean>;
+  /** « Supprimer ce passeport »: needs the token of an `unlock(profile, "delete")`; false when refused or not removed. */
+  removePassport(profile: string, token: string): Promise<boolean>;
+  /**
+   * « Déplacer vers… » a kept passport, with the token of an `unlock(from, "move")`. `copied`: `to` has its entries but
+   * `from` was not removed (it failed, or it changed since); `unread`: `from` holds entries this version cannot read;
+   * `write`, `full`, `locked`: nothing changed.
+   */
+  moveTo(from: string, to: string, token: string): Promise<{ ok: true } | { ok: false; error: "locked" | "full" | "write" | "copied" | "unread" }>;
+  /**
+   * « Recommencer un passeport vide », with the token of an `unlock(profile, "restart")`: an unreadable passport's file
+   * is kept aside and the profile starts empty; false when refused, not unreadable, or nothing moved.
+   */
+  restart(profile: string, token: string): Promise<boolean>;
 }
 
 
@@ -643,6 +768,24 @@ export const WalkMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("advance"), delta: z.union([z.literal(1), z.literal(-1)]) }),
 ]);
 export type TabCycleMessage = z.infer<typeof WalkMessageSchema>;
+
+/** What a window's agent panel says about masking (spec § 3, § 9 bis). */
+export interface MaskingStatus {
+  /** The workspace is locked since a reveal: the names of what was revealed (« votre code »), never the values. */
+  locked: string[] | null;
+  /** What the banner's sentence agrees with for those names (`one-m`, `one-f`, `other-m`, `other-f`). */
+  lockedAgreement: string;
+  /** The conversation was resumed from one started before masking, or by Codex: it may have seen the data in clear. */
+  uncovered: boolean;
+  /** Passport entries added after the conversation read something (design § 5.3): profile and id, never a value. */
+  uncoveredPassport: { profile: string; id: string }[];
+  /** The kernel's notice for this conversation (fill_field blocked after unknown labels), as it rendered it. */
+  notice: string | null;
+  /** An agent extension runs: it reads pages past the masker (Task 15). */
+  extensionReads: boolean;
+  /** The login profiles whose passport could not be read: their data is not masked (design § 4.5). */
+  passportUnreadable: string[];
+}
 
 /** What a window's agent panel shows. */
 export type AgentPanelState =
@@ -947,6 +1090,58 @@ export type OverlayApi = {
   /** Esc or « Annuler » in the bubble; « Fermer » of the basket. */
   cancel(): void;
 } & Pick<ApiDesign, "basket" | "remove" | "send" | "batches" | "handled" | "onChange">;
+/** A rect in the hide layer frame's CSS px (its origin is the page's top left corner). */
+/** `field`: a mark over a form field's value (marks only), drawn in its own colour. */
+export type HideRect = { x: number; y: number; width: number; height: number; field?: true };
+/**
+ * « Cacher pour l'agent » (chrome/window/hide-layer.ts), what both of its frames show: the layer (outline, animation,
+ * ending) and the bubble frame (bubble, error, toast). The frozen text is the chrome's; the frames only show it.
+ */
+export interface HideContext {
+  /** pick: the viewfinder is armed; bubble: the confirmation; saving: Touch ID and the write; toast: saved. */
+  phase: "pick" | "bubble" | "saving" | "toast" | "error";
+  /** The text frozen at the pick (what is saved), and its start…end over 60 characters. */
+  text: string;
+  short: string;
+  /** « Sur {site} et vos autres sources »; null: no site is added (an agent-reached tab, a page without a host). */
+  site: string | null;
+  field: PassportField;
+  name?: { given: string; family: string };
+  /** notHere: in the passport, but this page (not https) is no passport site, so it is not masked here. */
+  ending?: "hidden" | "next" | "agentReached" | "notHere";
+  /** The hide wrote a new entry (else it only added a site, or the value was already there): the chip never says « Ajouté » then. */
+  created?: boolean;
+  /** The toast's « Annuler »: false when the hide wrote nothing (the value was already there, with this site). */
+  undoable?: boolean;
+  /** The tab's conversation had already read this page: the toast says so. */
+  readBefore?: boolean;
+  /** invalid: the text does not fit the chosen type (the bubble stays open). */
+  error?: "long" | "write" | "unreadable" | "full" | "invalid";
+  hover?: HideRect;
+  target?: HideRect;
+  /** The target's pixels at the pick (data: URL), and the page colour behind it, for the animation. */
+  snapshot?: { url: string; background: string };
+  /** The ending's label chip, `⟨nom-…⟩`. */
+  chip?: string;
+  /** Changes at each hide: the layer plays its animation once per value. */
+  seq: number;
+  locale: string;
+}
+/** What the hide frames may do: the gesture's endpoints only, never a raw hide or unhide. */
+export type HideApi = {
+  context(): HideContext | null;
+  confirm(choice: { field: PassportField; name?: { given: string; family: string } }): Promise<void>;
+  cancel(): void;
+  undo(): Promise<void>;
+  onChange(cb: () => void): () => void;
+};
+/** « Voir ce qu'il ne voit pas » (chrome/window/hide-layer.ts mountMarks): the rects the agent receives masked; null while the aura is off. */
+export type MarksApi = {
+  marks(): HideRect[] | null;
+  /** The shown language, for the legend. */
+  locale(): string;
+  onChange(cb: () => void): () => void;
+};
 /** Text of a note: bounded at the entry of the main process. */
 export const REMARK_TEXT_MAX = 4000;
 
@@ -975,7 +1170,7 @@ export type ReviewView =
       destination: string | null; noDestination: string | null;
     }
   | { state: "unavailable"; name: string; reason: string };
-export type { DiffFile, ModifiedFile, Comment as DiffComment };
+export type { DiffFile, ModifiedFile, Comment as DiffComment, ChangedFile, LiftChoice, QuarantinedFile };
 export interface ReviewApi {
   /**
    * Compares the project to its last review and returns the token of that comparison (kept by the main process).

@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { WorkshopError } from "@ressac/kernel";
+import { Masker } from "../../../../packages/kernel/src/index.ts";
 import { GROUPING_MS, SUBMIT_DELAY_MS, SessionsAgent, BUFFER_MAX, SessionBuffer, messages, type SessionLike } from "../../core/agent/sessions";
 
 class FakeSession implements SessionLike {
@@ -261,6 +262,49 @@ test("prefill on an active session writes right away", async () => {
   expect(sessions[0]!.written).toEqual(["[application : Essai] "]);
   expect(called).toBe(1);
   expect(messages).toEqual([]);
+});
+
+test("a prefill is written masked with the window's own session table, at write time; keys typed meanwhile are not", async () => {
+  vi.useFakeTimers();
+  try {
+    const masker = new Masker();
+    const sessions: FakeSession[] = [];
+    let opened = 0;
+    const manager = new SessionsAgent({
+      open: async (f) => {
+        // As the kernel does: the window's session table opens with its session.
+        masker.open(`s${++opened}`, f);
+        const s = new FakeSession();
+        sessions.push(s);
+        return s;
+      },
+      send: () => {},
+      mask: (f, text) => masker.maskTyped(f, text).text,
+    });
+    const iban = "FR76 3000 6000 " + "0112 3456 7890 189";
+    manager.prefill("F", `mon IBAN ${iban}`, undefined, true);
+    await manager.start("F", size);
+    manager.write("F", `tape ${iban}`);
+    sessions[0]!.emit("ready");
+    await vi.advanceTimersByTimeAsync(2 * SUBMIT_DELAY_MS);
+    const [first, enter, typed] = sessions[0]!.written;
+    const label = first!.match(/⟨iban-[a-z0-9]{8}⟩/)?.[0];
+    expect(first).toBe(`mon IBAN ${label}`);
+    expect(masker.lookupForUser("F", label!)?.value).toBe(iban);
+    expect([enter, typed]).toEqual(["\r", `tape ${iban}`]);
+    // An active session: written masked right away.
+    manager.prefill("F", `encore ${iban}`);
+    expect(sessions[0]!.written.at(-1)).toBe(`encore ${label}`);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("without a masker a prefill is written as it is", async () => {
+  const { management: manager, sessions } = prepare();
+  await manager.start("F", size);
+  manager.prefill("F", "FR76 3000 6000 " + "0112 3456 7890 189");
+  expect(sessions[0]!.written).toEqual(["FR76 3000 6000 0112 3456 7890 189"]);
 });
 
 test("ouvrir receives the session's window", async () => {

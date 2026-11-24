@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +9,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { grantSite, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
+import { readSite, readTweaks, spacePaths, tweaksHash } from "../../../packages/kernel/src/index";
 
 // Plan 32 Task 1: the agent's tweaks in each frame of a site app's view (Xray sandbox per document), plus the
 // sign-in window and two apps side by side.
@@ -77,6 +78,15 @@ const memory = (id: string) => {
   const f = path.join(dataDir, "sites", id, "memory.json");
   return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
 };
+
+/** The fingerprint the kernel records at a lock for vidola's tweaks, read as the host reads them. */
+async function vidolaTweaksHash(): Promise<string> {
+  const site = await readSite(spacePaths(path.join(dataDir, "workspace")), "vidola", { localAddresses: true });
+  if (!site || "error" in site) throw new Error("vidola unreadable");
+  const t = await readTweaks(site);
+  if ("error" in t) throw new Error(t.error);
+  return tweaksHash(t);
+}
 
 /** Opens app `id` and waits for its view to have loaded `chemin`. */
 async function openAt(id: string, path: string, host = "vidola-a.localhost") {
@@ -322,6 +332,38 @@ describe("tweaks", () => {
     expect(Object.keys(memory("autre").values)).toEqual(["b"]);
     await expect.poll(() => memory("vidola")?.values ?? null, { timeout: 5000 }).toHaveProperty(["encours.the-bear"]);
     expect(memory("vidola").values).not.toHaveProperty("b");
+  });
+
+  // Masking, Task 10: the workspace lock file (written by a reveal) makes the host refuse every memory write.
+  it("while the workspace is locked after a reveal, the tweak's remember is refused and the memory stays as it was", async () => {
+    const lockFile = path.join(dataDir, "masking", "lock.json");
+    const before = JSON.stringify(memory("vidola")?.values ?? null);
+    mkdirSync(path.dirname(lockFile), { recursive: true });
+    // The tweak as recorded at the lock: it still runs, only its memory write is refused.
+    writeFileSync(lockFile, JSON.stringify({ since: new Date().toISOString(), names: ["votre code"], codes: { "site:vidola": await vidolaTweaksHash() } }));
+    try {
+      await openAt("vidola", "/serie/the-bear");
+      await expect.poll(() => view("document.documentElement.dataset.kept"), { timeout: 10_000 }).toMatch(/^refus:.*verrouillé depuis une révélation/);
+      expect(JSON.stringify(memory("vidola")?.values ?? null)).toBe(before);
+      // Reading still answers.
+      expect(await command("lire")).toMatch(/^ok:/);
+    } finally {
+      rmSync(lockFile, { force: true });
+    }
+  });
+
+  it("while the workspace is locked, a tweak not recorded at the lock is not injected: the app opens as if it had none", async () => {
+    const lockFile = path.join(dataDir, "masking", "lock.json");
+    mkdirSync(path.dirname(lockFile), { recursive: true });
+    writeFileSync(lockFile, JSON.stringify({ since: new Date().toISOString(), names: ["votre code"], codes: { "site:vidola": "un-autre-code" } }));
+    try {
+      await openAt("vidola", "/serie/the-bear");
+      // Loaded (openAt waited for complete), and the tweak's CSS and JS never came.
+      expect(await view('getComputedStyle(document.getElementById("shorts")).display')).toBe("block");
+      expect(await view("document.body.dataset.retouche ?? null")).toBeNull();
+    } finally {
+      rmSync(lockFile, { force: true });
+    }
   });
 
   // Last: it rewrites the app's tweak.

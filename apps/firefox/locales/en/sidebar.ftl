@@ -55,6 +55,15 @@ sidebar-space-delete-pinned =
        *[other] { $folders } folders
     } will be lost.
 sidebar-space-delete-logins = This space's sign-ins will be lost.
+sidebar-space-passport = Passport
+sidebar-space-passport-count =
+    { $count ->
+        [one] Its passport holds { $count } item.
+       *[other] Its passport holds { $count } items.
+    }
+sidebar-space-passport-drop = Also delete its passport
+sidebar-space-passport-drop-failed = The passport could not be deleted: nothing changed. Try again, or untick the box to keep it.
+sidebar-space-passport-dropped-only = The passport was deleted, but the space did not change.
 sidebar-space-icon = Icon
 sidebar-space-icons = Suggested icons
 sidebar-space-name = Space name

@@ -7,15 +7,17 @@
 
   /**
    * A file's unified diff; the lines hidden between hunks unfold by 20. The code stays read-only: the margin's `+`
-   * opens a comment on a hunk line (Shift+click or drag extend the range, within the hunk).
+   * opens a comment on a hunk line (Shift+click or drag extend the range, within the hunk). Without `project` and
+   * `token` (the lift card's changed files), lines only: no comment, no unfolding.
    */
   let {
     project,
     token,
     diff,
-    comments,
-    onChange,
-  }: { project: string; token: string; diff: DiffFile; comments: DiffComment[]; onChange: () => void } = $props();
+    comments = [],
+    onChange = () => {},
+  }: { project?: string; token?: string; diff: DiffFile; comments?: DiffComment[]; onChange?: () => void } = $props();
+  const reviewed = $derived(project !== undefined && token !== undefined);
 
   type Block = DiffFile["blocks"][number];
   /** Position of a hunk line: its new number, the next line's for a removal (like the kernel). */
@@ -83,7 +85,7 @@
     if (!range || sending) return;
     sending = true;
     try {
-      const r = await api.review.comment(project, token, { file: diff.path, start: range.start, end: range.end, text: text });
+      const r = await api.review.comment(project!, token!, { file: diff.path, start: range.start, end: range.end, text: text });
       if (r.ok) {
         close();
         onChange();
@@ -164,7 +166,7 @@
     onLoaded = i;
     try {
       const end = r.end === null ? r.start + EXPANDED_LINES - 1 : Math.min(r.end, r.start + EXPANDED_LINES - 1);
-      const texts = await api.review.lines(project, token, diff.path, r.start, end);
+      const texts = await api.review.lines(project!, token!, diff.path, r.start, end);
       const already = intervals[i]?.lines ?? [];
       const fresh = texts.map((text, k) => ({ mark: " " as const, text: text, new: r.start + k, old: r.start + k + r.offset }));
       const all = [...already, ...fresh];
@@ -208,7 +210,7 @@
           if (e.detail === 0) aim(block, k, e.shiftKey);
         }}></button
       ></span><span class="num">{l.old ?? ""}</span><span class="num">{l.new ?? ""}</span><span class="code">{l.text}</span></div>
-  {#each places.under.get(`${block}:${k}`) ?? [] as c (c.id)}<ReviewComment project={project} comment={c} onChange={onChange} />{/each}
+  {#each places.under.get(`${block}:${k}`) ?? [] as c (c.id)}<ReviewComment project={project!} comment={c} onChange={onChange} />{/each}
   {#if range && range.block === block && range.last === k}
     <form class="form" data-testid="comment-form" onsubmit={(e) => { e.preventDefault(); void validate(); }}>
       <div class="range">{range.start === range.end ? t("agent-comment-line", { line: String(range.start) }) : t("agent-comment-lines", { start: String(range.start), end: String(range.end) })}</div>
@@ -225,7 +227,7 @@
 
 {#snippet interval(i: number)}
   {#each intervals[i]?.lines ?? [] as l (l.new)}{@render row(l)}{/each}
-  {#if remaining(i)}
+  {#if reviewed && remaining(i)}
     <button class="expand" data-testid="expand-context" disabled={onLoaded !== null} onclick={() => void expand(i)}>{t("agent-diff-expand")}</button>
   {/if}
 {/snippet}
@@ -234,7 +236,7 @@
 
 <section class="diff" data-testid="diff-file" aria-label={t("agent-diff-label", { path: diff.path })}>
   <h3 class="path">{diff.path}</h3>
-  {#each places.elsewhere as c (c.id)}<ReviewComment project={project} comment={c} onChange={onChange} />{/each}
+  {#each places.elsewhere as c (c.id)}<ReviewComment project={project!} comment={c} onChange={onChange} />{/each}
   {#if diff.displayable !== true}
     <p class="not-displayable">{t(diff.displayable === "binary" ? "agent-diff-binary" : "agent-diff-too-big")}</p>
   {:else if diff.blocks.length === 0}
@@ -243,7 +245,7 @@
     <div class="code-diff">
       {#each diff.blocks as b, i (i)}
         {@render interval(i)}
-        {#each b.lines as l, k (k)}{@render blockRow(l, i, k)}{/each}
+        {#each b.lines as l, k (k)}{#if reviewed}{@render blockRow(l, i, k)}{:else}{@render row(l)}{/if}{/each}
       {/each}
       {@render interval(diff.blocks.length)}
     </div>

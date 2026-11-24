@@ -183,6 +183,21 @@ const optionsOf = (ctx: Context) => ({
 const readJson = async (path: string) => JSON.parse(await readFile(path, "utf8"));
 
 describe("runHarvest", () => {
+  it("while locked, the staged copy is what is hashed: unchanged it runs; files swapped after the check, before the staging, stop the run", async () => {
+    const ctx = await prepare("swap", `export default async () => [1];`);
+    const recorded = await codeHash(ctx.widget.folder);
+    const lockedCode = async (staged: string) => ((await codeHash(staged)) === recorded ? null : "En pause");
+    expect((await runHarvest({ ...optionsOf(ctx), lockedCode })).state).toMatchObject({ status: "ok" });
+    expect(ctx.commands).toHaveLength(1);
+    const stage = ctx.workshop.stageHarvest.bind(ctx.workshop);
+    ctx.workshop.stageHarvest = async (owner, folder) => {
+      await writeFile(join(ctx.widget.folder, "harvest.mjs"), `export default async () => [2];`);
+      return stage(owner, folder);
+    };
+    expect((await runHarvest({ ...optionsOf(ctx), lockedCode })).state).toMatchObject({ status: "error", error: "En pause" });
+    expect(ctx.commands).toHaveLength(1);
+  });
+
   it("fresh space: starters read nothing before an approval; the approval is tied to the code, a rewrite blocks the harvest and keeps the data", async () => {
     const web = await webServer({ "/": (res) => res.end("lu") });
     const space = await tempFolder();
@@ -684,7 +699,7 @@ describe("runHarvest, widget with an account", () => {
     expect(kernelError("Timed out SECRET")).toBe(false);
     expect(kernelError("Délai dépassé")).toBe(true);
     expect(kernelError("Réponse trop grande")).toBe(true);
-    expect(kernelError("Accord requis pour lire avec ton compte : app.daily.dev")).toBe(true);
+    expect(kernelError("Accord requis pour lire avec votre compte : app.daily.dev")).toBe(true);
     // Written with the widget's exit code: counts as widget text.
     expect(kernelError("La récolte s'est arrêtée sans résultat (code 1)")).toBe(false);
     expect(kernelError("Mise à jour impossible : atelier arrêté")).toBe(true);
@@ -704,7 +719,7 @@ describe("runHarvest, widget with an account", () => {
 
   it("error thrown by the widget: never marked as the kernel's, even when it imitates a kernel message", async () => {
     for (const imitation of [
-      "Accord requis pour lire avec ton compte : " + (123456789).toString(36),
+      "Accord requis pour lire avec votre compte : " + (123456789).toString(36),
       "La récolte s'est arrêtée sans résultat (code 123456789)",
     ]) {
       const ctx = await prepare(
@@ -723,7 +738,7 @@ describe("runHarvest, widget with an account", () => {
   it("errors written by the kernel: marked as such (grant required, timeout exceeded)", async () => {
     const ctx = await prepare("daily", `export default async (w) => w.readPage("https://app.daily.dev/", { account: true });`, sources);
     const r = await harvest(ctx);
-    expect(r.state).toMatchObject({ status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true });
+    expect(r.state).toMatchObject({ status: "grant-required", error: "Accord requis pour lire avec votre compte : app.daily.dev", kernelError: true });
     expect((await readWidgetState(ctx.widgetsFolder, "daily")).kernelError).toBe(true);
     const slow = await prepare("lent", `export default () => new Promise(() => {});`);
     expect((await harvest(slow, { delayMs: 300 })).state).toMatchObject({ status: "error", error: "Délai dépassé", kernelError: true });
@@ -967,7 +982,7 @@ describe("runHarvest, through the widget's workflow", () => {
   it("without a grant: accord-requis run, no block launched", async () => {
     const ctx = await prepare("daily", `export default async (w) => w.readPage("https://app.daily.dev/", { account: true });`, sources);
     const r = await harvest(ctx);
-    expect(r.state).toMatchObject({ status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true });
+    expect(r.state).toMatchObject({ status: "grant-required", error: "Accord requis pour lire avec votre compte : app.daily.dev", kernelError: true });
     expect(ctx.commands).toHaveLength(0);
     const e = await runOf(ctx, r.run);
     expect(e).toMatchObject({ status: "grant-required", kernelError: true, error: r.state.error });
@@ -1098,7 +1113,7 @@ describe("runAttempt", () => {
   it("trial of a widget with an account without a grant: refused with the grant message, no container, nothing written", async () => {
     const ctx = await prepare("daily", `export default async (w) => w.readPage("https://app.daily.dev/", { account: true });`, sources);
     const r = await attempt(ctx, "2026-10-27T08-00-00-000Z", "harvest");
-    expect(r).toEqual({ ok: false, error: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r).toEqual({ ok: false, error: "Accord requis pour lire avec votre compte : app.daily.dev" });
     expect(ctx.commands).toHaveLength(0);
     expect(existsSync(dataOf(ctx))).toBe(false);
   });
@@ -1123,7 +1138,7 @@ describe("runAttempt", () => {
       gemma: async () => "",
     };
     const r = await attempt(ctx, real.run!, "harvest", { ai: remove });
-    expect(r).toEqual({ ok: false, error: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r).toEqual({ ok: false, error: "Accord requis pour lire avec votre compte : app.daily.dev" });
     expect(await listRuns(dataOf(ctx))).toEqual([]);
     expect(existsSync(join(dataOf(ctx), "data.json"))).toBe(false);
   });
@@ -1191,14 +1206,14 @@ describe("runAttempt", () => {
     await giveGrant(ctx.widgetsFolder, "daily", { domains: ["app.daily.dev", "ancien.dev"], public: ["127.0.0.1"], profile: "perso" });
     const onChange = vi.fn();
     const r = await attempt(ctx, "2026-10-27T08-00-00-000Z", "harvest", { onChange: onChange });
-    expect(r).toEqual({ ok: false, error: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r).toEqual({ ok: false, error: "Accord requis pour lire avec votre compte : app.daily.dev" });
     expect(ctx.commands).toHaveLength(0);
     expect(await readGrants(ctx.widgetsFolder)).toEqual({});
     expect(existsSync(join(dataOf(ctx), "data.json"))).toBe(false);
     expect(await readWidgetState(ctx.widgetsFolder, "daily")).toEqual({
       ...state,
       status: "grant-required",
-      error: "Accord requis pour lire avec ton compte : app.daily.dev",
+      error: "Accord requis pour lire avec votre compte : app.daily.dev",
       kernelError: true,
     });
     expect(onChange).toHaveBeenCalled();

@@ -38,7 +38,7 @@ test("the document text: title (or « none »), host without www, then the excer
 
 test("a page the model refuses is marked and skipped: the 39 others get vectors and the indexer goes idle", async () => {
   fill(40);
-  h.keep({ url: "https://p7.fr/", spaceId: "import", title: "Page 7", text: "POISON" });
+  h.keep({ byAgent: false, url: "https://p7.fr/", spaceId: "import", title: "Page 7", text: "POISON" });
   const embed = vi.fn(async (texts: string[]) => {
     if (texts.some((t) => t.includes("POISON"))) throw new EmbedRefused("HTTP 500");
     return texts.map(() => Float32Array.from([1, 0]));
@@ -52,7 +52,7 @@ test("a page the model refuses is marked and skipped: the 39 others get vectors 
   expect(h.findSimilar(Float32Array.from([1, 0]), { limit: 100 }).map((x) => x.url)).toHaveLength(39);
   expect(h.findSimilar(Float32Array.from([1, 0]), { limit: 100, sites: ["p7.fr"] })).toEqual([]);
   // A new text lifts the mark: the page is tried again.
-  h.keep({ url: "https://p7.fr/", spaceId: "import", title: "Page 7", text: "sain" });
+  h.keep({ byAgent: false, url: "https://p7.fr/", spaceId: "import", title: "Page 7", text: "sain" });
   await vi.waitFor(() => expect(h.findSimilar(Float32Array.from([1, 0]), { limit: 100, sites: ["p7.fr"] })).toHaveLength(1));
 });
 
@@ -166,7 +166,7 @@ test("an error stops the loop; it retries later", async () => {
 });
 
 test("a page whose title changes is embedded again with its new title", async () => {
-  h.note({ url: "https://www.a.fr/x", spaceId: "s", title: "A", private: false });
+  h.note({ byAgent: false, url: "https://www.a.fr/x", spaceId: "s", title: "A", private: false });
   const { docs, embed } = fake();
   indexer = createPageIndexer({ history: h, embed, pauseMs: 0, idleMs: 20, passEveryMs: 0 });
   indexer.start();

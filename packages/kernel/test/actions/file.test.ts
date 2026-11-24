@@ -76,6 +76,44 @@ const waitUntil = async (f: () => boolean, ms = 5000) => {
 };
 
 describe("FileActions", () => {
+  it("an action that passes the first check gets the lock's check of its staged copy", async () => {
+    const r = kept();
+    const { f } = await prepare({ run: r.run, paused: async (_id, folder) => folder === "/staged" });
+    const end = f.launch("a", { input: null, trigger: "agent" }).end;
+    await waitUntil(() => r.launchedList.length === 1);
+    expect(await r.launchedList[0]!.lockedCode!("/staged")).toMatch(/^En pause/);
+    expect(await r.launchedList[0]!.lockedCode!("/other")).toBeNull();
+    r.release("a");
+    await end;
+  });
+
+  it("an agent launch's code check reads the staged copy, after the lock's check; its refusal stops the run", async () => {
+    const r = kept();
+    const staged = await tempFolder();
+    await writeFile(join(staged, "lire.mjs"), "copie");
+    const seen: string[][] = [];
+    const { f } = await prepare({ run: r.run, paused: async () => false });
+    const check = async (texts: string[]) => (seen.push(texts), texts.includes("refusée"));
+    const end = f.launch("a", { input: null, trigger: "agent", check: async (t) => !(await check(t)) }).end;
+    await waitUntil(() => r.launchedList.length === 1);
+    expect(await r.launchedList[0]!.lockedCode!(staged)).toBeNull();
+    expect(seen).toEqual([["copie"]]);
+    await writeFile(join(staged, "lire.mjs"), "refusée");
+    expect(await r.launchedList[0]!.lockedCode!(staged)).toBe("Lancement refusé à la vérification de son code : rien n'a tourné.");
+    r.release("a");
+    await end;
+  });
+
+  it("an action paused by the workspace lock neither runs nor tries; a failing check counts as paused", async () => {
+    const r = kept();
+    const { f } = await prepare({ run: r.run, paused: async (id) => (id === "boom" ? Promise.reject(new Error("x")) : id === "a") });
+    const error = "En pause : son code a changé depuis une révélation, il reprendra quand vous lèverez le verrou de l'atelier.";
+    expect(await f.launch("a", { input: null, trigger: "agent" }).end).toEqual({ status: "failed", error, kernelError: true });
+    expect(await f.try("a", "x", "y").end).toEqual({ status: "failed", error, kernelError: true });
+    expect(await f.launch("boom", { input: null, trigger: "manual" }).end).toMatchObject({ status: "failed", error });
+    expect(r.launchedList).toEqual([]);
+  });
+
   it("three actions: two run, the third waits and appears in waiting", async () => {
     expect(CONCURRENT_ACTIONS).toBe(2);
     const r = kept();

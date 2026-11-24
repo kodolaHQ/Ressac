@@ -184,7 +184,7 @@ describe("agent extensions per space", () => {
     expect(await shown("extensions-disabled")).toBeNull();
     await inUi(m, `doc.querySelector(arguments[0] + ' input[type="checkbox"]:not([role])').click()`, [MODAL]);
     expect(await waitUi(m, `return doc.querySelector('[data-testid="private-extensions-warning"]')?.textContent`)).toContain(
-      "Cet espace privé partage son profil avec « Lecture » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.",
+      "Cet espace privé partage son profil avec « Lecture » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donnez-lui son propre profil.",
     );
     expect(await shown("extensions-disabled")).toContain(
       "En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : Cacheur de l'agent. Les onglets ouverts où elles tournent seront rechargés.",
