@@ -60,6 +60,10 @@ containerd: {system: false, user: false}
 video: {display: none}
 ssh: {loadDotSSHPubKeys: false}
 user: {name: $bake_user}
+# Public resolvers, not the Mac's through Lima's host resolver: with a LAN resolver answering SERVFAIL to everything
+# (macOS fell back to the next one), the guest had no DNS, its boot scripts' apk failed and SSH never let Lima in.
+hostResolver: {enabled: false}
+dns: [1.1.1.1, 9.9.9.9]
 portForwards:
 - guestIP: 0.0.0.0
   guestPortRange: [1, 65535]
@@ -91,14 +95,16 @@ print -r -- $packages >$out/packages.txt
 # (fetched by abuild, from Alpine's distfiles mirror first). In a throwaway Alpine container, as the APKBUILDs are scripts.
 mkdir -p $tmp/sources
 awk '{l = $0; sub(/^([^ ]+ ){4}/, "", l)} l ~ /GPL/ {print $3, $4}' $out/packages.txt | sort -u | docker run --rm -i -v $tmp/sources:/out alpine:$alpine_version sh -euc '
-  apk add --no-cache -q abuild </dev/null
+  apk add --no-cache -q abuild git </dev/null
   export SRCDEST=/out/distfiles DISTFILES_MIRROR=https://distfiles.alpinelinux.org/distfiles/v'${alpine_version%.*}'
+  # From the official aports mirror on GitHub (the Alpine GitLab went down on 2026-11-24): same commits, checked by hash.
+  git init -q /tmp/aports && git -C /tmp/aports remote add origin https://github.com/alpinelinux/aports.git
   while read origin commit; do
     found=
+    git -C /tmp/aports fetch -q --depth 1 --filter=blob:none origin $commit </dev/null
     for r in main community; do
-      wget -qO /tmp/a.tgz "https://gitlab.alpinelinux.org/alpine/aports/-/archive/$commit/aports-$commit.tar.gz?path=$r/$origin" || continue
-      if tar -tzf /tmp/a.tgz | grep -q "/$r/$origin/APKBUILD\$"; then
-        tar -xzf /tmp/a.tgz -C /out --strip-components 1
+      if git -C /tmp/aports ls-tree -d FETCH_HEAD $r/$origin | grep -q .; then
+        git -C /tmp/aports archive FETCH_HEAD $r/$origin | tar -x -C /out
         found=$r
         break
       fi

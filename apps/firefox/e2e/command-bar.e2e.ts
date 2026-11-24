@@ -196,6 +196,18 @@ describe("Command bar", () => {
     await waitBar(false);
   });
 
+  it("⌘T + a bare name on a plain-http site (a box's admin page) loads it: no forced https", async () => {
+    const a = await withPageA();
+    await resolveLocalHosts(m, ["boite.invalide"]);
+    await pressKeys(m, "Meta+t");
+    await type(`boite.invalide:${new URL(server.url).port}/b.html`);
+    await pressKeys(m, "Enter");
+    const ids = await waitState((s) => Object.keys(s.tabs), (i) => i.length === 2);
+    const b = ids.find((id) => id !== a)!;
+    await waitTitle(b, "Page B");
+    expect((await state(m)).tabs[b]!.url).toMatch(/^http:\/\/boite\.invalide:\d+\/b\.html$/);
+  });
+
   it("« Commandes »: a browser feature typed by name runs, with its keys shown; vim turns on then off", async () => {
     await withPageA();
     await pressKeys(m, "Meta+t");

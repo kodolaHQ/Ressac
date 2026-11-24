@@ -134,3 +134,42 @@ describe("publish.sh", () => {
     rmSync(bin, { recursive: true, force: true });
   });
 });
+
+describe("prune-releases.sh", () => {
+  const KEY = "k".repeat(32);
+  /** Runs the script against a fake curl that lists `keys` and logs every call (its config on stdin included). */
+  async function prune(keys: string[], env: Record<string, string> = {}) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "prune-"));
+    const log = path.join(dir, "curl.log");
+    const xml = `<ListBucketResult>${keys.map((k) => `<Contents><Key>updates/${KEY}/releases/${k}</Key></Contents>`).join("")}</ListBucketResult>`;
+    writeFileSync(path.join(dir, "curl"), `#!/bin/zsh\nprint -r -- "$* | $(cat)" >> ${log}\n[[ " $* " == *" -X DELETE "* ]] || print -r -- '${xml}'\n`);
+    chmodSync(path.join(dir, "curl"), 0o755);
+    writeFileSync(path.join(dir, "r2.env"), "R2_ACCESS_KEY_ID=id\nR2_SECRET_ACCESS_KEY=secret-value\nR2_ENDPOINT=https://r2.invalid/\n");
+    const run = promisify(execFile)("zsh", [new URL("../scripts/prune-releases.sh", import.meta.url).pathname], {
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, RESSAC_UPDATE_KEY: KEY, RESSAC_R2_ENV: path.join(dir, "r2.env"), ...env },
+    });
+    const { stdout } = await run;
+    const calls = existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : [];
+    rmSync(dir, { recursive: true, force: true });
+    return { stdout, calls };
+  }
+  const KEYS = ["0.1.9/Ressac-0.1.9.mar", "0.1.9/Ressac-0.1.9.dmg", "0.1.10/Ressac-0.1.10.mar", "0.1.24/Ressac-0.1.24.mar", "0.1.25/Ressac-0.1.25.mar", "notes/x.txt", "stray.txt"];
+
+  it("keeps the three newest versions (0.1.10 after 0.1.9), never a folder that is no version; the key never on curl's command line", async () => {
+    const { stdout, calls } = await prune(KEYS);
+    const deletes = calls.filter((c) => c.includes("-X DELETE")).map((c) => c.split(" | ")[0]!.match(/releases\/(\S+)/)![1]);
+    expect(deletes.sort()).toEqual(["0.1.9/Ressac-0.1.9.dmg", "0.1.9/Ressac-0.1.9.mar"]);
+    expect(stdout).toMatch(/keeping 0\.1\.25 0\.1\.24 0\.1\.10, deleting 0\.1\.9$/m);
+    for (const c of calls) expect(c.split(" | ")[0]).not.toContain("secret-value");
+    expect(calls[0]).toContain('user = "id:secret-value"');
+  });
+
+  it("a dry run deletes nothing; three versions or fewer, nothing to delete", async () => {
+    const dry = await prune(KEYS, { RESSAC_PUBLISH_DRY_RUN: "1" });
+    expect(dry.calls.some((c) => c.includes("DELETE"))).toBe(false);
+    expect(dry.stdout).toMatch(/^delete ressac-update\/updates\/k+\/releases\/0\.1\.9\/Ressac-0\.1\.9\.mar$/m);
+    const few = await prune(KEYS.slice(2, 5));
+    expect(few.calls.some((c) => c.includes("DELETE"))).toBe(false);
+    expect(few.stdout).toMatch(/nothing to delete/);
+  });
+});

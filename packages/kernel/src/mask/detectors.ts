@@ -21,19 +21,21 @@ type Hit = [start: number, end: number, type: LabelType, canonical: string];
 
 const CONTEXT_WINDOW = 40;
 // Matched on folded text (no accents, lower case). A postal or promo code is no secret; « access_token= » names a URL
-// parameter, whose value the URL masking already hides, not a code shown to the user.
+// parameter, whose value the URL masking already hides, not a code shown to the user; « %2Fa » is an escaped `/a`, no 2FA.
 const CODE_CONTEXT =
-  /(?<!\p{L})(?:code(?! (?:postal|promo))|passcode|verification|verify|otp|pin|secret|(?<![_-])token(?![_=])|2fa|authenti(?:fication|cation)|mot de passe|a usage unique)(?!\p{L})/u;
+  /(?<!\p{L})(?:code(?! (?:postal|promo))|passcode|verification|verify|otp|pin|secret|(?<![_-])token(?![_=])|(?<!%)2fa|authenti(?:fication|cation)|mot de passe|a usage unique)(?!\p{L})/u;
 // 4 to 8 digits, maybe grouped (381 624), whole: not glued to a letter or digit, not a price (2 340,12 €).
 const URL_HOST = /\bhttps?:\/\/[^\s/?#<>"'`]+/gi;
 // A code of capitals and digits (X7K9P2, QX4-7BR, X7K-9P2-QR4): 5 to 16 of them with at least one of each, maybe two
-// inner `-`. No start after a letter, digit or `-`, so each run is tried once. shortcut: lower-case codes are left out, add them if a sender uses them.
-const CODE_MIXED = /(?<![\p{L}\p{N}-])(?=[A-Z0-9-]{0,18}?\d)(?=[A-Z0-9-]{0,18}?[A-Z])[A-Z0-9]{2,16}(?:-[A-Z0-9]{2,8}){0,2}(?![\p{L}\p{N}]|-[\p{L}\p{N}])/gu;
+// inner `-`. No start after a `%` (« %2F127 » is URL encoding), nor after a letter, digit or `-`, so each run is tried
+// once. shortcut: lower-case codes are left out, add them if a sender uses them.
+const CODE_MIXED = /(?<![\p{L}\p{N}%-])(?=[A-Z0-9-]{0,18}?\d)(?=[A-Z0-9-]{0,18}?[A-Z])[A-Z0-9]{2,16}(?:-[A-Z0-9]{2,8}){0,2}(?![\p{L}\p{N}]|-[\p{L}\p{N}])/gu;
 // Letters then digits or digits then letters is a technical name (ES2022, SHA256, RTX4090, 1080P): a code interleaves them.
 const TECH_NAME = /^[A-Z]{1,4}\d+$|^\d+[A-Z]{1,3}$/;
 const mixedCode = (v: string) => v.length >= 5 && v.length <= 16 && !TECH_NAME.test(v);
-// Not after `digit/`: a date's year (14/03/2027) is no code.
-const CODE_DIGITS = /(?<![\p{L}\p{N}]|\d[ ./-])\d(?:[ .-]?\d){3,7}(?![\p{L}\p{N}]|[ .-]\d|[.,]\d|\s*€)/gu;
+// Not after `digit/`: a date's year (14/03/2027) is no code. Not after `%`: a run glued to an escape (« %3A62179 ») is
+// URL encoding; the percent projection reads the code an escape hides (« %20482913 » → « 482913 »).
+const CODE_DIGITS = /(?<![\p{L}\p{N}%]|\d[ ./-])\d(?:[ .-]?\d){3,7}(?![\p{L}\p{N}]|[ .-]\d|[.,]\d|\s*€)/gu;
 // Separators: one space or tab, or `.` `-` `+` (a GET form's space) `/` `_`, maybe spaced. A date (14/03/1990) has too few digits.
 const TEL_FR = /(?<![\p{N}+])(?:0[1-9]|\(0[1-9]\))(?:(?:[ \t]?[.+/_-][ \t]?|[ \t])?\d{2}){4}(?!\p{N})/gu;
 // No country code starts with 0: « 00042178306 » (an account number) is no phone. « 00 33 6… » is spaced after 00.
