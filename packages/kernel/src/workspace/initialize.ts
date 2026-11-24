@@ -100,6 +100,9 @@ export const OLD_AGENTS = new Set([
   // The first note_lesson wording, test builds only: fr, en.
   "2e12aa2464b166636278b3838296c0619d6a21d113b5281f4ff7759de4e19000",
   "efa0120ddf1ac7cb2d4a95c0a2b1eefcbdd3e4e5a11d9d8012af548cfeda69af",
+  // With the Extensions section and the extension tools (until 0.1.26): fr, en.
+  "db5bfd093244cfc14097afa5bc69ec85cd3076f922c118da1b362da5c85ada11",
+  "e078a5edca645e49e1f1021a3114feaff533ed9669124cedf1dd1bc232d41f58",
 ]);
 
 const hash = (content: Buffer) => createHash("sha256").update(content).digest("hex");
@@ -149,7 +152,7 @@ async function currentHashes(models: string, langs: string[], rel: string): Prom
  * The texts written in the language of the space: swapped on a language change while untouched. The guides hold what
  * AGENTS.md leaves to a task (widgets, actions…): the agent reads one when its task comes, a local model keeps its window.
  */
-const GUIDES = ["guides/widgets.md", "guides/extensions.md", "guides/actions.md", "guides/site-apps.md"];
+const GUIDES = ["guides/widgets.md", "guides/actions.md", "guides/site-apps.md"];
 const LOCALIZED_TEXTS = ["AGENTS.md", "CLAUDE.md", ...GUIDES];
 
 /**
@@ -275,6 +278,13 @@ export const OLD_CLAUDE_MD: ReadonlySet<string> = new Set([
   "11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b",
   "4690fb441d1ffb32d9e9915a8fc65545f25de774d368c48041e86de43d7a8cab",
 ]);
+/** Every shipped version of the removed extensions guide (fr, en; then the ones that listed `cookies` among the working rights). */
+export const OLD_EXTENSIONS_GUIDE = new Set([
+  "d4ef40587ed42fab3395c5188d95d48175dca97eeba231095e412c028f5b1b23",
+  "c1c07f72de27a742c2b20908921c0bc3a790485e30a4e6abd1270ba6798a76af",
+  "ab3d59cd7ee04a33e9c29ee43a1bd086d16ca5b038e582b8fb2f756b7135ac9b",
+  "bb0ef51c03aaa9bfc5788348376f42aef8555eb35536f429b30ad7cc92844436",
+]);
 /** The hashes of every old shipped version of the language texts (the other guides: none, only the current ones). */
 const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   "AGENTS.md": OLD_AGENTS,
@@ -297,8 +307,6 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
     "4ff80b95ebfed67f690c6efd116d513e8ecabd5de2762bcba06e4cc52c2bc985",
     "5f58a3c91e4e65fbc6a4fd1970626b1071cdfdb5ebabed972ba9ec171fbb74a5",
   ]),
-  // The version that still listed `cookies` among the working rights.
-  "guides/extensions.md": new Set(["ab3d59cd7ee04a33e9c29ee43a1bd086d16ca5b038e582b8fb2f756b7135ac9b", "bb0ef51c03aaa9bfc5788348376f42aef8555eb35536f429b30ad7cc92844436"]),
 };
 
 /** Every hash `rel` has as a current shipped text, in any language: an old version (a guide with outdated rights) is not one. */
@@ -329,6 +337,9 @@ export async function initSpace(c: SpacePaths, locale = FALLBACK, models = DEFAU
   // The notebook moved to .ressac (search/notes.ts): an untouched old copy goes; an edited one stays, never read again.
   const oldNotes = join(c.root, "browsing-notes.md");
   if (existsSync(oldNotes) && OLD_NOTES.has(createHash("sha256").update(await readFile(oldNotes)).digest("hex"))) await rm(oldNotes, { force: true });
+  // Agent-written extensions are gone (0.1.27): their guide goes too while untouched.
+  const oldGuide = join(c.root, "guides/extensions.md");
+  if (existsSync(oldGuide) && OLD_EXTENSIONS_GUIDE.has(createHash("sha256").update(await readFile(oldGuide)).digest("hex"))) await rm(oldGuide, { force: true });
   const langs = await languagesOf(models);
   // Only a language the templates have: `locale` never builds a path out of the templates folder.
   const lang = langs.includes(locale) ? locale : FALLBACK;
@@ -362,7 +373,6 @@ export async function initSpace(c: SpacePaths, locale = FALLBACK, models = DEFAU
   await mkdir(c.projects, { recursive: true });
   // Mounted read-write over the read-only .ressac in the workshop: it must exist before docker run.
   await mkdir(c.logs, { recursive: true });
-  await mkdir(c.extensions, { recursive: true });
   await mkdir(c.actions, { recursive: true });
   await mkdir(c.components, { recursive: true });
   await mkdir(c.sites, { recursive: true });

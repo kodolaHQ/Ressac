@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
-import { initSpace, DEFAULT_TEMPLATES, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_CLAUDE_MD } from "../../src/workspace/initialize.js";
+import { initSpace, DEFAULT_TEMPLATES, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_CLAUDE_MD, OLD_EXTENSIONS_GUIDE } from "../../src/workspace/initialize.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget } from "../../src/home/schemas.js";
 import { DeclarationSite, checkSiteDeclaration } from "../../src/sites/schemas.js";
@@ -25,7 +25,6 @@ const expectedList = [
   "AGENTS.md",
   "CLAUDE.md",
   "guides/widgets.md",
-  "guides/extensions.md",
   "guides/actions.md",
   "guides/site-apps.md",
   ...Object.entries(START_FILES).flatMap(([w, files]) => files.map((f) => `home/widgets/${w}/${f}`)),
@@ -37,7 +36,6 @@ test("creates the full space in an empty folder", async () => {
   for (const f of expectedList) expect(existsSync(join(c.root, f)), f).toBe(true);
   expect(existsSync(c.projects)).toBe(true);
   expect(existsSync(c.logs)).toBe(true);
-  expect(existsSync(c.extensions)).toBe(true);
   expect(existsSync(c.actions)).toBe(true);
   expect(existsSync(c.sites)).toBe(true);
   expect(existsSync(c.components)).toBe(true);
@@ -93,7 +91,7 @@ test("AGENTS.md stays short and every guide it names ships in each language", as
     // Loaded whole at every session: a local model's window must keep room for the work.
     expect(text.length, dir).toBeLessThan(30_000);
     const named = [...new Set(text.match(/\/workspace\/guides\/[a-z-]+\.md/g))];
-    expect(named.length, dir).toBe(4);
+    expect(named.length, dir).toBe(3);
     for (const g of named) expect(existsSync(join(dir, g.slice("/workspace/".length))), g).toBe(true);
   }
 });
@@ -208,6 +206,29 @@ test("an old shipped browsing-notes.md is deleted, an edited one is kept", async
   expect(await readFile(join(c.root, "browsing-notes.md"), "utf8")).toBe("my lessons\n");
 });
 
+test("the removed extensions guide goes while untouched, an edited one is kept", async () => {
+  const c = spacePaths(await tempFolder());
+  const guide = join(c.root, "guides", "extensions.md");
+  await initSpace(c);
+  expect(existsSync(guide)).toBe(false);
+  // The 0.1.26 copies (fr, en) are known shipped versions.
+  expect(OLD_EXTENSIONS_GUIDE.has("d4ef40587ed42fab3395c5188d95d48175dca97eeba231095e412c028f5b1b23")).toBe(true);
+  expect(OLD_EXTENSIONS_GUIDE.has("c1c07f72de27a742c2b20908921c0bc3a790485e30a4e6abd1270ba6798a76af")).toBe(true);
+  const shipped = "a shipped guide\n";
+  OLD_EXTENSIONS_GUIDE.add(sha256(shipped));
+  try {
+    await mkdir(join(c.root, "guides"), { recursive: true });
+    await writeFile(guide, shipped);
+    await initSpace(c);
+    expect(existsSync(guide)).toBe(false);
+  } finally {
+    OLD_EXTENSIONS_GUIDE.delete(sha256(shipped));
+  }
+  await writeFile(guide, "my notes\n");
+  await initSpace(c);
+  expect(await readFile(guide, "utf8")).toBe("my notes\n");
+});
+
 test("the CLAUDE.md and AGENTS.md shipped before the English formats are known old templates", () => {
   expect(OLD_CLAUDE_MD.has("11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b")).toBe(true);
   // the AGENTS.md shipped before the English formats
@@ -215,8 +236,10 @@ test("the CLAUDE.md and AGENTS.md shipped before the English formats are known o
 });
 
 test("the AGENTS.md templates are pinned: before editing one, add its hash to OLD_AGENTS, then update the pin", async () => {
-  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("db5bfd093244cfc14097afa5bc69ec85cd3076f922c118da1b362da5c85ada11");
-  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("e078a5edca645e49e1f1021a3114feaff533ed9669124cedf1dd1bc232d41f58");
+  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("3c746be1d8f398077a604ce4113ab33e4c62b5723aea9d03fbd090b80f597e1b");
+  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("ec25157a83303e77861b9a4c349314fd2db357018b7492c906ffe9b41a28b268");
+  expect(OLD_AGENTS.has("db5bfd093244cfc14097afa5bc69ec85cd3076f922c118da1b362da5c85ada11")).toBe(true);
+  expect(OLD_AGENTS.has("e078a5edca645e49e1f1021a3114feaff533ed9669124cedf1dd1bc232d41f58")).toBe(true);
   expect(OLD_AGENTS.has("7b028830acee8f891d9258b5b3f5aab9a8934bd50537b70c0508fa27bee4c2eb")).toBe(true);
   expect(OLD_AGENTS.has("f9807f7224851e6bc752fff45cd70a22512f9ad462a9a7564963583d5ebc3527")).toBe(true);
   expect(OLD_AGENTS.has("2efd3c8aa133558c7855b6877ced708b8740062bb6e589cde32507d6d308c459")).toBe(true);

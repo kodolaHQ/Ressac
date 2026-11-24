@@ -52,12 +52,6 @@ the URL by other means).
   (5280-5299 if it is empty; only these ports are visible from the browser), and stops with
   the agent's window.
 
-## Extensions
-
-The user has their own extensions (installed from addons.mozilla.org) and you can write some for them. **Nothing you
-write runs without their consent**, and you never change theirs. **Before writing, changing or debugging an
-extension, read `/workspace/guides/extensions.md`.**
-
 ## Actions: workflows launched on demand
 
 An action is a workflow without a widget that the user launches whenever they want; its result is a
@@ -212,12 +206,6 @@ group(tickets, priorite)
 | `launch_action(id, input?)` | Launches an action and waits for its end: `{ status, run?, error? }`, never the results (action with an account: grant card first); the user sees the page in the action's previous results |
 | `action_runs(id, run?)` | An action's recent runs (list) or the detail of one, page plan included; for an action with an account, status only without the user's grant |
 | `widget_data(id)` | A widget's last harvested data; for a widget with an account, a card asks for the user's grant |
-| `list_extensions` | The user's extensions (theirs and yours): key, name, version, source, spaces where they are active (private spaces are only counted), errors |
-| `request_extension(id, space?)` | Asks the user to enable your extension `/workspace/extensions/<id>` in a space (by default the active space): a card shows them rights, sites and network, and the tool waits for their answer |
-| `reload_extension(id)` | Reloads your extension after a change: with no extra right it restarts on its own (`reloaded`), otherwise it is disabled (`disabled`) until a new grant; a refused copy changes nothing (`refused`) |
-| `extension_console(id, since?)` | Your extension's console (service worker, pages, content scripts), filtered; never for an extension installed by the user |
-| `unlock_console(id, reason)` | Asks the user to lift the console filtering, to fix something |
-| `lock_console(id)` | Closes this unlock again: to call as soon as the fix is done |
 | `list_sites` | The user's site apps: id, name, current domain, open or closed (see « Site apps ») |
 | `open_site(id)` | Opens a site app's window and returns the tab id `site:<id>` |
 | `close_site(id)` | Closes a site app's window |

@@ -15,7 +15,7 @@ async function setup(files: Snapshot = {}, locale = "en") {
   const paths = spacePaths(await tempFolder());
   // The workspace as initSpace leaves it: the five shipped texts, then the test's own files on top.
   const disk = new Map<string, string>();
-  for (const t of ["AGENTS.md", "guides/widgets.md", "guides/extensions.md", "guides/actions.md", "guides/site-apps.md"]) disk.set(`/workspace/${t}`, await template(locale, t));
+  for (const t of ["AGENTS.md", "guides/widgets.md", "guides/actions.md", "guides/site-apps.md"]) disk.set(`/workspace/${t}`, await template(locale, t));
   for (const [p, c] of Object.entries(files)) disk.set(p, c);
   const writes: Record<string, string | null>[] = [];
   const io: InstructionIo = {

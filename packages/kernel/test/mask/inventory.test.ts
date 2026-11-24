@@ -26,7 +26,7 @@ test("every tool of a server with every option is classified, and every classifi
   const token = generateToken();
   const s = await startMcpServer({
     bridge, policy: new AccessPolicy(), token,
-    apps: none(), widgets: none(), actions: none(), sites: none(), extensions: none(),
+    apps: none(), widgets: none(), actions: none(), sites: none(),
     recaps: createRecaps({ folder }), search: new SearchSessions({ show: () => {} }), notes: new BrowsingNotes(notesFile, async () => "# Carnet\n"),
     openWorkflow: () => null, outflow: new Outflow(),
   });
@@ -45,7 +45,7 @@ test("every tool of a server with every option is classified, and every classifi
 test("the outflows the spec lists, run_js among them, are outflows; the shared stores' writers are store writes", () => {
   for (const n of ["navigate", "open_tab", "read_pages", "fill_field"]) expect(TOOL_KINDS[n]).toBe("outflow");
   for (const n of ["search_web", "open_site", "launch_app", "launch_action", "open_workflow", "hand_over", "run_js", "reload"]) expect(TOOL_KINDS[n]).toBe("outflow-no-destination");
-  for (const n of ["note_lesson", "show_recap", "harvest_widget", "request_extension", "reload_extension"]) expect(TOOL_KINDS[n]).toBe("store-write");
+  for (const n of ["note_lesson", "show_recap", "harvest_widget"]) expect(TOOL_KINDS[n]).toBe("store-write");
   expect(TOOL_KINDS.read_tab).toBe("read");
   expect(TOOL_KINDS.reveal_value).toBe("read");
 });

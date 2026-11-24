@@ -135,7 +135,6 @@ test("invariant 1: every registered tool is behind the masker, and no result of 
       widgets: failing(),
       actions: failing(),
       sites: failing(),
-      extensions: failing(),
       recaps: createRecaps({ folder }),
       search: new SearchSessions({ show: () => {} }),
       notes: new BrowsingNotes(notesFile, async () => "# Carnet\n\n"),
@@ -151,8 +150,8 @@ test("invariant 1: every registered tool is behind the masker, and no result of 
       const names = tools.map((t) => t.name);
       // No tool is exempt from the masker (spec § 9 bis, invariant 1).
       expect([...names].sort()).toEqual([...masker.covered].sort());
-      // Every option is on: the list covers the history, the dev tools, the search and the extensions.
-      expect(names).toEqual(expect.arrayContaining(["search_history", "search_bookmarks", "read_console", "search_web", "note_lesson", "list_extensions", "site_memory", "show_recap", "launch_app", "harvest_widget", "launch_action", "open_workflow"]));
+      // Every option is on: the list covers the history, the dev tools and the search.
+      expect(names).toEqual(expect.arrayContaining(["search_history", "search_bookmarks", "read_console", "search_web", "note_lesson", "site_memory", "show_recap", "launch_app", "harvest_widget", "launch_action", "open_workflow"]));
       const leaks: string[] = [];
       let read = 0;
       let shownTab = 0;
@@ -165,7 +164,7 @@ test("invariant 1: every registered tool is behind the masker, and no result of 
       }
       expect(leaks).toEqual([]);
       // Not a vacuous pass: many tools did read the IBAN's page, history, notebook or a failing option.
-      expect(read).toBeGreaterThan(20);
+      expect(read).toBeGreaterThan(15);
       // …and several printed the source tab, its URL or its links.
       expect(shownTab).toBeGreaterThan(3);
     },

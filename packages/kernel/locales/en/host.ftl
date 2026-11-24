@@ -36,7 +36,6 @@ host-invalid-request = Invalid request
 host-invalid-grant-request = Invalid grant request
 host-widget-not-found = Widget not found
 host-review-unknown-comparison = This comparison is no longer kept: refresh the review.
-host-amo-keys-absent = Mozilla account not connected: Settings › Agent › Mozilla account. Nothing was sent to Mozilla.
 host-engine-url-invalid = Invalid address (https://…)
 host-review-unknown-project = unknown project
 host-review-file-absent = file absent from the review

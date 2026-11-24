@@ -17,7 +17,7 @@ export interface InstructionIo {
   write(entries: Record<string, string | null>): Promise<void>;
 }
 
-const TEXTS = ["AGENTS.md", "guides/widgets.md", "guides/extensions.md", "guides/actions.md", "guides/site-apps.md"];
+const TEXTS = ["AGENTS.md", "guides/widgets.md", "guides/actions.md", "guides/site-apps.md"];
 const CLAUDE_FILES = TEXTS.map((t) => `/workspace/${t}`);
 /** The interactive TUI has no --ignore-user-config, and this file can name an instruction file (model_instructions_file). */
 const CODEX_CONFIG = "/home/node/.codex/config.toml";

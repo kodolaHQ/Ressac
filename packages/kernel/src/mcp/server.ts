@@ -15,7 +15,6 @@ import { ID_SITE } from "../sites/schemas.js";
 import type { MemoryContent } from "../sites/memory.js";
 import { isLocal, type DevRight, type AccessPolicy } from "../access/policy.js";
 import { registerDevTools, type ProfileFiles } from "./devtools.js";
-import { registerExtensionsTools, type ExtensionsTools } from "./extensions.js";
 import { STOP_TEXT, CLOSED_TEXT, URL_MAX, type SearchSessions } from "../search/sessions.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -193,12 +192,6 @@ const OUTFLOW_SOURCES: Record<string, string> = {
   launch_action: "action",
   action_runs: "action",
   hand_over: "hand-over",
-  list_extensions: "extensions",
-  request_extension: "extensions",
-  reload_extension: "extensions",
-  extension_console: "extension-console",
-  unlock_console: "extension-console",
-  lock_console: "extension-console",
   ...Object.fromEntries(
     ["request_devtools", "read_console", "read_network", "read_request", "profile_performance", "memory_snapshot", "compare_memory", "run_js", "reload"].map((n) => [n, "devtools"]),
   ),
@@ -550,7 +543,6 @@ export function createToolsServer(
   widgets?: OptionsWidgets,
   win: string | null = null,
   openWorkflow?: (win: string) => OpenWorkflow | null,
-  extensions?: ExtensionsTools,
   actions?: OptionsActions,
   toolSites?: SitesTools,
   beatMs?: number,
@@ -1077,7 +1069,7 @@ export function createToolsServer(
   /** Hands the search tab to the user (band « à vous ») and waits for Continuer; a cancelled call hands it back. */
   async function awaitHand(id: string, lead: string, extra?: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<Result | { path: string[] }> {
     const sessions = searching!.sessions;
-    // Same heartbeat as request_extension: the user may take longer than the client's silence timeout.
+    // A heartbeat: the user may take longer than the client's silence timeout.
     const progressToken = extra?._meta?.progressToken;
     let progress = 0;
     const beat =
@@ -1894,7 +1886,6 @@ export function createToolsServer(
   // Its real address is not stored either: read_recap gives the agent the recap back.
   if (recaps) registerRecapsTools(server, bridge, recaps, { has: (s) => !LABEL_SHAPE.test(s) && seen.has(s) }, win, protect, searching?.sessions);
   if (toolSites) registerSitesTools(server, { tools: toolSites, access: siteAccess, wrap, reached: (id) => agentSites.has(`${policy.conversation}:site:${id}`) }, protect);
-  if (extensions) registerExtensionsTools(server, { tools: extensions, agent: dev?.agent ?? "L'agent", window: win, policy: policy, ...(beatMs ? { heartbeatMs: beatMs } : {}) });
   if (searching && bridge.search) {
     const { sessions } = searching;
     const search = bridge.search;
@@ -2690,7 +2681,7 @@ export async function startMcpServer(o: {
   apps?: AppsTools;
   /** Wait for an application's window after its launch (adjustable for tests). */
   appTabDelayMs?: number;
-  /** The pace of the progress notifications of the extension tools that wait (tests). */
+  /** The pace of the progress notifications of the tools that wait for the user (tests). */
   heartbeatMs?: number;
   /** Agent name, shown on the consent card of the dev tools. */
   agent?: string;
@@ -2704,8 +2695,6 @@ export async function startMcpServer(o: {
   actions?: ActionsTools;
   /** The workflow open in a window's builder; without it, the `open_workflow` tool does not exist. */
   openWorkflow?: (win: string) => OpenWorkflow | null;
-  /** Extension tools (list, ask, reload, console); without it, no extension tool. */
-  extensions?: ExtensionsTools;
   /** Site app tools (list, open, memory, errors); without it, none of these tools. */
   sites?: SitesTools;
   /** The agent's search sessions; with the bridge's `search`, the `search_web` tool exists. */
@@ -2763,7 +2752,7 @@ export async function startMcpServer(o: {
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, o.extensions, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale, who.session, masker, agentSites, o.otherSessions, o.workspaceLock, listedFields);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale, who.session, masker, agentSites, o.otherSessions, o.workspaceLock, listedFields);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();
