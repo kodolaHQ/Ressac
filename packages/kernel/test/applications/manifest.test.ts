@@ -96,14 +96,17 @@ test("watchProjects signals a new manifest and ignores node_modules", async () =
   const stop = watchProjects(c, () => calls++);
   // Once when the watch is ready: a project made during its first scan is read then.
   await expect.poll(() => calls).toBe(1);
+  // macOS FSEvents can replay the folders made just before the watch, after it is ready: count from once it is quiet.
+  for (let seen = -1; seen !== calls; ) (seen = calls), await sleep(500);
+  const before = calls;
   await writeFile(join(c.projects, "a", "node_modules", "p", "ressac.json"), "{}");
+  // Must not happen: no call within 500 ms of the write into node_modules.
   await sleep(500);
-  expect(calls).toBe(1);
+  expect(calls - before).toBe(0);
   await write(c, "a", '{"type":"poc","launch":"x"}');
-  await sleep(500);
+  // At least once: FSEvents can deliver the file's add and change more than GROUPING_MS apart (harmless re-read).
+  await expect.poll(() => calls - before, { timeout: 5000 }).toBeGreaterThanOrEqual(1);
   await stop();
-  // At least once: on a slow runner FSEvents can deliver the file's add and change more than GROUPING_MS apart (2 calls, harmless re-read).
-  expect(calls).toBeGreaterThanOrEqual(2);
 });
 
 // Projects the agent wrote before the rename to Ressac carry webaios.json.
