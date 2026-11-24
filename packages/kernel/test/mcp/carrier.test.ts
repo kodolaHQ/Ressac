@@ -379,3 +379,67 @@ test("a capture is refused when a document could not be read, or when the browse
     expect(captures(bridge)).toBe(0);
   });
 });
+
+test("a value Ressac filled on an origin makes a page of that origin printing it back a carrier, in a frame too; a page of another origin printing it does not", async () => {
+  const ADDRESS = "14 rue des Tanneurs\n69005 Lyon";
+  const store = new PassportStore();
+  store.replace("perso", [{ id: "00000000000000a1", field: "adresse", value: { text: ADDRESS }, variants: [], origins: ["boutique.example"], how: "typed", created: "2026-11-23T10:00:00.000Z", updated: "2026-11-23T10:00:00.000Z" }]);
+  const ag: TabInfo = { id: "ag", title: "Commande", url: "https://boutique.example/commande", space: "perso", profile: "perso", agentReached: true };
+  const conf: TabInfo = { id: "conf", title: "Confirmation", url: "https://boutique.example/commande/confirmation", space: "perso", profile: "perso", agentReached: true };
+  const elsewhere: TabInfo = { id: "elsewhere", title: "Ailleurs", url: "https://ailleurs.example/", space: "perso", profile: "perso", agentReached: true };
+  const bridge = new FakeBridge([ag, conf, elsewhere], { active: "ag", allow: true, address: true, fill: { yes: true }, devTools: true });
+  bridge.pages.set("ag", { text: "Votre commande", links: [], fields: [{ handle: "5:0", type: "text", autocomplete: "", label: "Adresse" }] });
+  const printed = "Merci ! Livraison : 14 rue des Tanneurs, 69005 Lyon.";
+  bridge.pages.set("conf", { text: printed, links: [] });
+  bridge.pages.set("elsewhere", { text: "Accueil", links: [], documents: [{ origin: "https://boutique.example", text: printed }] });
+  const masker = new Masker({ passport: store });
+  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  masker.open("A", "W1");
+  const session = s.openSession("W1", undefined, "A");
+  const c = new Client({ name: "t", version: "0" });
+  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session}` } } }));
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const r = await c.callTool({ name, arguments: args });
+    const content = r.content as { type: string; text?: string }[];
+    return { text: content.map((x) => x.text ?? "").join("\n"), image: content.some((x) => x.type === "image") };
+  };
+  try {
+    // Before the fill the address is nobody's value on this web page: the capture goes.
+    expect((await call("capture_screen", { id: "conf" })).image).toBe(true);
+    await call("read_tab", { id: "ag" });
+    expect((await call("fill_field", { id: "ag", field: 0, passport: "adresse" })).text).toBe("Champ rempli.");
+    expect((await call("read_tab", { id: "conf" })).text).not.toContain("Tanneurs");
+    expect((await call("capture_screen", { id: "conf" })).text).toBe(REFUSED);
+    // A frame of the filled origin printing it, inside another site's page.
+    expect((await call("capture_screen", { id: "elsewhere" })).text).toBe(REFUSED);
+  } finally {
+    await c.close();
+    await s.stop();
+  }
+});
+
+test("a value filled on one origin does not make another origin's page printing it a carrier (no oracle there)", async () => {
+  const ADDRESS = "14 rue des Tanneurs\n69005 Lyon";
+  const store = new PassportStore();
+  store.replace("perso", [{ id: "00000000000000a1", field: "adresse", value: { text: ADDRESS }, variants: [], origins: ["boutique.example"], how: "typed", created: "2026-11-23T10:00:00.000Z", updated: "2026-11-23T10:00:00.000Z" }]);
+  const ag: TabInfo = { id: "ag", title: "Commande", url: "https://boutique.example/commande", space: "perso", profile: "perso", agentReached: true };
+  const other: TabInfo = { id: "other", title: "Autre", url: "https://autre.example/", space: "perso", profile: "perso", agentReached: true };
+  const bridge = new FakeBridge([ag, other], { active: "ag", allow: true, address: true, fill: { yes: true }, devTools: true });
+  bridge.pages.set("ag", { text: "Votre commande", links: [], fields: [{ handle: "5:0", type: "text", autocomplete: "", label: "Adresse" }] });
+  bridge.pages.set("other", { text: "Livraison : 14 rue des Tanneurs, 69005 Lyon.", links: [] });
+  const masker = new Masker({ passport: store });
+  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  masker.open("A", "W1");
+  const session = s.openSession("W1", undefined, "A");
+  const c = new Client({ name: "t", version: "0" });
+  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session}` } } }));
+  try {
+    await c.callTool({ name: "read_tab", arguments: { id: "ag" } });
+    await c.callTool({ name: "fill_field", arguments: { id: "ag", field: 0, passport: "adresse" } });
+    const r = await c.callTool({ name: "capture_screen", arguments: { id: "other" } });
+    expect((r.content as { type: string }[]).some((x) => x.type === "image")).toBe(true);
+  } finally {
+    await c.close();
+    await s.stop();
+  }
+});

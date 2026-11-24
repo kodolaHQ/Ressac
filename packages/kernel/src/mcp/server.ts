@@ -27,7 +27,7 @@ import { pageState, reducedPage, stateLine } from "./reduce.js";
 import { outflowLabel, type Outflow, type OutflowHit, type ReadPlace } from "../outflow/outflow.js";
 import { say } from "../i18n.js";
 import { isSensitive } from "../access/sensitive.js";
-import { labelFilled, labelWritten, passportHits } from "../mask/mask.js";
+import { labelFilled, labelWritten, maskedRuns, passportHits } from "../mask/mask.js";
 import { Masker } from "../mask/masker.js";
 import type { PassportOrigins, PassportRef, PassportStore } from "../mask/passport.js";
 import { canonicalOf, cleanOrigin, dayFirst, FIELD_LABEL, maskedDisplay, originMatches, PASSPORT_KINDS, PASSPORT_LIMITS, rawOf, valueForKind, type PassportField } from "../mask/passport-fields.js";
@@ -941,9 +941,16 @@ export function createToolsServer(
     const [{ text, frameOrigins }, deep] = await Promise.all([bridge.readText(o.id, { expect: o.url }), bridge.carrierText?.(o.id, { expect: o.url })]);
     // A sensitive frame shows its pixels in a capture, not its text in the top document's.
     const frames = frameOrigins?.some((f) => isSensitive(f)) === true;
-    const all = [text, ...(deep?.documents ?? []).map((d) => d.text)].join("\n");
-    if (!deep || deep.unread || frames || carrier(o, all, agentSites.has(`${policy.conversation}:${o.id}`), masker.passport, started())) policy.markCarrier(o);
+    const documents = [{ origin: originOf(o.url), text }, ...(deep?.documents ?? [])];
+    const all = documents.map((d) => d.text).join("\n");
+    if (!deep || deep.unread || frames || documents.some(filledHere) || carrier(o, all, agentSites.has(`${policy.conversation}:${o.id}`), masker.passport, started())) policy.markCarrier(o);
   }
+  /**
+   * A document showing a value this conversation filled on its origin (design § 8.5): masked in its text there, so in its
+   * pixels too. No oracle: that origin already holds the value, and a read there masks it the same.
+   */
+  const filledHere = (d: { origin: string | null; text: string }) =>
+    d.origin !== null && labels.entries("web").some((e) => e.origins.includes(d.origin!)) && maskedRuns(d.text, { table: labels, zone: "web", origin: d.origin }).length > 0;
 
   /** A tab whose links the agent may follow: not a local page nor a site app, whose text and links the agent writes. */
   const linksFollowable = (o: TabInfo) => !isLocal(o.url) && o.site === undefined;
