@@ -26,7 +26,8 @@ export function testActor(profile: string): { env: Record<string, string>; prefs
   if (process.env.RESSAC_E2E_PACKAGED_ACTOR === "1") return { env: {}, prefs: {} };
   const dir = path.join(realpathSync(profile), "extension-actor");
   mkdirSync(dir, { recursive: true });
-  for (const name of ["extension-actor", "site-actor", "design-actor", "vim-actor", "frame-actor"])
+  // Every actor module chrome/store/index.ts loads through actorModule: one missing fails to load in this setup only.
+  for (const name of ["extension-actor", "site-actor", "design-actor", "vim-actor", "frame-actor", "fill-actor", "hide-actor", "call-actor"])
     writeFileSync(path.join(dir, `${name}.sys.mjs`), readFileSync(path.join(BUILT, `${name}.sys.mjs`), "utf8").replace(/^#define .*\n/, ""));
   return { env: { RESSAC_TEST_EXTENSION_ACTOR: dir }, prefs: { "security.sandbox.content.mac.testing_read_path1": dir } };
 }
