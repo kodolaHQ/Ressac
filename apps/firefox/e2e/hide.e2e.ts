@@ -184,7 +184,7 @@ it("a picked name: the bubble prefills Nom, Prénom(s) and Nom; Cacher writes it
   await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
   // The site was no source of this conversation: it counts from the next one.
   expect(await endingShown()).toBe("next");
-  expect(await bubbleText("hide-toast")).toContain("Masqué pour l'agent");
+  expect(await bubbleText("hide-toast")).toContain("Masqué à partir de la prochaine conversation");
   await expect.poll(async () => (await entryOf("Camille"))?.origins, { timeout: 15_000 }).toEqual([host]);
   expect((await entryOf("Camille"))!.value).toEqual({ given: "Camille", family: "Aubrac" });
   await w!.close();
@@ -337,7 +337,7 @@ it("reduced motion: the toast appears and nothing in the layer or the bubble ani
   await pick("#name");
   await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
   await endingShown();
-  expect(await bubbleText("hide-toast")).toContain("Masqué pour l'agent");
+  expect(await bubbleText("hide-toast")).toContain("Masqué");
   // The ending runs out (its chip leaves), then every animation it made is in the probe.
   await expect.poll(() => inUi<boolean>(m, "return !doc.querySelector('[data-testid=\"hide-chip\"]')", [], "hide"), { timeout: 10_000 }).toBe(true);
   for (const frame of ["hide", "hideBubble"] as const) expect(await inUi<number>(m, "return ui.__longest;", [], frame)).toBeLessThanOrEqual(150);
@@ -374,7 +374,7 @@ it("the page sees no pointer from the arm through the bubble; at the toast it ge
     window.ressacTestReleasedAt = 0;
     new MutationObserver(() => { if (!window.ressacTestReleasedAt && l.style.pointerEvents === "none") window.ressacTestReleasedAt = performance.timeOrigin + performance.now(); }).observe(l, { attributes: true, attributeFilter: ["style"] });`);
   await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
-  expect(await bubbleText("hide-toast")).toContain("Masqué pour l'agent");
+  expect(await bubbleText("hide-toast")).toContain("Masqué");
   const releasedAt = await waitFor(m, "return window.ressacTestReleasedAt", (v) => typeof v === "number" && v > 0, 5000);
   // A late :hover transition or a synthetic move for the moves above would come within a frame or two: the window
   // starts at the release, the last moment the layer held the pointer.

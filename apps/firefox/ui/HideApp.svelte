@@ -4,6 +4,7 @@
   import type { HideApi, HideContext, HideRect } from "../shared/api";
   import { format } from "../shared/i18n";
   import { PASSPORT_FIELDS, type PassportField } from "../chrome/shims/kernel";
+  import { endingSentence as sentence, toastLine } from "../core/hide/toast";
 
   // « Cacher pour l'agent » (chrome/window/hide-layer.ts): `layer` draws over the page (outline, animation, ending),
   // `bubble` is the confirmation, its errors and the toast. Everything shown comes from the chrome's context; this
@@ -92,8 +93,6 @@
     if (part === "layer" && ctx?.phase !== "toast" && stage !== "done") stage = "done";
   });
 
-  /** The ending's sentence: « Ajouté à votre passeport » only when the hide made a new entry. */
-  const sentence = (c: HideContext) => `chrome-hide-ending-${c.ending}${!c.created && (c.ending === "agentReached" || c.ending === "notHere") ? "-known" : ""}`;
   const box = (r: HideRect) => `left: ${r.x}px; top: ${r.y}px; width: ${r.width}px; height: ${r.height}px`;
   const particles = (r: HideRect) => {
     const n = Math.min(26, 8 + Math.round((r.width * r.height) / 400));
@@ -190,7 +189,7 @@
     {:else if ctx?.phase === "toast"}
       <div class="toast" role="status" data-testid="hide-toast" out:fade={{ duration: 150 }}>
         <div class="line">
-          <span>{t(ctx.undoable ? "chrome-hide-toast" : "chrome-hide-toast-already")}</span>
+          <span>{t(toastLine(ctx))}</span>
           {#if ctx.undoable}<button class="cancel" data-testid="hide-undo" onclick={() => void api.undo()}>{t("chrome-hide-toast-undo")}</button>{/if}
         </div>
         {#if ctx.readBefore}<p class="muted" data-testid="hide-read-before">{t("chrome-hide-read-before")}</p>{/if}
