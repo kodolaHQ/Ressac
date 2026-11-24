@@ -1117,6 +1117,21 @@ test("a code read in the mail, filled into a page the user opened elsewhere (a p
   });
 });
 
+test("the card's red lines go by severity: the page's site before forms posting to reassuring sites (the agent cannot push it off)", async () => {
+  const fields = [0, 1, 2, 3, 4].map((n) => ({ handle: `8:${n}`, type: "text", autocomplete: "", label: `Champ ${n}` }));
+  await servePassport({ text: `Ton code : ${CODE}.`, tabs: [ptab("mail", `${P_MAIL}/inbox`), ptab("phish", "https://evil.example/f")] }, async ({ call, bridge, cards }) => {
+    const code = (await call("read_tab", { id: "mail" })).text.match(/⟨code-[a-z0-9]{8}⟩/)![0];
+    bridge.pages.set("phish", { text: "Vérification", links: [], fields });
+    const reassuring = ["https://mail.example", "https://accounts.google.test", "https://www.google.test", "https://myaccount.google.test", "https://support.google.test"];
+    fields.forEach((f, i) => bridge.seals.set(f.handle, { action: `${reassuring[i]}/post` }));
+    await call("read_tab", { id: "phish" });
+    await call("fill_field", { id: "phish", field: 0, value: code, also: [1, 2, 3, 4].map((field) => ({ field, value: code })) });
+    const lines = String(cards()[0]!.danger).split("\n");
+    expect(lines[0]).toBe("Cette page est sur evil.example, et votre code a été lu sur mail.example : vérifiez que c'est bien le site attendu.");
+    expect(lines.slice(1).every((l) => l.startsWith("Ce formulaire envoie vers"))).toBe(true);
+  });
+});
+
 test("passport: the user switches space while the borrowed card is up: « Remplir » fills nothing", async () => {
   const agentTab: TabInfo = { ...ptab("a", `${P_SHOP}/a`, true, "agent"), activeProfile: "perso" };
   await servePassport({ tabs: [ptab("mail", `${P_MAIL}/inbox`), agentTab], passports: { perso: [ADDRESS_ENTRY] } }, async ({ call, bridge, of }) => {

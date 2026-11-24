@@ -1519,7 +1519,8 @@ export function createToolsServer(
         const frame = top !== s.origin ? s.origin : s.frames.find((f) => f !== s.origin);
         return top !== undefined && frame !== undefined ? [l10n("kernel-mask-fill-framed", { frame: siteOf(frame), top: siteOf(top) })] : [];
       }))];
-      const danger = [hit && OUTFLOW_DANGER(locale(), hit), ...elsewhere, ...foreign, ...framed, acts, locked && lockedLine()].filter(Boolean).join("\n");
+      // By severity: the card bounds its lines, and the agent picks how many forms post elsewhere (12 rows at most).
+      const danger = [...foreign, ...framed, locked && lockedLine(), hit && OUTFLOW_DANGER(locale(), hit), acts, ...elsewhere].filter(Boolean).join("\n");
       // Design § 8.1: a passport value off all its origins asks Touch ID, once per origin for TOUCH_ID_WINDOW_MS (ruling F16:
       // the window spares only that reason; a tab the agent reached still asks).
       const fromPassport = offered.filter((e) => e.passport?.length);

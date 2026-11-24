@@ -5,6 +5,7 @@
   import { api } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import MaskReveal from "./MaskReveal.svelte";
+  import { dangerLines } from "./danger-lines";
   import { showSection } from "./settings-section.svelte";
 
   /**
@@ -17,7 +18,7 @@
   const kind = $derived(request.permissions[0]);
   /** Kernel texts and names: data, shown as text and bounded. */
   const bound = (s: string | undefined) => (s ?? "").slice(0, UNLOCK_REASON_LENGTH);
-  const lines = $derived((request.danger ?? "").split("\n").filter(Boolean).slice(0, 5).map(bound));
+  const lines = $derived(dangerLines(request.danger));
   const labels = $derived((mask.labels ?? []).slice(0, 10));
   const count = $derived(Math.min(Math.max(0, Math.floor(mask.loginCount ?? 0)), 20));
   /** Passport fill rows (chrome's lines, entries by reference): bounded like the kernel's (11 `also` rows and the field). */
