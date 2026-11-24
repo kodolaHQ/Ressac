@@ -178,6 +178,7 @@ kernel-mask-fill-foreign-danger-user = This page is on { $to }, and { $name } { 
        *[one-m] was
     } read on { $from }: check it is the site you expect.
 kernel-mask-fill-foreign-passport-user = This page is on { $to }, not on one of the sites your passport sets for { $name } ({ $from }).
+kernel-mask-fill-framed = This field is in a frame from { $frame }, inside the page of { $top }.
 kernel-mask-fill-check = tick
 kernel-mask-fill-uncheck = untick
 kernel-mask-fill-option = choose « { $option } »

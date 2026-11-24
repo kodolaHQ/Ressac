@@ -210,6 +210,7 @@ kernel-mask-fill-foreign-danger-user = Cette page est sur { $to }, et { $name } 
        *[one-m] lu
     } sur { $from } : vérifiez que c'est bien le site attendu.
 kernel-mask-fill-foreign-passport-user = Cette page est sur { $to }, pas sur un des sites prévus pour { $name } dans votre passeport ({ $from }).
+kernel-mask-fill-framed = Ce champ est dans un cadre de { $frame }, intégré à la page de { $top }.
 kernel-mask-fill-check = cocher
 kernel-mask-fill-uncheck = décocher
 kernel-mask-fill-option = choisir « { $option } »
