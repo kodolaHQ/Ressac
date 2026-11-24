@@ -9,7 +9,7 @@ import { generateToken, startMcpServer, type ActionsTools, type AppsTools } from
 import { Masker } from "../../src/mask/masker.js";
 import { SearchSessions } from "../../src/search/sessions.js";
 import { Outflow } from "../../src/outflow/outflow.js";
-import { CODE, PHONE } from "../mask/values.js";
+import { CODE, IBAN, PHONE } from "../mask/values.js";
 import { WorkspaceLock } from "../../src/mask/lock.js";
 import { PassportStore } from "../../src/mask/passport.js";
 import { tempFolder } from "../helpers/temp.js";
@@ -885,4 +885,41 @@ test("a passport value's reveal card names its field; the agent and the lock kee
     expect(locks).toEqual([{ names: ["votre nom"] }]);
     expect(results.join("\n")).not.toMatch(/proche/i);
   });
+});
+
+test("two handles hopping to the same origin at once each get their own hop card, naming their own value", async () => {
+  const host = "https://mail.example-novacourriel.test";
+  const mail = "camille.exemple" + "@" + "novacourriel.test";
+  const go1 = `${host}/go?u=${mail}`;
+  const go2 = `${host}/go?i=${IBAN}`;
+  const hop = "https://evil.test/collect";
+  const user: TabInfo = { id: "mail", title: "Boîte", url: `${host}/inbox`, space: "perso", agentReached: false };
+  const bridge = new FakeBridge([user], { active: "mail", allow: true, address: "later", reveal: true });
+  bridge.pages.set("mail", { text: "Boîte", links: [{ text: "Aller", url: go1 }, { text: "Payer", url: go2 }] });
+  bridge.redirects.set(go1, hop);
+  bridge.redirects.set(go2, `${hop}2`);
+  const masker = new Masker();
+  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  masker.open("A", "W1");
+  const session = s.openSession("W1", undefined, "A");
+  const clients: Client[] = [];
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const c = new Client({ name: "t", version: "0" });
+    clients.push(c);
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session}` } } }));
+    return c.callTool({ name, arguments: args });
+  };
+  try {
+    const read = ((await call("read_tab", { id: "mail", links: true })).content as { text?: string }[]).map((x) => x.text ?? "").join("\n");
+    const h1 = read.match(/https:\/\/mail\.example-novacourriel\.test\/go\?u=⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+    const h2 = read.match(/https:\/\/mail\.example-novacourriel\.test\/go\?i=⟨iban-[a-z0-9]{8}⟩/)![0];
+    await Promise.all([call("open_tab", { url: h1 }), call("open_tab", { url: h2 })]);
+    const dangers = bridge.calls.filter((c) => c.method === "askAddress").map((c) => String((c.args[0] as { danger?: string }).danger));
+    expect(dangers).toHaveLength(2);
+    expect(dangers.filter((d) => d.includes("e-mail"))).toHaveLength(1);
+    expect(dangers.filter((d) => d.includes("IBAN"))).toHaveLength(1);
+  } finally {
+    await Promise.all(clients.map((c) => c.close()));
+    await s.stop();
+  }
 });

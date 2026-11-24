@@ -1242,7 +1242,8 @@ export function createToolsServer(
     const from = (pin && (labels.unhandle(pin.handle)?.origin ?? originOf(pin.real))) || "";
     const danger = l10n("kernel-mask-handle-danger", { ...named(pin ? issuedNames(pin.handle) : []), from: siteOf(from), to: siteOf(to) });
     const card = { url: to, reason: "", agent: dev?.agent ?? "L'agent", danger };
-    return askAddressCard(bridge, policy, requests, card, `mask:${session}:hop:${to}`, win ?? undefined, () => () => {}, signal);
+    // Keyed by what it says too: a load from another handle waits for its own card, never shares one naming another value.
+    return askAddressCard(bridge, policy, requests, card, `mask:${session}:hop:${pin?.handle ?? ""}:${to}`, win ?? undefined, () => () => {}, signal);
   }
 
   /** The search tab `id` is the user's for now (a hand is open on it). */
