@@ -92,3 +92,26 @@ export function commonRuns(answers: (Run[] | null)[]): Run[] {
     return out;
   });
 }
+
+/**
+ * The last page text's runs, reused while its key (windows, tab, url, agentReached) and its text are exactly the same:
+ * the marks re-walk the page every second and only a change asks the kernel again. `clear` (a passport push, a
+ * conversation change) drops it, and an answer asked across a clear is returned but not kept.
+ */
+export function runsMemo(): { get(key: string, text: string, ask: () => Promise<Run[]>): Promise<Run[]>; clear(): void } {
+  let last: { key: string; text: string; runs: Run[] } | null = null;
+  let gen = 0;
+  return {
+    async get(key, text, ask) {
+      if (last && last.key === key && last.text === text) return last.runs;
+      const g = gen;
+      const runs = await ask();
+      if (g === gen) last = { key, text, runs };
+      return runs;
+    },
+    clear() {
+      last = null;
+      gen++;
+    },
+  };
+}

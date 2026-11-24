@@ -28,6 +28,11 @@
   let shown = $state<HideContext | null>(null);
   let timers: ReturnType<typeof setTimeout>[] = [];
   const at = (ms: number, f: () => void) => timers.push(setTimeout(f, ms));
+  // The snapshot (a PNG, up to a few MB) is not kept past the animation.
+  const end = () => {
+    stage = "done";
+    shown = null;
+  };
   function play(c: HideContext) {
     played = c.seq;
     for (const x of timers) clearTimeout(x);
@@ -38,10 +43,10 @@
     at(chip, () => (stage = "chip"));
     if (c.ending === "hidden") {
       at(chip + 1100, () => (stage = "hatch"));
-      at(chip + 2200, () => (stage = "done"));
+      at(chip + 2200, end);
     } else {
       at(chip + (reduce ? 150 : 460), () => (stage = "say"));
-      at(chip + (reduce ? 150 : 460) + 2500, () => (stage = "done"));
+      at(chip + (reduce ? 150 : 460) + 2500, end);
     }
   }
   function update() {
@@ -90,7 +95,7 @@
 
   // Undone or closed: the marks fade out with the rest.
   $effect(() => {
-    if (part === "layer" && ctx?.phase !== "toast" && stage !== "done") stage = "done";
+    if (part === "layer" && ctx?.phase !== "toast" && stage !== "done") end();
   });
 
   const box = (r: HideRect) => `left: ${r.x}px; top: ${r.y}px; width: ${r.width}px; height: ${r.height}px`;

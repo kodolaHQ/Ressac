@@ -4,7 +4,7 @@ import { format } from "../../shared/i18n";
 import { siteOf, tabProfile, type TabId, type WindowId } from "../../shared/model";
 import { tabInfos } from "../../core/agent/bridge";
 import { joinPieces, runsToPieces } from "../../core/hide/text-map";
-import { commonRuns, createMarks, MARKS_EVERY_MS } from "../../core/hide/marks";
+import { commonRuns, createMarks, MARKS_EVERY_MS, runsMemo } from "../../core/hide/marks";
 import { cleanOrigin, FIELD_LABEL, originMatches, PASSPORT_FIELDS, PASSPORT_LIMITS, splitName, type MaskedRun, type PassportField } from "../shims/kernel";
 import type { RessacHideParent } from "../agent/hide-actor";
 import type { HideResult } from "../passport/settings";
@@ -446,7 +446,7 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     const [runs, docs] = await Promise.all([
       ask(value),
       Promise.all(contexts.map(async (bc) => {
-        const { text } = joinPieces((await actorOf(bc.currentWindowGlobal)?.pieces()) ?? []);
+        const { text } = joinPieces((await actorOf(bc.currentWindowGlobal)?.pieces({ keep: false })) ?? []);
         const [runs, next] = text.trim() ? await Promise.all([ask(text), ask(text, [])]) : [[], []];
         return { text, runs, next };
       })),
@@ -592,9 +592,14 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
   let plan: { actor: RessacHideParent; key: string; at: number; slices: { piece: number; from: number; to: number }[][] } | null = null;
   /** Each forget: a plan made across one is used once, never kept (its runs may predate the change). */
   let epoch = 0;
+  /** The last text's runs: a re-walk that finds the same text under the same key asks the kernel nothing. */
+  const memo = runsMemo();
+  /** The actor whose child holds the last walk's text nodes: told to forget them when the marks stop. */
+  let walked: RessacHideParent | null = null;
   const forget = () => {
     plan = null;
     epoch++;
+    memo.clear();
   };
   /** The shown document's text is over TEXT_CAP: not walked again until the next document. */
   let tooLong = false;
@@ -657,10 +662,12 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
   /** The page's text walked again and asked of the kernel: the slices to measure until RUNS_FRESH_MS have passed. */
   async function replan(t: string, b: any, actor: RessacHideParent, key: string) {
     const e = epoch;
+    walked = actor;
     const pieces = await actor.pieces();
     const { text, starts } = joinPieces(pieces);
     if (text.length > TEXT_CAP) tooLong = true;
-    const runs = !text.trim() || tooLong ? [] : await runsForAll((m, q) => store.agent.request(m, q), store.state.windows.map((w) => w.id), { tab: t, url: String(b.currentURI?.spec ?? ""), agentReached: o.agentReached(t), text });
+    // `key` holds the windows, tab, url and agentReached the ask uses: equal key and text, same answer.
+    const runs = !text.trim() || tooLong ? [] : await memo.get(key, text, () => runsForAll((m, q) => store.agent.request(m, q), store.state.windows.map((w) => w.id), { tab: t, url: String(b.currentURI?.spec ?? ""), agentReached: o.agentReached(t), text }));
     // Same actor as `pieces`: its slices index into that answer's text nodes.
     const made = { actor, key, at: Date.now(), slices: runs.length ? runsToPieces(runs, starts, pieces.map((p) => p.text.length)) : [] };
     if (e === epoch) plan = made;
@@ -713,6 +720,10 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
     tab = null;
     clearInterval(poll);
     marks.stop();
+    // The page's text nodes the last walk kept, let go.
+    walked?.forget();
+    walked = null;
+    forget();
   }
   return {
     start(t) {

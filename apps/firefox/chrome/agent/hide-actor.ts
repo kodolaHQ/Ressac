@@ -256,9 +256,16 @@ export class RessacHideParent extends JSWindowActorParent {
   }
 
   /** This document's visible text pieces; `rects` slices index into the last answer. */
-  async pieces(): Promise<TextPiece[]> {
-    const r: any = await this.sendQuery("pieces").catch(() => null);
+  async pieces(o: { keep?: boolean } = {}): Promise<TextPiece[]> {
+    const r: any = await this.sendQuery("pieces", { keep: o.keep !== false }).catch(() => null);
     return Array.isArray(r?.pieces) ? r.pieces.filter((p: any) => typeof p?.text === "string" && typeof p.block === "boolean").map((p: any) => ({ text: p.text, block: p.block, ...(p.field === true ? { field: true as const } : {}) })) : [];
+  }
+
+  /** Lets go of the last `pieces`' text nodes (the marks stopped). The actor may be gone already: nothing to free then. */
+  forget(): void {
+    try {
+      this.sendAsyncMessage("forget");
+    } catch {}
   }
 
   /** Each run's rects, in this document's viewport (add offsetOf for a frame); null when a slice's node is gone or the answer is malformed (walk `pieces` again). */
@@ -330,9 +337,13 @@ export class RessacHideChild extends JSWindowActorChild {
       case "pieces": {
         const root = this.document.body ?? this.document.documentElement;
         const { nodes, pieces } = root ? piecesOf(root, true) : { nodes: [], pieces: [] };
-        this.nodes = nodes;
+        // keep false (a hide's ending reads the text only): no `rects` follows, so these nodes are not held.
+        if (m.data?.keep !== false) this.nodes = nodes;
         return { pieces };
       }
+      case "forget":
+        this.nodes = [];
+        return null;
       case "rects":
         return this.rects(m.data?.slices);
       case "scrollBy":
