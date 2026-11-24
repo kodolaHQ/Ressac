@@ -3,7 +3,7 @@
 // a pointer while picking: Ressac's layer over the <browser> captures it and asks here with coordinates. All drawing
 // is the parent's. Nothing is added to, styled in or selected in the page. Packaged: a change here needs build:ui.
 
-import { joinPieces, type TextPiece } from "../../core/hide/text-map";
+import { colourAlpha as alpha, joinPieces, type TextPiece } from "../../core/hide/text-map";
 
 // The agent read's filter (page-actor.ts, 158072da): the same skipped tags and opacity threshold, UA widget roots
 // skipped. Copied, not imported: a module shared by two actor entries would become a chunk the jar does not ship.
@@ -19,13 +19,24 @@ type Hit = { text: string; rect: Rect } | Frame | null;
 
 const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
 const styleOf = (el: Element) => el.ownerDocument.defaultView!.getComputedStyle(el);
-const alpha = (c: string) => (c === "transparent" ? 0 : (((c.match(/[\d.]+/g) ?? []).map(Number))[3] ?? 1));
 /** The element's own shadow root, unless a UA widget's (a text input's value, video controls): the agent read skips those. */
 const ownRoot = (el: Element): ShadowRoot | null => {
   const own = (el as any).openOrClosedShadowRoot as (ShadowRoot & { isUAWidget(): boolean }) | null;
   return own && !own.isUAWidget() ? own : null;
 };
 const parentOf = (n: Node): Element | null => (n as Element).assignedSlot ?? n.parentElement ?? ((n.parentNode as ShadowRoot | null)?.host ?? null);
+/** Seen as a box: visibility visible and opacity, with the ancestors', at least FADED (piecesOf's rule for an element). */
+const seen = (el: Element): boolean => {
+  if (styleOf(el).visibility !== "visible") return false;
+  let o = 1;
+  for (let e: Element | null = el; e; e = parentOf(e)) if ((o *= Number(styleOf(e).opacity)) < FADED) return false;
+  return true;
+};
+/** A box a person sees with something drawn on it (a colour or an image): it hides what lies under it. */
+const painted = (el: Element): boolean => {
+  const cs = styleOf(el);
+  return (alpha(cs.backgroundColor) > 0 || cs.backgroundImage !== "none") && seen(el);
+};
 
 /** Finite, non-negative size, within RECT_MAX: what a compromised process sends is never a huge or NaN drawing. */
 function bounded(v: any): Rect | null {
@@ -89,7 +100,11 @@ function piecesOf(root: Element): { nodes: Text[]; pieces: TextPiece[] } {
   return { nodes, pieces };
 }
 
-/** A frame element's content box in its document's viewport, CSS px. */
+/**
+ * A frame element's content box in its document's viewport, CSS px.
+ * shortcut: a transformed iframe (rotate, scale) gets wrong coordinates, its box is not its frame's mapping; upgrade
+ * with convertPointFromNode/getBoxQuads if a site needs it.
+ */
 function contentBox(el: Element): Rect {
   const r = el.getBoundingClientRect(), cs = styleOf(el);
   const x = r.x + el.clientLeft + parseFloat(cs.paddingLeft), y = r.y + el.clientTop + parseFloat(cs.paddingTop);
@@ -100,7 +115,8 @@ function contentBox(el: Element): Rect {
  * What a click at (x, y) of `doc`'s viewport means: the first element under the point, through pointer-less layers,
  * whose own text node is rendered under the point and visible by piecesOf's rule; it is the smallest element holding
  * that text. Its frozen text is its subtree's visible text. A frame first under the point answers for itself (its
- * coordinates translated into its viewport); an empty spot of a wrapper, or text nobody sees there, picks nothing.
+ * coordinates translated into its viewport) if seen; an empty spot of a wrapper, text nobody sees there, or a painted
+ * box over the text, picks nothing.
  * shortcut: text inside a shadow root is reached only through its host's own text nodes; upgrade if a site needs it.
  */
 function hitAt(doc: Document, x: number, y: number): Hit {
@@ -111,6 +127,7 @@ function hitAt(doc: Document, x: number, y: number): Hit {
   };
   for (const el of doc.elementsFromPoint(x, y)) {
     if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
+      if (!seen(el)) continue;
       const bc = (el as any).browsingContext;
       if (!bc) return null;
       const box = contentBox(el);
@@ -118,9 +135,12 @@ function hitAt(doc: Document, x: number, y: number): Hit {
     }
     if (styleOf(el).pointerEvents === "none") continue;
     const texts = [...el.childNodes].filter((n): n is Text => n.nodeType === Node.TEXT_NODE && !!(n as Text).data.trim() && under(n as Text));
-    if (!texts.length) continue;
-    const { nodes, pieces } = piecesOf(el);
-    if (!texts.some((t) => nodes.includes(t))) continue;
+    const { nodes, pieces } = texts.length ? piecesOf(el) : { nodes: [], pieces: [] };
+    // No visible text of its own under the point: a painted box hides what is under it, anything else is seen through.
+    if (!texts.some((t) => nodes.includes(t))) {
+      if (painted(el)) return null;
+      continue;
+    }
     // Frozen here: what the page does to the element after the pick never reaches the passport.
     return { text: collapse(joinPieces(pieces).text), rect: plain(el.getBoundingClientRect()) };
   }

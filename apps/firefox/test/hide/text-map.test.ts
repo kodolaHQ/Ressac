@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinPieces, runsToPieces } from "../../core/hide/text-map";
+import { colourAlpha, joinPieces, runsToPieces } from "../../core/hide/text-map";
 
 describe("joinPieces", () => {
   it("joins inline pieces with nothing and block boundaries with a newline", () => {
@@ -32,5 +32,16 @@ describe("runsToPieces", () => {
 
   it("the block newline belongs to no piece", () => {
     expect(runsToPieces([{ start: 5, end: 17 }], starts, lengths)).toEqual([[{ piece: 1, from: 0, to: 6 }, { piece: 2, from: 0, to: 5 }]]);
+  });
+});
+
+describe("colourAlpha", () => {
+  it("reads the alpha after the colour's own name, never a digit in it", () => {
+    expect(colourAlpha("color(display-p3 1 1 0)")).toBe(1);
+    expect(colourAlpha("color(display-p3 1 1 0 / 0)")).toBe(0);
+    expect(colourAlpha("rgb(1, 2, 3)")).toBe(1);
+    expect(colourAlpha("rgba(1, 2, 3, 0)")).toBe(0);
+    expect(colourAlpha("rgb(1 2 3 / 50%)")).toBe(0.5);
+    expect(colourAlpha("transparent")).toBe(0);
   });
 });

@@ -27,6 +27,11 @@ const PAGE = (frame: string) => `<!doctype html><meta charset="utf-8"><title>cac
 <div style="position:absolute;left:100px;top:260px"><span id="double">Camille <span style="opacity:0">X</span></span></div>
 <div id="leurre" style="display:none;position:absolute;left:100px;top:320px">Leurre caché</div>
 <iframe id="cadre" src="${frame}" style="position:absolute;left:400px;top:100px;width:300px;height:120px;border:0"></iframe>
+<span id="p3" style="position:absolute;left:100px;top:360px;color:color(display-p3 1 0 0)">Jeanne Durand</span>
+<span id="sous" style="position:absolute;left:100px;top:420px">Paul Simon</span>
+<iframe id="voile" src="${frame}" style="opacity:0;position:absolute;left:80px;top:400px;width:200px;height:60px;border:0"></iframe>
+<span id="cache" style="position:absolute;left:100px;top:500px">Marc Petit</span>
+<div id="plaque" style="position:absolute;left:90px;top:490px;width:200px;height:40px;background:rgb(220,220,220)"></div>
 <div id="calque" class="full" style="pointer-events:none">${REPEAT("Calque sans pointeur")}</div>
 <div id="incolore" class="full" style="color:transparent">${REPEAT("Couleur transparente")}</div>
 <div id="couvercle" class="full" style="opacity:0">${REPEAT("Couvercle transparent")}</div>
@@ -73,6 +78,15 @@ const top = `b.browsingContext.currentWindowGlobal.getActor("RessacHide")`;
 const pickAt = (p: { x: number; y: number }) => hide<{ text: string; rect: Rect; origin: string | null } | null>("H.pickAt(b, args[0], args[1])", [p.x, p.y]);
 const hoverAt = (p: { x: number; y: number }) => hide<{ rect: Rect } | null>("H.hoverAt(b, args[0], args[1])", [p.x, p.y]);
 const seen = () => inPage<string[]>("return window.__seen;");
+/**
+ * The page's records once a short window has passed after the last query: a style flush or layout our queries cause
+ * (getComputedStyle, elementsFromPoint, Range rects) could only show up as a late transition, mutation or selection
+ * change, dispatched within a frame or two.
+ */
+const seenAfter = async () => {
+  await new Promise((r) => setTimeout(r, 100));
+  return seen();
+};
 const rectOf = (sel: string) => inPage<Rect>(`const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };`);
 const inside = (r: Rect, box: Rect) => r.x >= box.x - 0.5 && r.y >= box.y - 0.5 && r.x + r.width <= box.x + box.width + 0.5 && r.y + r.height <= box.y + box.height + 0.5;
 
@@ -91,7 +105,7 @@ describe("RessacHide actor", () => {
     expect(await hoverAt(at)).toEqual({ rect: box });
     expect(await pickAt(at)).toEqual({ text: "Camille Aubrac", rect: box, origin: new URL(page.url).origin });
     // Queries move no mouse: no :hover transition, no event, no mutation, no selection change.
-    expect(await seen()).toEqual([]);
+    expect(await seenAfter()).toEqual([]);
   });
 
   it("picks nothing on a wrapper's padding or over a display:none decoy; an invisible child stays out of the frozen text", async () => {
@@ -103,7 +117,7 @@ describe("RessacHide actor", () => {
     expect(await pickAt({ x: 110, y: 330 })).toBe(null);
     const d = await rectOf("#double");
     expect((await pickAt({ x: d.x + 10, y: d.y + d.height / 2 }))?.text).toBe("Camille");
-    expect(await seen()).toEqual([]);
+    expect(await seenAfter()).toEqual([]);
   });
 
   it("a frame of another site answers for itself: its text, a rect in top-window px inside the frame, its origin; offsetOf adds up", async () => {
@@ -117,7 +131,24 @@ describe("RessacHide actor", () => {
     expect(inside(picked!.rect, cadre)).toBe(true);
     expect(picked!.rect).toEqual({ ...inner, x: inner.x + cadre.x, y: inner.y + cadre.y });
     expect(await hide("H.offsetOf(b.browsingContext.children[0])")).toEqual({ x: cadre.x, y: cadre.y });
-    expect(await seen()).toEqual([]);
+    expect(await seenAfter()).toEqual([]);
+  });
+
+  it("display-p3 text is pickable; an opacity:0 frame of another site over a span lets the pick through; an opaque box over a span stops it", async () => {
+    await open();
+    expect((await pickAt(await center(m, B, "#p3")))?.text).toBe("Jeanne Durand");
+    const sous = await center(m, B, "#sous");
+    // The transparent frame lies over the span at that point.
+    const ids = await inPage<string[]>(`return document.elementsFromPoint(${sous.x}, ${sous.y}).map((e) => e.id);`);
+    expect(ids.indexOf("voile")).toBeGreaterThanOrEqual(0);
+    expect(ids.indexOf("voile")).toBeLessThan(ids.indexOf("sous"));
+    expect((await pickAt(sous))?.text).toBe("Paul Simon");
+    const cache = await center(m, B, "#cache");
+    const under = await inPage<string[]>(`return document.elementsFromPoint(${cache.x}, ${cache.y}).map((e) => e.id);`);
+    expect(under.indexOf("plaque")).toBeGreaterThanOrEqual(0);
+    expect(under.indexOf("plaque")).toBeLessThan(under.indexOf("cache"));
+    expect(await pickAt(cache)).toBe(null);
+    expect(await seenAfter()).toEqual([]);
   });
 
   it("pieces + rects: the visible text only, and the span's slice measured inside its box", async () => {
@@ -134,7 +165,7 @@ describe("RessacHide actor", () => {
     const box = await rectOf("#cible");
     expect(rects[0]!.length).toBeGreaterThan(0);
     for (const r of rects[0]!) expect(inside(r, box)).toBe(true);
-    expect(await seen()).toEqual([]);
+    expect(await seenAfter()).toEqual([]);
   });
 
   it("selection: the current selection's text and rect, the origin from the parent; null when nothing is selected", async () => {

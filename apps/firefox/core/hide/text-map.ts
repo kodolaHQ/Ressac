@@ -27,3 +27,13 @@ export function runsToPieces(runs: { start: number; end: number }[], starts: num
     return out;
   });
 }
+
+/** A computed colour's alpha: after "/" (modern syntax), else a legacy rgba()'s 4th value, else 1. Only what follows "(" counts: `display-p3` holds a digit. */
+export function colourAlpha(c: string): number {
+  if (c === "transparent") return 0;
+  const inner = c.slice(c.indexOf("(") + 1);
+  const slash = inner.split("/")[1];
+  if (slash !== undefined) return parseFloat(slash) / (slash.includes("%") ? 100 : 1);
+  const parts = inner.split(",");
+  return parts.length === 4 ? parseFloat(parts[3]!) : 1;
+}
