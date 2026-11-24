@@ -6,6 +6,7 @@ import type { AgentHost } from "../chrome/agent/host";
 import type { SettingsChrome } from "../chrome/store/settings";
 import type { SitePermissions } from "../chrome/store/site-permissions";
 import type { PassportSettings } from "../chrome/passport/settings";
+import type { PasswordSettings } from "../chrome/passwords/settings";
 import { passportName, type Space } from "../shared/model";
 
 /** The site permissions Settings lists, with their message ids. */
@@ -29,6 +30,8 @@ export function createSettingsApi(o: {
   locale(): string;
   /** Only in the document showing the settings page: elsewhere the API has no `passport`. */
   passport?: Pick<PassportSettings, "passports" | "unlock" | "read" | "save" | "lock" | "onLocked" | "drop" | "removePassport" | "moveTo" | "restart">;
+  /** Only in the document showing the settings page, like `passport`. */
+  passwords?: PasswordSettings;
   /** The spaces, read at each call: they name the passports. */
   spaces(): readonly Pick<Space, "name" | "profile" | "private">[];
 }): SettingsApi {
@@ -57,7 +60,34 @@ export function createSettingsApi(o: {
   const tokens = new Map<string, string>();
   const key = (profile: string, purpose: string) => `${purpose}\n${profile}`;
   const passport = o.passport;
+  const passwords = o.passwords;
+  /** This page's password tokens: only they reach the chrome, and leaving the section revokes them. */
+  const pageTokens = new Set<string>();
+  const mine = (token: unknown) => (typeof token === "string" && pageTokens.has(token) ? token : "");
   return {
+    ...(passwords && {
+      passwords: {
+        list: () => passwords.list().then((r) => structuredClone(r)),
+        async unlock() {
+          const r = await passwords.unlock(say("settings-passwords-touchid"));
+          if (!r) return null;
+          pageTokens.add(r.token);
+          return structuredClone(r);
+        },
+        lock() {
+          for (const token of pageTokens) passwords.lock(token);
+          pageTokens.clear();
+        },
+        onLocked: (callback) => passwords.onLocked(callback),
+        reveal: (token, guid) => passwords.reveal(mine(token), String(guid)),
+        copyPassword: (token, guid) => passwords.copyPassword(mine(token), String(guid)),
+        copyUsername: (guid) => passwords.copyUsername(String(guid)),
+        add: (token, l) => passwords.add(mine(token), { origin: String(l?.origin ?? ""), username: String(l?.username ?? ""), password: String(l?.password ?? "") }).then((r) => structuredClone(r)),
+        edit: (token, guid, c) => passwords.edit(mine(token), String(guid), { username: String(c?.username ?? ""), password: String(c?.password ?? "") }).then((r) => structuredClone(r)),
+        remove: (token, guid) => passwords.remove(mine(token), String(guid)).then((r) => structuredClone(r)),
+        primaryPassword: () => passwords.primaryPassword(),
+      },
+    }),
     ...(passport && {
       passport: {
         async profiles() {

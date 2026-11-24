@@ -10,6 +10,7 @@ import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, pushPassports, type AgentHost } from "../agent/host";
 import { passportFiles, passportShown } from "../passport/store";
 import { pagePassport, passportSettings, type PagePassport, type PassportSettings } from "../passport/settings";
+import { passwordSettings, type PasswordSettings } from "../passwords/settings";
 import { createAgentView, type AgentView } from "../agent/agent-view";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
@@ -90,6 +91,8 @@ export interface RessacStore extends Store {
   readonly passport: PagePassport;
   /** « Cacher pour l'agent »: the passport's hide and unhide, for the chrome's hide layer only (never in a UI API). */
   readonly hidePassport: Pick<PassportSettings, "hide" | "unhide">;
+  /** Réglages › Mots de passe: Firefox's saved logins behind Touch ID, for the settings page only (never the agent). */
+  readonly passwords: PasswordSettings;
   /** The « non couverte » tooltip's names and masked displays (chrome/passport/store.ts passportShown). */
   passportShown(refs: readonly { profile: string; id: string }[]): { field: string | null; display: string | null }[];
   /** The noted visits, kept by the kernel host. */
@@ -691,6 +694,7 @@ async function start(): Promise<RessacStore> {
     passport: pagePassport(passport),
     hidePassport: { hide: (h) => passport.hide(h), unhide: (u) => passport.unhide(u) },
     passportShown: (refs) => passportShown(passportFiles(), refs),
+    passwords: passwordSettings(),
     history,
     ask,
     downloads,

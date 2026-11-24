@@ -39,6 +39,20 @@ function setup(answers: Record<string, (p: any) => unknown> = {}, settingsPage =
     moveTo: vi.fn(async () => ({ ok: true as const })),
     restart: vi.fn(async () => true),
   };
+  const passwords = {
+    list: vi.fn(async () => [{ guid: "g1", origin: "https://a.test", host: "a.test", username: "camille" }]),
+    unlock: vi.fn(async (_reason: string) => ({ token: "pw1", until: 9, showMs: 20_000 })),
+    lock: vi.fn(),
+    lockAll: vi.fn(),
+    onLocked: vi.fn(() => () => {}),
+    reveal: vi.fn(async (_token: string, _guid: string) => "mot-de-passe-test-1"),
+    copyPassword: vi.fn(async (_token: string, _guid: string) => true),
+    copyUsername: vi.fn(async (_guid: string) => true),
+    add: vi.fn(async () => ({ ok: true as const, guid: "g2" })),
+    edit: vi.fn(async () => ({ ok: true as const, guid: "g1" })),
+    remove: vi.fn(async () => ({ ok: true as const, guid: "g1" })),
+    primaryPassword: vi.fn(() => false),
+  };
   const spaces = [
     { id: "s1", name: "Perso", profile: "default", private: false },
     { id: "s2", name: "Privé", profile: "secret", private: true },
@@ -46,7 +60,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}, settingsPage =
     { id: "s4", name: "Clients", profile: "work", private: false },
   ];
   const api = createSettingsApi({
-    ...(settingsPage ? { passport } : {}),
+    ...(settingsPage ? { passport, passwords } : {}),
     spaces: () => spaces as any,
     host,
     chrome,
@@ -58,7 +72,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}, settingsPage =
     dataDir: "/u/Ressac",
     locale: () => "fr",
   });
-  return { api, calls, chrome, forget, dispatched, openAgent, switchAgent, passport };
+  return { api, calls, chrome, forget, dispatched, openAgent, switchAgent, passport, passwords };
 }
 
 const row = (kind: GrantRow["kind"], key: string): GrantRow => ({ kind, key, name: key, profile: null, detail: "" });
@@ -237,15 +251,34 @@ describe("settings api", () => {
     expect(passport.restart).toHaveBeenCalledWith("gone", "t1");
   });
 
+  it("passwords: Touch ID with its reason; only this page's tokens reach the chrome; lock revokes them", async () => {
+    const { api, passwords } = setup();
+    expect(await api.passwords!.unlock()).toEqual({ token: "pw1", until: 9, showMs: 20_000 });
+    expect(passwords.unlock).toHaveBeenCalledWith("gérer vos mots de passe");
+    expect(await api.passwords!.reveal("pw1", "g1")).toBe("mot-de-passe-test-1");
+    expect(passwords.reveal).toHaveBeenLastCalledWith("pw1", "g1");
+    // A token this page never got (another window's) goes to the chrome empty: refused there.
+    await api.passwords!.reveal("other-page", "g1");
+    expect(passwords.reveal).toHaveBeenLastCalledWith("", "g1");
+    await api.passwords!.add("other-page", { origin: "https://b.test", username: "u", password: "p" });
+    expect(passwords.add).toHaveBeenLastCalledWith("", { origin: "https://b.test", username: "u", password: "p" });
+    api.passwords!.lock();
+    expect(passwords.lock).toHaveBeenCalledWith("pw1");
+    await api.passwords!.copyPassword("pw1", "g1");
+    expect(passwords.copyPassword).toHaveBeenLastCalledWith("", "g1");
+  });
+
   it("the passport API exists only on the settings page's API", () => {
     expect(setup().api).toHaveProperty("passport");
     // The agent panel's document builds the same API without it (ui/install-api.ts).
     expect(setup({}, false).api).not.toHaveProperty("passport");
+    expect(setup().api).toHaveProperty("passwords");
+    expect(setup({}, false).api).not.toHaveProperty("passwords");
     expect(settingsPageDocument({ pathname: "/content/ressac/sidebar.html", search: "" })).toBe(true);
     for (const url of [{ pathname: "/content/ressac/agent.html", search: "" }, { pathname: "/content/ressac/sidebar.html", search: "?agentview" }, { pathname: "/content/ressac/sidebar.html", search: "?badge=x" }])
       expect(settingsPageDocument(url)).toBe(false);
     const review = createReviewApi({ host: { request: async () => null } as any });
     const badge = createBadgeApi({} as any);
-    for (const other of [review, badge]) expect(other).not.toHaveProperty("passport");
+    for (const other of [review, badge]) expect(other).not.toHaveProperty("passport"), expect(other).not.toHaveProperty("passwords");
   });
 });

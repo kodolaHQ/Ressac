@@ -650,6 +650,33 @@ export interface SettingsApi {
   downloadUpdate(): void;
   /** Only in the document showing ressac://settings (design § 9.2): absent from the agent panel's API. */
   passport?: PassportSettingsApi;
+  /** Réglages › Mots de passe: only in the document showing ressac://settings, like `passport`. */
+  passwords?: PasswordsSettingsApi;
+}
+
+/** A saved login as Réglages › Mots de passe lists it: never its password. `host`: the origin itself when not http(s). */
+export type SavedLogin = { guid: string; origin: string; host: string; username: string };
+export type PasswordResult = { ok: true; guid: string } | { ok: false; error: "locked" | "origin" | "password" | "duplicate" | "missing" | "primary" | "write" };
+/**
+ * Réglages › Mots de passe: Firefox's saved logins. The list has no password; showing or copying one and every write
+ * need this page's token from `unlock` (Touch ID, 5 minutes).
+ */
+export interface PasswordsSettingsApi {
+  /** Sorted by host then username; empty while a Firefox primary password is set. */
+  list(): Promise<SavedLogin[]>;
+  /** Touch ID « gérer vos mots de passe »; null when refused or a primary password is set. */
+  unlock(): Promise<{ token: string; until: number; showMs: number } | null>;
+  /** Revokes this page's tokens. */
+  lock(): void;
+  /** The Mac slept or its screen locked: the tokens are gone. */
+  onLocked(callback: () => void): () => void;
+  reveal(token: string, guid: string): Promise<string | null>;
+  copyPassword(token: string, guid: string): Promise<boolean>;
+  copyUsername(guid: string): Promise<boolean>;
+  add(token: string, login: { origin: string; username: string; password: string }): Promise<PasswordResult>;
+  edit(token: string, guid: string, change: { username: string; password: string }): Promise<PasswordResult>;
+  remove(token: string, guid: string): Promise<PasswordResult>;
+  primaryPassword(): boolean;
 }
 
 /** A connection profile's passport as Réglages › Passeport lists it, without its values. */

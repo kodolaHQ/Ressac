@@ -1,9 +1,7 @@
+import type { PasswordResult, SavedLogin } from "../../shared/api";
 import { reauth } from "../agent/reauth";
 import { macScreenLocked, testTimes } from "../passport/settings";
 
-/** A saved login as Réglages › Mots de passe lists it: never its password. `host`: the origin itself when not http(s). */
-export type SavedLogin = { guid: string; origin: string; host: string; username: string };
-export type PasswordResult = { ok: true; guid: string } | { ok: false; error: "locked" | "origin" | "password" | "duplicate" | "missing" | "primary" | "write" };
 /** What is read of an nsILoginInfo. */
 export type LoginLike = { guid: string; origin: string; username: string; password: string };
 

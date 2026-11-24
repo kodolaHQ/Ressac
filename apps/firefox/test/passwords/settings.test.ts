@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPasswordSettings } from "../../chrome/passwords/settings";
+import { onLeavingPasswords, showSection } from "../../ui/components/settings-section.svelte";
 
 type Stored = { guid: string; origin: string; username: string; password: string };
 
@@ -193,4 +194,18 @@ describe("password settings (chrome)", () => {
     s.lockAll();
     expect(told).toHaveBeenCalledOnce();
   });
+});
+
+it("leaving the Mots de passe section runs the page's relock, once, and only from it", () => {
+  const leave = vi.fn();
+  const off = onLeavingPasswords(leave);
+  showSection("passwords");
+  showSection("passwords");
+  expect(leave).not.toHaveBeenCalled();
+  showSection("passport");
+  expect(leave).toHaveBeenCalledOnce();
+  off();
+  showSection("passwords");
+  showSection("data");
+  expect(leave).toHaveBeenCalledOnce();
 });

@@ -368,7 +368,7 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       switchAgent,
       dataDir: win.store.dataDir,
       locale: () => win.store.state.locale,
-      ...(o.settingsPage ? { passport: win.store.passport } : {}),
+      ...(o.settingsPage ? { passport: win.store.passport, passwords: win.store.passwords } : {}),
       spaces: () => win.store.state.spaces,
     }),
     // Import from another browser: the chrome runs the engine's migrators; answers copied into this realm.

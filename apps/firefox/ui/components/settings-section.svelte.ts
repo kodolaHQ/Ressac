@@ -13,9 +13,16 @@ export const onLeavingPassport = (f: () => void) => {
   leavingPassport = f;
   return () => void (leavingPassport === f && (leavingPassport = null));
 };
+/** The same for Mots de passe: its tokens go as the section is left. */
+let leavingPasswords: (() => void) | null = null;
+export const onLeavingPasswords = (f: () => void) => {
+  leavingPasswords = f;
+  return () => void (leavingPasswords === f && (leavingPasswords = null));
+};
 /** Called before opening Réglages from elsewhere: the Extensions page lands on Agent, ⌘T's « Réglages › … » on its section. */
 export const showSection = (id: SettingsSection, o: { profile?: string } = {}) => {
   if (current === "passport" && id !== "passport") leavingPassport?.();
+  if (current === "passwords" && id !== "passwords") leavingPasswords?.();
   current = id;
   passportProfile = o.profile ?? null;
 };
