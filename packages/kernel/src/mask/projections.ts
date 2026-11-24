@@ -181,7 +181,8 @@ function compact(src: Projection): Projection[] {
 
 // A tab, a line break or several spaces between two letters or digits: how a table's cells or a form's boxes come out
 // of a page's text (« FR76\t3000\t6000 »). Only checksummed numbers are read through it (detectors.ts).
-const GAP_RUN = /(?<=[\p{L}\p{N}])(?:[ \t]*[\t\r\n][ \t\r\n]*| {2,})(?=[\p{L}\p{N}])/gu;
+// One way to split a run, so a long run of tabs costs a linear pass (two optional classes around one made it quadratic).
+const GAP_RUN = /(?<=[\p{L}\p{N}])(?:[ \t\r\n]{2,}|[\t\r\n])(?=[\p{L}\p{N}])/gu;
 /** `src` with each such gap made one space, when it has any. Not in `projections()`: the passport must not join two lines. */
 export const gaps = (src: Projection): Projection[] => (src.text.search(GAP_RUN) < 0 ? [] : [{ ...rewrite(src, GAP_RUN, " "), kind: "gaps" }]);
 

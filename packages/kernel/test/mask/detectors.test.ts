@@ -301,6 +301,24 @@ describe("detect, common wordings (swarm findings 2-5)", () => {
     expect(types("Code client\n12\n34\n56")).toEqual([]);
   });
 
+  it("a table of 4-digit cells or an 11-digit order number is no card, phone or RIB", () => {
+    // Luhn passes 1 in 10: across gaps, a card needs a card word near it.
+    for (let n = 0; n < 100; n++) {
+      const cells = ["40" + String(n).padStart(2, "0"), "1250", "3300", "8800"];
+      for (const zone of ["sources", "web"] as const) {
+        expect(types("Quantité\n" + cells.join("\n"), zone)).not.toContain("carte");
+        expect(types("Total  " + cells.join("  "), zone)).not.toContain("carte");
+      }
+    }
+    expect(types("Commande n° 07123456789")).not.toContain("tel");
+    expect(types("Compte 01234567890")).toEqual(["id"]);
+    // Postcodes, a heading in capitals, a 2-digit number: no bank word, no digit in the « account ».
+    for (let n = 0; n < 1000; n++) {
+      const t = `Agence 75008 Paris, dépôt ${69000 + n} Lyon. INFORMATION : ${String(n % 100).padStart(2, "0")} rue`;
+      expect(types(t, "web"), t).not.toContain("iban");
+    }
+  });
+
   it("finds a verification code announced in German or Spanish", () => {
     for (const t of [`Ihr Bestätigungscode lautet ${CODE}`, `Ihr Sicherheitscode: ${CODE}`, `Verifizierungscode ${CODE}`, `Tu código de verificación es ${CODE}`, `Su clave de acceso: ${CODE}`])
       expect(found(t, "web"), t).toEqual([["code", CODE, CODE]]);
@@ -356,6 +374,8 @@ describe("detect, common wordings (swarm findings 2-5)", () => {
       "1\t".repeat(25_000),
       "A1  ".repeat(12_000),
       "(415) 555-".repeat(5_000),
+      "a" + "\t".repeat(50_000) + "!",
+      "a" + " \t".repeat(25_000) + "!",
     ]) {
       const t0 = performance.now();
       detect(s, "sources");

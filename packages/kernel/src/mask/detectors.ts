@@ -16,7 +16,6 @@ export type Zone = "sources" | "web";
 /** Masked in both zones; the other types only in the sources. */
 export const HIGH_RISK: ReadonlySet<LabelType> = new Set<LabelType>(["iban", "carte", "secu", "id", "code"]);
 export type Found = { type: LabelType; start: number; end: number; canonical: string };
-const CHECKSUMMED: ReadonlySet<LabelType> = new Set<LabelType>(["iban", "carte", "secu"]);
 
 type Hit = [start: number, end: number, type: LabelType, canonical: string];
 
@@ -43,9 +42,9 @@ const TEL_FR = /(?<![\p{N}+])(?:0[1-9]|\(0[1-9]\))(?:(?:[ \t]?[.+/_-][ \t]?|[ \t
 // A US number written the US way, area code in brackets or the three groups joined by « - » or « . » (a run of 10
 // digits is an order number as often); area code and exchange never start with 0 or 1.
 const TEL_US = /(?<![\p{N}+.-])(?:\([2-9]\d{2}\)[ \t]?|[2-9]\d{2}[.-])[2-9]\d{2}[.-]\d{4}(?!\p{N}|[.-]\d)/gu;
-// A UK number without +44: 11 digits from 01, 02, 03 or 07, in one run or in the usual groups (020 7946 0958,
-// 0121 496 0000, 07700 900123). A French number has 10.
-const TEL_UK = /(?<![\p{N}+])0[1237](?:\d{9}|\d[ \t]\d{4}[ \t]\d{4}|\d{2}[ \t]\d{3}[ \t]\d{4}|\d{3}[ \t]\d{6})(?!\p{N})/gu;
+// A UK number without +44: 11 digits from 01, 02, 03 or 07 in the usual groups (020 7946 0958, 0121 496 0000,
+// 07700 900123). Not in one run: 11 digits from 0 are an order or account number as often. A French number has 10.
+const TEL_UK = /(?<![\p{N}+])0[1237](?:\d[ \t]\d{4}[ \t]\d{4}|\d{2}[ \t]\d{3}[ \t]\d{4}|\d{3}[ \t]\d{6})(?!\p{N})/gu;
 // No country code starts with 0: « 00042178306 » (an account number) is no phone. « 00 33 6… » is spaced after 00.
 const TEL_INTL = /(?<![\p{N}+])(?:\+|00[ .-]?)[1-9](?:(?:[ \t]?[.+/_-][ \t]?|[ \t])?(?:\(0\)[ .-]?)?\d){7,14}(?!\p{N})/gu;
 // A French account number (11 digits) after an account word on its line: typed `id`, in the sources only.
@@ -151,16 +150,23 @@ export function canonical(type: LabelType, raw: string): string {
   }
 }
 
-/** The digit strings a phone is written in, from its canonical form: international, 00, and for +33 the 0, 330 and 9-digit ones. */
+/**
+ * The digit strings a phone is written in, from its canonical form: international, 00, for +33 the 0, 330 and 9-digit
+ * ones, for +1 the 10 digits, for +44 the 0 one (the national forms TEL_US and TEL_UK read).
+ */
 export function telDigitForms(canonicalTel: string): string[] {
   const intl = canonicalTel.slice(1);
   const fr = intl.startsWith("33") ? intl.slice(2) : undefined;
-  return [intl, "00" + intl, ...(fr ? ["0" + fr, "330" + fr, fr] : [])];
+  const national = intl.length === 11 && intl.startsWith("1") ? [intl.slice(1)] : intl.startsWith("44") ? ["0" + intl.slice(2)] : [];
+  return [intl, "00" + intl, ...(fr ? ["0" + fr, "330" + fr, fr] : []), ...national];
 }
 
 // A French RIB in its four pieces, as banks print it: bank (5 digits), branch (5), account (11, maybe with letters), key (2),
-// with up to 40 non-digits between them (their names, a line break). Kept only when the RIB key is right.
-const RIB = /(?<!\p{N})(\d{5})(?!\p{N})\D{1,40}?(?<!\p{N})(\d{5})(?!\p{N})\D{1,40}?(?<![\p{L}\p{N}])([0-9A-Z]{11})(?![\p{L}\p{N}])\D{1,40}?(?<!\p{N})(\d{2})(?!\p{N})/dgu;
+// with up to 40 non-digits between them (their names, a line break). Kept only when the RIB key is right (1 in 97 by
+// chance), the account holds a digit and a bank word comes before: postcodes and a heading in capitals are no RIB.
+const RIB = /(?<!\p{N})(\d{5})(?!\p{N})\D{1,40}?(?<!\p{N})(\d{5})(?!\p{N})\D{1,40}?(?<![\p{L}\p{N}])(?=[A-Z]*\d)([0-9A-Z]{11})(?![\p{L}\p{N}])\D{1,40}?(?<!\p{N})(\d{2})(?!\p{N})/dgu;
+const BANK_CONTEXT = /(?<!\p{L})(?:rib|banque|bank|guichet|compte|cle|bic|iban|virement)(?!\p{L})/u;
+const BANK_WINDOW = 80;
 // An account's letters count as digits in the RIB key (A and J are 1, B, K and S are 2…).
 const ribDigits = (account: string) => account.replace(/[A-Z]/g, (c) => String(((c.charCodeAt(0) - 65) % 9) + 1 + (c >= "S" ? 1 : 0)));
 const mod97 = (digits: string) => [...digits].reduce((r, d) => (r * 10 + Number(d)) % 97, 0);
@@ -170,6 +176,7 @@ function ribPieces(t: string): Hit[] {
   const out: Hit[] = [];
   for (const m of t.matchAll(RIB)) {
     const [bank, branch, account, key] = [m[1]!, m[2]!, m[3]!, m[4]!];
+    if (!BANK_CONTEXT.test(fold(t.slice(Math.max(0, m.index - BANK_WINDOW), m.indices![2]![0])))) continue;
     if ((89 * Number(bank) + 15 * Number(branch) + 3 * mod97(ribDigits(account)) + Number(key)) % 97 !== 0) continue;
     const bban = bank + branch + account + key;
     const check = 98 - mod97((bban + "FR00").replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55)));
@@ -182,16 +189,28 @@ function ribPieces(t: string): Hit[] {
 const nearCode = (t: string, start: number, end: number) =>
   CODE_CONTEXT.test(fold(t.slice(Math.max(0, start - CONTEXT_WINDOW), end + CONTEXT_WINDOW)));
 
-/** Every finding in one projected text `t` (digits already ASCII), in `t`'s offsets. */
-function scan(t: string, zone: Zone): Hit[] {
+const CARD_CONTEXT = /(?<!\p{L})(?:carte|card|cb|visa|mastercard|amex|kreditkarte|tarjeta)(?!\p{L})/u;
+
+/**
+ * The numbers a checksum vouches for (IBAN, RIB, card, social security number) in `t`. `gapped`: `t` is the gaps
+ * projection, where a table's cells read as one number: a card there (Luhn passes 1 in 10) needs a card word nearby.
+ */
+function checksummed(t: string, gapped: boolean): Hit[] {
   const out: Hit[] = [];
   for (const [start, end, v] of ibanSpans(t)) out.push([start, end, "iban", v]);
   out.push(...ribPieces(t));
-  for (const [start, end, v] of cardSpans(t)) out.push([start, end, "carte", v]);
+  for (const [start, end, v] of cardSpans(t))
+    if (!gapped || CARD_CONTEXT.test(fold(t.slice(Math.max(0, start - CONTEXT_WINDOW), end + CONTEXT_WINDOW)))) out.push([start, end, "carte", v]);
   for (const m of t.matchAll(NIR)) {
     const v = canonical("secu", m[0]);
     if (nirValid(v)) out.push([m.index, m.index + m[0].length, "secu", v]);
   }
+  return out;
+}
+
+/** Every finding in one projected text `t` (digits already ASCII), in `t`'s offsets. */
+function scan(t: string, zone: Zone): Hit[] {
+  const out = checksummed(t, false);
   for (const re of [API_KEY, PRIVATE_KEY, JWT]) for (const m of t.matchAll(re)) out.push([m.index, m.index + m[0].length, "id", m[0]]);
   for (const token of new Set(randomTokens(t)))
     for (let i = t.indexOf(token); i >= 0; i = t.indexOf(token, i + token.length)) out.push([i, i + token.length, "id", token]);
@@ -272,11 +291,11 @@ export function findAll(text: string, zone: Zone): Found[] {
   const found = new Map<string, Found>();
   const projs = projections(text).filter((p) => p.kind !== "digits");
   for (const p of [...projs, ...projs.filter((p) => p.kind !== "numerals").flatMap(gaps)]) {
-    const hits = p.kind === "numerals" ? spelledCodes(p, text) : scan(p.text.replace(/(?![0-9])\p{Nd}/gu, (c) => (c.length === 1 ? ascii(c) : c)), zone);
+    const t = p.kind === "numerals" ? "" : p.text.replace(/(?![0-9])\p{Nd}/gu, (c) => (c.length === 1 ? ascii(c) : c));
+    // Across gaps, only numbers a checksum vouches for: two lines' numbers glued are no code nor phone.
+    const hits = p.kind === "numerals" ? spelledCodes(p, text) : p.kind === "gaps" ? checksummed(t, true) : scan(t, zone);
     for (const [s, e, type, canonical] of hits) {
       if (zone === "web" && !HIGH_RISK.has(type)) continue;
-      // Across gaps, only numbers a checksum vouches for: two lines' numbers glued are no code nor phone.
-      if (p.kind === "gaps" && !CHECKSUMMED.has(type)) continue;
       const [start, end] = p.kind === "numerals" ? [s, e] : originalSpan(p, s, e);
       found.set(`${type}\n${start}\n${end}`, { type, start, end, canonical });
     }
