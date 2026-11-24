@@ -115,6 +115,11 @@ export interface TabInfo {
   agentReached?: boolean;
   /** The tab's login profile, whose passport is « this tab's » (design § 8.1); absent: no passport is. */
   profile?: string;
+  /**
+   * A tab of the agent's own profile: the profile of its window's active space (never a private one). Fill by kind
+   * offers that passport there, the card naming it, always behind Touch ID (owner, 2026-11-24).
+   */
+  activeProfile?: string;
 }
 
 /**

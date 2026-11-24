@@ -2,6 +2,13 @@ import type { DevRight, PageBlock, PageField, PageLink, TabInfo, TabRead, Zone }
 import { FIELDS_MAX } from "../../../../packages/kernel/src/mcp/bridge";
 import { AGENT_PROFILE, privateTab, tabProfile, recapOfUrl, type Decision, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
 
+const activeOf = (state: BrowserState, o: Tab): { activeProfile?: string } => {
+  if (tabProfile(state, o) !== AGENT_PROFILE) return {};
+  const w = state.windows.find((x) => x.id === o.windowId);
+  const space = state.spaces.find((e) => e.id === w?.activeSpace);
+  return space && !space.private ? { activeProfile: space.profile } : {};
+};
+
 const info = (state: BrowserState, o: Tab): TabInfo => ({
   id: o.id,
   title: o.title,
@@ -11,6 +18,8 @@ const info = (state: BrowserState, o: Tab): TabInfo => ({
   agentReached: o.agentReached !== false || o.profile === AGENT_PROFILE || !!o.tweakScript,
   // Fill by kind offers this profile's passport only (design § 8.3).
   profile: tabProfile(state, o),
+  // The agent's own tab borrows its window's active space's passport, unless that space is private.
+  ...activeOf(state, o),
 });
 
 /** Ressac internal pages (`ressac:`): the agent never sees them. */

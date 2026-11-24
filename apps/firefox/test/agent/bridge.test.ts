@@ -43,6 +43,20 @@ test("tabInfos: profile is the tab's login profile (its space's, or its own: `ag
   expect([profileOf("https://a.test/"), profileOf("https://w.test/"), profileOf("https://s.test/")]).toEqual(["default", work, "agent"]);
 });
 
+test("tabInfos: the agent's own tab carries its window's active space's profile, never a private space's", () => {
+  const { e, ag, F } = prepare();
+  ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "new", windowId: F });
+  ag({ type: "openTab", windowId: F, url: "https://s.test/", profile: "agent" });
+  ag({ type: "openTab", windowId: F, url: "https://w.test/" });
+  const of = (url: string) => tabInfos(e()).find((o) => o.url === url)!;
+  const work = e().spaces.find((x) => x.name === "Boulot")!.profile;
+  expect(of("https://s.test/").activeProfile).toBe(work);
+  // A user tab keeps its own passport and borrows none.
+  expect(of("https://w.test/").activeProfile).toBeUndefined();
+  ag({ type: "createSpace", name: "Secret", icon: "🔒", private: true, profile: "default", windowId: F });
+  expect(of("https://s.test/").activeProfile).toBeUndefined();
+});
+
 test("tabInfos carries agentReached; a tab in the agent's own profile is always the agent's", () => {
   const { e, ag, F } = prepare();
   ag({ type: "openTab", windowId: F, url: "https://u.test/", agentReached: false });

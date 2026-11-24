@@ -1365,8 +1365,11 @@ export function createToolsServer(
       let hit: OutflowHit | undefined;
       /** Per row: its labels' entries, or for a kind the tab's passport entries on offer (`choices`). */
       const rows: { name: string; entries: Entry[]; kind?: string; choices?: FillChoice[] }[] = [];
-      // Fill by kind offers the tab's passport only (design § 8.3): the agent's profile and site apps have none.
-      const profile = o.profile !== undefined && o.profile !== "agent" && !o.profile.startsWith("site-") ? o.profile : undefined;
+      // Fill by kind offers the tab's passport (design § 8.3): site apps have none; the agent's own tab borrows its
+      // window's active space's, named on the card and behind Touch ID (`borrowed`).
+      const own = o.profile !== undefined && o.profile !== "agent" && !o.profile.startsWith("site-") ? o.profile : undefined;
+      const profile = own ?? (o.profile === "agent" ? o.activeProfile : undefined);
+      const borrowed = own === undefined && profile !== undefined;
       if (saved_login) {
         kind = loginKind(seal);
         // No card can widen this (spec § 5.4): the exact origin, every frame on it.
@@ -1445,7 +1448,7 @@ export function createToolsServer(
       const windows = (session !== null && touchIdUntil.get(labels)) || new Map<string, number>();
       if (session !== null) touchIdUntil.set(labels, windows);
       const offOrigin = fromPassport.some((e) => !passportOrigins(e).includes(seal.origin)) && (windows.get(seal.origin) ?? 0) <= Date.now();
-      const touchId = reached || !!pair?.seal.agentReached || offOrigin;
+      const touchId = reached || !!pair?.seal.agentReached || offOrigin || borrowed;
       const otherProfile = fromPassport.find((e) => !e.passport!.some((r) => r.profile === o.profile))?.passport![0]!.profile;
       // « Retenir ce site » (task 13b): an entry of the tab's own passport, off its hosts and under their cap, on a tab
       // the user reached, whose cleaned host covers the field's origin. For Firefox only; the agent's answer never says.

@@ -790,6 +790,20 @@ test("passport: a tab of the agent's own profile, a site app's or with no profil
   });
 });
 
+test("passport: the agent's own tab borrows its window's active space's passport, named on the card, behind Touch ID", async () => {
+  const tabs = [ptab("mail", `${P_MAIL}/inbox`), { ...ptab("a", `${P_SHOP}/a`, true, "agent"), activeProfile: "perso" }];
+  await servePassport({ tabs, passports: { perso: [ADDRESS_ENTRY] } }, async ({ call, cards, of }) => {
+    await call("read_tab", { id: "a" });
+    await call("fill_field", { id: "a", field: 0, passport: "adresse" });
+    const card = cards()[0]!;
+    expect(rowsOf(card)[0]!.choices).toHaveLength(1);
+    expect(card).toMatchObject({ touchId: true, passportProfile: "perso", profile: "perso" });
+    // The agent reached it: never remembered as a site of the entry.
+    expect(card.remember).toBeUndefined();
+    expect(of("fill.commit")).toHaveLength(1);
+  });
+});
+
 test("passport: a date by kind goes as the field takes it; nothing into a password field", async () => {
   await servePassport({}, async ({ call, of }) => {
     await call("read_tab", { id: "mail" });
