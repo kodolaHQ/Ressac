@@ -149,6 +149,7 @@ test("a new frame joins the frames' group while one of them is in a page, never 
     let crash: (e: unknown) => void = () => {};
     const el = {
       isConnected: connected,
+      ownerGlobal: { closed: false },
       parentNode: { insertBefore: (b: { isConnected: boolean }) => (b.isConnected = true) },
       nextSibling: null,
       browsingContext: { group: { id: 34 } },
@@ -173,6 +174,43 @@ test("a new frame joins the frames' group while one of them is in a page, never 
   const third = make(false);
   expect(third.el.setAttribute).not.toHaveBeenCalledWith("initialBrowsingContextGroupId", expect.anything());
   expect(third.el.removeAttribute).toHaveBeenCalledWith("initialBrowsingContextGroupId");
+  err.mockRestore();
+  vi.useRealTimers();
+});
+
+test.each(["unload", "closed"])("a frame of a window gone (%s) is forgotten: the next frame starts a new group, the dead browser is not kept", async (how) => {
+  vi.resetModules();
+  const { createFrameBrowser } = await import("../chrome/window/remote-frame");
+  vi.useFakeTimers();
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
+  let unload = () => {};
+  const win = { addEventListener: (type: string, fn: () => void, o: { once?: boolean }) => type === "unload" && o?.once && (unload = fn) };
+  const make = () => {
+    let crash: (e: unknown) => void = () => {};
+    const el = {
+      // A node of an unloaded document stays connected to its own tree.
+      isConnected: true,
+      ownerGlobal: { closed: false },
+      parentNode: { insertBefore: (b: { isConnected: boolean }) => (b.isConnected = true) },
+      nextSibling: null,
+      browsingContext: { group: { id: 34 } },
+      setAttribute: vi.fn(),
+      removeAttribute: vi.fn(),
+      addEventListener: (type: string, fn: (e: unknown) => void) => type === "oop-browser-crashed" && (crash = fn),
+      remove() {
+        this.isConnected = false;
+      },
+    };
+    const b = createFrameBrowser({ createXULElement: () => el, defaultView: win } as unknown as Document);
+    return { el, crash: () => crash({ isTrusted: true, isTopFrame: true, target: b, childID: 2000, stopPropagation: () => {} }) };
+  };
+  const first = make();
+  first.crash();
+  vi.runAllTimers();
+  if (how === "unload") unload();
+  else first.el.ownerGlobal.closed = true;
+  const next = make();
+  expect(next.el.setAttribute).not.toHaveBeenCalledWith("initialBrowsingContextGroupId", expect.anything());
   err.mockRestore();
   vi.useRealTimers();
 });

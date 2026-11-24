@@ -29,10 +29,12 @@ export function createFrameBrowser(doc: Document, onCrash?: (revived: boolean) =
   const b = (doc as any).createXULElement("browser") as Element;
   setFrameAttributes(b);
   b.addEventListener("oop-browser-crashed", (e) => revive(b, e, onCrash));
+  // A node of an unloaded document stays connected to its own tree: isConnected alone would keep the window alive.
+  doc.defaultView?.addEventListener("unload", () => frameBrowsers.delete(b), { once: true });
   return b;
 }
 
-/** Every frame browser made, in any window; dropped once seen out of its document (an owner unmounted it). */
+/** Every frame browser made, in any window; dropped once seen out of its document (an owner unmounted it) or its window gone. */
 const frameBrowsers = new Set<Element>();
 
 /**
@@ -42,7 +44,7 @@ const frameBrowsers = new Set<Element>();
  * a group of its own, so a second process (measured: one forced GC after the home came back is enough).
  */
 function forgetDeadGroup(b: Element): void {
-  for (const f of frameBrowsers) if (f !== b && !f.isConnected) frameBrowsers.delete(f);
+  for (const f of frameBrowsers) if (f !== b && (!f.isConnected || !(f as any).ownerGlobal || (f as any).ownerGlobal.closed)) frameBrowsers.delete(f);
   if (![...frameBrowsers].some((f) => f !== b)) groupId = null;
   frameBrowsers.add(b);
 }
