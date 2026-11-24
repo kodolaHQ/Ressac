@@ -43,6 +43,13 @@ import { FIELDS_MAX, TabNotFound, PrivateTab, SiteChanged, LoadRefused, PRIVATE_
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
 /** While the user has the search tab (a hand_over or an outflow pause), the agent gets nothing from it. */
 export const HANDING_TEXT = "La page est à l'utilisateur : attends la fin de hand_over.";
+/** Queues a call behind the window's previous one. The map keeps a tail that resolves to nothing, dropped once it
+ *  settles while still the last: a settled result (page texts) is not held for every window ever used. */
+function chain(chains: Map<string, Promise<unknown>>, key: string, mine: Promise<unknown>): void {
+  const tail = mine.then(() => {}, () => {});
+  chains.set(key, tail);
+  void tail.then(() => { if (chains.get(key) === tail) chains.delete(key); });
+}
 const TOO_LONG_TEXT = `Adresse trop longue (${URL_MAX} caractères au plus).`;
 /** The band while an address card waits: a step, so the idle delay does not end the search under the card. */
 /** The key of the search of a session without a window (the main token). */
@@ -1948,7 +1955,7 @@ export function createToolsServer(
           const notes = current?.goal ? "" : ((await searching.notes?.shown()) ?? "");
           return readSearch(key, o, true, l10n("kernel-search-query", { query }), [`Onglet : ${o.id}`, ...(notes ? [`${NOTES_PREFIX}\n${wrap(notes, "sources", null)}`] : [])], { extra });
         });
-        searching.chains.set(key, mine);
+        chain(searching.chains, key, mine);
         return mine;
       }),
     );
@@ -2078,7 +2085,7 @@ export function createToolsServer(
           }
           return text(urls.map((u) => `## ${u}\n${errors.get(u) ?? sections.get(u) ?? "Erreur : page non lue."}`).join("\n\n"));
         });
-        searching.chains.set(key, mine);
+        chain(searching.chains, key, mine);
         return mine;
       }),
     );
