@@ -14,10 +14,10 @@ import { isSmallMac, type MachineStatus } from "../shared/settings.ts";
 
 /** The machine image, built by scripts/vm/build-image.sh and published by scripts/vm/publish-image.sh. */
 export const VM_IMAGE = {
-  version: "3.24.4-5.8.10-20062535e787",
-  url: "https://updates.getressac.app/vm/ressac-vm-3.24.4-5.8.10-20062535e787.raw.zst",
-  sha256: "7113cc64e8631d4ae7f4f99dca9d60feb180e01d6ef791d15d14d85ab037ec4b",
-  bytes: 527805421,
+  version: "3.24.4-5.8.10-3fb8195081b7",
+  url: "https://updates.getressac.app/vm/ressac-vm-3.24.4-5.8.10-3fb8195081b7.raw.zst",
+  sha256: "efbb383bdb1cd7da4c241b110105ede8bcb7f9247600e29ed51bd82c5a6f4ee2",
+  bytes: 530054536,
 };
 
 /**

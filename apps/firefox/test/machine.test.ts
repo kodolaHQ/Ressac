@@ -282,7 +282,7 @@ describe("the workshop machine", () => {
   });
 
   it("an older guest on the image's Alpine branch and setup is upgraded detached in the guest: the boot never waits for apk nor cuts it", async () => {
-    const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-20062535e787", upgradedTo: "3.24.3-5.8.10-20062535e787" });
+    const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-3fb8195081b7", upgradedTo: "3.24.3-5.8.10-3fb8195081b7" });
     const delays: (number | undefined)[] = [];
     const run: Runner = (cmd, args, o) => (String(o?.input ?? "").includes("apk upgrade") && delays.push(o?.delayMs), w.run(cmd, args, o));
     const m = machine(w, { run });
@@ -291,7 +291,7 @@ describe("the workshop machine", () => {
     const job = w.s.calls.filter((c) => c.args.join(" ") === "shell --workdir / ressac sudo sh" && String(c.input ?? "").includes("apk upgrade"));
     expect(job).toHaveLength(1);
     expect(delays).toEqual([120_000]); // any shell call's default: it only launches the job
-    expect(w.s.guestVersion).toBe("3.24.3-5.8.10-20062535e787"); // the mark as apk left it
+    expect(w.s.guestVersion).toBe("3.24.3-5.8.10-3fb8195081b7"); // the mark as apk left it
     await m.stop();
     await m.wake("user");
     expect(delays).toHaveLength(2); // still short of the image: launched again at the next boot
@@ -300,7 +300,7 @@ describe("the workshop machine", () => {
   it("a guest on another Alpine branch, another setup, or newer than the image is not upgraded: it boots as it is", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      for (const guestVersion of ["3.23.9-5.8.10-20062535e787", "3.24.4-5.8.10-000000000000", "3.24.9-5.9.0-20062535e787"]) {
+      for (const guestVersion of ["3.23.9-5.8.10-3fb8195081b7", "3.24.4-5.8.10-000000000000", "3.24.9-5.9.0-3fb8195081b7"]) {
         const w = world({ instance: { status: "Stopped" }, guestVersion });
         const m = machine(w);
         await m.wake("user");
@@ -813,7 +813,7 @@ describe("the workshop machine", () => {
   it("a Podman that never answers after a cut upgrade is healed once by apk, then the boot goes on", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     try {
-      const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-20062535e787", brokenPodman: true });
+      const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-3fb8195081b7", brokenPodman: true });
       let done = false;
       const p = machine(w).wake("user").finally(() => (done = true));
       while (!done) await vi.advanceTimersByTimeAsync(1000);
@@ -886,7 +886,7 @@ describe("the guest upgrade job", () => {
     tool("pgrep", `[ "$*" = "-x apk" ] && [ -e ${d}/apk.running ]`);
     tool("podman", "echo 5.8.10");
     writeFileSync(join(d, "alpine-release"), "3.24.4\n");
-    writeFileSync(join(d, "version"), "3.24.0-5.8.0-20062535e787\n");
+    writeFileSync(join(d, "version"), "3.24.0-5.8.0-3fb8195081b7\n");
     const script = UPGRADE.replaceAll("/etc/ressac-vm-version", join(d, "version")).replaceAll("/etc/alpine-release", join(d, "alpine-release"));
     const launch = (input: string) => new Promise<number>((ok) => {
       const began = Date.now();
@@ -897,9 +897,9 @@ describe("the guest upgrade job", () => {
     expect(await launch(script)).toBeLessThan(5000); // returns while apk still runs (it waits for the release below)
     await vi.waitFor(() => expect(existsSync(join(d, "apk.running"))).toBe(true));
     expect(await launch(script)).toBeLessThan(5000);
-    expect(readFileSync(join(d, "version"), "utf8").trim()).toBe("3.24.0-5.8.0-20062535e787");
+    expect(readFileSync(join(d, "version"), "utf8").trim()).toBe("3.24.0-5.8.0-3fb8195081b7");
     writeFileSync(join(d, "release"), "");
-    await vi.waitFor(() => expect(readFileSync(join(d, "version"), "utf8").trim()).toBe("3.24.4-5.8.10-20062535e787"), { timeout: 3000 });
+    await vi.waitFor(() => expect(readFileSync(join(d, "version"), "utf8").trim()).toBe("3.24.4-5.8.10-3fb8195081b7"), { timeout: 3000 });
     expect(readFileSync(join(d, "apk.log"), "utf8")).toBe("upgrade --no-cache\n");
   });
 });
