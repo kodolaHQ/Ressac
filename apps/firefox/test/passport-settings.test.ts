@@ -444,3 +444,100 @@ describe("« Retenir ce site » (task 13b)", () => {
     expect(files.save).not.toHaveBeenCalled();
   });
 });
+
+describe("« Cacher pour l'agent »: hide and unhide (chrome only)", () => {
+  const MAIL = ["marc", "exemple.fr"].join("@");
+  const mail = (id: string, origins: string[] = []): PassportEntry => ({ ...entry(id), field: "email", value: { text: MAIL }, origins });
+  const loaded = (entries: PassportEntry[]) => ({ profile: "default", state: "ok" as "ok" | "unreadable" | "newer", entries, dropped: 0, revision: "r1" });
+  const written = (files: ReturnType<typeof setup>["files"]) => files.save.mock.calls.at(-1)![1];
+  const hideIt = (s: ReturnType<typeof setup>["s"], over: Record<string, unknown> = {}) =>
+    s.hide({ profile: "default", field: "email", value: { text: MAIL }, origin: "https://www.Boutique.example/compte", reason: "cacher ce texte pour l'agent", ...over } as any);
+
+  it("asks Touch ID, then creates a click entry from that site, writes it and sends passport.replace", async () => {
+    const { s, files, reauth, request, order } = setup();
+    files.load.mockResolvedValueOnce(loaded([entry("0000000000000002")]));
+    const r = await hideIt(s);
+    expect(reauth).toHaveBeenCalledWith("cacher ce texte pour l'agent");
+    expect(r).toEqual({ ok: true, id: expect.stringMatching(/^[0-9a-f-]{36}$/), created: true, addedOrigin: true });
+    const all = written(files);
+    expect(all).toHaveLength(2);
+    expect(all[1]).toMatchObject({ id: (r as any).id, field: "email", value: { text: MAIL }, variants: [], origins: ["www.boutique.example"], how: "click", from: "www.boutique.example" });
+    expect(request).toHaveBeenCalledWith("passport.replace", { profile: "default", entries: all });
+    expect(order).toEqual(["write", "passport.replace"]);
+  });
+
+  it("a value already there only gets the site, never a second entry", async () => {
+    const { s, files } = setup();
+    files.load.mockResolvedValueOnce(loaded([mail("0000000000000003", ["a.example"])]));
+    expect(await hideIt(s, { value: { text: `  ${MAIL.toUpperCase()} ` } })).toEqual({ ok: true, id: "0000000000000003", created: false, addedOrigin: true });
+    expect(written(files)).toEqual([mail("0000000000000003", ["a.example", "www.boutique.example"])]);
+  });
+
+  it("a value already there with that site: a success with nothing written", async () => {
+    const { s, files, request } = setup();
+    files.load.mockResolvedValueOnce(loaded([mail("0000000000000003", ["www.boutique.example"])]));
+    expect(await hideIt(s)).toEqual({ ok: true, id: "0000000000000003", created: false, addedOrigin: false });
+    expect(files.save).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("origin null: the value is added without a site", async () => {
+    const { s, files } = setup();
+    files.load.mockResolvedValueOnce(loaded([]));
+    expect(await hideIt(s, { origin: null })).toMatchObject({ ok: true, created: true, addedOrigin: false });
+    expect(written(files)[0]).toMatchObject({ origins: [], how: "click" });
+    expect(written(files)[0]).not.toHaveProperty("from");
+  });
+
+  it("Touch ID refused: cancelled, the file never read nor written", async () => {
+    const { s, files, request } = setup({ pass: false });
+    expect(await hideIt(s)).toEqual({ ok: false, error: "cancelled" });
+    expect(files.load).not.toHaveBeenCalled();
+    expect(files.save).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("refusals: long, invalid, unreadable, newer, full, write", async () => {
+    const { s, files } = setup();
+    files.load.mockResolvedValue(loaded([]));
+    expect(await hideIt(s, { field: "libre", value: { text: "x".repeat(301) } })).toEqual({ ok: false, error: "long" });
+    expect(await hideIt(s, { field: "tel", value: { text: "12" } })).toEqual({ ok: false, error: "invalid" });
+    files.load.mockResolvedValueOnce({ ...loaded([]), state: "unreadable" });
+    expect(await hideIt(s)).toEqual({ ok: false, error: "unreadable" });
+    files.load.mockResolvedValueOnce({ ...loaded([]), state: "newer" });
+    expect(await hideIt(s)).toEqual({ ok: false, error: "unreadable" });
+    files.load.mockResolvedValueOnce(loaded(Array.from({ length: 200 }, (_, i) => entry(`e${i}`, `Nom${"x".repeat(i)}`))));
+    expect(await hideIt(s)).toEqual({ ok: false, error: "full" });
+    files.load.mockResolvedValueOnce(loaded([mail("0000000000000003", Array.from({ length: 20 }, (_, i) => `s${i}.example`))]));
+    expect(await hideIt(s)).toEqual({ ok: false, error: "full" });
+    expect(files.save).not.toHaveBeenCalled();
+    files.save.mockResolvedValueOnce({ ok: false, error: "write" });
+    expect(await hideIt(s)).toEqual({ ok: false, error: "write" });
+  });
+
+  it("unhide after a create removes the entry, then sends passport.replace; no Touch ID", async () => {
+    const { s, files, reauth, order } = setup();
+    files.load.mockResolvedValueOnce(loaded([entry("0000000000000002"), mail("0000000000000003", ["www.boutique.example"])]));
+    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: true, addedOrigin: true, origin: "https://www.boutique.example" })).toBe(true);
+    expect(written(files)).toEqual([entry("0000000000000002")]);
+    expect(order).toEqual(["write", "passport.replace"]);
+    expect(reauth).not.toHaveBeenCalled();
+  });
+
+  it("unhide after an origin-only hide removes only that origin", async () => {
+    const { s, files, request } = setup();
+    files.load.mockResolvedValueOnce(loaded([mail("0000000000000003", ["a.example", "www.boutique.example"])]));
+    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: false, addedOrigin: true, origin: "https://www.Boutique.example/x" })).toBe(true);
+    expect(written(files)).toEqual([mail("0000000000000003", ["a.example"])]);
+    expect(request).toHaveBeenCalledWith("passport.replace", { profile: "default", entries: [mail("0000000000000003", ["a.example"])] });
+  });
+
+  it("unhide with nothing it added writes nothing; an unreadable file is a failure", async () => {
+    const { s, files } = setup();
+    files.load.mockResolvedValueOnce(loaded([mail("0000000000000003", ["a.example"])]));
+    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: false, addedOrigin: false, origin: "https://a.example" })).toBe(true);
+    files.load.mockResolvedValueOnce({ ...loaded([]), state: "unreadable" });
+    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: true, addedOrigin: false, origin: null })).toBe(false);
+    expect(files.save).not.toHaveBeenCalled();
+  });
+});
