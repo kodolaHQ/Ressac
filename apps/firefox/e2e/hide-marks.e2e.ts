@@ -178,7 +178,8 @@ it("the viewfinder of « Cacher pour l'agent » shows the hatches without the au
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   await until(async () => existsSync(join(w!.dataDir, "workspace", ".ressac", "mcp.json")), Boolean, "the MCP config", 20_000);
-  await userTab(`${server.url}/compte/fiche.html`);
+  const other = await userTab(`${server.url}/autre-onglet.html`);
+  const id = await userTab(`${server.url}/compte/fiche.html`);
   await inPage("window.__seen.length = 0; return true;");
   expect(await marks()).toEqual([]);
 
@@ -194,4 +195,15 @@ it("the viewfinder of « Cacher pour l'agent » shows the hatches without the au
   await click(m, '[data-testid="hide-button"]');
   await until(marks, (rs) => rs.length === 0, "no hatch once the viewfinder is left");
   expect(await inPage<string[]>("return window.__seen.filter((e) => !/^(mouse|pointer|click)/.test(e));")).toEqual([]);
+
+  // Armed again, then another tab shown: the gesture closes and the hatches go with it, none drawn over the other tab.
+  await click(m, '[data-testid="hide-button"]');
+  await until(marks, (rs) => covers(rs, name), "the hatches while picking again");
+  await dispatch(m, { type: "activateTab", id: other });
+  await until(marks, (rs) => rs.length === 0, "no hatch after the tab switch");
+  await waitFor(m, "return document.getElementById('ressac-hide-marks')?.style.display", (v) => v === "none", 10_000);
+  // Back on the page, the viewfinder is closed: no hatch comes back without it.
+  await dispatch(m, { type: "activateTab", id });
+  await new Promise((r) => setTimeout(r, 1500)); // > RUNS_FRESH_MS + MARKS_EVERY_MS: a stray start would have drawn by now
+  expect(await marks()).toEqual([]);
 }, 120_000);

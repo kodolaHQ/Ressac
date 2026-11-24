@@ -247,10 +247,10 @@ export function createController(
     aura: () => auraOf(store.state),
   });
   let haloOn = false;
-  let picking = false;
+  /** The tab the viewfinder was armed on: a tab switch closes it, and the new tab is never measured meanwhile. */
+  let picking: TabId | null = null;
   const syncMarks = () => {
-    const f = store.state.windows.find((x) => x.id === windowId);
-    const t = haloOn ? haloTab : picking ? f?.active[f.activeSpace] : null;
+    const t = haloOn ? haloTab : picking;
     if (t) marks.start(t);
     else marks.stop();
   };
@@ -436,8 +436,9 @@ export function createController(
   const hide = mountHideLayer(window, store, windowId);
   unsubscribe.push(
     hide.onChange(() => {
-      if (picking === hide.picking()) return;
-      picking = hide.picking();
+      if (!!picking === hide.picking()) return;
+      const f = store.state.windows.find((x) => x.id === windowId);
+      picking = hide.picking() ? (f?.active[f.activeSpace] ?? null) : null;
       syncMarks();
     }),
     hide.dispose,
