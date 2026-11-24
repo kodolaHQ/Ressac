@@ -45,5 +45,5 @@ export function wrapHideApi(raw: HideApi, untilUnload: (unsubscribe: () => void)
 
 /** The API of the marks frame (HideMarks.svelte). */
 export function wrapMarksApi(raw: MarksApi, untilUnload: (unsubscribe: () => void) => () => void = untilWindowUnload): MarksApi {
-  return { marks: () => structuredClone(raw.marks()), onChange: (cb) => untilUnload(raw.onChange(() => cb())) };
+  return { marks: () => structuredClone(raw.marks()), locale: () => String(raw.locale()), onChange: (cb) => untilUnload(raw.onChange(() => cb())) };
 }

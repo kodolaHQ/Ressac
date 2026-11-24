@@ -238,3 +238,5 @@ chrome-hide-error-write = Le passeport n'a pas pu être enregistré.
 chrome-hide-error-unreadable = Votre passeport est illisible : ouvrez Réglages › Passeport.
 chrome-hide-error-full = Votre passeport est plein.
 chrome-hide-error-invalid = Ce texte ne correspond pas à ce type : choisissez-en un autre.
+chrome-hide-legend-text = Texte masqué : l'agent lit une étiquette à la place
+chrome-hide-legend-field = Champ masqué : l'agent ne lit pas sa valeur en clair

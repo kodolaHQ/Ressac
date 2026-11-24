@@ -36,6 +36,12 @@ const FICHE = `<!doctype html><meta charset="utf-8"><title>Fiche</title>
 const AUTRE = `<!doctype html><meta charset="utf-8"><title>Autre</title>
 <body style="margin:0;font:16px/20px sans-serif">
 <p style="position:absolute;left:400px;top:600px;margin:0">Virement : <span id="iban">${IBAN}</span></p>${RECORDER}`;
+// A profile page: the name in a text field set as a heading, in a password field, and in plain text.
+const PROFIL = `<!doctype html><meta charset="utf-8"><title>Profil</title>
+<body style="margin:0;font:16px/20px sans-serif">
+<input id="champ" value="Camille Aubrac" style="position:absolute;left:100px;top:200px;width:500px;font-size:24px;text-align:center;border:0;background:none;color:#222">
+<input id="secret" type="password" value="Camille Aubrac" style="position:absolute;left:100px;top:300px;width:300px">
+<p style="position:absolute;left:100px;top:400px;margin:0">Titulaire : <span id="nom">Camille Aubrac</span></p>${RECORDER}`;
 const CARDS = '[data-testid="permission-request"] button, [data-testid="devtools-request"] button';
 
 const html = (body: string) => (_req: unknown, res: ServerResponse) => res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(body);
@@ -44,7 +50,7 @@ let w: LaunchedRessac | undefined;
 let m: Marionette;
 const dirs: string[] = [];
 beforeAll(async () => {
-  server = await startServer({ routes: { "/compte/fiche.html": html(FICHE), "/compte/autre.html": html(AUTRE), "/autre-onglet.html": html("<title>Ailleurs</title><p>Ailleurs</p>") } });
+  server = await startServer({ routes: { "/compte/fiche.html": html(FICHE), "/compte/autre.html": html(AUTRE), "/compte/profil.html": html(PROFIL), "/autre-onglet.html": html("<title>Ailleurs</title><p>Ailleurs</p>") } });
 });
 afterAll(() => server?.close());
 afterEach(async () => {
@@ -230,4 +236,34 @@ it("the viewfinder of « Cacher pour l'agent » shows the hatches without the au
   await dispatch(m, { type: "activateTab", id });
   await new Promise((r) => setTimeout(r, 1500)); // > RUNS_FRESH_MS + MARKS_EVERY_MS: a stray start would have drawn by now
   expect(await marks()).toEqual([]);
+}, 120_000);
+
+it("a text field's value is hatched in its own colour over its text, a password never, with a legend naming both kinds", async () => {
+  const dataDir = await mkdtemp(join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(join(os.tmpdir(), "ressac-firefox-"));
+  dirs.push(dataDir, profile);
+  await writePassport(profile, [{ id: "0000000000000001", field: "nom", value: { given: "Camille", family: "Aubrac" }, origins: [] }]);
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_PASSPORT_CIPHER: "memory", RESSAC_TEST_LOCAL_ADDRESSES: "1", RESSAC_TEST_PUBLIC_ADDRESSES: "127.0.0.1" } });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  await until(async () => existsSync(join(w!.dataDir, "workspace", ".ressac", "mcp.json")), Boolean, "the MCP config", 20_000);
+  await userTab(`${server.url}/compte/profil.html`);
+  await inPage("window.__seen.length = 0; return true;");
+  await click(m, '[data-testid="hide-button"]');
+  const [field, secret, name] = [await rectOf("champ"), await rectOf("secret"), await rectOf("nom")];
+  const kinds = () =>
+    m.execute<{ field: boolean; r: Rect }[]>(`const d = document.getElementById("ressac-hide-marks")?.contentDocument;
+      return d ? [...d.querySelectorAll('[data-testid="hide-mark"]')].map((e) => { const r = e.getBoundingClientRect(); return { field: e.classList.contains("field"), r: { x: r.x, y: r.y, width: r.width, height: r.height } }; }) : [];`);
+  const got = await until(kinds, (ks) => ks.some((k) => k.field && meets(k.r, field)) && ks.some((k) => !k.field && meets(k.r, name)), "the field's and the text's hatches");
+  // Over the centred text only, not the whole 500px field; never over the password.
+  const f = got.find((k) => k.field)!.r;
+  expect(f.width).toBeLessThan(field.width / 2);
+  expect(f.x).toBeGreaterThan(field.x + 50);
+  expect(got.some((k) => meets(k.r, secret))).toBe(false);
+  const legend = await m.execute<string>(`return document.getElementById("ressac-hide-marks").contentDocument.querySelector('[data-testid="hide-legend"]')?.textContent ?? "";`);
+  expect(legend).toContain("Texte masqué : l'agent lit une étiquette à la place");
+  expect(legend).toContain("Champ masqué : l'agent ne lit pas sa valeur en clair");
+  // Reading a field's value fires nothing in the page.
+  expect(await inPage<string[]>("return window.__seen.filter((e) => !/^(mouse|pointer|click)/.test(e));")).toEqual([]);
 }, 120_000);

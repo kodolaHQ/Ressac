@@ -238,3 +238,5 @@ chrome-hide-error-write = The passport could not be saved.
 chrome-hide-error-unreadable = Your passport cannot be read: open Settings › Passport.
 chrome-hide-error-full = Your passport is full.
 chrome-hide-error-invalid = This text does not fit this type: choose another one.
+chrome-hide-legend-text = Masked text: the agent reads a label instead
+chrome-hide-legend-field = Masked field: the agent never reads its value in clear

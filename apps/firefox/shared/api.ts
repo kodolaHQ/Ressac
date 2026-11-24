@@ -1064,7 +1064,8 @@ export type OverlayApi = {
   cancel(): void;
 } & Pick<ApiDesign, "basket" | "remove" | "send" | "batches" | "handled" | "onChange">;
 /** A rect in the hide layer frame's CSS px (its origin is the page's top left corner). */
-export type HideRect = { x: number; y: number; width: number; height: number };
+/** `field`: a mark over a form field's value (marks only), drawn in its own colour. */
+export type HideRect = { x: number; y: number; width: number; height: number; field?: true };
 /**
  * « Cacher pour l'agent » (chrome/window/hide-layer.ts), what both of its frames show: the layer (outline, animation,
  * ending) and the bubble frame (bubble, error, toast). The frozen text is the chrome's; the frames only show it.
@@ -1110,6 +1111,8 @@ export type HideApi = {
 /** « Voir ce qu'il ne voit pas » (chrome/window/hide-layer.ts mountMarks): the rects the agent receives masked; null while the aura is off. */
 export type MarksApi = {
   marks(): HideRect[] | null;
+  /** The shown language, for the legend. */
+  locale(): string;
   onChange(cb: () => void): () => void;
 };
 /** Text of a note: bounded at the entry of the main process. */

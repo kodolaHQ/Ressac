@@ -1,7 +1,8 @@
 // « Cacher pour l'agent »: the page's visible text as one string, and the way back from its offsets to text nodes.
 
 /** A text node's data; `block` is true when a block boundary precedes it. */
-export type TextPiece = { text: string; block: boolean };
+/** `field`: a form field's value (its own block), measured as the field's box, never as text nodes. */
+export type TextPiece = { text: string; block: boolean; field?: true };
 
 /** The pieces joined with "\n" at block boundaries, otherwise with nothing; `starts[i]` is piece i's offset. */
 export function joinPieces(pieces: TextPiece[]): { text: string; starts: number[] } {

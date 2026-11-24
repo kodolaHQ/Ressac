@@ -53,8 +53,8 @@ const plain = (r: DOMRect): Rect => bounded({ x: r.x, y: r.y, width: r.width, he
  * page's pieces, a pick and its frozen text: no display:none, visibility other than visible, opacity (with the
  * ancestors') under FADED, fully transparent colour (gradient text aside), skipped tag or UA widget root.
  */
-function piecesOf(root: Element): { nodes: Text[]; pieces: TextPiece[] } {
-  const nodes: Text[] = [];
+function piecesOf(root: Element, fields = false): { nodes: (Text | Element)[]; pieces: TextPiece[] } {
+  const nodes: (Text | Element)[] = [];
   const pieces: TextPiece[] = [];
   // The context above `root`: its ancestors' opacity and tags (a display:none ancestor leaves root unrendered).
   let above = 1;
@@ -80,7 +80,7 @@ function piecesOf(root: Element): { nodes: Text[]; pieces: TextPiece[] } {
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const el = node as Element;
-    if (SKIP.has(el.tagName)) return;
+    if (SKIP.has(el.tagName) && !(fields && el.tagName === "TEXTAREA")) return;
     const cs = styleOf(el);
     if (cs.display === "none") return;
     const o = opacity * Number(cs.opacity);
@@ -88,6 +88,14 @@ function piecesOf(root: Element): { nodes: Text[]; pieces: TextPiece[] } {
     const isBlock = el.tagName === "BR" || (!cs.display.startsWith("inline") && cs.display !== "contents");
     if (isBlock) block = true;
     const v = cs.visibility === "visible" && (alpha(cs.color) > 0 || cs.backgroundClip === "text");
+    // The marks' walk only: a text field's value (the agent's text read skips it, its HTML read masks it) as its own block.
+    const value = fields && v && fieldValue(el);
+    if (value) {
+      pieces.push({ text: value, block: true, field: true });
+      nodes.push(el);
+      block = true;
+      return;
+    }
     const shadow = ownRoot(el);
     if (shadow) walk(shadow, o, v);
     else if (el.tagName === "SLOT") {
@@ -98,6 +106,25 @@ function piecesOf(root: Element): { nodes: Text[]; pieces: TextPiece[] } {
   };
   walk(root, above, true);
   return { nodes, pieces };
+}
+
+const TEXT_TYPES = new Set(["text", "search", "email", "tel", "url"]);
+/** A shown text field's value (never a password's), or "". */
+function fieldValue(el: Element): string {
+  if (el.tagName === "TEXTAREA") return (el as HTMLTextAreaElement).value;
+  return el.tagName === "INPUT" && TEXT_TYPES.has((el as HTMLInputElement).type) ? (el as HTMLInputElement).value : "";
+}
+
+/** The width a field's value is drawn at, placed by its text-align in the content box: a one-line field's hatch covers the text, a textarea's its box. */
+function fieldBox(el: Element): Rect {
+  const box = contentBox(el);
+  if (el.tagName === "TEXTAREA") return box;
+  const cs = styleOf(el);
+  const g = el.ownerDocument.createElement("canvas").getContext("2d")!;
+  g.font = cs.font;
+  const width = Math.min(box.width, g.measureText((el as HTMLInputElement).value).width);
+  const align = cs.textAlign === "center" ? (box.width - width) / 2 : cs.textAlign === "right" || cs.textAlign === "end" ? box.width - width : 0;
+  return { ...box, x: box.x + align - el.scrollLeft, width };
 }
 
 /**
@@ -223,20 +250,24 @@ export class RessacHideParent extends JSWindowActorParent {
   /** This document's visible text pieces; `rects` slices index into the last answer. */
   async pieces(): Promise<TextPiece[]> {
     const r: any = await this.sendQuery("pieces").catch(() => null);
-    return Array.isArray(r?.pieces) ? r.pieces.filter((p: any) => typeof p?.text === "string" && typeof p.block === "boolean") : [];
+    return Array.isArray(r?.pieces) ? r.pieces.filter((p: any) => typeof p?.text === "string" && typeof p.block === "boolean").map((p: any) => ({ text: p.text, block: p.block, ...(p.field === true ? { field: true as const } : {}) })) : [];
   }
 
   /** Each run's rects, in this document's viewport (add offsetOf for a frame); null when a slice's node is gone or the answer is malformed (walk `pieces` again). */
-  async rects(slices: { piece: number; from: number; to: number }[][]): Promise<Rect[][] | null> {
+  async rects(slices: { piece: number; from: number; to: number }[][]): Promise<(Rect & { field?: true })[][] | null> {
     const r: any = await this.sendQuery("rects", { slices }).catch(() => null);
     if (!Array.isArray(r?.rects) || r.gone !== false) return null;
-    return r.rects.map((run: unknown) => (Array.isArray(run) ? run.map(bounded).filter((x): x is Rect => !!x) : []));
+    const one = (x: any) => {
+      const b = bounded(x);
+      return b && x.field === true ? { ...b, field: true as const } : b;
+    };
+    return r.rects.map((run: unknown) => (Array.isArray(run) ? run.map(one).filter((x): x is Rect => !!x) : []));
   }
 }
 
 export class RessacHideChild extends JSWindowActorChild {
-  /** The text nodes of the last `pieces`: `rects` slices index into them. */
-  private nodes: Text[] = [];
+  /** The text nodes (and fields) of the last `pieces`: `rects` slices index into them. */
+  private nodes: (Text | Element)[] = [];
 
   private selection(): { text: string; rect: Rect } | null {
     const sel = this.contentWindow?.getSelection();
@@ -245,7 +276,7 @@ export class RessacHideChild extends JSWindowActorChild {
   }
 
   /** Each run's slices measured with a detached Range (never the selection), in this viewport's CSS px; `gone`: a slice's node left the page. */
-  private rects(slices: unknown): { rects: Rect[][]; gone: boolean } {
+  private rects(slices: unknown): { rects: (Rect & { field?: true })[][]; gone: boolean } {
     if (!Array.isArray(slices)) return { rects: [], gone: false };
     const range = this.document.createRange();
     let gone = false;
@@ -254,10 +285,11 @@ export class RessacHideChild extends JSWindowActorChild {
         const node = this.nodes[s?.piece];
         if (!node?.isConnected) gone = true;
         if (!node?.isConnected || !Number.isInteger(s.from) || !Number.isInteger(s.to)) return [];
-        const len = node.data.length;
+        if (node.nodeType === Node.ELEMENT_NODE) return [{ ...fieldBox(node as Element), field: true as const }];
+        const len = (node as Text).data.length;
         range.setStart(node, Math.min(Math.max(0, s.from), len));
         range.setEnd(node, Math.min(Math.max(0, s.to), len));
-        return [...range.getClientRects()].filter((r) => r.width > 0).map(plain);
+        return [...range.getClientRects()].filter((r) => r.width > 0).map(plain) as (Rect & { field?: true })[];
       }),
     );
     return { rects, gone };
@@ -285,7 +317,7 @@ export class RessacHideChild extends JSWindowActorChild {
         return this.selection();
       case "pieces": {
         const root = this.document.body ?? this.document.documentElement;
-        const { nodes, pieces } = root ? piecesOf(root) : { nodes: [], pieces: [] };
+        const { nodes, pieces } = root ? piecesOf(root, true) : { nodes: [], pieces: [] };
         this.nodes = nodes;
         return { pieces };
       }

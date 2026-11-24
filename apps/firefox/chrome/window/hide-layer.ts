@@ -107,7 +107,7 @@ const originOf = (url: string) => {
     return "";
   }
 };
-const scaled = (r: HideRect, z: number): HideRect => ({ x: r.x * z, y: r.y * z, width: r.width * z, height: r.height * z });
+const scaled = (r: HideRect, z: number): HideRect => ({ ...r, x: r.x * z, y: r.y * z, width: r.width * z, height: r.height * z });
 // The same helper as hide-actor.ts's, not imported: that module is the actor's own bundle (a value import would pull it
 // into the window's).
 const actorOf = (wg: any): RessacHideParent | null => {
@@ -550,6 +550,7 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
   const listeners = new Set<() => void>();
   const api: MarksApi = {
     marks: () => rects,
+    locale: () => store.state.locale,
     onChange(cb) {
       listeners.add(cb);
       return () => void listeners.delete(cb);
