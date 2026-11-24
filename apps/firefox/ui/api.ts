@@ -370,6 +370,7 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       locale: () => win.store.state.locale,
       ...(o.settingsPage ? { passport: win.store.passport, passwords: win.store.passwords } : {}),
       spaces: () => win.store.state.spaces,
+      untilUnload,
     }),
     // Import from another browser: the chrome runs the engine's migrators; answers copied into this realm.
     bookmarks: { search: (text, limit) => win.store.bookmarks.search(text, limit).then((v) => structuredClone(v)) },

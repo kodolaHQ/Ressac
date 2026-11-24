@@ -23,6 +23,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}, settingsPage =
   const forget = vi.fn(async () => {});
   const sitePermissions = { list: async () => [{ profile: "default", origin: "https://a.fr", permissions: { "media-camera": "allow", notifications: "deny" } as const }], forget };
   const dispatched: Action[] = [];
+  const untilUnload: (() => void)[] = [];
   const passport = {
     passports: vi.fn(async () => [
       { profile: "default", count: 2, state: "ok" as const },
@@ -71,13 +72,21 @@ function setup(answers: Record<string, (p: any) => unknown> = {}, settingsPage =
     switchAgent,
     dataDir: "/u/Ressac",
     locale: () => "fr",
+    untilUnload: (off) => (untilUnload.push(off), off),
   });
-  return { api, calls, chrome, forget, dispatched, openAgent, switchAgent, passport, passwords };
+  return { api, calls, chrome, forget, dispatched, openAgent, switchAgent, passport, passwords, untilUnload };
 }
 
 const row = (kind: GrantRow["kind"], key: string): GrantRow => ({ kind, key, name: key, profile: null, detail: "" });
 
 describe("settings api", () => {
+  it("onLocked subscriptions end with the page's document", () => {
+    const { api, untilUnload } = setup();
+    const offPw = api.passwords!.onLocked(() => {});
+    const offPp = api.passport!.onLocked(() => {});
+    expect(untilUnload).toEqual([offPw, offPp]);
+  });
+
   it("grants order and labels", async () => {
     const { api } = setup({
       "settings.grants": () => [row("widget", "w1"), row("action", "a1")],

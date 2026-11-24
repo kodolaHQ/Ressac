@@ -34,6 +34,8 @@ export function createSettingsApi(o: {
   passwords?: PasswordSettings;
   /** The spaces, read at each call: they name the passports. */
   spaces(): readonly Pick<Space, "name" | "profile" | "private">[];
+  /** Ends a chrome subscription with this document (api.ts): the chrome outlives a closed settings page. */
+  untilUnload(unsubscribe: () => void): () => void;
 }): SettingsApi {
   const say = (id: string, args?: Record<string, string>) => format(o.locale(), id, args);
   const silent = (): { ok: false; error: string } => ({ ok: false, error: say("sidebar-api-agent-silent") });
@@ -78,7 +80,7 @@ export function createSettingsApi(o: {
           for (const token of pageTokens) passwords.lock(token);
           pageTokens.clear();
         },
-        onLocked: (callback) => passwords.onLocked(callback),
+        onLocked: (callback) => o.untilUnload(passwords.onLocked(callback)),
         reveal: (token, guid) => passwords.reveal(mine(token), String(guid)),
         copyPassword: (token, guid) => passwords.copyPassword(mine(token), String(guid)),
         copyUsername: (guid) => passwords.copyUsername(String(guid)),
@@ -120,7 +122,7 @@ export function createSettingsApi(o: {
             tokens.delete(key(profile, p));
           }
         },
-        onLocked: (callback) => passport.onLocked(callback),
+        onLocked: (callback) => o.untilUnload(passport.onLocked(callback)),
         drop: (profile) => passport.drop(String(profile)),
         removePassport: (profile, token) => passport.removePassport(String(profile), String(token)),
         moveTo: (from, to, token) => passport.moveTo(String(from), String(to), String(token)).then((r) => structuredClone(r)),
