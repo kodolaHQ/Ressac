@@ -2686,7 +2686,8 @@ export async function startMcpServer(o: {
       sessions.delete(token);
     },
     /** The zone `session`'s reads of `tab` get now (chrome's marks). */
-    tabZone: (session, tab) => tabZone(tab, agentSites, o.policy.conversation, masker.originsOf(session)),
+    // A peek: chrome's question never takes the conversation's snapshot (its first tool call does).
+    tabZone: (session, tab) => tabZone(tab, agentSites, o.policy.conversation, masker.peekOrigins(session)),
     stop: () =>
       new Promise<void>((ok) => {
         http.closeAllConnections();
