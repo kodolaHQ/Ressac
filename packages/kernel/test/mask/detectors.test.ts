@@ -278,6 +278,15 @@ describe("detect, common wordings (swarm findings 2-5)", () => {
       }
   });
 
+  it("percent-encoding pieces of a URL are no code; a code in a URL query still is", () => {
+    const line = "0. Annonce — http://localhost:62179/l/?uddg=http%3A%2F%2F127.0.0.1%3A62179%2Fa.html";
+    const page = `Annonce\n\nLiens (numérotés, les plus utiles d'abord ; navigate accepte {"link": n}) :\n${line}`;
+    for (const zone of ["sources", "web"] as const) expect(types(page, zone).filter((t) => t === "code"), zone).toEqual([]);
+    expect(spanned("Votre code : https://exemple.fr/v?code=X7K9P2", "web")).toEqual([["code", "X7K9P2"]]);
+    expect(spanned("Votre code : https://exemple.fr/v?q=%20X7K9P2", "web")).toEqual([["code", "X7K9P2"]]);
+    expect(spanned(`Votre code : https://exemple.fr/v?q=%20${code}`, "web")).toEqual([["code", code]]);
+  });
+
   it("stays linear on 50 kB adversarial strings", () => {
     for (const s of [
       "code " + "A1".repeat(25_000),
