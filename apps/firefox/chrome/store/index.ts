@@ -383,6 +383,17 @@ async function start(): Promise<RessacStore> {
     messageManagerGroups: ["browsers"],
     safeForUntrustedWebProcess: true,
   });
+  // « Cacher pour l'agent » (hide-actor.ts): every http(s) frame, a frame answers for its own site. Only on the parent's
+  // demand; the parent forwards typed fields to the tab's layer and takes the origin from its own WindowGlobal.
+  const hideActor = actorModule("hide-actor");
+  ChromeUtils.registerWindowActor("RessacHide", {
+    parent: { esModuleURI: hideActor },
+    child: { esModuleURI: hideActor },
+    matches: ["http://*/*", "https://*/*"],
+    allFrames: true,
+    messageManagerGroups: ["browsers"],
+    safeForUntrustedWebProcess: true,
+  });
   // The same viewfinder on a site app's home (a remote frame): its top document only, armed on the copy the parent names.
   ChromeUtils.registerWindowActor("RessacDesignFrames", {
     parent: { esModuleURI: designActor },
