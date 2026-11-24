@@ -37,7 +37,7 @@ const AUTRE = `<!doctype html><meta charset="utf-8"><title>Autre</title>
 <body style="margin:0;font:16px/20px sans-serif">
 <p style="position:absolute;left:400px;top:600px;margin:0">Virement : <span id="iban">${IBAN}</span></p>${RECORDER}`;
 // A profile page: the name in a text field set as a heading, in a password field, and in plain text.
-const PROFIL = `<!doctype html><meta charset="utf-8"><title>Profil</title>
+const PROFILE = `<!doctype html><meta charset="utf-8"><title>Profil</title>
 <body style="margin:0;font:16px/20px sans-serif">
 <input id="champ" value="Camille Aubrac" style="position:absolute;left:100px;top:200px;width:500px;font-size:24px;text-align:center;border:0;background:none;color:#222">
 <input id="secret" type="password" value="Camille Aubrac" style="position:absolute;left:100px;top:300px;width:300px">
@@ -50,7 +50,7 @@ let w: LaunchedRessac | undefined;
 let m: Marionette;
 const dirs: string[] = [];
 beforeAll(async () => {
-  server = await startServer({ routes: { "/compte/fiche.html": html(FICHE), "/compte/autre.html": html(AUTRE), "/compte/profil.html": html(PROFIL), "/autre-onglet.html": html("<title>Ailleurs</title><p>Ailleurs</p>") } });
+  server = await startServer({ routes: { "/compte/fiche.html": html(FICHE), "/compte/autre.html": html(AUTRE), "/compte/profil.html": html(PROFILE), "/autre-onglet.html": html("<title>Ailleurs</title><p>Ailleurs</p>") } });
 });
 afterAll(() => server?.close());
 afterEach(async () => {

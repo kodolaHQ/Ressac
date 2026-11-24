@@ -19,6 +19,7 @@ class El {
   value = "";
   textContent = "";
   hidden = false;
+  offscreen = false;
   formAction = "";
   /** A control tied to a form elsewhere (`form=`). */
   owner: Form | null = null;
@@ -65,6 +66,10 @@ class El {
   }
   checkVisibility() {
     return !this.hidden;
+  }
+  /** In view unless a test moves it (`offscreen`). */
+  getBoundingClientRect() {
+    return this.offscreen ? { top: 5000, bottom: 5020, left: 0, right: 100 } : { top: 0, bottom: 20, left: 0, right: 100 };
   }
   dispatchEvent(e: { type: string }) {
     this.events.push(e.type);
@@ -124,7 +129,7 @@ function setup() {
   Object.assign(child, {
     document: doc,
     windowContext: { innerWindowId: 7, isInBFCache: false },
-    contentWindow: { HTMLFormElement: Form, Event: class { constructor(public type: string) {} } },
+    contentWindow: { HTMLFormElement: Form, Event: class { constructor(public type: string) {} }, innerWidth: 1000, innerHeight: 800 },
   });
   const fields = () => child.receiveMessage({ name: "fields" }) as { n: number; type: string; autocomplete: string; label: string }[];
   const facts = (handle: number) => child.receiveMessage({ name: "facts", data: { handle } }) as { type: string; autocomplete: string; action: string | null; placement: string; partner: number | null; role: string | null } | null;
@@ -141,7 +146,7 @@ test("fields: the fillable fields of the document, each keeping its number for t
   const user = input("text", { autocomplete: " Username ", name: "u" });
   const pass = input("password", { "aria-label": "Mot de passe" });
   user.labels = [{ textContent: "  Identifiant\n client " }];
-  body.append(user, input("hidden"), input("checkbox"), input("text", {}), pass);
+  body.append(user, input("hidden"), input("submit"), input("text", {}), pass);
   (body.children[3] as El).disabled = true;
   const box = new El("textarea", { type: "textarea", attrs: { placeholder: "Message" } });
   const editor = new El("div", { attrs: { contenteditable: "" } });

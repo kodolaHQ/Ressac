@@ -31,7 +31,7 @@ function doc(id: number, origin: string, parent: any, bc: any, answer: (m: Sent)
   return w;
 }
 
-const FACTS = { type: "password", autocomplete: "", action: BANK + "/login", placement: "p1" };
+const FACTS = { type: "password", autocomplete: "", label: "Mot de passe", action: BANK + "/login", placement: "p1" };
 /** A tab on the bank with a frame on `frameOrigin`; each child answers `facts` and `fill` as told. */
 function tab(frameOrigin = BANK, answers: { facts?: unknown; fill?: unknown } = {}) {
   const top: any = { id: 1 };
@@ -125,7 +125,7 @@ test("commit: the value goes to the child with the seal, once; another origin th
   const f = fill();
   const s = await f.prepare("t1", "20:0");
   expect(await f.commit(s.seal, { text: "abc" }, s.origin)).toBe("filled");
-  expect(t.frameDoc.sent.at(-1)).toEqual({ name: "fill", data: { seal: { innerWindowId: 20, handle: 0, frames: [BANK, BANK], action: BANK + "/login", type: "password", autocomplete: "", placement: "p1", partner: null, role: null }, value: "abc" } });
+  expect(t.frameDoc.sent.at(-1)).toEqual({ name: "fill", data: { seal: { innerWindowId: 20, handle: 0, frames: [BANK, BANK], action: BANK + "/login", type: "password", autocomplete: "", label: "Mot de passe", placement: "p1", partner: null, role: null }, value: "abc" } });
   expect(await f.commit(s.seal, { text: "abc" }, s.origin)).toBe("changed");
   const again = await f.prepare("t1", "20:0");
   expect(await f.commit(again.seal, { text: "abc" }, EVIL)).toBe("changed");
