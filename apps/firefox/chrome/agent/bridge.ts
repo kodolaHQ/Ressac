@@ -148,7 +148,8 @@ export function bridgeHandlers(
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
     const links = boundLinks(r?.links);
-    return { text, ...(selection ? { selection } : {}), links, ...boundCapture(r), ...form };
+    // The document read, as the parent knows it at the read's end: the kernel masks by it.
+    return { text, ...(selection ? { selection } : {}), links, ...boundCapture(r), ...form, ...(browser.currentURI?.spec ? { url: String(browser.currentURI.spec) } : {}) };
   };
   const snapshot = async (browser: any, win: Window) => {
     const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");

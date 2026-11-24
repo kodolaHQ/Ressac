@@ -499,3 +499,52 @@ test("dev tools on a web tab ask no unlock card and stay in clear there (no orac
     expect(unlockCards(bridge)).toHaveLength(0);
   });
 });
+
+/** The user's shop tab; while the read card is up the user goes to their account page (same origin, sensitive by path). */
+async function movedDuringCard(tool: "read_tab" | "capture_screen", moveTo: string | null) {
+  const contact = `Vos coordonnées\nTéléphone : ${PHONE}`;
+  const shop: TabInfo = { id: "shop", title: "Boutique", url: "https://shop.example/", space: "perso", agentReached: false };
+  const bridge = new FakeBridge([shop], { active: "other", allow: true });
+  bridge.pages.set("shop", { text: contact, links: [] });
+  const ask = bridge.askPermission.bind(bridge);
+  bridge.askPermission = async (o, signal) => {
+    if (moveTo) bridge.editTab("shop", { url: moveTo });
+    return ask(o, signal);
+  };
+  const masker = new Masker();
+  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  masker.open("A", "W1");
+  const session = s.openSession("W1", undefined, "A");
+  const c = new Client({ name: "t", version: "0" });
+  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session}` } } }));
+  try {
+    const r = await c.callTool({ name: tool, arguments: { id: "shop" } });
+    const content = r.content as { type: string; text?: string }[];
+    return { text: content.map((x) => x.text ?? "").join("\n"), image: content.some((x) => x.type === "image") };
+  } finally {
+    await c.close();
+    await s.stop();
+  }
+}
+
+test("a tab that moves within its origin to a sensitive page while the read card is up is read and captured as that page", async () => {
+  const read = await movedDuringCard("read_tab", "https://shop.example/compte/coordonnees");
+  expect(read.text).not.toContain(PHONE);
+  expect(read.text).toContain("https://shop.example/compte/coordonnees");
+  expect((await movedDuringCard("capture_screen", "https://shop.example/compte/coordonnees")).image).toBe(false);
+  // Control: staying on the shop's home, the phone is the web's.
+  expect((await movedDuringCard("read_tab", null)).text).toContain(PHONE);
+});
+
+test("a tab that moves within its origin during the read itself is masked as the page the browser read", async () => {
+  const shop: TabInfo = { id: "shop", title: "Boutique", url: "https://shop.example/", space: "perso", agentReached: false };
+  await serve({ tabs: [shop] }, async ({ call, bridge }) => {
+    bridge.pages.set("shop", { text: `Téléphone : ${PHONE}` });
+    const read = bridge.readText.bind(bridge);
+    bridge.readText = async (id, o) => {
+      bridge.editTab("shop", { url: "https://shop.example/compte/coordonnees" });
+      return read(id, o);
+    };
+    expect((await call("read_tab", { id: "shop" })).text).not.toContain(PHONE);
+  });
+});

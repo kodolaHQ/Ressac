@@ -548,7 +548,7 @@ export class FakeBridge implements BrowserBridge {
     const seq = this.linkSequence;
     const page = this.pages.get(id);
     const links = page?.links ?? (seq?.length ? (seq.length > 1 ? seq.shift()! : seq[0]!) : [{ text: "Annonce", url: "https://exemple.fr/a" }]);
-    return { text: page?.text ?? `Texte de ${tab.title} (${tab.url})`, links, ...(page?.fields ? { fields: page.fields.map((f) => ({ ...f })) } : {}), ...(page?.frameOrigins ? { frameOrigins: [...page.frameOrigins] } : {}), ...(o?.capture ? this.captures.get(tab.url) : {}) };
+    return { url: tab.url, text: page?.text ?? `Texte de ${tab.title} (${tab.url})`, links, ...(page?.fields ? { fields: page.fields.map((f) => ({ ...f })) } : {}), ...(page?.frameOrigins ? { frameOrigins: [...page.frameOrigins] } : {}), ...(o?.capture ? this.captures.get(tab.url) : {}) };
   }
 
   async openTab(start: string, space?: string, options?: LoadOptions) {

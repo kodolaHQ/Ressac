@@ -938,7 +938,9 @@ export function createToolsServer(
    * shows every frame and field: their text counts too, and a document the browser could not read marks it (fail closed).
    */
   async function checkCarrier(o: TabInfo): Promise<void> {
-    const [{ text, frameOrigins }, deep] = await Promise.all([bridge.readText(o.id, { expect: o.url }), bridge.carrierText?.(o.id, { expect: o.url })]);
+    const [{ text, frameOrigins, url }, deep] = await Promise.all([bridge.readText(o.id, { expect: o.url }), bridge.carrierText?.(o.id, { expect: o.url })]);
+    // The page read, not the one the call started on: the tab may have moved within its origin (to a sensitive path).
+    o = movedTo(o, url);
     // A sensitive frame shows its pixels in a capture, not its text in the top document's.
     const frames = frameOrigins?.some((f) => isSensitive(f)) === true;
     const documents = [{ origin: originOf(o.url), text }, ...(deep?.documents ?? [])];
@@ -1164,6 +1166,23 @@ export function createToolsServer(
     );
   }
 
+  /** `o` at the address a read reports, when it is on the same origin (another one never reads: SiteChanged). */
+  const movedTo = (o: TabInfo, url: string | undefined): TabInfo => (url && url !== o.url && originOf(url) !== null && originOf(url) === originOf(o.url) ? { ...o, url } : o);
+
+  /**
+   * `readAccess`, then the tab as it is once granted: a tab that moved during the card (within its origin, to a sensitive
+   * path) is judged again where it is now. null: refused, or still moving after a few turns (fail closed).
+   */
+  async function settledAccess(o: TabInfo): Promise<TabInfo | null> {
+    for (let turn = 0; turn < 3; turn++) {
+      if (!(await readAccess(o))) return null;
+      const now = await tab(o.id);
+      if (now.url === o.url) return now;
+      o = now;
+    }
+    return null;
+  }
+
   /**
    * Outside a search, a web address is free when it is local, was read (a page, its links, a search's results), is the address
    * of a tab the agent may read, or was approved in this conversation. Otherwise the user decides on the « agent-address » card.
@@ -1237,8 +1256,15 @@ export function createToolsServer(
       act(o.id, l10n("kernel-activity-reads-site", { site: siteOf(o.url) }));
       return readSearch(win ?? MAIN_WINDOW, o, withLinks, l10n("kernel-search-reading-page"), [], { full, extra });
     }
-    if (!(await readAccess(o))) return text(DENIAL_TEXT);
-    const r = present(o, await working(o.id, () => bridge.readText(o.id, { expect: o.url }), l10n("kernel-activity-reads-site", { site: siteOf(o.url) })), withLinks, [], undefined, full);
+    const granted = await settledAccess(o);
+    if (!granted) return text(DENIAL_TEXT);
+    o = granted;
+    const read = await working(o.id, () => bridge.readText(o.id, { expect: o.url }), l10n("kernel-activity-reads-site", { site: siteOf(o.url) }));
+    // Masked as the page the browser read: it may have moved within its origin during the read (an app's own navigation).
+    const at = movedTo(o, read.url);
+    if (isSensitive(at.url) && !isSensitive(o.url) && !(await readAccess(at))) return text(DENIAL_TEXT);
+    o = at;
+    const r = present(o, read, withLinks, [], undefined, full);
     // The result carries the tab's URL.
     if (!exempt(o)) remember(r, siteOf(o.url), linksFollowable(o), { tab: o.id, origin: originOf(o.url) });
     return r;
@@ -1790,8 +1816,9 @@ export function createToolsServer(
     protect(async ({ id }) => {
       // shortcut: the kernel does not know a tab's window, so any capture waits while this window's search is the user's; refine if it annoys.
       if (handing(id) || handing(searching?.sessions.current(win ?? MAIN_WINDOW)?.tabId)) return text(HANDING_TEXT, true);
-      const o = await tab(id);
-      if (!(await (searching?.sessions.owns(id) ? access(o) : readAccess(o)))) return text(DENIAL_TEXT);
+      let o: TabInfo | null = await tab(id);
+      o = searching?.sessions.owns(id) ? ((await access(o)) ? o : null) : await settledAccess(o);
+      if (!o) return text(DENIAL_TEXT);
       // Pixels the masker cannot mask (spec § 5.5, step 1).
       await checkCarrier(o);
       if (policy.captureLocked(id)) return text(l10n("kernel-mask-capture-refused"));

@@ -62,6 +62,8 @@ export interface TabRead {
    * pixels, which the top document's text does not hold. Absent: that check is skipped.
    */
   frameOrigins?: string[];
+  /** The address of the document read, at the read's end: the kernel masks by it (the tab may move within its origin during a call). */
+  url?: string;
 }
 
 /** A document's text and values the carrier check reads at most: past it, the document counts as unread. */
