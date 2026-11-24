@@ -1317,6 +1317,7 @@ export function createToolsServer(
         "`passport` : une sorte de donnée du passeport de l'utilisateur (prenoms, nom_famille, nom_complet, naissance, adresse, adresse_voie, code_postal, ville, tel, email, iban, secu, piece, plaque), " +
         "que le navigateur remplit après son accord ; tu ne la vois pas. `also` : d'autres champs du même onglet, remplis sur la même carte. " +
         "`check` : cocher (true) ou décocher (false) une case checkbox, cocher un bouton radio ; `option` : le numéro d'une option d'une liste select. " +
+        "Pour une liste, si tu demandes à l'utilisateur, propose-lui ses options telles qu'elles sont écrites (pas de regroupement : « M4 ou M5 » ne désigne aucune option) ; s'il y en a trop, demande en texte libre. " +
         "Tu n'envoies jamais le formulaire : l'utilisateur clique lui-même sur son bouton d'envoi. " +
         "Une étiquette, un identifiant enregistré ou une donnée privée demande l'accord de l'utilisateur, et cocher ou choisir aussi sur ses onglets à lui.",
       inputSchema: {
