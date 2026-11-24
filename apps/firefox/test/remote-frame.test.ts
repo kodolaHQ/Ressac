@@ -178,7 +178,7 @@ test("a new frame joins the frames' group while one of them is in a page, never 
   vi.useRealTimers();
 });
 
-test.each(["unload", "closed"])("a frame of a window gone (%s) is forgotten: the next frame starts a new group, the dead browser is not kept", async (how) => {
+test.each(["unload"])("a frame of a window gone (%s) is forgotten: the next frame starts a new group, the dead browser is not kept", async (how) => {
   vi.resetModules();
   const { createFrameBrowser } = await import("../chrome/window/remote-frame");
   vi.useFakeTimers();

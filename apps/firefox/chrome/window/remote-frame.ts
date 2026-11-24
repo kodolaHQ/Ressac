@@ -34,7 +34,7 @@ export function createFrameBrowser(doc: Document, onCrash?: (revived: boolean) =
   return b;
 }
 
-/** Every frame browser made, in any window; dropped once seen out of its document (an owner unmounted it) or its window gone. */
+/** Every frame browser made, in any window; dropped once seen out of its document (an owner unmounted it) or when its document unloads. */
 const frameBrowsers = new Set<Element>();
 
 /**
@@ -44,7 +44,7 @@ const frameBrowsers = new Set<Element>();
  * a group of its own, so a second process (measured: one forced GC after the home came back is enough).
  */
 function forgetDeadGroup(b: Element): void {
-  for (const f of frameBrowsers) if (f !== b && (!f.isConnected || !(f as any).ownerGlobal || (f as any).ownerGlobal.closed)) frameBrowsers.delete(f);
+  for (const f of frameBrowsers) if (f !== b && !f.isConnected) frameBrowsers.delete(f);
   if (![...frameBrowsers].some((f) => f !== b)) groupId = null;
   frameBrowsers.add(b);
 }
