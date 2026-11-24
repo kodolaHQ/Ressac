@@ -1495,12 +1495,11 @@ export function createToolsServer(
         name = rows.map((r) => r.name).join(", ");
       }
       const byKind = rows.some((r) => r.choices);
-      // A tick or a choice on the user's own tab can act at once (a setting saved on change): a card, as for data. The
-      // agent's own tabs hold none of the user's accounts.
+      // A tick or a choice can act at once (a setting saved on change): a card, as for data. On the agent's own tab too:
+      // a hand_over sign-in leaves the user's account open in its profile.
       const choosing = rows.some((r) => r.choice);
-      const userTab = choosing && o.profile !== "agent";
       // The tick is the page's own click: its scripts may save or send at once, which the card says.
-      const acts = userTab ? l10n("kernel-mask-fill-choice-acts") : undefined;
+      const acts = choosing ? l10n(o.profile === "agent" ? "kernel-mask-fill-choice-acts-agent" : "kernel-mask-fill-choice-acts") : undefined;
       /** What may go into the page: the labels' entries and every passport entry on offer. */
       const offered = [...new Set(rows.flatMap((r) => r.entries))];
       const locked = !allows(seal.origin) || actions.some((a) => !allows(a));
@@ -1549,7 +1548,7 @@ export function createToolsServer(
       let login: number | undefined;
       /** Per row, the passport entry the user's card settled on (kind rows only). */
       let chosen: (FillChoice | undefined)[] = [];
-      if (saved_login || used.length || byKind || danger || userTab) {
+      if (saved_login || used.length || byKind || danger || choosing) {
         // The pair's card names both fields, username first; Touch ID if either seal says the agent reached the tab.
         const field = !pair ? asked.map((r) => r.listed!.label).join(", ") : (pair.kind === "username" ? [pair.label, listedField.label] : [listedField.label, pair.label]).join(", ");
         const cardRows = byKind || also.length || choosing ? rows.map((r, i) => ({ field: asked[i]!.listed!.label, name: r.name, ...(r.kind ? { kind: r.kind } : {}), ...(r.choices ? { choices: r.choices.map(({ ref, shown, value }) => ({ ref, shown, value })) } : {}) })) : undefined;

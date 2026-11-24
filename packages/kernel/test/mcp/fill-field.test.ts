@@ -1087,12 +1087,15 @@ test("a tick or a choice goes only where it fits, before any card: no text into 
   });
 });
 
-test("on the agent's own tab, a tick needs no card (none of the user's accounts there)", async () => {
+test("on the agent's own tab a tick asks the card too: a hand_over sign-in may have left the user's account open there", async () => {
   await servePassport({ tabs: [ptab("a", `${P_ELSE}/inscription`, true, "agent")] }, async ({ call, bridge, of }) => {
     bridge.pages.set("a", { text: "Inscription", links: [], fields: CHOICES });
     await call("read_tab", { id: "a" });
     expect((await call("fill_field", { id: "a", field: 0, check: true })).text).toBe("Champ rempli.");
-    expect(of("askFill")).toEqual([]);
+    expect(of("askFill")).toHaveLength(1);
+    expect((of("askFill")[0]![0] as { danger?: string }).danger).toBe(
+      "Sur cet onglet de l'agent, un compte où vous vous êtes connecté peut rester ouvert : cocher ou choisir peut agir tout de suite, un réglage enregistré, voire le formulaire envoyé.",
+    );
     expect(of("fill.commit").map((c) => c[1])).toEqual([{ choice: { check: true } }]);
   });
 });
