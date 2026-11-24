@@ -3,7 +3,8 @@ import { testEnv } from "../test-env";
 import { reauth } from "../agent/reauth";
 import { passportFiles, type LoadResult, type PassportFiles } from "./store";
 
-export type HideResult = { ok: true; id: string; created: boolean; addedOrigin: boolean } | { ok: false; error: "cancelled" | "long" | "invalid" | "unreadable" | "full" | "write" };
+/** `updated`: the entry's, as this hide left it; unhide removes a created entry only while it is unchanged. */
+export type HideResult = { ok: true; id: string; created: boolean; addedOrigin: boolean; updated: string } | { ok: false; error: "cancelled" | "long" | "invalid" | "unreadable" | "full" | "write" };
 export type PassportSaveResult = { ok: true; revision: string; uncovered: number } | { ok: false; error: "stale" | "write" | "newer" | "full" | "locked" | "invalid" };
 
 
@@ -162,13 +163,13 @@ export function createPassportSettings(o: {
         const r = await o.files.update(h.profile, (all) => {
           const twin = all.find((k) => FIELD_LABEL[k.field] === FIELD_LABEL[fresh.field] && canonicalOf(k) === canonicalOf(fresh));
           if (twin) {
-            out = { ok: true, id: twin.id, created: false, addedOrigin: false };
+            out = { ok: true, id: twin.id, created: false, addedOrigin: false, updated: twin.updated };
             if (!host || twin.origins.includes(host)) return all;
             if (twin.origins.length >= PASSPORT_LIMITS.origins) {
               out = { ok: false, error: "full" };
               return null;
             }
-            out = { ok: true, id: twin.id, created: false, addedOrigin: true };
+            out = { ok: true, id: twin.id, created: false, addedOrigin: true, updated: twin.updated };
             return all.map((x) => (x === twin ? { ...x, origins: [...x.origins, host] } : x));
           }
           const codes = validateEntry(fresh, all).problems.map((p) => p.code);
@@ -176,7 +177,7 @@ export function createPassportSettings(o: {
             out = { ok: false, error: codes.includes("long") ? "long" : codes.includes("full") ? "full" : "invalid" };
             return null;
           }
-          out = { ok: true, id: fresh.id, created: true, addedOrigin: !!host };
+          out = { ok: true, id: fresh.id, created: true, addedOrigin: !!host, updated: fresh.updated };
           return [...all, fresh];
         });
         if (!r.ok) return out.ok ? { ok: false, error: "write" } : out;
@@ -189,14 +190,15 @@ export function createPassportSettings(o: {
     },
     /**
      * The toast's « Annuler » (its 8 s window is the caller's): removes the entry `hide` created, or only the site it
-     * added. No Touch ID: the toast's gesture is the user's. False when nothing could be written.
+     * added. No Touch ID: the toast's gesture is the user's. A created entry edited since (its `updated` moved) keeps
+     * the edit: only the site goes. False when nothing could be written.
      */
-    async unhide(u: { profile: string; id: string; created: boolean; addedOrigin: boolean; origin: string | null }): Promise<boolean> {
+    async unhide(u: { profile: string; id: string; created: boolean; addedOrigin: boolean; updated: string; origin: string | null }): Promise<boolean> {
       const host = u.origin === null ? null : cleanOrigin(u.origin);
       try {
         const r = await o.files.update(u.profile, (all) => {
-          if (u.created) return all.some((x) => x.id === u.id) ? all.filter((x) => x.id !== u.id) : all;
           const e = all.find((x) => x.id === u.id);
+          if (u.created && e?.updated === u.updated) return all.filter((x) => x !== e);
           if (!u.addedOrigin || !host || !e?.origins.includes(host)) return all;
           return all.map((x) => (x === e ? { ...x, origins: x.origins.filter((k) => k !== host) } : x));
         });
@@ -283,6 +285,13 @@ export function createPassportSettings(o: {
 }
 
 export type PassportSettings = ReturnType<typeof createPassportSettings>;
+
+/**
+ * What Réglages pages get (`win.store.passport`): no `addOrigin` (only a written fill card's tick adds a site), no
+ * `hide`/`unhide` (only Ressac's own « Cacher pour l'agent » gesture, unhide having no Touch ID).
+ */
+export const pagePassport = ({ addOrigin: _a, hide: _h, unhide: _u, ...pages }: PassportSettings) => pages;
+export type PagePassport = ReturnType<typeof pagePassport>;
 
 /** `RESSAC_TEST_PASSPORT_TIMES` (dev builds): « unlockMs,showMs », so an e2e waits for the relock and the remask. */
 function testTimes(): { unlockMs: number; showMs: number } | undefined {

@@ -9,7 +9,7 @@ import { memorySession, withEssentials } from "../../core/state/actions";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, pushPassports, type AgentHost } from "../agent/host";
 import { passportFiles, passportShown } from "../passport/store";
-import { passportSettings, type PassportSettings } from "../passport/settings";
+import { pagePassport, passportSettings, type PagePassport } from "../passport/settings";
 import { createAgentView, type AgentView } from "../agent/agent-view";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
@@ -86,8 +86,8 @@ export interface RessacStore extends Store {
   /** The Node host running the kernel, started with the store. */
   readonly agent: AgentHost;
   /** Réglages › Passeport: the process's one passport instance lives in this module, never in a UI bundle's copy. */
-  /** Without `addOrigin`: only a written fill card's tick adds a site (chrome/agent/bridge.ts), never a page. */
-  readonly passport: Omit<PassportSettings, "addOrigin">;
+  /** Without `addOrigin`, `hide` nor `unhide`: chrome gestures only, never a page (passport/settings.ts pagePassport). */
+  readonly passport: PagePassport;
   /** The « non couverte » tooltip's names and masked displays (chrome/passport/store.ts passportShown). */
   passportShown(refs: readonly { profile: string; id: string }[]): { field: string | null; display: string | null }[];
   /** The noted visits, kept by the kernel host. */
@@ -673,7 +673,7 @@ async function start(): Promise<RessacStore> {
     flush,
     containerFor,
     agent,
-    passport: (({ addOrigin: _, ...pages }) => pages)(passportSettings((method, params) => agent.request(method, params))),
+    passport: pagePassport(passportSettings((method, params) => agent.request(method, params))),
     passportShown: (refs) => passportShown(passportFiles(), refs),
     history,
     ask,

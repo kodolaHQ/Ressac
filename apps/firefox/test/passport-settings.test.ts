@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { onLeavingPassport, showSection } from "../ui/components/settings-section.svelte";
-import { createPassportSettings } from "../chrome/passport/settings";
+import { createPassportSettings, pagePassport } from "../chrome/passport/settings";
 import { format } from "../shared/i18n";
 import type { PassportEntry } from "../chrome/shims/kernel";
 
@@ -458,7 +458,7 @@ describe("« Cacher pour l'agent »: hide and unhide (chrome only)", () => {
     files.load.mockResolvedValueOnce(loaded([entry("0000000000000002")]));
     const r = await hideIt(s);
     expect(reauth).toHaveBeenCalledWith("cacher ce texte pour l'agent");
-    expect(r).toEqual({ ok: true, id: expect.stringMatching(/^[0-9a-f-]{36}$/), created: true, addedOrigin: true });
+    expect(r).toEqual({ ok: true, id: expect.stringMatching(/^[0-9a-f-]{36}$/), created: true, addedOrigin: true, updated: new Date(1_000_000).toISOString() });
     const all = written(files);
     expect(all).toHaveLength(2);
     expect(all[1]).toMatchObject({ id: (r as any).id, field: "email", value: { text: MAIL }, variants: [], origins: ["www.boutique.example"], how: "click", from: "www.boutique.example" });
@@ -469,14 +469,14 @@ describe("« Cacher pour l'agent »: hide and unhide (chrome only)", () => {
   it("a value already there only gets the site, never a second entry", async () => {
     const { s, files } = setup();
     files.load.mockResolvedValueOnce(loaded([mail("0000000000000003", ["a.example"])]));
-    expect(await hideIt(s, { value: { text: `  ${MAIL.toUpperCase()} ` } })).toEqual({ ok: true, id: "0000000000000003", created: false, addedOrigin: true });
+    expect(await hideIt(s, { value: { text: `  ${MAIL.toUpperCase()} ` } })).toEqual({ ok: true, id: "0000000000000003", created: false, addedOrigin: true, updated: "2026-11-23" });
     expect(written(files)).toEqual([mail("0000000000000003", ["a.example", "www.boutique.example"])]);
   });
 
   it("a value already there with that site: a success with nothing written", async () => {
     const { s, files, request } = setup();
     files.load.mockResolvedValueOnce(loaded([mail("0000000000000003", ["www.boutique.example"])]));
-    expect(await hideIt(s)).toEqual({ ok: true, id: "0000000000000003", created: false, addedOrigin: false });
+    expect(await hideIt(s)).toEqual({ ok: true, id: "0000000000000003", created: false, addedOrigin: false, updated: "2026-11-23" });
     expect(files.save).not.toHaveBeenCalled();
     expect(request).not.toHaveBeenCalled();
   });
@@ -518,7 +518,7 @@ describe("« Cacher pour l'agent »: hide and unhide (chrome only)", () => {
   it("unhide after a create removes the entry, then sends passport.replace; no Touch ID", async () => {
     const { s, files, reauth, order } = setup();
     files.load.mockResolvedValueOnce(loaded([entry("0000000000000002"), mail("0000000000000003", ["www.boutique.example"])]));
-    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: true, addedOrigin: true, origin: "https://www.boutique.example" })).toBe(true);
+    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: true, addedOrigin: true, updated: "2026-11-23", origin: "https://www.boutique.example" })).toBe(true);
     expect(written(files)).toEqual([entry("0000000000000002")]);
     expect(order).toEqual(["write", "passport.replace"]);
     expect(reauth).not.toHaveBeenCalled();
@@ -527,7 +527,7 @@ describe("« Cacher pour l'agent »: hide and unhide (chrome only)", () => {
   it("unhide after an origin-only hide removes only that origin", async () => {
     const { s, files, request } = setup();
     files.load.mockResolvedValueOnce(loaded([mail("0000000000000003", ["a.example", "www.boutique.example"])]));
-    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: false, addedOrigin: true, origin: "https://www.Boutique.example/x" })).toBe(true);
+    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: false, addedOrigin: true, updated: "2026-11-23", origin: "https://www.Boutique.example/x" })).toBe(true);
     expect(written(files)).toEqual([mail("0000000000000003", ["a.example"])]);
     expect(request).toHaveBeenCalledWith("passport.replace", { profile: "default", entries: [mail("0000000000000003", ["a.example"])] });
   });
@@ -535,9 +535,23 @@ describe("« Cacher pour l'agent »: hide and unhide (chrome only)", () => {
   it("unhide with nothing it added writes nothing; an unreadable file is a failure", async () => {
     const { s, files } = setup();
     files.load.mockResolvedValueOnce(loaded([mail("0000000000000003", ["a.example"])]));
-    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: false, addedOrigin: false, origin: "https://a.example" })).toBe(true);
+    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: false, addedOrigin: false, updated: "2026-11-23", origin: "https://a.example" })).toBe(true);
     files.load.mockResolvedValueOnce({ ...loaded([]), state: "unreadable" });
-    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: true, addedOrigin: false, origin: null })).toBe(false);
+    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: true, addedOrigin: false, updated: "2026-11-23", origin: null })).toBe(false);
     expect(files.save).not.toHaveBeenCalled();
+  });
+
+  it("unhide after a create, of an entry edited since: only the site it added goes, the edit stays", async () => {
+    const { s, files } = setup();
+    const edited = { ...mail("0000000000000003", ["www.boutique.example"]), variants: ["marc chez exemple"], updated: "2026-11-24T10:00:00.000Z" };
+    files.load.mockResolvedValueOnce(loaded([edited]));
+    expect(await s.unhide({ profile: "default", id: "0000000000000003", created: true, addedOrigin: true, updated: "2026-11-23", origin: "https://www.boutique.example" })).toBe(true);
+    expect(written(files)).toEqual([{ ...edited, origins: [] }]);
+  });
+
+  it("Réglages pages never get hide, unhide nor addOrigin", () => {
+    const pages = pagePassport(setup().s);
+    for (const k of ["hide", "unhide", "addOrigin"]) expect(pages).not.toHaveProperty(k);
+    expect(pages).toHaveProperty("save");
   });
 });
