@@ -42,6 +42,19 @@ type Reply = (d: Outcome, rights?: DevRight[], login?: number, picks?: (string |
 export const SCHEMA_WIDGET = "ressac-widget";
 
 /** The agent's « lire l'onglet » and extension grant cards waiting for the user. */
+/**
+ * The registrable domain of an origin (« evil.example » of « www.impots.gouv.fr.….evil.example »): a long host cut on
+ * the card would hide it. The host itself for an IP or a single label.
+ */
+function domainOf(origin: string): string {
+  const host = siteOf(origin).replace(/:\d+$/, "");
+  try {
+    return Services.eTLD.getBaseDomainFromHost(host);
+  } catch {
+    return host;
+  }
+}
+
 export class Questions {
   private readonly open = new Map<string, { request: PendingRequest; reply: Reply }>();
   private readonly listeners = new Set<Listener>();
@@ -149,7 +162,7 @@ export class Questions {
     const open = o.passportProfile ?? o.profile;
     // The card gets each box's row and text only; the entry stays here.
     const boxes = (o.remember ?? []).map((r) => ({ row: r.row, ...(r.choice !== undefined ? { choice: r.choice } : {}), text: say("chrome-mask-fill-remember", { site, name: o.rows?.[r.row]?.name ?? o.name }) }));
-    const mask = { name: o.name, field: o.field, where: o.where, labels: o.labels, ...(count > 0 ? { loginCount: count, ...(o.loginsRef ? { loginsRef: o.loginsRef } : {}) } : {}), ...passport, ...note, ...(open !== undefined ? { profile: open } : {}), ...(boxes.length ? { remember: boxes } : {}) };
+    const mask = { name: o.name, field: o.field, where: o.where, domain: domainOf(o.where), labels: o.labels, ...(count > 0 ? { loginCount: count, ...(o.loginsRef ? { loginsRef: o.loginsRef } : {}) } : {}), ...passport, ...note, ...(open !== undefined ? { profile: open } : {}), ...(boxes.length ? { remember: boxes } : {}) };
     const fields = { tabId: null, windowId: windowId, origin: o.where, permissions: ["mask-fill" as const], agent: o.agent, mask, ...(o.danger ? { danger: o.danger } : {}) };
     let login: number | undefined;
     let picks: (string | null)[] | undefined;

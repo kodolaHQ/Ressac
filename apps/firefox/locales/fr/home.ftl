@@ -336,6 +336,7 @@ home-request-label-mask-reveal = L'agent veut voir une valeur masquée
 home-request-label-mask-fill = Remplir un champ avec vos données
 home-request-label-mask-label-alert = L'agent envoie l'étiquette d'une valeur masquée
 home-request-label-mask-devtools = Débloquer les outils de développement sur un onglet qui montre vos données
+home-request-mask-domain = Site : { $domain }
 home-request-mask-fill = Remplir { $name } dans « { $field } » sur { $where } ?
 home-request-mask-devtools = Débloquer les outils de développement sur { $site } (onglet « { $tab } ») pour cette conversation ?
 home-request-mask-reveal-allow = Montrer

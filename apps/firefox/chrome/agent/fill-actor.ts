@@ -39,7 +39,8 @@ const originOf = (url: string) => {
   }
 };
 const autocompleteOf = (el: any): string => (el.getAttribute("autocomplete") ?? "").trim().toLowerCase();
-const clean = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim();
+/** One line, without « »: a label never plants a quoted site in the card's sentence. */
+const clean = (s: unknown) => String(s ?? "").replace(/[«»]/g, "").replace(/\s+/g, " ").trim();
 /** Never the field's content: its label, ARIA name, placeholder or name; a radio's question (its fieldset's legend) first. */
 const labelOf = (el: any): string => {
   const own = clean(el.labels?.[0]?.textContent || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("name"));

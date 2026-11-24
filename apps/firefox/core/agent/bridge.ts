@@ -298,7 +298,8 @@ export function boundCapture(raw: unknown): Omit<TabRead, "text" | "selection" |
 
 export { FIELDS_MAX };
 const FIELD_TYPES = new Set(["text", "password", "email", "tel", "search", "url", "number", "textarea", "contenteditable", "checkbox", "radio", "select"]);
-const label = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+/** One line, without « » (fill-actor.ts strips them too: a sealed label compares equal). */
+const label = (s: unknown) => String(s ?? "").replace(/[«»]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
 /** A box's state or a list's options, as the fill actor gives them: only on their own types, bounded. */
 const stateOf = (f: any) =>
   f.type === "checkbox" || f.type === "radio"

@@ -485,6 +485,8 @@ export interface Request {
     loginCount?: number;
     /** The host's reference for those usernames, answered only to this window. */
     loginsRef?: string;
+    /** « mask-fill »: the site's registrable domain (« evil.example » of a long host), shown whole on its own line. */
+    domain?: string;
     /** « mask-fill » of a passport value from another profile than the tab's: chrome's sentence naming that passport. */
     note?: string;
     /** « mask-fill » of the passport: the profile « Ouvrir le passeport » opens (the value's other profile, else the tab's). */

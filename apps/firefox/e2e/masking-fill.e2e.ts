@@ -212,6 +212,41 @@ it("a box relabelled while the card is up: the card's yes ticks nothing", async 
   expect(await inPage(id, `return document.getElementById("cgu").checked`)).toBe(false);
 });
 
+it("Shift+Tab then Space before the card's delay: nothing granted (a page times its prompt on the card's blur)", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/choix.html`);
+  const box = fieldOf(await read(id), "J'accepte les conditions \\(pas coché\\)");
+  const reply = call("fill_field", { id, field: box, check: true });
+  let answered = false;
+  void reply.then(() => (answered = true));
+  // One script, in the window that owns the delay: the card seen unarmed, then the two keys at once.
+  const early = await m.execute<boolean>(`return (async () => {
+    const frame = document.getElementById("ressac-sidebar");
+    for (let i = 0; i < 300; i++) {
+      const doc = frame?.contentDocument;
+      const card = doc?.querySelector('${CARD}');
+      if (card) {
+        if (doc.querySelector('[data-testid="request-modal"][data-armed]')) return false;
+        const tip = Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
+        tip.beginInputTransactionForTests(window);
+        const k = (key, code) => new KeyboardEvent("", { key, code });
+        tip.keydown(k("Shift", "ShiftLeft")); tip.keydown(k("Tab", "Tab")); tip.keyup(k("Tab", "Tab")); tip.keyup(k("Shift", "ShiftLeft"));
+        tip.keydown(k(" ", "Space")); tip.keyup(k(" ", "Space"));
+        return !doc.querySelector('[data-testid="request-modal"][data-armed]');
+      }
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    return false;
+  })();`);
+  expect(early).toBe(true);
+  // Must not happen: a grant from those keys answers at once; the card's delay (400 ms) is long past after this wait.
+  await new Promise((r) => setTimeout(r, 1_000));
+  expect(answered).toBe(false);
+  await press("Refuser");
+  await reply;
+  expect(await inPage(id, `return document.getElementById("cgu").checked`)).toBe(false);
+});
+
 it("a list reordered between the read and the card's yes: nothing chosen", async () => {
   await start();
   const id = await userTab(`${a.url}/fill/choix.html`);

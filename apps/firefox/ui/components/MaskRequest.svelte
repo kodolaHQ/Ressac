@@ -93,6 +93,7 @@
   {:else}
     <p>{bound(mask.text)}</p>
   {/if}
+  {#if kind === "mask-fill" && mask.domain}<p class="domain" data-testid="mask-request-domain">{t("home-request-mask-domain", { domain: mask.domain.slice(0, 253) })}</p>{/if}
   {#if mask.note}<p class="reason" data-testid="mask-request-profile">{bound(mask.note)}</p>{/if}
   {#each rows as row, i (i)}
     <div class="row" data-testid="mask-request-row">
@@ -140,6 +141,7 @@
 <style>
   .reading p { margin: 0 0 12px; font-size: 14px; overflow-wrap: anywhere; }
   .reading p.reason { font-size: 13px; color: var(--text-muted, inherit); }
+  .reading p.domain { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
   .reading p.reason.danger { color: var(--in-error); font-weight: 500; }
   .reading p.login { font-family: var(--font-mono); font-size: 12px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .row { animation: ressac-rise var(--spring-d) var(--spring) backwards; }

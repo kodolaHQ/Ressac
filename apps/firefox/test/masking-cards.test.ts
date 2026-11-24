@@ -259,3 +259,15 @@ it("remember: a kind row's box follows the picked entry; with `also`, each row h
   questions.answer(only(questions).id, "allow", { picks: ["r1", null], remember: [0], window: win });
   expect(await answer).toEqual({ yes: true, picks: ["r1", "r3"] });
 });
+
+it("the fill card names the site's registrable domain on its own line: a long host never hides it", async () => {
+  const host = `www.impots.gouv.fr.${"a".repeat(180)}.evil.example`;
+  vi.stubGlobal("Services", { eTLD: { getBaseDomainFromHost: (h: string) => h.split(".").slice(-2).join(".") } });
+  try {
+    const { questions, win } = setup();
+    void questions.askFill({ name: "votre code", field: "Code", where: `https://${host}/verif`, touchId: false, labels: [], agent: "A" }, win);
+    expect(only(questions).mask?.domain).toBe("evil.example");
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

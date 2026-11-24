@@ -91,6 +91,14 @@
   const focusables = () =>
     [...card.querySelectorAll<HTMLElement>("button, input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hasAttribute("disabled"));
 
+  /** A Space pressed while the card was not armed: its key up activates nothing, even once armed. */
+  let spaceEarly = false;
+  function relache(e: KeyboardEvent) {
+    if (e.key !== " " || !spaceEarly) return;
+    spaceEarly = false;
+    e.preventDefault();
+  }
+
   function clavier(e: KeyboardEvent) {
     // The command bar opened on top keeps the keyboard: the hidden modal reacts to nothing, even if focus has left the
     // bar's field (neither Enter, nor Escape before the ⌃Tab panel takes over, nor Tab).
@@ -98,6 +106,10 @@
     if (e.key === "Escape") {
       e.preventDefault();
       deny();
+    } else if (e.key === " " && !armed) {
+      // Space presses a focused button on its key up: pressed before the delay, it grants nothing (`spaceEarly`).
+      e.preventDefault();
+      spaceEarly = true;
     } else if (e.key === "Enter") {
       // Card not visible yet, or only for too short a time: Enter does nothing, even on a button.
       if (!armed) return e.preventDefault();
@@ -110,7 +122,8 @@
       const list = focusables();
       if (list.length === 0) return e.preventDefault();
       const i = list.indexOf(document.activeElement as HTMLElement);
-      const target = e.shiftKey ? (i <= 0 ? list.at(-1) : null) : i === -1 || i === list.length - 1 ? list[0] : null;
+      // From the card itself, Shift+Tab starts on the first control, never on the last one (the grant).
+      const target = e.shiftKey ? (i === -1 ? list[0] : i === 0 ? list.at(-1) : null) : i === -1 || i === list.length - 1 ? list[0] : null;
       if (target) {
         e.preventDefault();
         target.focus();
@@ -119,7 +132,7 @@
   }
 </script>
 
-<svelte:window onkeydown={clavier} />
+<svelte:window onkeydown={clavier} onkeyup={relache} />
 
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
 <div class="modal" class:ready={ready} data-testid="request-modal" data-armed={armed || undefined} inert={!!command.open}>
