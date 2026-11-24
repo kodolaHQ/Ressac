@@ -25,9 +25,10 @@ const CODE_CONTEXT = /(?<!\p{L})(?:code(?! (?:postal|promo))|verification|otp|pi
 // 4 to 8 digits, maybe grouped (381 624), whole: not glued to a letter or digit, not a price (2 340,12 €).
 const URL_HOST = /\bhttps?:\/\/[^\s/?#<>"'`]+/gi;
 const CODE_DIGITS = /(?<![\p{L}\p{N}]|\d[ .-])\d(?:[ .-]?\d){3,7}(?![\p{L}\p{N}]|[ .-]\d|[.,]\d|\s*€)/gu;
-const TEL_FR = /(?<![\p{N}+])0[1-9](?:[ .-]?\d{2}){4}(?!\p{N})/gu;
+// Separators: one space or tab, or `.` `-` `+` (a GET form's space) `/` `_`, maybe spaced. A date (14/03/1990) has too few digits.
+const TEL_FR = /(?<![\p{N}+])(?:0[1-9]|\(0[1-9]\))(?:(?:[ \t]?[.+/_-][ \t]?|[ \t])?\d{2}){4}(?!\p{N})/gu;
 // No country code starts with 0: « 00042178306 » (an account number) is no phone. « 00 33 6… » is spaced after 00.
-const TEL_INTL = /(?<![\p{N}+])(?:\+|00[ .-]?)[1-9](?:[ .-]?(?:\(0\)[ .-]?)?\d){7,14}(?!\p{N})/gu;
+const TEL_INTL = /(?<![\p{N}+])(?:\+|00[ .-]?)[1-9](?:(?:[ \t]?[.+/_-][ \t]?|[ \t])?(?:\(0\)[ .-]?)?\d){7,14}(?!\p{N})/gu;
 // A French account number (11 digits) after an account word on its line: typed `id`, in the sources only.
 // shortcut: French length only, add other countries' lengths if their banks show in the sources.
 const ACCOUNT = /(?<![\p{L}\p{N}+])\d{11}(?![\p{L}\p{N}])/gu;

@@ -1,7 +1,7 @@
 import { ascii } from "../outflow/spelled.js";
 import { numerals } from "./numerals.js";
 
-export type Projection = { kind: "nfkc" | "percent" | "escapes" | "digits" | "numerals" | "folded"; text: string; start: Int32Array; end: Int32Array };
+export type Projection = { kind: "nfkc" | "percent" | "escapes" | "compact" | "digits" | "numerals" | "folded"; text: string; start: Int32Array; end: Int32Array };
 
 /** Collects projected text with the original span of each UTF-16 unit. */
 class Builder {
@@ -150,20 +150,51 @@ function numeralsProjection(src: Projection): Projection | undefined {
   return b.done("numerals");
 }
 
-/** Text projections the detectors scan: always nfkc and digits; percent, escapes and numerals when they apply. */
+/** `src` with each match of `re` replaced by its first group (or nothing); the kept char spans the whole match. */
+function rewrite(src: Projection, re: RegExp): Projection {
+  const b = new Builder();
+  let at = 0;
+  for (const m of src.text.matchAll(re)) {
+    for (; at < m.index; at++) b.push(src.text[at]!, src.start[at]!, src.end[at]!);
+    if (m[1]) b.push(m[1], src.start[at]!, src.end[at + m[0].length - 1]!);
+    at += m[0].length;
+  }
+  for (; at < src.text.length; at++) b.push(src.text[at]!, src.start[at]!, src.end[at]!);
+  return b.done("compact");
+}
+
+const IGNORABLES = /\p{Default_Ignorable_Code_Point}+/gu;
+const SPACED_SEP = /(?<=[\p{L}\p{N}])[ \t]+([-/_])[ \t]+(?=[\p{L}\p{N}])/gu;
+/**
+ * `src` (already NFKC) without invisible characters and with spaced separators tightened (« 4111 - 1111 » → « 4111-1111 »),
+ * or undefined when that changes nothing. Mailers put U+200B or a soft hyphen between digits to stop auto-linking.
+ */
+function compact(src: Projection): Projection | undefined {
+  if (src.text.search(IGNORABLES) < 0 && src.text.search(SPACED_SEP) < 0) return undefined;
+  return rewrite(rewrite(src, IGNORABLES), SPACED_SEP);
+}
+
+/** Text projections the detectors scan: always nfkc and digits; percent, escapes, compact and numerals when they apply. */
 export function projections(text: string): Projection[] {
   const n = nfkc(identity(text));
   const out = [n, digits(n)];
   const srcs = [identity(text)];
+  const decoded = [n];
   if (/%[0-9A-Fa-f]{2}/.test(text)) {
     const p = percent(text);
     out.push(p, digits(p));
     srcs.push(p);
+    decoded.push(p);
   }
   if (worthEscapes(text)) {
     const p = escapes(text);
     out.push(p, digits(p));
     srcs.push(p);
+    decoded.push(p);
+  }
+  for (const p of decoded) {
+    const c = compact(p);
+    if (c) out.push(c);
   }
   for (const src of srcs) {
     const np = numeralsProjection(src);

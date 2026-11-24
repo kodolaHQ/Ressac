@@ -150,3 +150,38 @@ describe("canonical", () => {
     expect(canonical("code", "381624")).toBe("381624");
   });
 });
+
+describe("detect, obfuscated separators", () => {
+  const spanned = (text: string, zone: "sources" | "web") => detect(text, zone).map((f) => [f.type, text.slice(f.start, f.end)]);
+  // Mailers put these between digits so phones do not auto-link numbers.
+  for (const [name, inv] of [["U+200B", "​"], ["U+200C", "‌"], ["U+200D", "‍"], ["U+2060", "⁠"], ["soft hyphen", "­"]])
+    it(`an ${name} between digits hides no card, code or IBAN, in both zones`, () => {
+      const card = CARD.match(/.{4}/g)!.join(inv);
+      const code = [...CODE].join(inv);
+      const ib = IBAN.match(/.{1,4}/g)!.join(inv);
+      for (const zone of ["web", "sources"] as const) {
+        expect(spanned(`carte ${card} exp`, zone)).toEqual([["carte", card]]);
+        expect(spanned(`Votre code de vérification : ${code}`, zone)).toEqual([["code", code]]);
+        expect(spanned(`IBAN ${ib} BIC`, zone)).toEqual([["iban", ib]]);
+      }
+    });
+
+  it("spaced dashes in an IBAN or card are one value", () => {
+    const ib = IBAN.match(/.{1,4}/g)!.join(" - ");
+    const card = CARD.match(/.{4}/g)!.join(" - ");
+    expect(spanned(`IBAN ${ib} BIC`, "web")).toEqual([["iban", ib]]);
+    expect(spanned(`carte ${card} exp`, "web")).toEqual([["carte", card]]);
+  });
+
+  it("finds a phone written with +, /, _, spaced dashes, tabs or (06)", () => {
+    for (const tel of ["06+12+34+56+78", "06/12/34/56/78", "06_12_34_56_78", "06 - 12 - 34 - 56 - 78", "06\t12\t34\t56\t78", "(06) 12 34 56 78"])
+      expect(found(`Tél : ${tel}`), tel).toEqual([["tel", tel, "+33612345678"]]);
+    expect(found("https://x.fr/recherche?tel=06+12+34+56+78&nom=x")).toEqual([["tel", "06+12+34+56+78", "+33612345678"]]);
+    expect(found("https://x.fr/?tel=%2B33+6+12+34+56+78")).toEqual([["tel", "%2B33+6+12+34+56+78", "+33612345678"]]);
+  });
+
+  it("dates, versions, prices and order numbers stay no phone", () => {
+    for (const t of ["né le 14/03/1990 à Lyon", "version 10.2.3.4 du 01/02/2024", "total 1 234,56 €", "commande n° 2024/11/24-0042", "le 01/02/2024 à 12:30"])
+      expect(types(t), t).toEqual([]);
+  });
+});
