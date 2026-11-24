@@ -4,9 +4,10 @@
 
 // Ressac default prefs, included at the end of firefox.js.
 
-// Browser developer tools (for developers and agents); remote connections still ask for confirmation.
-pref("devtools.chrome.enabled", true);
-pref("devtools.debugger.remote-enabled", true);
+// Firefox's defaults: no debugging socket can open, and no console runs code with the browser's own rights. The agent's
+// DevTools client needs neither (an in-memory pipe, chrome/store/devtools.ts). A developer turns them on in about:config.
+pref("devtools.chrome.enabled", false);
+pref("devtools.debugger.remote-enabled", false);
 pref("devtools.debugger.prompt-connection", true);
 
 // No title bar: the sidebar goes up to the top of the window, with the macOS window buttons in its first row.

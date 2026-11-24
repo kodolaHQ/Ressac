@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canonical, detect, type LabelType } from "../../src/mask/detectors.js";
-import { API_KEY, CARD, CODE, IBAN, NIR, PASSPORT, PHONE, TOKEN } from "./values.js";
+import { API_KEY, CARD, CODE, IBAN, iban, NIR, PASSPORT, PHONE, TOKEN } from "./values.js";
 
 const spaced4 = (s: string) => s.replace(/(.{4})(?=.)/g, "$1 ");
 const types = (text: string, zone: "sources" | "web" = "sources") => detect(text, zone).map((f) => f.type);
@@ -287,6 +287,75 @@ describe("detect, common wordings (swarm findings 2-5)", () => {
     expect(spanned(`Votre code : https://exemple.fr/v?q=%20${code}`, "web")).toEqual([["code", code]]);
   });
 
+  it("finds an IBAN, a card and a social security number split by tabs, line breaks or several spaces (a table's cells)", () => {
+    const groups = (v: string) => v.match(/.{1,4}/g)!;
+    const nirGroups = [NIR.slice(0, 1), NIR.slice(1, 3), NIR.slice(3, 5), NIR.slice(5, 7), NIR.slice(7, 10), NIR.slice(10, 13), NIR.slice(13)];
+    for (const sep of ["\t", "\n", "\t\n", "\r\n", "  ", "   "]) {
+      for (const zone of ["sources", "web"] as const) {
+        expect(found("IBAN : " + groups(IBAN).join(sep), zone), JSON.stringify(sep)).toEqual([["iban", groups(IBAN).join(sep), IBAN]]);
+        expect(found("Carte : " + groups(CARD).join(sep), zone), JSON.stringify(sep)).toEqual([["carte", groups(CARD).join(sep), CARD]]);
+        expect(found("N° : " + nirGroups.join(sep), zone), JSON.stringify(sep)).toEqual([["secu", nirGroups.join(sep), NIR]]);
+      }
+    }
+    // Numbers on separate lines are not glued into a code or a phone: only checksummed numbers are read across gaps.
+    expect(types("Code client\n12\n34\n56")).toEqual([]);
+  });
+
+  it("a table of 4-digit cells or an 11-digit order number is no card, phone or RIB", () => {
+    // Luhn passes 1 in 10: across gaps, a card needs a card word near it.
+    for (let n = 0; n < 100; n++) {
+      const cells = ["40" + String(n).padStart(2, "0"), "1250", "3300", "8800"];
+      for (const zone of ["sources", "web"] as const) {
+        expect(types("Quantité\n" + cells.join("\n"), zone)).not.toContain("carte");
+        expect(types("Total  " + cells.join("  "), zone)).not.toContain("carte");
+      }
+    }
+    expect(types("Commande n° 07123456789")).not.toContain("tel");
+    expect(types("Compte 01234567890")).toEqual(["id"]);
+    // Postcodes, a heading in capitals, a 2-digit number: no bank word, no digit in the « account ».
+    for (let n = 0; n < 1000; n++) {
+      const t = `Agence 75008 Paris, dépôt ${69000 + n} Lyon. INFORMATION : ${String(n % 100).padStart(2, "0")} rue`;
+      expect(types(t, "web"), t).not.toContain("iban");
+    }
+  });
+
+  it("finds a verification code announced in German or Spanish", () => {
+    for (const t of [`Ihr Bestätigungscode lautet ${CODE}`, `Ihr Sicherheitscode: ${CODE}`, `Verifizierungscode ${CODE}`, `Tu código de verificación es ${CODE}`, `Su clave de acceso: ${CODE}`])
+      expect(found(t, "web"), t).toEqual([["code", CODE, CODE]]);
+    expect(types(`Código postal ${CODE.slice(0, 5)}`)).toEqual([]);
+  });
+
+  it("finds a US phone and a UK phone written without its country code, as +1 and +44", () => {
+    for (const [t, tel] of <[string, string][]>[
+      ["Call me at (415) 555-0132", "+14155550132"],
+      ["Phone: 415-555-0132", "+14155550132"],
+      ["Phone: 415.555.0132", "+14155550132"],
+      ["Ring 020 7946 0958", "+442079460958"],
+      ["Mobile 07700 900123", "+447700900123"],
+      ["Office 0121 496 0000", "+441214960000"],
+    ])
+      expect(found(t).map(([type, , c]) => [type, c]), t).toEqual([["tel", tel]]);
+    // A French number keeps +33; an order number of 10 digits is no US phone.
+    expect(found(`Tél. ${PHONE}`).map(([type, , c]) => [type, c])).toEqual([["tel", "+33" + PHONE.slice(1)]]);
+    expect(types("Commande 4155550132")).toEqual([]);
+  });
+
+  it("finds a French RIB given in pieces (bank, branch, account, key) as its IBAN, in both zones", () => {
+    // A RIB whose key is right: 97 - (89 × bank + 15 × branch + 3 × account) mod 97.
+    const [bank, branch, account] = ["30006", "00001", "12345678901"];
+    const key = String(97 - ((89 * Number(bank) + 15 * Number(branch) + 3 * (Number(account) % 97)) % 97)).padStart(2, "0");
+    const ribIban = iban(bank + branch + account + key);
+    for (const zone of ["sources", "web"] as const) {
+      const t = `Code banque ${bank} Code guichet ${branch} N° de compte ${account} Clé RIB ${key}`;
+      const f = detect(t, zone).filter((x) => x.type === "iban");
+      expect(f.map((x) => t.slice(x.start, x.end)), zone).toEqual([bank, branch, account, key]);
+      expect(new Set(f.map((x) => x.canonical))).toEqual(new Set([ribIban]));
+    }
+    // A wrong key: no RIB.
+    const wrong = String((Number(key) + 1) % 100).padStart(2, "0");
+    expect(detect(`Banque ${bank} guichet ${branch} compte ${account} clé ${wrong}`, "web").filter((x) => x.type === "iban")).toEqual([]);
+  });
+
   it("stays linear on 50 kB adversarial strings", () => {
     for (const s of [
       "code " + "A1".repeat(25_000),
@@ -300,6 +369,13 @@ describe("detect, common wordings (swarm findings 2-5)", () => {
       "10:12 " + "Lucie ".repeat(8_000),
       ": « " + "a ".repeat(25_000),
       "1​".repeat(25_000),
+      "12345 ".repeat(8_000),
+      "12345 banque ".repeat(4_000),
+      "1\t".repeat(25_000),
+      "A1  ".repeat(12_000),
+      "(415) 555-".repeat(5_000),
+      "a" + "\t".repeat(50_000) + "!",
+      "a" + " \t".repeat(25_000) + "!",
     ]) {
       const t0 = performance.now();
       detect(s, "sources");
