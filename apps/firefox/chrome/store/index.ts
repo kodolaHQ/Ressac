@@ -670,6 +670,8 @@ async function start(): Promise<RessacStore> {
   agent.ensure().catch((e) => console.error("[agent] the kernel did not start:", e));
   // No `node … host.ts` may outlive the app: its sessions and MCP server stop with it.
   AsyncShutdown.profileBeforeChange.addBlocker("Ressac: stop the agent host", () => agent.stop());
+  // The process's one passport instance: Réglages' pages and « Cacher pour l'agent » share its tokens and writes.
+  const passport = passportSettings((method, params) => agent.request(method, params));
   return {
     get state() {
       return store.state;
@@ -686,11 +688,8 @@ async function start(): Promise<RessacStore> {
     flush,
     containerFor,
     agent,
-    passport: pagePassport(passportSettings((method, params) => agent.request(method, params))),
-    hidePassport: {
-      hide: (h) => passportSettings((method, params) => agent.request(method, params)).hide(h),
-      unhide: (u) => passportSettings((method, params) => agent.request(method, params)).unhide(u),
-    },
+    passport: pagePassport(passport),
+    hidePassport: { hide: (h) => passport.hide(h), unhide: (u) => passport.unhide(u) },
     passportShown: (refs) => passportShown(passportFiles(), refs),
     history,
     ask,

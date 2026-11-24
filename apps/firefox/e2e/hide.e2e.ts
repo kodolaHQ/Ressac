@@ -1,4 +1,6 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { createServer as createHttpsServer } from "node:https";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import { join } from "node:path";
@@ -11,7 +13,7 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { readPassport, writePassport, type PassportEntry } from "./passport-file";
 import { startServer } from "./server";
-import { inBrowser } from "./sites";
+import { inBrowser, resolveLocalHosts } from "./sites";
 import { agentPanelReady, click, inUi, waitUi } from "./ui";
 
 // « Cacher pour l'agent » Task 4: the toolbar button arms Ressac's viewfinder over the page, a click freezes the text,
@@ -25,21 +27,51 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>Fiche</title><body sty
 <span id="known" style="position:absolute;left:100px;top:160px">Jeanne Durand</span>
 <span id="swap" style="position:absolute;left:100px;top:220px">Lucie Martin</span>
 <p id="words" style="position:absolute;left:100px;top:280px;margin:0">Rendez-vous lundi matin avec Paul</p>`;
+const FRAME = `<!doctype html><meta charset="utf-8"><body style="margin:0;font:16px sans-serif"><span id="far" style="position:absolute;left:40px;top:40px">Lucie Martin</span>`;
+const WITH_FRAME = (frame: string) => `${PAGE}<iframe src="${frame}" style="position:absolute;left:400px;top:340px;width:300px;height:120px;border:0"></iframe>`;
 
 const html = (res: ServerResponse, body: string) => res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(body);
-let server: Awaited<ReturnType<typeof startServer>>;
+type Site = { url: string; close(): Promise<void> };
+// The passport's sites are https only: the pages are served over TLS (a self-signed certificate, checks off for the run).
+let server: Site;
 // Another site: the passport entry written before the launch names it, so it is a source of the conversation.
-let known: Awaited<ReturnType<typeof startServer>>;
+let known: Site;
+// A frame of another site (localhost), inside `server`'s page.
+let frameSite: Site;
+// The same page over plain http, a loopback host the test seam would let match: still no site (R7).
+let plain: Awaited<ReturnType<typeof startServer>>;
+let certs: string;
+let tls: { key: Buffer; cert: Buffer };
+
+async function startHttps(routes: Record<string, string>, host = "127.0.0.1"): Promise<Site> {
+  const srv = createHttpsServer(tls, (req, res) => {
+    const body = routes[(req.url ?? "").split("?")[0]!];
+    if (body === undefined) return void res.writeHead(404).end();
+    html(res, body);
+  });
+  await new Promise<void>((ok) => srv.listen(0, "127.0.0.1", ok));
+  const port = (srv.address() as { port: number }).port;
+  return { url: `https://${host}:${port}`, close: () => new Promise((ok) => (srv.closeAllConnections(), srv.close(() => ok()))) };
+}
 let w: LaunchedRessac | undefined;
 let m: Marionette;
 let dataDir: string | undefined;
 let profile: string | undefined;
 
 beforeAll(async () => {
-  server = await startServer({ routes: { "/fiche.html": (_req: unknown, res: ServerResponse) => html(res, PAGE) } });
-  known = await startServer({ routes: { "/fiche.html": (_req: unknown, res: ServerResponse) => html(res, PAGE) } });
+  certs = mkdtempSync(join(os.tmpdir(), "ressac-cert-"));
+  const [key, cert] = [join(certs, "key.pem"), join(certs, "cert.pem")];
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "2", "-subj", "/CN=127.0.0.1"], { stdio: "ignore" });
+  tls = { key: readFileSync(key), cert: readFileSync(cert) };
+  frameSite = await startHttps({ "/cadre.html": FRAME }, "localhost");
+  server = await startHttps({ "/fiche.html": PAGE, "/cadre-page.html": WITH_FRAME(`${frameSite.url}/cadre.html`) });
+  known = await startHttps({ "/fiche.html": PAGE });
+  plain = await startServer({ routes: { "/fiche.html": (_req: unknown, res: ServerResponse) => html(res, PAGE) } });
 });
-afterAll(() => Promise.all([server?.close(), known?.close()]));
+afterAll(async () => {
+  await Promise.all([server?.close(), known?.close(), frameSite?.close(), plain?.close()]);
+  rmSync(certs, { recursive: true, force: true });
+});
 afterEach(async () => {
   await w?.close();
   w = undefined;
@@ -63,6 +95,9 @@ async function start(o: { reauth?: "pass" | "fail"; relaunch?: boolean; prefs?: 
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  // The self-signed certificate of the test sites: accepted for this run.
+  await m.execute('Cc["@mozilla.org/security/certoverride;1"].getService(Ci.nsICertOverrideService).setDisableAllSecurityChecksAndLetAttackersInterceptMyData(true);');
+  await resolveLocalHosts(m, ["localhost"]);
   const config = join(w.dataDir, "workspace", ".ressac", "mcp.json");
   await expect.poll(() => existsSync(config), { timeout: 20_000 }).toBe(true);
   await agentPanelReady(m);
@@ -76,11 +111,11 @@ async function tab(url: string, agentReached = false): Promise<string> {
   return Object.keys(s.tabs).find((x) => !before.has(x))!;
 }
 
-/** The toolbar button, then the outline over `selector` (moved to until the layer draws it), then the click. */
-async function pick(selector: string): Promise<void> {
+/** The toolbar button, then the outline over `selector` (in the `frame`-th frame), moved to until the layer draws it, then the click. */
+async function pick(selector: string, frame?: number): Promise<void> {
   await click(m, '[data-testid="hide-button"]');
   await waitFor(m, "return document.getElementById('ressac-hide-layer')?.style.pointerEvents", (v) => v === "auto");
-  const at = await center(m, B, selector);
+  const at = await center(m, B, selector, frame);
   // The layer listens once its document has loaded: moved over the target until it draws the outline.
   await expect
     .poll(async () => {
@@ -176,13 +211,38 @@ it("the page swaps the text after the click, before Cacher: the frozen text is s
   expect(await entryOf("Autre")).toBeUndefined();
 });
 
+it("an http page, even a loopback one the test seam would match: no site line, no site on the entry, ending notHere", { timeout: 120_000 }, async () => {
+  await start();
+  await tab(`${plain.url}/fiche.html`);
+  await pick("#name");
+  expect(await bubbleText("hide-question")).toBe("Cacher « Camille Aubrac » pour l'agent ?");
+  expect(await has("hide-site")).toBe(false);
+  await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
+  expect(await endingShown()).toBe("notHere");
+  await expect.poll(async () => (await entryOf("Camille"))?.origins, { timeout: 15_000 }).toEqual([]);
+});
+
+it("a value in a frame of another site: the bubble names the top page's site, and the entry gets it", { timeout: 120_000 }, async () => {
+  await start();
+  await tab(`${server.url}/cadre-page.html`);
+  await waitFor(m, `return ${B}.browsingContext.children[0]?.currentWindowGlobal?.documentURI?.spec ?? "";`, (v) => typeof v === "string" && v.startsWith("https://localhost:"), 15_000);
+  await expect.poll(() => inBrowser<string>(m, B, "return document.readyState;", { frame: 0 }), { timeout: 15_000 }).toBe("complete");
+  await pick("#far", 0);
+  expect(await bubbleText("hide-question")).toBe("Cacher « Lucie Martin » pour l'agent ?");
+  const host = new URL(server.url).host;
+  expect(await bubbleText("hide-site")).toBe(`Sur ${host} et vos autres sources`);
+  await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
+  await endingShown();
+  await expect.poll(async () => (await entryOf("Lucie"))?.origins, { timeout: 15_000 }).toEqual([host]);
+});
+
 it("Annuler within 8 s removes the entry; a page the conversation read says the agent had already read it", { timeout: 120_000 }, async () => {
   await start();
   const id = await tab(`${server.url}/fiche.html`);
   expect((await allowing("read_tab", { id })).error).toBe(false);
   await pick("#name");
   await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
-  expect(await bubbleText("hide-read-before")).toBe("L'agent avait déjà lu cette page.");
+  expect(await bubbleText("hide-read-before")).toBe("L'agent a peut-être déjà lu cette page.");
   await expect.poll(async () => !!(await entryOf("Camille")), { timeout: 15_000 }).toBe(true);
   await click(m, '[data-testid="hide-undo"]', { frame: "hideBubble" });
   await expect.poll(async () => !!(await entryOf("Camille")), { timeout: 15_000 }).toBe(false);

@@ -146,7 +146,7 @@
           in:fade={{ duration: reduce ? 150 : 0 }}
           out:fade={{ duration: 150 }}
         >
-          {stage === "say" ? t(shown.ending === "agentReached" ? "chrome-hide-ending-agent" : "chrome-hide-ending-next") : shown.chip}
+          {stage === "say" ? t(`chrome-hide-ending-${shown.ending}`) : shown.chip}
         </div>
       {/if}
       {#if stage === "hatch"}

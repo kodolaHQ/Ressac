@@ -3,7 +3,7 @@ import { auraVariables, DEFAULT_AURA } from "../../shared/aura";
 import { format } from "../../shared/i18n";
 import { siteOf, tabProfile, type TabId, type WindowId } from "../../shared/model";
 import { tabInfos } from "../../core/agent/bridge";
-import { cleanOrigin, FIELD_LABEL, PASSPORT_FIELDS, PASSPORT_LIMITS, splitName, type MaskedRun, type PassportField } from "../shims/kernel";
+import { cleanOrigin, FIELD_LABEL, originMatches, PASSPORT_FIELDS, PASSPORT_LIMITS, splitName, type MaskedRun, type PassportField } from "../shims/kernel";
 import type { RessacHideParent } from "../agent/hide-actor";
 import type { RessacStore } from "../store";
 import { cutFrameNetwork } from "./frame-network";
@@ -28,20 +28,39 @@ const EXIT_MS = 200;
 const SNAPSHOT_MAX = 2_000_000;
 
 type Frame = HTMLIFrameElement & { ressacHide?: { api: HideApi } };
-type Got = { text: string; rect: HideRect; origin: string | null };
+type Got = { text: string; rect: HideRect };
+
+export type Ending = NonNullable<HideContext["ending"]>;
 
 /**
- * The honest ending: what is true now. A tab the agent reached never gets its site; otherwise the value is hidden here
- * only when the kernel's runs over the frozen text cover all of it (the site was already a source of this conversation).
+ * The honest ending: what is true now. A tab the agent reached never gets its site. Otherwise the value is hidden
+ * here when the kernel's runs cover all of the trimmed value (`length`); it is hidden here from the next conversation
+ * when the entry has the page's site (`siteMatches`: added or already there, and matching the top URL); otherwise it is
+ * in the passport but not masked on this page (an http page: the passport's sites are https only).
  */
-export function ending(o: { agentReached: boolean; runs: MaskedRun[]; length: number }): "hidden" | "next" | "agentReached" {
+export function ending(o: { agentReached: boolean; runs: MaskedRun[]; length: number; siteMatches: boolean }): Ending {
   if (o.agentReached) return "agentReached";
   let covered = 0;
   for (const r of [...o.runs].sort((a, b) => a.start - b.start)) {
     if (r.start > covered) break;
     covered = Math.max(covered, r.end);
   }
-  return o.length > 0 && covered >= o.length ? "hidden" : "next";
+  if (o.length > 0 && covered >= o.length) return "hidden";
+  return o.siteMatches ? "next" : "notHere";
+}
+
+/** The toast's « Annuler » window, on an injectable clock: what `open` keeps, `take` gives once, within `ms`. */
+export function undoWindow<T>(ms = UNDO_MS, now: () => number = Date.now) {
+  let kept: { value: T; until: number } | null = null;
+  return {
+    open: (value: T) => void (kept = { value, until: now() + ms }),
+    clear: () => void (kept = null),
+    take(): T | null {
+      const k = kept;
+      kept = null;
+      return k && now() <= k.until ? k.value : null;
+    },
+  };
 }
 
 /** The bubble's text: start…end past `max` characters (the whole text is kept and saved). */
@@ -51,6 +70,13 @@ export function shorten(text: string, max = 60): string {
   return `${text.slice(0, head)}…${text.slice(text.length - (max - 1 - head))}`;
 }
 
+const originOf = (url: string) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "";
+  }
+};
 const scaled = (r: HideRect, z: number): HideRect => ({ x: r.x * z, y: r.y * z, width: r.width * z, height: r.height * z });
 
 export interface HideControl {
@@ -65,8 +91,8 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
   let ctx: HideContext | null = null;
   /** What the bubble's « Cacher » saves: frozen at the pick. */
   let pick: { tab: TabId; browser: any; text: string; origin: string | null; agentReached: boolean; profile: string } | null = null;
-  /** The last hide, for the toast's « Annuler » until `until`. */
-  let saved: { profile: string; id: string; created: boolean; addedOrigin: boolean; updated: string; origin: string | null; until: number } | null = null;
+  /** The last hide, for the toast's « Annuler » within UNDO_MS. */
+  const saved = undoWindow<{ profile: string; id: string; created: boolean; addedOrigin: boolean; updated: string; origin: string | null }>();
   /** Each arm or close: an answer that comes back after it is dropped. */
   let gen = 0;
   let seq = 0;
@@ -178,7 +204,8 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
 
   function close() {
     gen++;
-    pick = saved = null;
+    pick = null;
+    saved.clear();
     clearTimeout(toastTimer);
     const ours = doc.activeElement === layer || doc.activeElement === bubble;
     set(null);
@@ -221,7 +248,7 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     const g = gen;
     const r = await actorOf(b.browsingContext?.currentWindowGlobal)?.at("pickAt", x / z, y / z).catch(() => null);
     if (g !== gen || ctx?.phase !== "pick" || !r) return;
-    await open(b, { text: r.text, rect: scaled(r.rect, z), origin: r.origin });
+    await open(b, { text: r.text, rect: scaled(r.rect, z) });
   }
   function listen(w: Window) {
     w.addEventListener("mousemove", (e) => ctx?.phase === "pick" && void hover(e.clientX, e.clientY));
@@ -266,8 +293,10 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     const g = ++gen;
     const info = tabInfos(store.state).find((t) => t.id === tabId);
     const agentReached = info?.agentReached ?? true;
-    // A page without a host to keep (a file, an opaque frame) hides the value without a site, as `hide` does.
-    const origin = agentReached || got.origin === null || cleanOrigin(got.origin) === null ? null : got.origin;
+    // The top page's site (the kernel zones a tab by its top URL, so a frame's site would not mask it here), and only an
+    // https one: the passport's sites match https pages only (originMatches), whatever a test seam allows.
+    const top = String(b.currentURI?.spec ?? "");
+    const origin = !agentReached && top.startsWith("https://") && cleanOrigin(top) !== null ? new URL(top).origin : null;
     const long = got.text.length > PASSPORT_LIMITS.value;
     const z = b.fullZoom || 1;
     const [guess, snap] = await Promise.all([
@@ -317,24 +346,29 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     // The ending asks the kernel about the page as it is now (its url, whether the agent reached it since).
     const reachedNow = tabInfos(store.state).find((t) => t.id === p.tab)?.agentReached ?? true;
     const url = String(p.browser.currentURI?.spec ?? store.state.tabs[p.tab]?.url ?? "");
+    const value = p.text.trim();
     const runs = await store.agent
-      .request<{ runs: MaskedRun[][] }>("mask.runs", { window: windowId, tab: p.tab, url, agentReached: reachedNow, texts: [p.text] })
+      .request<{ runs: MaskedRun[][] }>("mask.runs", { window: windowId, tab: p.tab, url, agentReached: reachedNow, texts: [value] })
       .then((x) => x.runs[0] ?? [], () => []);
     if (g !== gen || !ctx) return;
-    const end = ending({ agentReached: p.agentReached || reachedNow, runs, length: p.text.length });
+    const host = p.origin === null ? null : cleanOrigin(p.origin);
+    const siteMatches = host !== null && originMatches(host, originOf(url));
+    const end = ending({ agentReached: p.agentReached || reachedNow, runs, length: value.length, siteMatches });
     const undoable = r.created || r.addedOrigin;
-    saved = undoable ? { profile: p.profile, id: r.id, created: r.created, addedOrigin: r.addedOrigin, updated: r.updated, origin: p.origin, until: Date.now() + UNDO_MS } : null;
+    if (undoable) saved.open({ profile: p.profile, id: r.id, created: r.created, addedOrigin: r.addedOrigin, updated: r.updated, origin: p.origin });
     pick = null;
+    // Saved while the user switched tabs (Touch ID was up): the toast still offers « Annuler », with nothing to draw
+    // over a page that is no longer shown.
+    const here = activeTab() === p.tab;
     // The e2e read the ending here: the chip's sentence lasts 2.5 s.
     layer!.dataset.ending = end;
-    set({ ...ctx, phase: "toast", ending: end, undoable, readBefore: !!store.access.tabs[p.tab]?.read, chip: `⟨${FIELD_LABEL[choice.field]}-…⟩`, hover: undefined, seq: ++seq });
+    set({ ...ctx, phase: "toast", ending: end, undoable, readBefore: !!store.access.tabs[p.tab]?.read, chip: `⟨${FIELD_LABEL[choice.field]}-…⟩`, hover: undefined, ...(here ? {} : { target: undefined }), seq: ++seq });
     toastTimer = setTimeout(close, UNDO_MS);
   }
 
   async function undo() {
-    const s = saved;
-    if (!s || Date.now() > s.until) return;
-    saved = null;
+    const s = saved.take();
+    if (!s) return;
     const g = gen;
     const ok = await store.hidePassport.unhide(s);
     if (g !== gen) return;
@@ -343,38 +377,48 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     set({ ...ctx, phase: "error", error: "write" });
   }
 
-  // The content-area context menu: on a selection, or on an element (the pick at the menu's point).
+  // The content-area context menu: on a selection, or on an element with visible text (asked of the actor at the menu's
+  // point as the menu opens: the item shows once the answer says there is text).
   const menu = doc.getElementById("contentAreaContextMenu");
   const item = doc.createXULElement("menuitem");
   item.id = "ressac-context-hide";
-  let facts: { browser: any; bc: any; selected: boolean; x: number; y: number } | null = null;
+  let facts: { browser: any; got: Promise<Got | null> } | null = null;
+  /** What the menu's point or selection holds, in the top window's px (a frame's answers shifted by its place). */
+  async function menuTarget(browser: any, bc: any, selection: boolean, x: number, y: number): Promise<Got | null> {
+    const top = actorOf(browser.browsingContext?.currentWindowGlobal);
+    const own = actorOf(bc?.currentWindowGlobal);
+    const offset = own ? await (own.constructor as typeof RessacHideParent).offsetOf(bc).catch(() => null) : null;
+    if (!top || !own || !offset) return null;
+    if (selection) {
+      const s = await own.selection();
+      return s && { text: s.text, rect: { ...s.rect, x: s.rect.x + offset.x, y: s.rect.y + offset.y } };
+    }
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const r = await top.at("pickAt", x + offset.x, y + offset.y).catch(() => null);
+    return r && { text: r.text, rect: r.rect };
+  }
   const onMenu = (e: Event) => {
     if (e.target !== menu) return;
     const cm = (win as any).gContextMenu;
     item.setAttribute("label", format(locale(), "chrome-hide"));
-    const c = cm?.contentData?.context;
-    const on = !!cm && webPage(cm.browser) && cm.browser === selected() && (cm.isTextSelected || !(cm.onTextInput || cm.onImage || cm.onVideo || cm.onAudio || cm.onCanvas));
-    facts = on ? { browser: cm.browser, bc: cm.frameBrowsingContext ?? cm.browser.browsingContext, selected: !!cm.isTextSelected, x: Number(c?.clientX), y: Number(c?.clientY) } : null;
-    (item as any).hidden = !on;
+    (item as any).hidden = true;
+    facts = null;
+    if (!cm || !webPage(cm.browser) || cm.browser !== selected()) return;
+    const c = cm.contentData?.context;
+    const f = { browser: cm.browser, got: menuTarget(cm.browser, cm.frameBrowsingContext ?? cm.browser.browsingContext, !!cm.isTextSelected, Number(c?.clientX), Number(c?.clientY)) };
+    facts = f;
+    void f.got.then((got) => {
+      if (got && facts === f) (item as any).hidden = false;
+    });
   };
   const onCommand = async () => {
     const f = facts;
     if (!f || f.browser !== selected()) return;
     close();
     const g = gen;
-    const top = actorOf(f.browser.browsingContext?.currentWindowGlobal);
-    const own = actorOf(f.bc?.currentWindowGlobal);
-    // A frame's answers are in its own viewport: shifted by its place in the top window.
-    const offset = own ? await (own.constructor as typeof RessacHideParent).offsetOf(f.bc).catch(() => null) : null;
-    if (!top || !own || !offset) return;
-    let got: Got | null = null;
-    if (f.selected) {
-      const s = await own.selection();
-      got = s && { ...s, rect: { ...s.rect, x: s.rect.x + offset.x, y: s.rect.y + offset.y } };
-    } else if (Number.isFinite(f.x) && Number.isFinite(f.y)) got = await top.at("pickAt", f.x + offset.x, f.y + offset.y);
+    const got = await f.got;
     if (!got || g !== gen) return;
-    const z = f.browser.fullZoom || 1;
-    await open(f.browser, { ...got, rect: scaled(got.rect, z) });
+    await open(f.browser, { ...got, rect: scaled(got.rect, f.browser.fullZoom || 1) });
   };
   if (menu) {
     menu.prepend(item);
@@ -391,7 +435,8 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     const moved = id !== shown || (ctx?.phase === "pick" && url !== shownUrl);
     shown = id;
     shownUrl = url;
-    if (moved && ctx) close();
+    // Touch ID may be up: the save goes on, and its toast still shows (confirm).
+    if (moved && ctx && ctx.phase !== "saving") close();
   });
   const onResize = () => ctx && layout();
   win.addEventListener("resize", onResize);

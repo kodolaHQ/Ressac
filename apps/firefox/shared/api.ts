@@ -1079,7 +1079,8 @@ export interface HideContext {
   site: string | null;
   field: PassportField;
   name?: { given: string; family: string };
-  ending?: "hidden" | "next" | "agentReached";
+  /** notHere: in the passport, but this page (not https) is no passport site, so it is not masked here. */
+  ending?: "hidden" | "next" | "agentReached" | "notHere";
   /** The toast's « Annuler »: false when the hide wrote nothing (the value was already there, with this site). */
   undoable?: boolean;
   /** The tab's conversation had already read this page: the toast says so. */
