@@ -115,3 +115,11 @@ export function runsMemo(): { get(key: string, text: string, ask: () => Promise<
     },
   };
 }
+
+/** Runs `step`; when `live()` no longer holds at its answer (the marks stopped meanwhile), calls `release` and gives null. */
+export async function whileLive<T>(live: () => boolean, step: () => Promise<T>, release: () => void): Promise<T | null> {
+  const x = await step();
+  if (live()) return x;
+  release();
+  return null;
+}
