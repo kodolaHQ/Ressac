@@ -1519,6 +1519,9 @@ export function createToolsServer(
         // as a refusal does, so the agent never learns whether the passport holds that kind (design § 7, point 4).
         chosen = rows.map((r, i) => r.choices && (picks?.[i] === undefined && r.choices.length === 1 ? r.choices[0] : r.choices.find((c) => c.ref === picks?.[i])));
         if (!yes || rows.some((r, i) => r.choices && !chosen[i])) return text(locked ? l10n("kernel-mask-locked-refused") : FILL_DENIED);
+        // A borrowed passport is the active space's: another space (or a private one) taken while the card was up
+        // borrows nothing (audit 2026-11-24).
+        if (borrowed && byKind && (await tab(id).catch(() => undefined))?.activeProfile !== profile) return text(FILL_DENIED);
       }
       if (saved_login) {
         const done = await bridge.fill.commit(seal.seal, { savedLogin: kind!, ...(login !== undefined ? { login } : {}) }, seal.origin);

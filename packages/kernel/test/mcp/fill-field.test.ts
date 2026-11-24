@@ -1116,3 +1116,17 @@ test("a code read in the mail, filled into a page the user opened elsewhere (a p
     expect(cards()[0]!.danger).toBe("Cette page est sur rnabanque.example, et votre code a été lu sur mail.example : vérifiez que c'est bien le site attendu.");
   });
 });
+
+test("passport: the user switches space while the borrowed card is up: « Remplir » fills nothing", async () => {
+  const agentTab: TabInfo = { ...ptab("a", `${P_SHOP}/a`, true, "agent"), activeProfile: "perso" };
+  await servePassport({ tabs: [ptab("mail", `${P_MAIL}/inbox`), agentTab], passports: { perso: [ADDRESS_ENTRY] } }, async ({ call, bridge, of }) => {
+    await call("read_tab", { id: "a" });
+    const ask = bridge.askFill!.bind(bridge);
+    bridge.askFill = async (...a) => {
+      (bridge as unknown as { tabs: TabInfo[] }).tabs.find((t) => t.id === "a")!.activeProfile = "travail";
+      return ask(...a);
+    };
+    expect((await call("fill_field", { id: "a", field: 0, passport: "adresse" })).text).toBe("L'utilisateur a refusé ce remplissage : rien n'a été écrit.");
+    expect(of("fill.commit")).toEqual([]);
+  });
+});
