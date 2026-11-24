@@ -169,7 +169,8 @@ export function createPasswordSettings(o: {
       if (!l) return { ok: false, error: "missing" };
       const [username, password] = [typeof c?.username === "string" ? c.username : "", typeof c?.password === "string" ? c.password : ""];
       if (!password) return { ok: false, error: "password" };
-      if (logins.some((k) => k !== l && k.origin === l.origin && k.username === username)) return { ok: false, error: "duplicate" };
+      // Firefox keeps twins (a form login and an HTTP-auth one, old imports): only a username change can make a new one.
+      if (username !== l.username && logins.some((k) => k !== l && k.origin === l.origin && k.username === username)) return { ok: false, error: "duplicate" };
       return write(l.guid, () => o.logins.modify(l.guid, { username, password }));
     },
     async remove(token: string, guid: string): Promise<PasswordResult> {

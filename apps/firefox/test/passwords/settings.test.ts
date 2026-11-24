@@ -157,6 +157,9 @@ describe("password settings (chrome)", () => {
     expect(snapshot()).toBe(before);
     expect(await s.edit(token, "g2", { username: "zoe", password: "mot-de-passe-test-7" })).toEqual({ ok: true, guid: "g2" });
     expect(store.find((l) => l.guid === "g2")).toMatchObject({ username: "zoe", password: "mot-de-passe-test-7" });
+    // A twin kept by Firefox (same origin and username, another form or realm): its password still changes.
+    store.push({ guid: "g5", origin: "https://alpha.test", username: "camille", password: "mot-de-passe-test-5" });
+    expect(await s.edit(token, "g3", { username: "camille", password: "mot-de-passe-test-8" })).toEqual({ ok: true, guid: "g3" });
     // Another origin's username is no duplicate.
     expect(await s.edit(token, "g1", { username: "zoe", password: "p" })).toEqual({ ok: true, guid: "g1" });
   });

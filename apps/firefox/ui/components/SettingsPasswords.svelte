@@ -27,14 +27,6 @@
   let notice = $state<{ key: string; alert: boolean } | null>(null);
   /** Touch ID or the chrome is answering: the buttons wait (no second prompt). */
   let busy = $state(false);
-  const timers = new Set<ReturnType<typeof setTimeout>>();
-  const later = (f: () => void, ms: number) => {
-    const x = setTimeout(() => {
-      timers.delete(x);
-      f();
-    }, ms);
-    timers.add(x);
-  };
 
   const load = async () => (logins = await p.list());
   $effect(() => void load());
@@ -47,10 +39,11 @@
   function relock() {
     if (session) p.lock();
     session = null;
-    for (const x of timers) clearTimeout(x);
-    timers.clear();
+    for (const x of hides.values()) clearTimeout(x);
     shown = {};
+    hides.clear();
     editing = null;
+    adding = null;
     deleting = null;
   }
   // The token's 5 minutes, then the relock.
@@ -119,13 +112,21 @@
     } else say("settings-passwords-error-missing");
   }
 
+  /** Each shown password's own hide timer: a reveal hidden and shown again gets its full time. */
+  const hides = new Map<string, ReturnType<typeof setTimeout>>();
+  const hide = (guid: string) => {
+    clearTimeout(hides.get(guid));
+    hides.delete(guid);
+    delete shown[guid];
+  };
   const show = (l: SavedLogin) => {
-    if (l.guid in shown) return void delete shown[l.guid];
+    if (l.guid in shown) return hide(l.guid);
     return act(async (k) => {
       const v = await p.reveal(k, l.guid);
       if (v === null) return lost(l.guid);
       shown[l.guid] = v;
-      later(() => delete shown[l.guid], session?.showMs ?? 20_000);
+      clearTimeout(hides.get(l.guid));
+      hides.set(l.guid, setTimeout(() => hide(l.guid), session?.showMs ?? 20_000));
     });
   };
   const copy = (l: SavedLogin) =>
