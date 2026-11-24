@@ -39,6 +39,9 @@ const SPY = `${PAGE}<style>body{height:4000px} #name{transition:color 1ms} #name
   for (const t of ["mousemove", "mouseover", "mouseout", "mouseenter", "pointermove", "pointerover", "pointerenter", "pointerdown", "pointerup", "mousedown", "mouseup", "click", "wheel"]) addEventListener(t, (e) => note(t, e), true);
   addEventListener("scroll", (e) => __seen.at(-1) !== "scroll" && note("scroll", e));
 </script>`;
+// The known value glued to a neighbour with no whitespace node, only CSS spacing: the page text is « Jeanne DurandRéf ».
+const GLUED = `<!doctype html><meta charset="utf-8"><title>Colle</title><body style="margin:0;font:16px/20px sans-serif">
+<div style="position:absolute;left:100px;top:100px"><span id="glued">Jeanne Durand</span><span style="display:inline-block;margin-left:8px">Réf</span></div>`;
 const FRAME = `<!doctype html><meta charset="utf-8"><body style="margin:0;font:16px sans-serif"><span id="far" style="position:absolute;left:40px;top:40px">Lucie Martin</span>`;
 const WITH_FRAME = (frame: string) => `${PAGE}<iframe src="${frame}" style="position:absolute;left:400px;top:340px;width:300px;height:120px;border:0"></iframe>`;
 
@@ -77,7 +80,7 @@ beforeAll(async () => {
   tls = { key: readFileSync(key), cert: readFileSync(cert) };
   frameSite = await startHttps({ "/cadre.html": FRAME }, "localhost");
   server = await startHttps({ "/fiche.html": PAGE, "/espion.html": SPY, "/cadre-page.html": WITH_FRAME(`${frameSite.url}/cadre.html`) });
-  known = await startHttps({ "/fiche.html": PAGE });
+  known = await startHttps({ "/fiche.html": PAGE, "/colle.html": GLUED });
   plain = await startServer({ routes: { "/fiche.html": (_req: unknown, res: ServerResponse) => html(res, PAGE) } });
 });
 afterAll(async () => {
@@ -210,6 +213,27 @@ it("a tab the agent reached: no site line, the entry has no site, ending agentRe
   await pick("#name");
   await bubbleText("hide-question");
   expect(await has("hide-site")).toBe(false);
+  await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
+  expect(await endingShown()).toBe("agentReached");
+  await expect.poll(async () => (await entryOf("Camille"))?.origins, { timeout: 15_000 }).toEqual([]);
+});
+
+it("a known value glued to a neighbour on the page: masked alone, not on this page, so the ending is notHere, never hidden", { timeout: 120_000 }, async () => {
+  await start();
+  await tab(`${known.url}/colle.html`);
+  await pick("#glued");
+  expect(await bubbleText("hide-question")).toBe("Cacher « Jeanne Durand » pour l'agent ?");
+  await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
+  expect(await endingShown()).toBe("notHere");
+  expect(await bubbleText("hide-toast")).toContain("Pas masqué sur cette page.");
+});
+
+it("the agent reaches the tab while the bubble is up: the site is not added, ending agentReached", { timeout: 120_000 }, async () => {
+  await start();
+  const id = await tab(`${server.url}/fiche.html`);
+  await pick("#name");
+  expect(await bubbleText("hide-site")).toBe(`Sur ${new URL(server.url).host} et vos autres sources`);
+  expect((await dispatch(m, { type: "agentNavigated", id })).tabs[id]?.agentReached).toBe(true);
   await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
   expect(await endingShown()).toBe("agentReached");
   await expect.poll(async () => (await entryOf("Camille"))?.origins, { timeout: 15_000 }).toEqual([]);

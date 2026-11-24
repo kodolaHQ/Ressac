@@ -7,6 +7,7 @@ import { joinPieces, runsToPieces } from "../../core/hide/text-map";
 import { commonRuns, createMarks, MARKS_EVERY_MS } from "../../core/hide/marks";
 import { cleanOrigin, FIELD_LABEL, originMatches, PASSPORT_FIELDS, PASSPORT_LIMITS, splitName, type MaskedRun, type PassportField } from "../shims/kernel";
 import type { RessacHideParent } from "../agent/hide-actor";
+import type { HideResult } from "../passport/settings";
 import type { RessacStore } from "../store";
 import { cutFrameNetwork } from "./frame-network";
 
@@ -36,21 +37,57 @@ type Got = { text: string; rect: HideRect; origin: string | null };
 
 export type Ending = NonNullable<HideContext["ending"]>;
 
-/**
- * The honest ending: what is true now. A tab the agent reached never gets its site. Otherwise the value is hidden
- * here when the kernel's runs cover all of the trimmed value (`length`); it is hidden here from the next conversation
- * when the entry has the page's site (`siteMatches`: added or already there, and matching the top URL); otherwise it is
- * in the passport but not masked on this page (an http page: the passport's sites are https only).
- */
-export function ending(o: { agentReached: boolean; runs: { start: number; end: number }[]; length: number; siteMatches: boolean }): Ending {
-  if (o.agentReached) return "agentReached";
-  let covered = 0;
-  for (const r of [...o.runs].sort((a, b) => a.start - b.start)) {
+type Run = { start: number; end: number };
+
+/** Whether the runs together cover [from, to) (an empty span is not covered). */
+function covers(runs: Run[], from: number, to: number): boolean {
+  let covered = from;
+  for (const r of [...runs].sort((a, b) => a.start - b.start)) {
     if (r.start > covered) break;
     covered = Math.max(covered, r.end);
   }
-  if (o.length > 0 && covered >= o.length) return "hidden";
+  return to > from && covered >= to;
+}
+
+/**
+ * The honest ending: what is true now. A tab the agent reached never gets its site. Otherwise the value is hidden
+ * here when the kernel's runs cover all of the trimmed value (`length`) and the page as the agent reads it masks it
+ * too (`onPage`, maskedOnPage); masked alone but not on the page (glued to a neighbour), it is not masked here; else
+ * it is hidden here from the next conversation when the entry has the page's site (`siteMatches`: added or already
+ * there, and matching the top URL); otherwise it is in the passport but not masked on this page (an http page: the
+ * passport's sites are https only).
+ */
+export function ending(o: { agentReached: boolean; runs: Run[]; length: number; siteMatches: boolean; onPage?: boolean }): Ending {
+  if (o.agentReached) return "agentReached";
+  if (covers(o.runs, 0, o.length)) return o.onPage === false ? "notHere" : "hidden";
   return o.siteMatches ? "next" : "notHere";
+}
+
+/**
+ * Whether the agent reads `value` masked on this page: each document's text (joined as the marks join it) with what
+ * every token masks in it (runsForAll). Every occurrence of the value, case and spacing aside, must be covered, up to
+ * its `@` for an e-mail. No occurrence (the page glues it to a neighbour, or changed): false, fail closed.
+ */
+export function maskedOnPage(docs: { text: string; runs: Run[] }[], value: string, field: PassportField): boolean {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  const re = new RegExp(words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "gi");
+  let seen = false;
+  for (const d of docs)
+    for (const m of d.text.matchAll(re)) {
+      seen = true;
+      if (!covers(d.runs, m.index, m.index + coverLength(field, m[0]))) return false;
+    }
+  return seen;
+}
+
+/**
+ * Fail closed: a site the hide added while the agent reached the tab (during the bubble or Touch ID) is taken back
+ * (`takeBack`), so the passport holds what the toast says. Taken back: no site added; not: a write error.
+ */
+export async function settleSite(r: HideResult, reached: boolean, takeBack: () => Promise<boolean>): Promise<HideResult> {
+  if (!r.ok || !r.addedOrigin || !reached) return r;
+  return (await takeBack()) ? { ...r, addedOrigin: false } : { ok: false, error: "write" };
 }
 
 /**
@@ -58,7 +95,7 @@ export function ending(o: { agentReached: boolean; runs: { start: number; end: n
  * out, and always for the main token (`window: null`), whose tools need no conversation. A failed or malformed answer
  * masks nothing (fail closed). The marks and the ending use this one rule: a tab's tool may come from any token.
  */
-export async function runsForAll(request: (method: string, params: unknown) => Promise<unknown>, windows: string[], p: { tab: string; url: string; agentReached: boolean; text: string }): Promise<{ start: number; end: number }[]> {
+export async function runsForAll(request: (method: string, params: unknown) => Promise<unknown>, windows: string[], p: { tab: string; url: string; agentReached: boolean; text: string }): Promise<Run[]> {
   const ask = (window: string | null) =>
     request("mask.runs", { window, tab: p.tab, url: p.url, agentReached: p.agentReached, texts: [p.text] }).then(
       (x) => {
@@ -383,27 +420,39 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     if (named && (typeof n?.given !== "string" || typeof n.family !== "string")) return;
     const g = gen;
     set({ ...ctx, phase: "saving", field: choice.field, ...(n ? { name: { given: n.given, family: n.family } } : {}), error: undefined });
-    const r = await store.hidePassport.hide({
+    const reached = () => tabInfos(store.state).find((t) => t.id === p.tab)?.agentReached ?? true;
+    const written = await store.hidePassport.hide({
       profile: p.profile,
       field: choice.field,
       value: named ? { given: n!.given, family: n!.family } : { text: p.text },
       origin: p.origin,
       reason: format(locale(), "chrome-hide-reauth"),
     });
+    // Asked once the write is done, whether or not the gesture is still shown: the site must not outlive the check.
+    const reachedNow = reached();
+    const r = await settleSite(written, reachedNow, () => store.hidePassport.unhide({ profile: p.profile, id: written.ok ? written.id : "", created: false, addedOrigin: true, updated: written.ok ? written.updated : "", origin: p.origin }));
     if (g !== gen || !ctx) return;
     if (!r.ok) {
       if (r.error === "cancelled") return close();
       return set({ ...ctx, phase: r.error === "invalid" ? "bubble" : "error", error: r.error });
     }
-    // The ending asks the kernel about the page as it is now (its url, whether the agent reached it since).
-    const reachedNow = tabInfos(store.state).find((t) => t.id === p.tab)?.agentReached ?? true;
+    // The ending asks the kernel about the page as it is now (its url, whether the agent reached it since): the value
+    // alone, and the page's own text (each document's, top and frames), where a neighbour glued to it unmasks it.
     const url = String(p.browser.currentURI?.spec ?? store.state.tabs[p.tab]?.url ?? "");
     const value = p.text.trim();
-    const runs = await runsForAll((m, q) => store.agent.request(m, q), store.state.windows.map((w) => w.id), { tab: p.tab, url, agentReached: reachedNow, text: value });
+    const ask = (text: string) => runsForAll((m, q) => store.agent.request(m, q), store.state.windows.map((w) => w.id), { tab: p.tab, url, agentReached: reachedNow, text });
+    const contexts: any[] = p.browser.browsingContext?.getAllBrowsingContextsInSubtree?.() ?? [];
+    const [runs, docs] = await Promise.all([
+      ask(value),
+      Promise.all(contexts.map(async (bc) => {
+        const { text } = joinPieces((await actorOf(bc.currentWindowGlobal)?.pieces()) ?? []);
+        return { text, runs: text.trim() ? await ask(text) : [] };
+      })),
+    ]);
     if (g !== gen || !ctx) return;
     const host = p.origin === null ? null : cleanOrigin(p.origin);
     const siteMatches = host !== null && originMatches(host, originOf(url));
-    const end = ending({ agentReached: p.agentReached || reachedNow, runs, length: coverLength(choice.field, value), siteMatches });
+    const end = ending({ agentReached: p.agentReached || reachedNow, runs, length: coverLength(choice.field, value), siteMatches, onPage: maskedOnPage(docs, value, choice.field) });
     const undoable = r.created || r.addedOrigin;
     if (undoable) saved.open({ profile: p.profile, id: r.id, created: r.created, addedOrigin: r.addedOrigin, updated: r.updated, origin: p.origin });
     pick = null;
