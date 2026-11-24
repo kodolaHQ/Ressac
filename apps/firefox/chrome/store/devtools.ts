@@ -380,7 +380,8 @@ export function createDevTools(o: {
       });
       const { TYPES } = resourceCommand;
       // shortcut: the resource command caches every resource until a navigation, with no public way to drop one; this
-      // reaches its private cache (resource-command.js, Firefox 160), and does nothing if that ever changes.
+      // reaches its private cache, keyed `${resourceType}:${resourceId}` (resource-command.js cacheKey, Firefox 160); a late
+      // update for a resource gone from it is skipped there without a word. Does nothing if that ever changes.
       const uncache = (r: any) => resourceCommand._cache?.delete?.(`${r.resourceType}:${r.resourceId}`);
       // ignoreExistingResources: only what happens after the attachment.
       await resourceCommand.watchResources([TYPES.CONSOLE_MESSAGE, TYPES.ERROR_MESSAGE, TYPES.NETWORK_EVENT, TYPES.DOCUMENT_EVENT], {
@@ -389,6 +390,7 @@ export function createDevTools(o: {
           for (const r of list) {
             if (s.dropped) return;
             if (r.resourceType === TYPES.DOCUMENT_EVENT) {
+              uncache(r); // an iframe's loads bring them too, never purged without a top-level navigation
               if (r.name !== "will-navigate" || r.targetFront?.isTopLevel === false) continue;
               // Same site: the messages stay, marked. Another site: they are worth nothing, the session goes.
               if (originOf(String(r.newURI ?? "")) === s.origin) s.buffer.reload();

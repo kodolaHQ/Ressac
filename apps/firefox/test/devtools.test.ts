@@ -77,6 +77,13 @@ it("an attached page keeps no more than the tools return: bodies capped, the old
   expect(c.cache.has("n:1")).toBe(true);
   c.feed([{ resourceType: "c", resourceId: "m1", level: "log", arguments: ["hi"] }]);
   expect(c.cache.has("c:m1")).toBe(false);
+  // A page polling and logging for long, with iframes loading: the cache stays at the requests kept.
+  for (let i = 0; i < 20; i++) {
+    c.feed(Array.from({ length: 100 }, (_, j) => ({ resourceType: "n", resourceId: `p${i}-${j}`, actor: "a", url: "http://127.0.0.1:5300/poll" })));
+    c.feed(Array.from({ length: 100 }, (_, j) => ({ resourceType: "e", resourceId: `e${i}-${j}`, pageError: null })));
+    c.feed([{ resourceType: "d", resourceId: `d${i}`, name: "dom-complete", targetFront: { isTopLevel: false } }]);
+  }
+  expect(c.cache.size).toBe(500);
   expect(await devtools.call(token, "console", ["t", "http://127.0.0.1:5300"])).toMatchObject([{ text: "hi" }]);
 });
 
