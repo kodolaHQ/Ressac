@@ -443,3 +443,59 @@ test("a value filled on one origin does not make another origin's page printing 
     await s.stop();
   }
 });
+
+/** A user's tab on a passport host: a source whose visible text shows no value of the user's. */
+const nameStore = () => {
+  const store = new PassportStore();
+  store.replace("perso", [{ id: "00000000000000d4", field: "nom", value: { given: "Camille", family: "Aubrac" }, variants: [], origins: ["boutique.example"], how: "typed", created: "2026-11-23T10:00:00.000Z", updated: "2026-11-23T10:00:00.000Z" }]);
+  return store;
+};
+const cart: TabInfo = { id: "cart", title: "Panier", url: "https://boutique.example/panier", space: "perso", profile: "perso", agentReached: false };
+
+async function serveCart(o: { devUnlock: boolean }, attempt: (x: { call: (name: string, args: Record<string, unknown>) => Promise<string>; bridge: FakeBridge }) => Promise<void>) {
+  const bridge = new FakeBridge([cart, news], { active: "cart", allow: true, devTools: true, grantDev: [...DEV_RIGHTS], devUnlock: o.devUnlock });
+  bridge.pages.set("cart", { text: "Votre panier : 2 articles.", links: [] });
+  bridge.pages.set("news", { text: "Les nouvelles du jour.", links: [] });
+  const masker = new Masker({ passport: nameStore() });
+  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr", agent: "Claude" });
+  masker.open("A", "W1");
+  const session = s.openSession("W1", undefined, "A");
+  const c = new Client({ name: "t", version: "0" });
+  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session}` } } }));
+  const call = async (name: string, args: Record<string, unknown>) => ((await c.callTool({ name, arguments: args })).content as { text?: string }[]).map((x) => x.text ?? "").join("\n");
+  try {
+    await attempt({ call, bridge });
+  } finally {
+    await c.close();
+    await s.stop();
+  }
+}
+const LOG = `client : Camille Aubrac · tel ${PHONE}`;
+
+test("dev tools on a sources tab that shows nothing ask the unlock card; refused, nothing is read nor run", async () => {
+  await serveCart({ devUnlock: false }, async ({ call, bridge }) => {
+    bridge.setConsole("cart", [{ level: "log", text: LOG, timestamp: 1 }]);
+    expect(await call("read_console", { id: "cart" })).toBe(DENIAL);
+    expect(await call("run_js", { id: "cart", code: "document.body.innerText = 'Lucie Ferrand\\nCamille Aubrac'" })).toBe(DENIAL);
+    expect(unlockCards(bridge).length).toBeGreaterThan(0);
+    expect(bridge.calls.some((c) => c.method === "console" || c.method === "run")).toBe(false);
+  });
+});
+
+test("dev tools output on a tab is masked in that tab's zone and origin: a sources tab's log, once unlocked, keeps the user's name and phone masked", async () => {
+  await serveCart({ devUnlock: true }, async ({ call, bridge }) => {
+    bridge.setConsole("cart", [{ level: "log", text: LOG, timestamp: 1 }]);
+    const out = await call("read_console", { id: "cart" });
+    expect(out).not.toContain("Aubrac");
+    expect(out).not.toContain(PHONE);
+    expect(out).toMatch(/⟨tel-[a-z0-9]{8}⟩/);
+  });
+});
+
+test("dev tools on a web tab ask no unlock card and stay in clear there (no oracle)", async () => {
+  await serveCart({ devUnlock: false }, async ({ call, bridge }) => {
+    bridge.setConsole("news", [{ level: "log", text: LOG, timestamp: 1 }]);
+    expect(await call("read_console", { id: "news" })).toContain("Camille Aubrac");
+    expect(unlockCards(bridge)).toHaveLength(0);
+  });
+});

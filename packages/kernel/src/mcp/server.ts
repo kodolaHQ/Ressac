@@ -2205,13 +2205,22 @@ export function createToolsServer(
       acted: (o) => void (o.site !== undefined && agentSites.add(`${policy.conversation}:${o.id}`)),
       unlocked: async (o) => {
         await checkCarrier(o);
-        if (!policy.devLocked(o)) return true;
+        // A tab of the user's sources holds their data even when its text shows none (a log, a request body, a field, a
+        // page run_js would fill with guesses to read back masked): its raw view asks the card too.
+        const locked = (t: TabInfo) => policy.devLocked(t) || (zoneOf(t) === "sources" && !policy.devUnlocked(t));
+        if (!locked(o)) return true;
         const ask = bridge.askDevUnlock?.bind(bridge);
         const card = { agent: dev.agent, text: l10n("kernel-mask-devtools-card") };
         if (!ask || !(await conversationCard(policy, requests, `dev-unlock:${o.id}`, (signal) => ask(o, card, signal), () => policy.unlockDev(o)))) return false;
         // Unlocked for the origin the card showed: a tab that left it meanwhile stays locked.
         const now = await tab(o.id);
-        return originOf(now.url) === originOf(o.url) && !policy.devLocked(now);
+        return originOf(now.url) === originOf(o.url) && !locked(now);
+      },
+      // What the dev tools give from a tab is masked as a read of it is: its passport and phone in the sources, a value filled on its origin.
+      place: (o) => {
+        const zone = zoneOf(o);
+        const origin = originOf(o.url);
+        return (t) => wrap(t, zone, origin);
       },
       ...(dev.tools ? { tools: dev.tools } : {}),
       ...dev.profiles,

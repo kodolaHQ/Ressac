@@ -319,6 +319,12 @@ export class AccessPolicy {
     return carrier && (org === null || this.devUnlocks.get(o.id) !== org);
   }
 
+  /** The user unlocked this tab's dev tools on its current origin in this conversation. */
+  devUnlocked(o: TabInfo): boolean {
+    const org = origin(o.url);
+    return org !== null && this.devUnlocks.get(o.id) === org;
+  }
+
   /** The user unlocked the dev tools of this carrier tab on its current origin, until the next conversation. */
   unlockDev(o: TabInfo): void {
     const org = origin(o.url);
