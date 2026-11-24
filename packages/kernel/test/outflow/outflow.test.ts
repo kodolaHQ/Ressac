@@ -115,13 +115,13 @@ test("forget clears read and typed for that window only", () => {
   expect(o.check("b", "camille.roussel@example.com")).toMatchObject({ kind: "email" });
 });
 
-test("oldest read items are dropped past 20 000", () => {
+test("oldest read items are dropped past 6 000", () => {
   const o = new Outflow();
   o.read("w", "tok A1b2C3d4E5f6G7h8", "first");
   // Each read retains a token and its digit run.
-  for (let i = 0; i < 10_000; i++) o.read("w", `id Zz${String(i).padStart(6, "0")}QqWw`, "page");
+  for (let i = 0; i < 3_000; i++) o.read("w", `id Zz${String(i).padStart(6, "0")}QqWw`, "page");
   expect(o.check("w", "A1b2C3d4E5f6G7h8")).toBeUndefined();
-  expect(o.check("w", "Zz004999QqWw")).toMatchObject({ source: "page" });
+  expect(o.check("w", "Zz001499QqWw")).toMatchObject({ source: "page" });
 });
 
 test("check stays fast with 20 000 items and a 2 KB URL", () => {
@@ -295,8 +295,8 @@ test("evicting an item whose piece repeats keeps the other owner of that piece",
   const o = new Outflow();
   o.read("w", "id 482139-555-482139", "old");
   o.read("w", "code 482139", "kept");
-  // Each read retains a token and its digit run: with the last one, 20 001 items, so only the first is evicted.
-  for (let i = 0; i < 9_999; i++) o.read("w", `id Zz${String(i).padStart(6, "0")}QqWw`, "page");
+  // Each read retains a token and its digit run: with the last one, 6 001 items, so only the first is evicted.
+  for (let i = 0; i < 2_999; i++) o.read("w", `id Zz${String(i).padStart(6, "0")}QqWw`, "page");
   o.read("w", "n 771234", "page");
   expect(o.check("w", "q=139555")).toBeUndefined();
   expect(o.check("w", "q=482139")).toMatchObject({ source: "kept" });

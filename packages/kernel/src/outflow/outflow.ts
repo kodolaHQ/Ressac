@@ -61,23 +61,23 @@ interface Win {
   labels: Map<string, string>;
 }
 
-// Memory follows the indexed pieces: measured 21.6 MB of heap for 160 000 distinct pieces (Node 22), so 140 000
-// pieces stay near 19 MB per window, under the 20 MB budget.
-const READ_MAX = 20_000;
-const PIECES_MAX = 140_000;
+// Memory follows the indexed pieces: measured 6.2 MB of heap for 45 000 distinct pieces (Node 22, 32-character
+// tokens), 8.3 MB per window with the addresses and labels full; kept across conversations, so sized for 8 GB Macs.
+const READ_MAX = 6000;
+const PIECES_MAX = 45_000;
 // Bounds one long item's share of the index; a long secret is still caught whole by rule 1.
 const ITEM_PIECES_MAX = 256;
 // One read keeps new items in text order, up to a tenth of the window per kind: padding of one kind never uses
 // another kind's budget, and the five kinds together fill at most half the window, so one read never flushes it.
-// shortcut: padding of the same kind before an item in one read (2 000 items or 14 000 pieces) still hides it; a hard
+// shortcut: padding of the same kind before an item in one read (600 items or 4 500 pieces) still hides it; a hard
 // memory bound needs a limit somewhere, revisit if reads get split per source.
 const READ_KIND_MAX = READ_MAX / 10;
 const READ_KIND_PIECES_MAX = PIECES_MAX / 10;
 const TYPED_ITEMS_MAX = 5000;
 const TYPED_MAX = 64 * 1024;
 const CARRY_MAX = 4096;
-// Addresses over 500 characters are refused by the tools, so they are not kept: 5 000 stay under 5 MB.
-const URLS_MAX = 5000;
+// Addresses over 500 characters are refused by the tools, so they are not kept: 2 000 measured at 1.2 MB.
+const URLS_MAX = 2000;
 const URL_LENGTH_MAX = 500;
 // A series long enough to spell a code takes a few searches; the oldest of 20 is far past any split value, and
 // comparing a query with 20 kept ones stays linear in its length.
