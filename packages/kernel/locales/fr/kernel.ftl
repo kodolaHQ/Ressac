@@ -205,6 +205,9 @@ kernel-mask-fill-foreign-danger = Cette page, ouverte par l'agent, est sur { $to
        *[one-m] lu
     } sur { $from }.
 kernel-mask-fill-foreign-passport = Cette page, ouverte par l'agent, est sur { $to }, pas sur un des sites prévus pour { $name } dans votre passeport ({ $from }).
+kernel-mask-fill-check = cocher
+kernel-mask-fill-uncheck = décocher
+kernel-mask-fill-option = choisir « { $option } »
 kernel-mask-name-fill-text = un texte de l'agent
 kernel-mask-fill-login-pair = votre identifiant et votre mot de passe
 kernel-mask-capture-refused = Capture refusée : cet onglet montre vos données.

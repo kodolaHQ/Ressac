@@ -47,8 +47,13 @@ let m: Marionette;
 let profile: string | undefined;
 // A page's hero form and its form further down, each with an « Email » field: the user looks at the second.
 const TWO_FORMS = `<title>Inscription</title><form><input type="email" aria-label="Email"></form><div style="height:3000px"></div><form><label for="mail">Email</label><input id="mail" type="email"></form>`;
+// A sign-up form's box, radios and list; each change the page sees is counted (a framework listens the same way).
+const CHOICES = `<title>Inscription</title><form><label><input type="checkbox" id="cgu"> J'accepte les conditions</label>
+<fieldset><legend>Formule</legend><label><input type="radio" name="f" id="mois"> Mensuelle</label><label><input type="radio" name="f" id="an"> Annuelle</label></fieldset>
+<label for="pays">Pays</label><select id="pays"><option>France</option><option>Belgique</option><option>Suisse</option></select></form>
+<script>window.seen = 0; document.addEventListener("change", () => window.seen++);</script>`;
 beforeAll(async () => {
-  a = await startServer({ routes: { "/log": logRoute(logs.a), "/fill/compte/mail.html": mail, "/fill/deux.html": (_req: unknown, res: ServerResponse) => html(res, TWO_FORMS) } });
+  a = await startServer({ routes: { "/log": logRoute(logs.a), "/fill/compte/mail.html": mail, "/fill/deux.html": (_req: unknown, res: ServerResponse) => html(res, TWO_FORMS), "/fill/choix.html": (_req: unknown, res: ServerResponse) => html(res, CHOICES) } });
   b = await startServer({ routes: { "/log": logRoute(logs.b), "/fill/client.html": client } });
 });
 afterAll(() => Promise.all([a?.close(), b?.close()]));
@@ -164,6 +169,35 @@ it("two alike fields: the one out of view is read as « hors de l'écran », the
   const text = await read(id);
   expect(text).toContain("0. email — Email (hors de l'écran)");
   expect(text).toMatch(/1\. email — Email$/m);
+});
+
+it("boxes and lists on the user's tab: one card, then the box ticked, the radio chosen, the option set; the page sees each change", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/choix.html`);
+  const text = await read(id);
+  const box = fieldOf(text, "J'accepte les conditions \\(pas coché\\)");
+  const radio = fieldOf(text, "Formule : Annuelle \\(pas coché\\)");
+  const list = Number(text.split("\n").find((l) => / select — Pays /.test(l))!.split(".")[0]);
+  expect(text).toContain("Pays (choisi : France) ; options : 0. France · 1. Belgique · 2. Suisse");
+  const { reply, card } = await fillWithCard({ id, field: box, check: true, also: [{ field: radio, check: true }, { field: list, option: 1 }] });
+  expect(card).toContain("J'accepte les conditions : cocher");
+  expect(card).toContain("Pays : choisir « Belgique »");
+  await press("Remplir");
+  expect((await reply).text).toBe(`Rempli : 0, 1, 2.`);
+  expect(await inPage(id, `return [document.getElementById("cgu").checked, document.getElementById("an").checked, document.getElementById("pays").value, window.seen]`)).toEqual([true, true, "Belgique", 3]);
+});
+
+it("a list reordered between the read and the card's yes: nothing chosen", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/choix.html`);
+  const text = await read(id);
+  const list = Number(text.split("\n").find((l) => / select — Pays /.test(l))!.split(".")[0]);
+  const { reply } = await fillWithCard({ id, field: list, option: 1 });
+  // The page swaps « Belgique » for « Suisse » while the card is up: option 1 is no longer the one read.
+  await inPage(id, `const s = document.getElementById("pays"); s.insertBefore(s.options[2], s.options[1]); return true;`);
+  await press("Remplir");
+  expect((await reply).text).toContain("a changé");
+  expect(await inPage(id, `return document.getElementById("pays").value`)).toBe("France");
 });
 
 it("1. a form injected after the read: its field has no number; the number read still names the field read", async () => {

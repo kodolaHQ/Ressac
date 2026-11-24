@@ -841,7 +841,7 @@ test("passport: off the entry's origins, Touch ID, and the window opened then sp
 test("value, saved_login and passport exclude each other", async () => {
   await servePassport({}, async ({ call, of }) => {
     await call("read_tab", { id: "mail" });
-    const both = { text: "Donne soit `value`, soit `saved_login`, soit `passport`.", isError: true };
+    const both = { text: "Donne soit `value`, soit `saved_login`, soit `passport`, soit `check`, soit `option`.", isError: true };
     expect(await call("fill_field", { id: "mail", field: 0, value: "x", passport: "adresse" })).toEqual(both);
     expect(await call("fill_field", { id: "mail", field: 0, saved_login: true, passport: "adresse" })).toEqual(both);
     expect(await call("fill_field", { id: "mail", field: 0 })).toEqual(both);
@@ -1028,5 +1028,70 @@ test("remember: a kind row names each rememberable choice; with `also` each row 
       [1, rows[1]!.choices![0]!.ref, NAME_ENTRY.id],
     ]);
     expect(new Set(remember.map((r) => r.seal)).size).toBe(2);
+  });
+});
+
+/** A sign-up form's boxes and list: a box to tick, a radio, a list of countries, and a text field. */
+const CHOICES = [
+  { handle: "7:0", type: "checkbox", autocomplete: "", label: "J'accepte les conditions", checked: false },
+  { handle: "7:1", type: "radio", autocomplete: "", label: "Formule : Annuelle", checked: false },
+  { handle: "7:2", type: "select", autocomplete: "", label: "Pays", options: ["France", "Belgique"], selected: 0 },
+  { handle: "7:3", type: "text", autocomplete: "", label: "Ville" },
+];
+
+test("boxes and lists: a read says their state and options; on the user's tab, one card names each tick and choice, then each is set", async () => {
+  await serve({}, async ({ call, bridge, of }) => {
+    bridge.pages.set("mail", { text: "Inscription", links: [], fields: CHOICES });
+    const read = (await call("read_tab", { id: "mail" })).text;
+    expect(read).toContain("0. checkbox — J'accepte les conditions (pas coché)\n1. radio — Formule : Annuelle (pas coché)\n2. select — Pays (choisi : France) ; options : 0. France · 1. Belgique\n3. text — Ville");
+    const r = await call("fill_field", { id: "mail", field: 0, check: true, also: [{ field: 1, check: true }, { field: 2, option: 1 }, { field: 3, value: "Lyon" }] });
+    expect(r.text).toBe("Rempli : 0, 1, 2, 3.");
+    const card = of("askFill")[0]![0] as { rows: { field: string; name: string }[]; touchId: boolean };
+    expect(card.rows.map((x) => `${x.field} : ${x.name}`)).toEqual(["J'accepte les conditions : cocher", "Formule : Annuelle : cocher", "Pays : choisir « Belgique »", "Ville : un texte de l'agent"]);
+    expect(card.touchId).toBe(false);
+    expect(of("fill.commit").map((c) => c[1])).toEqual([{ choice: { check: true } }, { choice: { check: true } }, { choice: { option: 1, text: "Belgique" } }, { text: "Lyon" }]);
+  });
+  // Refused by the card: nothing set.
+  await serve({ bridge: { fill: { yes: false } } }, async ({ call, bridge, of }) => {
+    bridge.pages.set("mail", { text: "Inscription", links: [], fields: CHOICES });
+    await call("read_tab", { id: "mail" });
+    await call("fill_field", { id: "mail", field: 0, check: true });
+    expect(of("fill.commit")).toEqual([]);
+  });
+});
+
+test("a tick or a choice goes only where it fits, before any card: no text into a box or a list, no tick into a text field, no radio unticked, no option unread", async () => {
+  const wrong: Record<string, unknown>[] = [
+    { field: 0, value: "oui" },
+    { field: 2, value: "Belgique" },
+    { field: 3, check: true },
+    { field: 0, option: 0 },
+    { field: 1, check: false },
+    { field: 2, check: true },
+    { field: 0, check: true, option: 1 },
+  ];
+  for (const args of wrong) {
+    await serve({}, async ({ call, bridge, of }) => {
+      bridge.pages.set("mail", { text: "Inscription", links: [], fields: CHOICES });
+      await call("read_tab", { id: "mail" });
+      expect((await call("fill_field", { id: "mail", ...args })).isError, JSON.stringify(args)).toBe(true);
+      expect(of("askFill")).toEqual([]);
+      expect(of("fill.commit")).toEqual([]);
+    });
+  }
+  await serve({}, async ({ call, bridge }) => {
+    bridge.pages.set("mail", { text: "Inscription", links: [], fields: CHOICES });
+    await call("read_tab", { id: "mail" });
+    expect((await call("fill_field", { id: "mail", field: 2, option: 2 })).text).toContain("Option 2 inconnue");
+  });
+});
+
+test("on the agent's own tab, a tick needs no card (none of the user's accounts there)", async () => {
+  await servePassport({ tabs: [ptab("a", `${P_ELSE}/inscription`, true, "agent")] }, async ({ call, bridge, of }) => {
+    bridge.pages.set("a", { text: "Inscription", links: [], fields: CHOICES });
+    await call("read_tab", { id: "a" });
+    expect((await call("fill_field", { id: "a", field: 0, check: true })).text).toBe("Champ rempli.");
+    expect(of("askFill")).toEqual([]);
+    expect(of("fill.commit").map((c) => c[1])).toEqual([{ choice: { check: true } }]);
   });
 });

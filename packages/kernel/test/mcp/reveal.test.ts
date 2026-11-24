@@ -37,7 +37,7 @@ type Call = (name: string, args: Record<string, unknown>, as?: boolean | string)
 
 async function serve(
   o: { bridge?: Partial<Opts>; tabs?: TabInfo[]; otherSessions?: () => boolean; locks?: { names: string[] }[]; outflow?: Outflow; workspace?: WorkspaceLock; passport?: PassportStore; lockFails?: boolean; actions?: ActionsTools; apps?: AppsTools },
-  attempt: (x: { call: Call; bridge: FakeBridge; masker: Masker; results: string[]; cards: () => { url: string; danger?: string }[]; label: () => Promise<string>; read: () => Promise<string>; s: Awaited<ReturnType<typeof startMcpServer>>; search: SearchSessions }) => Promise<void>,
+  attempt: (x: { call: Call; bridge: FakeBridge; masker: Masker; results: string[]; cards: () => { url: string; danger?: string; found?: true }[]; label: () => Promise<string>; read: () => Promise<string>; s: Awaited<ReturnType<typeof startMcpServer>>; search: SearchSessions }) => Promise<void>,
 ) {
   const bridge = new FakeBridge([user, copy, ...(o.tabs ?? [])], { active: "mail", allow: true, address: true, reveal: true, search: {}, ...o.bridge });
   bridge.pages.set("mail", PAGE);
@@ -66,7 +66,7 @@ async function serve(
     return { text, isError: r.isError === true };
   };
   const read = async () => (await call("read_tab", { id: "mail", links: true })).text;
-  const cards = () => bridge.calls.filter((c) => c.method === "askAddress").map((c) => c.args[0] as { url: string; danger?: string });
+  const cards = () => bridge.calls.filter((c) => c.method === "askAddress").map((c) => c.args[0] as { url: string; danger?: string; found?: true });
   const label = async () => (await read()).match(/⟨code-[a-z0-9]{8}⟩/)![0];
   try {
     await attempt({ call, bridge, masker, results, cards, label, read, s, search });

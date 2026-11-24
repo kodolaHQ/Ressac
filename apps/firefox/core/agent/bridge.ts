@@ -297,7 +297,15 @@ export function boundCapture(raw: unknown): Omit<TabRead, "text" | "selection" |
 }
 
 export { FIELDS_MAX };
-const FIELD_TYPES = new Set(["text", "password", "email", "tel", "search", "url", "number", "textarea", "contenteditable"]);
+const FIELD_TYPES = new Set(["text", "password", "email", "tel", "search", "url", "number", "textarea", "contenteditable", "checkbox", "radio", "select"]);
+const label = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+/** A box's state or a list's options, as the fill actor gives them: only on their own types, bounded. */
+const stateOf = (f: any) =>
+  f.type === "checkbox" || f.type === "radio"
+    ? { checked: f.checked === true }
+    : f.type === "select" && Array.isArray(f.options)
+      ? { options: f.options.slice(0, 50).map(label), selected: Number.isInteger(f.selected) && f.selected >= 0 && f.selected < Math.min(f.options.length, 50) ? f.selected : -1 }
+      : {};
 /**
  * The fields of one document as the agent gets them (chrome/agent/fill-actor.ts): from a web process, so bounded and
  * checked. Each handle is `<innerWindowId>:<n>`: the document's own, so a frame that navigated never resolves an old one.
@@ -306,5 +314,5 @@ export function boundFields(raw: unknown, innerWindowId: number): PageField[] {
   return (Array.isArray(raw) ? raw : [])
     .filter((f: any) => Number.isInteger(f?.n) && f.n >= 0 && FIELD_TYPES.has(f.type) && typeof f.autocomplete === "string" && f.autocomplete.length <= 100)
     .slice(0, FIELDS_MAX)
-    .map((f: any) => ({ handle: `${innerWindowId}:${f.n}`, type: f.type, autocomplete: f.autocomplete, label: String(f.label ?? "").replace(/\s+/g, " ").trim().slice(0, 80), ...(f.offscreen === true ? { offscreen: true as const } : {}) }));
+    .map((f: any) => ({ handle: `${innerWindowId}:${f.n}`, type: f.type, autocomplete: f.autocomplete, label: label(f.label), ...(f.offscreen === true ? { offscreen: true as const } : {}), ...stateOf(f) }));
 }

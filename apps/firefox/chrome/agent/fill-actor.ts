@@ -22,6 +22,10 @@ const PLACED_MAX = 64;
 const XHTML = "http://www.w3.org/1999/xhtml";
 /** The input types that take typed text. */
 const TEXT_TYPES = new Set(["text", "password", "email", "tel", "search", "url", "number"]);
+/** The input types the agent ticks rather than types into. */
+const TICK_TYPES = new Set(["checkbox", "radio"]);
+/** A select's options listed at most, each bounded like a label. */
+const OPTIONS_MAX = 50;
 /** The `contenteditable` values that make an editing host. */
 const EDITABLE = new Set(["", "true", "plaintext-only"]);
 
@@ -33,14 +37,19 @@ const originOf = (url: string) => {
   }
 };
 const autocompleteOf = (el: any): string => (el.getAttribute("autocomplete") ?? "").trim().toLowerCase();
-/** Never the field's content: its label, ARIA name, placeholder or name. */
-const labelOf = (el: any): string =>
-  String(el.labels?.[0]?.textContent || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("name") || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, LABEL_MAX);
+const clean = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim();
+/** Never the field's content: its label, ARIA name, placeholder or name; a radio's question (its fieldset's legend) first. */
+const labelOf = (el: any): string => {
+  const own = clean(el.labels?.[0]?.textContent || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("name"));
+  const legend = el.type === "radio" ? clean(el.closest("fieldset")?.querySelector("legend")?.textContent) : "";
+  return (legend ? `${legend} : ${own}` : own).slice(0, LABEL_MAX);
+};
+/** What a select's option says: what the user sees in the list, as compared again before the choice. */
+const optionText = (o: any): string => clean(o.label || o.text).slice(0, LABEL_MAX);
 /** The form a control belongs to (inside it or tied with `form=`); an editing host has none. */
-const formOf = (el: any): any => (el.localName === "input" || el.localName === "textarea" ? (el.form ?? null) : null);
+const formOf = (el: any): any => (el.localName === "input" || el.localName === "textarea" || el.localName === "select" ? (el.form ?? null) : null);
+/** A box to tick or a list to choose from: what the agent sets, never types. */
+export type Choice = { check: boolean } | { option: number; text: string };
 
 export class RessacFillParent extends JSWindowActorParent {}
 
@@ -67,18 +76,24 @@ export class RessacFillChild extends JSWindowActorChild {
     // shortcut: fields inside shadow roots are not offered (querySelectorAll stays out of them), and submit controls in one
     // escape the formaction rule; upgrade when a real site the agent must fill puts its form in a shadow root.
     for (const [n, ref] of this.refs) if (!ref.deref()) this.refs.delete(n);
-    const out: { n: number; type: string; autocomplete: string; label: string; offscreen?: true }[] = [];
-    const w = this.contentWindow!;
-    for (const el of this.document.querySelectorAll("input, textarea, [contenteditable]")) {
-      if (out.length >= FIELDS_MAX) break;
+    type Listed = { n: number; type: string; autocomplete: string; label: string; offscreen?: true; checked?: boolean; options?: string[]; selected?: number };
+    const found: { el: any; type: string }[] = [];
+    for (const el of this.document.querySelectorAll("input, textarea, select, [contenteditable]")) {
       const type = this.typeOf(el);
-      if (!type) continue;
+      if (type) found.push({ el, type });
+    }
+    // Over the cap, boxes and lists give way to the fields that take text (a page of filters must not hide its form).
+    const texts = found.filter((f) => !this.choosable(f.type)).length;
+    let room = Math.max(0, FIELDS_MAX - texts);
+    const kept = found.filter((f) => !this.choosable(f.type) || room-- > 0).slice(0, FIELDS_MAX);
+    const w = this.contentWindow!;
+    return kept.map(({ el, type }): Listed => {
       // Two forms with the same field (a page's hero and its form below): the one in view is the one the user means.
       const r = el.getBoundingClientRect();
       const offscreen = r.bottom <= 0 || r.right <= 0 || r.top >= w.innerHeight || r.left >= w.innerWidth;
-      out.push({ n: this.numberOf(el), type, autocomplete: autocompleteOf(el), label: labelOf(el), ...(offscreen ? { offscreen: true as const } : {}) });
-    }
-    return out;
+      const state = TICK_TYPES.has(type) ? { checked: el.checked === true } : type === "select" ? { options: [...el.options].slice(0, OPTIONS_MAX).map(optionText), selected: el.selectedIndex } : {};
+      return { n: this.numberOf(el), type, autocomplete: autocompleteOf(el), label: labelOf(el), ...(offscreen ? { offscreen: true as const } : {}), ...state };
+    });
   }
 
   private numberOf(el: Element): number {
@@ -91,12 +106,16 @@ export class RessacFillChild extends JSWindowActorChild {
     return n;
   }
 
-  /** An input that takes text, a textarea or an editing host, enabled and visible; null for anything else. */
+  private choosable = (type: string) => TICK_TYPES.has(type) || type === "select";
+
+  /** An input that takes text, a box to tick, a one-choice list, a textarea or an editing host, enabled and visible; null for anything else. */
   private typeOf(el: any): string | null {
     if (el.namespaceURI !== XHTML) return null;
     let type: string | null = null;
-    if (el.localName === "input") type = TEXT_TYPES.has(el.type) ? el.type : null;
+    if (el.localName === "input") type = TEXT_TYPES.has(el.type) || TICK_TYPES.has(el.type) ? el.type : null;
     else if (el.localName === "textarea") type = "textarea";
+    // shortcut: a multiple-choice list is not offered; upgrade when a form the agent must fill needs one.
+    else if (el.localName === "select") type = el.multiple ? null : "select";
     else if (EDITABLE.has(el.getAttribute("contenteditable") ?? "-") && el.isContentEditable && !el.parentElement?.isContentEditable) type = "contenteditable";
     if (!type || el.disabled || el.readOnly || !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return null;
     return type;
@@ -163,7 +182,10 @@ export class RessacFillChild extends JSWindowActorChild {
    * just before it sends): an ancestor that navigates takes this document down with it.
    */
   private fill(seal: Seal, value: unknown): "filled" | "changed" {
-    if (!seal || typeof seal.handle !== "number" || typeof value !== "string") return "changed";
+    if (!seal || typeof seal.handle !== "number") return "changed";
+    const v: any = value;
+    const kind = typeof v === "string" ? "text" : typeof v?.check === "boolean" ? "check" : Number.isInteger(v?.option) && typeof v?.text === "string" ? "option" : null;
+    if (!kind) return "changed";
     const el: any = this.refs.get(seal.handle)?.deref();
     const at = typeof seal.placement === "string" ? this.placed.get(seal.placement) : undefined;
     if (at) this.placed.delete(seal.placement);
@@ -186,9 +208,23 @@ export class RessacFillChild extends JSWindowActorChild {
       (at.next?.deref() ?? null) === el.nextElementSibling &&
       (at.form?.deref() ?? null) === formOf(el);
     if (!same) return "changed";
-    if (now.type === "contenteditable") el.textContent = value;
-    else el.value = value;
+    // Each value only into its kind of field: text into a field that takes text, a tick into a box, a choice into a list.
+    if (kind !== (TICK_TYPES.has(now.type) ? "check" : now.type === "select" ? "option" : "text")) return "changed";
+    if (kind === "check") {
+      // A radio is only ever ticked: unticking one is ticking another.
+      if (now.type === "radio" && !v.check) return "changed";
+      // The page's own click: the frameworks that watch a box listen to it, and it fires input and change.
+      if (el.checked !== v.check) el.click();
+      return el.checked === v.check ? "filled" : "changed";
+    }
     const win = this.contentWindow as any;
+    if (kind === "option") {
+      // The option the agent read, at the same place: a list reordered since chooses nothing.
+      const o = el.options[v.option];
+      if (!o || o.disabled || optionText(o) !== v.text) return "changed";
+      el.selectedIndex = v.option;
+    } else if (now.type === "contenteditable") el.textContent = v;
+    else el.value = v;
     for (const type of ["input", "change"]) el.dispatchEvent(new win.Event(type, { bubbles: true }));
     return "filled";
   }

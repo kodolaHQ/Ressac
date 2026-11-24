@@ -67,8 +67,13 @@ export interface TabRead {
 /** A field of a page, as a read lists it; `handle` is opaque (`"<innerWindowId>:<n>"`: its document's, so a frame that navigated never resolves an old one), only the browser resolves it. */
 /** The fields a read gives at most, numbered for `fill_field`: the fill actor lists no more, the kernel shows no more. */
 export const FIELDS_MAX = 40;
-/** `offscreen`: outside the viewport when read (another form of the page, or one moved off screen): not the one the user looks at. */
-export type PageField = { handle: string; type: string; autocomplete: string; label: string; offscreen?: true };
+/**
+ * `offscreen`: outside the viewport when read (another form of the page, or one moved off screen): not the one the user looks at.
+ * `checked`: a checkbox's or radio's state; `options` and `selected`: a select's options as shown and the one chosen (-1: none).
+ */
+export type PageField = { handle: string; type: string; autocomplete: string; label: string; offscreen?: true; checked?: boolean; options?: string[]; selected?: number };
+/** What the agent sets in a box or a list: a tick, or an option by its number with its text as read (a list reordered since takes nothing). */
+export type FieldChoice = { check: boolean } | { option: number; text: string };
 
 /**
  * What the browser sealed of a field before a fill: its document's `origin` and `path`, the origins of `frames` (its
@@ -191,7 +196,7 @@ export interface BrowserBridge {
     /** A seal is random, single-use and unique; a field's handle stays stable for its document's lifetime. */
     prepare(tab: string, handle: string): Promise<FillSeal>;
     /** `origin`: the origin the kernel approved; the browser writes nothing if the field is no longer on it. */
-    commit(seal: string, v: { text: string } | { savedLogin: "password" | "username"; login?: number }, origin: string): Promise<"filled" | "changed">;
+    commit(seal: string, v: { text: string } | { savedLogin: "password" | "username"; login?: number } | { choice: FieldChoice }, origin: string): Promise<"filled" | "changed">;
   };
   /**
    * The fill card: « Remplir { name } dans « { field } » sur { where } ? » (`field`: the label the read listed), with Touch ID when `touchId`, a choice among `logins` for a

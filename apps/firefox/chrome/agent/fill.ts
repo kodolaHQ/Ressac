@@ -1,6 +1,6 @@
 import type { FillSeal, PageField } from "../shims/kernel";
 import { boundFields, FIELDS_MAX, originOf } from "../../core/agent/bridge";
-import type { Seal } from "./fill-actor";
+import type { Choice, Seal } from "./fill-actor";
 
 /** Seals not committed (a card refused) are dropped past this many, oldest first. */
 const SEALS_MAX = 32;
@@ -10,7 +10,7 @@ type Login = { guid: string; username: string; password: string };
 /** A passport entry whose « Remplissable sur » takes the seal's site once written (task 13b), and the card's window. */
 export type Remember = { profile: string; id: string; window: string };
 type Sealed = Seal & { tab: string; browser: any; origin: string; logins: string[]; remember?: Remember };
-type Value = { text: string } | { savedLogin: "password" | "username"; login?: number };
+type Value = { text: string } | { savedLogin: "password" | "username"; login?: number } | { choice: Choice };
 
 /** The current document `id` of the tab's browser, or null (another tab's, navigated away, closed). */
 function windowIn(browser: any, id: number): any {
@@ -111,7 +111,7 @@ export function createFill(deps: {
       seals.delete(String(id));
       if (!s || s.origin !== origin) return "changed";
       if ((await deps.browserOf(s.tab).catch(() => null)) !== s.browser) return "changed";
-      const value = typeof (v as any)?.text === "string" ? (v as { text: string }).text : await savedValue(s, v);
+      const value = typeof (v as any)?.text === "string" ? (v as { text: string }).text : "choice" in v ? v.choice : await savedValue(s, v);
       if (value === null) return "changed";
       // After every wait: the chain the value goes into is still the one sealed.
       const w = windowIn(s.browser, s.innerWindowId);

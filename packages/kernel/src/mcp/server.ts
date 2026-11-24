@@ -38,7 +38,7 @@ import { TOOL_KINDS } from "../mask/inventory.js";
 import { NO_WORKSPACE_LOCK, type WorkspaceLockHook } from "../mask/lock.js";
 import { nameAgreement, valueName } from "../mask/names.js";
 import { LABEL_SOURCE, LABELS, type Pin } from "../mask/table.js";
-import { FIELDS_MAX, TabNotFound, PrivateTab, SiteChanged, LoadRefused, PRIVATE_TEXT, type TabInfo, type PageLink, type TabRead, type PageField, type BrowserDevTools, type BrowserBridge, type HistoryResult, type FillSeal } from "./bridge.js";
+import { FIELDS_MAX, TabNotFound, PrivateTab, SiteChanged, LoadRefused, PRIVATE_TEXT, type TabInfo, type PageLink, type TabRead, type PageField, type FieldChoice, type BrowserDevTools, type BrowserBridge, type HistoryResult, type FillSeal } from "./bridge.js";
 
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
 /** While the user has the search tab (a hand_over or an outflow pause), the agent gets nothing from it. */
@@ -71,6 +71,7 @@ export const LOGIN_HALF_FILLED = "Champ rempli ; l'autre champ de connexion a ch
 export const FILL_DENIED = "L'utilisateur a refusé ce remplissage : rien n'a été écrit.";
 export const PASSWORD_FIELD_ONLY = "Un mot de passe ne va que dans un champ mot de passe.";
 export const PASSWORD_FIELD_REFUSED = "Ce champ est un mot de passe : seuls un code ou un mot de passe y vont.";
+export const CHOICE_WRONG_FIELD = "`check` va dans une case checkbox (true ou false) ou un bouton radio (true), `option` dans une liste select ; ces champs ne prennent pas de texte.";
 export const FILL_WRONG_ORIGIN = "Cette étiquette ne se remplit que sur le site où sa valeur a été lue.";
 export const SAVED_LOGIN_REFUSED = "Le mot de passe enregistré ne se remplit que sur son site exact, dans un champ mot de passe ou identifiant, sans cadre ni formulaire d'un autre site.";
 export const FIELD_CHANGED = "Le champ n'est plus celui de ta lecture : rien n'a été écrit. Relis l'onglet avec read_tab.";
@@ -975,7 +976,10 @@ export function createToolsServer(
     listedFields.delete(o.id);
     if (fields.length) listedFields.set(o.id, fields.map((f) => ({ ...f })));
     if (listedFields.size > LISTS_KEPT) listedFields.delete(listedFields.keys().next().value!);
-    const fieldLines = fields.length ? ["", FIELDS_HEADER, ...fields.map((f, i) => wrap(`${i}. ${f.type} — ${f.label}${f.offscreen ? " (hors de l'écran)" : ""}`, zone, origin))] : [];
+    // A box says whether it is ticked, a list its options by number (each masked like the page's text).
+    const stateLine = (f: PageField) =>
+      f.checked !== undefined ? (f.checked ? " (coché)" : " (pas coché)") : f.options ? ` (choisi : ${f.options[f.selected ?? -1] ?? "aucun"}) ; options : ${f.options.map((t, n) => `${n}. ${t}`).join(" · ")}` : "";
+    const fieldLines = fields.length ? ["", FIELDS_HEADER, ...fields.map((f, i) => wrap(`${i}. ${f.type} — ${f.label}${f.offscreen ? " (hors de l'écran)" : ""}${stateLine(f)}`, zone, origin))] : [];
     const body = view?.text ?? r.text;
     const note = view?.text !== undefined && view.shown! < view.total! ? ["", reducedNote(view.shown!, view.total!)] : [];
     const page = [...(view ? [view.state] : []), ...(r.selection ? [`Sélection : ${r.selection}`] : []), "", body, ...note].join("\n");
@@ -1312,25 +1316,32 @@ export function createToolsServer(
         "Un seul appel `saved_login` sur le champ identifiant ou mot de passe d'un formulaire de connexion remplit les deux. " +
         "`passport` : une sorte de donnée du passeport de l'utilisateur (prenoms, nom_famille, nom_complet, naissance, adresse, adresse_voie, code_postal, ville, tel, email, iban, secu, piece, plaque), " +
         "que le navigateur remplit après son accord ; tu ne la vois pas. `also` : d'autres champs du même onglet, remplis sur la même carte. " +
-        "Une étiquette, un identifiant enregistré ou une donnée privée demande l'accord de l'utilisateur.",
+        "`check` : cocher (true) ou décocher (false) une case checkbox, cocher un bouton radio ; `option` : le numéro d'une option d'une liste select. " +
+        "Tu n'envoies jamais le formulaire : l'utilisateur clique lui-même sur son bouton d'envoi. " +
+        "Une étiquette, un identifiant enregistré ou une donnée privée demande l'accord de l'utilisateur, et cocher ou choisir aussi sur ses onglets à lui.",
       inputSchema: {
         id: z.string(),
         field: z.number().int().min(0),
         value: z.string().max(SEARCH_QUERY_MAX).optional(),
         saved_login: z.literal(true).optional(),
         passport: z.enum(PASSPORT_KINDS).optional(),
-        also: z.array(z.object({ field: z.number().int().min(0), value: z.string().max(SEARCH_QUERY_MAX).optional(), passport: z.enum(PASSPORT_KINDS).optional() })).max(11).optional(),
+        check: z.boolean().optional(),
+        option: z.number().int().min(0).optional(),
+        also: z
+          .array(z.object({ field: z.number().int().min(0), value: z.string().max(SEARCH_QUERY_MAX).optional(), passport: z.enum(PASSPORT_KINDS).optional(), check: z.boolean().optional(), option: z.number().int().min(0).optional() }))
+          .max(11)
+          .optional(),
       },
     },
-    protect(async ({ id, field, value: given, saved_login, passport, also = [] }, extra) => {
+    protect(async ({ id, field, value: given, saved_login, passport, check, option, also = [] }, extra) => {
       if (blocked()) return text(l10n("kernel-mask-fill-blocked"), true);
-      if ([given, saved_login, passport].filter((x) => x !== undefined).length !== 1) return text("Donne soit `value`, soit `saved_login`, soit `passport`.", true);
+      if ([given, saved_login, passport, check, option].filter((x) => x !== undefined).length !== 1) return text("Donne soit `value`, soit `saved_login`, soit `passport`, soit `check`, soit `option`.", true);
       if (saved_login && also.length) return text("`also` ne va pas avec `saved_login`.", true);
-      if (also.some((r) => (r.value === undefined) === (r.passport === undefined))) return text("Chaque ligne de `also` donne soit `value`, soit `passport`.", true);
+      if (also.some((r) => [r.value, r.passport, r.check, r.option].filter((x) => x !== undefined).length !== 1)) return text("Chaque ligne de `also` donne soit `value`, soit `passport`, soit `check`, soit `option`.", true);
       const o = await tab(id);
       // Row 0 is `field`, then `also`: each row is sealed and checked as a call of its own (design § 8.4).
       // Issued labels the agent wrote without their brackets are labels too.
-      const asked = [{ field, value: given, passport }, ...also].map((r) => ({ ...r, value: r.value === undefined ? undefined : bracketed(r.value), listed: listedFields.get(id)?.[r.field] }));
+      const asked = [{ field, value: given, passport, check, option }, ...also].map((r) => ({ ...r, value: r.value === undefined ? undefined : bracketed(r.value), listed: listedFields.get(id)?.[r.field] }));
       const unlisted = asked.find((r) => r.listed === undefined);
       if (unlisted) return text(`Champ ${unlisted.field} inconnu : relis l'onglet avec read_tab.`, true);
       if (!bridge.fill || !bridge.askFill) return text("Ce navigateur ne remplit pas de champ.", true);
@@ -1365,7 +1376,7 @@ export function createToolsServer(
       let pair: { seal: FillSeal; label: string; kind: "password" | "username" } | undefined;
       let hit: OutflowHit | undefined;
       /** Per row: its labels' entries, or for a kind the tab's passport entries on offer (`choices`). */
-      const rows: { name: string; entries: Entry[]; kind?: string; choices?: FillChoice[] }[] = [];
+      const rows: { name: string; entries: Entry[]; kind?: string; choices?: FillChoice[]; choice?: FieldChoice }[] = [];
       // Fill by kind offers the tab's passport (design § 8.3): site apps have none; the agent's own tab borrows its
       // window's active space's, named on the card and behind Touch ID (`borrowed`).
       const own = o.profile !== undefined && o.profile !== "agent" && !o.profile.startsWith("site-") ? o.profile : undefined;
@@ -1403,6 +1414,20 @@ export function createToolsServer(
         for (const [i, r] of asked.entries()) {
           const s = seals[i]!;
           const inPassword = s.type === "password";
+          // A box takes a tick, a list an option it listed, nothing else; and neither takes a value.
+          const box = s.type === "checkbox" || s.type === "radio";
+          if ((r.check !== undefined) !== box || (r.option !== undefined) !== (s.type === "select")) return text(CHOICE_WRONG_FIELD, true);
+          if (r.check !== undefined) {
+            if (s.type === "radio" && !r.check) return text(CHOICE_WRONG_FIELD, true);
+            rows.push({ name: l10n(r.check ? "kernel-mask-fill-check" : "kernel-mask-fill-uncheck"), entries: [], choice: { check: r.check } });
+            continue;
+          }
+          if (r.option !== undefined) {
+            const shown = r.listed!.options?.[r.option];
+            if (shown === undefined) return text(`Option ${r.option} inconnue : relis l'onglet avec read_tab.`, true);
+            rows.push({ name: l10n("kernel-mask-fill-option", { option: shown }), entries: [], choice: { option: r.option, text: shown } });
+            continue;
+          }
           if (r.passport) {
             if (inPassword) return text(PASSWORD_FIELD_REFUSED, true);
             const kindOf = r.passport;
@@ -1430,6 +1455,10 @@ export function createToolsServer(
         name = rows.map((r) => r.name).join(", ");
       }
       const byKind = rows.some((r) => r.choices);
+      // A tick or a choice on the user's own tab can act at once (a setting saved on change): a card, as for data. The
+      // agent's own tabs hold none of the user's accounts.
+      const choosing = rows.some((r) => r.choice);
+      const userTab = choosing && o.profile !== "agent";
       /** What may go into the page: the labels' entries and every passport entry on offer. */
       const offered = [...new Set(rows.flatMap((r) => r.entries))];
       const locked = !allows(seal.origin) || actions.some((a) => !allows(a));
@@ -1470,10 +1499,10 @@ export function createToolsServer(
       let login: number | undefined;
       /** Per row, the passport entry the user's card settled on (kind rows only). */
       let chosen: (FillChoice | undefined)[] = [];
-      if (saved_login || used.length || byKind || danger) {
+      if (saved_login || used.length || byKind || danger || userTab) {
         // The pair's card names both fields, username first; Touch ID if either seal says the agent reached the tab.
         const field = !pair ? asked.map((r) => r.listed!.label).join(", ") : (pair.kind === "username" ? [pair.label, listedField.label] : [listedField.label, pair.label]).join(", ");
-        const cardRows = byKind || also.length ? rows.map((r, i) => ({ field: asked[i]!.listed!.label, name: r.name, ...(r.kind ? { kind: r.kind } : {}), ...(r.choices ? { choices: r.choices.map(({ ref, shown, value }) => ({ ref, shown, value })) } : {}) })) : undefined;
+        const cardRows = byKind || also.length || choosing ? rows.map((r, i) => ({ field: asked[i]!.listed!.label, name: r.name, ...(r.kind ? { kind: r.kind } : {}), ...(r.choices ? { choices: r.choices.map(({ ref, shown, value }) => ({ ref, shown, value })) } : {}) })) : undefined;
         const card = { name, field, where: seal.origin + seal.path, touchId, labels: used, ...(logins ? { logins } : {}), agent: dev?.agent ?? "L'agent", ...(danger ? { danger } : {}), ...(otherProfile ? { passportProfile: otherProfile } : {}), ...(cardRows ? { rows: cardRows } : {}), ...(byKind && profile !== undefined ? { profile } : {}), ...(remember.length ? { remember } : {}) };
         const ask = bridge.askFill.bind(bridge);
         let picks: (string | null)[] | undefined;
@@ -1507,8 +1536,9 @@ export function createToolsServer(
       // In order, each on its own seal (design § 8.4).
       for (const [i, r] of asked.entries()) {
         const choice = chosen[i];
-        const v = choice ? choice.value : r.value!.replace(BRACKETED, (l) => out(labels.resolve(l)!, seals[i]!.type));
-        if ((await bridge.fill.commit(seals[i]!.seal, { text: v }, seal.origin)) !== "filled") {
+        const set = rows[i]!.choice;
+        const v = set ? "" : choice ? choice.value : r.value!.replace(BRACKETED, (l) => out(labels.resolve(l)!, seals[i]!.type));
+        if ((await bridge.fill.commit(seals[i]!.seal, set ? { choice: set } : { text: v }, seal.origin)) !== "filled") {
           changed.push(i);
           continue;
         }

@@ -190,6 +190,10 @@ chrome-mask-reauth-devtools = débloquer les outils de développement sur { $sit
 chrome-mask-reauth-lift = lever le verrou de l'atelier
 chrome-mask-fill-kind = Remplir { $name } sur { $site } ?
 chrome-mask-fill-rows = Remplir { $n } champs sur { $site } avec votre passeport ?
+chrome-mask-fill-rows-plain = Remplir { $n ->
+    [one] ce champ
+   *[other] { $n } champs
+} sur { $site } ?
 chrome-mask-fill-row = { $field } : { $name }
 chrome-mask-fill-remember = Retenir { $site } pour { $name }
 chrome-mask-fill-remember-failed = Le site n'a pas pu être retenu.

@@ -141,7 +141,10 @@ export class Questions {
       line: say("chrome-mask-fill-row", { field: r.field, name: r.name }),
       ...(!r.choices ? {} : r.choices.length ? { choices: r.choices.map((c) => ({ ref: c.ref, shown: c.shown })) } : { missing: o.profile === undefined ? say("chrome-mask-fill-no-passport", {}) : say("chrome-mask-fill-missing", { kind: r.kind ?? "" }) }),
     }));
-    const passport = rows ? { text: rows.length === 1 ? say("chrome-mask-fill-kind", { name: o.name, site }) : say("chrome-mask-fill-rows", { n: rows.length, site }), rows } : {};
+    // « with your passport » only when a row fills from it; rows of ticks, choices and texts are just fields.
+    const fromPassport = o.rows?.some((r) => r.kind !== undefined);
+    const title = !fromPassport ? say("chrome-mask-fill-rows-plain", { n: rows?.length ?? 0, site }) : rows!.length === 1 ? say("chrome-mask-fill-kind", { name: o.name, site }) : say("chrome-mask-fill-rows", { n: rows!.length, site });
+    const passport = rows ? { text: title, rows } : {};
     const note = o.passportProfile !== undefined ? { note: say("chrome-mask-fill-other-profile", { profile: passportName(this.store.state.spaces, o.passportProfile, format(this.store.state.locale, "agent-mask-passport-no-space")) }) } : {};
     const open = o.passportProfile ?? o.profile;
     // The card gets each box's row and text only; the entry stays here.

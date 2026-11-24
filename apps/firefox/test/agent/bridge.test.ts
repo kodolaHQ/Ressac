@@ -508,6 +508,16 @@ test("boundFields: a web process's field list, checked and bounded; each handle 
   ]);
   expect(boundFields(Array.from({ length: 60 }, (_, n) => ({ n, type: "text", autocomplete: "", label: "" })), 1)).toHaveLength(40);
   expect(boundFields("nope", 1)).toEqual([]);
+  // A box's state and a list's options, only on their own types, bounded; a chosen index off the list is none.
+  expect(boundFields([
+    { n: 0, type: "checkbox", autocomplete: "", label: "Oui", checked: true, options: ["x"] },
+    { n: 1, type: "select", autocomplete: "", label: "Pays", options: ["  France ", "y".repeat(90), ...Array.from({ length: 60 }, () => "z")], selected: 70 },
+    { n: 2, type: "text", autocomplete: "", label: "Ville", checked: true, options: ["a"] },
+  ], 3)).toEqual([
+    { handle: "3:0", type: "checkbox", autocomplete: "", label: "Oui", checked: true },
+    { handle: "3:1", type: "select", autocomplete: "", label: "Pays", options: ["France", "y".repeat(80), ...Array.from({ length: 48 }, () => "z")], selected: -1 },
+    { handle: "3:2", type: "text", autocomplete: "", label: "Ville" },
+  ]);
   // Out of view: kept only as `true`.
   expect(boundFields([{ n: 0, type: "email", autocomplete: "", label: "", offscreen: true }, { n: 1, type: "email", autocomplete: "", label: "", offscreen: "yes" }], 2).map((f) => f.offscreen)).toEqual([true, undefined]);
 });

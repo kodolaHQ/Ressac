@@ -190,6 +190,10 @@ chrome-mask-reauth-devtools = unlock the developer tools on { $site }
 chrome-mask-reauth-lift = lift the workshop lock
 chrome-mask-fill-kind = Fill { $name } on { $site }?
 chrome-mask-fill-rows = Fill { $n } fields on { $site } from your passport?
+chrome-mask-fill-rows-plain = Fill { $n ->
+    [one] this field
+   *[other] { $n } fields
+} on { $site }?
 chrome-mask-fill-row = { $field }: { $name }
 chrome-mask-fill-remember = Remember { $site } for { $name }
 chrome-mask-fill-remember-failed = The site could not be remembered.
