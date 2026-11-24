@@ -1,8 +1,10 @@
-import { canonicalOf, cleanOrigin, FIELD_LABEL, PASSPORT_LIMITS, validatePassport, type PassportEntry } from "../shims/kernel";
+import { canonicalOf, cleanOrigin, FIELD_LABEL, PASSPORT_LIMITS, validateEntry, validatePassport, type PassportEntry, type PassportField, type PassportValue } from "../shims/kernel";
 import { testEnv } from "../test-env";
 import { reauth } from "../agent/reauth";
 import { passportFiles, type LoadResult, type PassportFiles } from "./store";
 
+/** `updated`: the entry's, as this hide left it; unhide removes a created entry only while it is unchanged. */
+export type HideResult = { ok: true; id: string; created: boolean; addedOrigin: boolean; updated: string } | { ok: false; error: "cancelled" | "long" | "invalid" | "unreadable" | "full" | "write" };
 export type PassportSaveResult = { ok: true; revision: string; uncovered: number } | { ok: false; error: "stale" | "write" | "newer" | "full" | "locked" | "invalid" };
 
 
@@ -143,6 +145,76 @@ export function createPassportSettings(o: {
         return false;
       }
     },
+    /**
+     * « Cacher pour l'agent »: the value the user pointed at becomes a click entry from that site, or only gets the site
+     * when the passport already holds it (same label, same canonical value). Touch ID on every call (ruling R1).
+     * Chrome only: never reachable from a page or the settings API.
+     */
+    async hide(h: { profile: string; field: PassportField; value: PassportValue; origin: string | null; reason: string }): Promise<HideResult> {
+      if (!(await o.reauth(h.reason))) return { ok: false, error: "cancelled" };
+      // An origin with no host to keep (a file, a loopback page) still hides the value, without a site.
+      const host = h.origin === null ? null : cleanOrigin(h.origin);
+      const value: PassportValue = "given" in h.value ? { given: h.value.given.trim(), family: h.value.family.trim() } : { text: h.value.text.trim() };
+      const at = new Date(now()).toISOString();
+      const fresh: PassportEntry = { id: crypto.randomUUID(), field: h.field, value, variants: [], origins: host ? [host] : [], how: "click", ...(host ? { from: host } : {}), created: at, updated: at };
+      // What `change` decided: the store's update says only ok or not, and never calls it on an unreadable or newer file.
+      let out: HideResult = { ok: false, error: "unreadable" };
+      try {
+        const r = await o.files.update(h.profile, (all) => {
+          const twin = all.find((k) => FIELD_LABEL[k.field] === FIELD_LABEL[fresh.field] && canonicalOf(k) === canonicalOf(fresh));
+          if (twin) {
+            out = { ok: true, id: twin.id, created: false, addedOrigin: false, updated: twin.updated };
+            if (!host || twin.origins.includes(host)) return all;
+            if (twin.origins.length >= PASSPORT_LIMITS.origins) {
+              out = { ok: false, error: "full" };
+              return null;
+            }
+            out = { ok: true, id: twin.id, created: false, addedOrigin: true, updated: twin.updated };
+            return all.map((x) => (x === twin ? { ...x, origins: [...x.origins, host] } : x));
+          }
+          const codes = validateEntry(fresh, all).problems.map((p) => p.code);
+          if (codes.length) {
+            out = { ok: false, error: codes.includes("long") ? "long" : codes.includes("full") ? "full" : "invalid" };
+            return null;
+          }
+          out = { ok: true, id: fresh.id, created: true, addedOrigin: !!host, updated: fresh.updated };
+          return [...all, fresh];
+        });
+        if (!r.ok) return out.ok ? { ok: false, error: "write" } : out;
+        if (r.written) await o.request("passport.replace", { profile: h.profile, entries: r.entries }).catch((err) => void console.error("[ressac] passport push after a hide failed:", (err as Error)?.name));
+        return out;
+      } catch (err) {
+        console.error("[ressac] passport hide failed:", (err as Error)?.name);
+        return { ok: false, error: "write" };
+      }
+    },
+    /**
+     * The toast's « Annuler » (its 8 s window is the caller's): removes the entry `hide` created, or only the site it
+     * added. No Touch ID: the toast's gesture is the user's. A created entry edited since (its `updated` moved) keeps
+     * the edit: only the site goes. False when nothing could be written.
+     */
+    async unhide(u: { profile: string; id: string; created: boolean; addedOrigin: boolean; updated: string; origin: string | null }): Promise<boolean> {
+      const host = u.origin === null ? null : cleanOrigin(u.origin);
+      try {
+        const r = await o.files.update(u.profile, (all) => {
+          const e = all.find((x) => x.id === u.id);
+          if (u.created && e?.updated === u.updated) return all.filter((x) => x !== e);
+          if (!u.addedOrigin || !host || !e?.origins.includes(host)) return all;
+          // The site taken back is no longer where the entry came from either.
+          return all.map((x) => {
+            if (x !== e) return x;
+            const { from, ...rest } = x;
+            return { ...rest, origins: x.origins.filter((k) => k !== host), ...(from !== undefined && from !== host ? { from } : {}) };
+          });
+        });
+        if (!r.ok) return false;
+        if (r.written) await o.request("passport.replace", { profile: u.profile, entries: r.entries }).catch((err) => void console.error("[ressac] passport push after an unhide failed:", (err as Error)?.name));
+        return true;
+      } catch (err) {
+        console.error("[ressac] passport unhide failed:", (err as Error)?.name);
+        return false;
+      }
+    },
     lock(token: string) {
       tokens.delete(token);
     },
@@ -219,14 +291,21 @@ export function createPassportSettings(o: {
 
 export type PassportSettings = ReturnType<typeof createPassportSettings>;
 
+/**
+ * What Réglages pages get (`win.store.passport`): no `addOrigin` (only a written fill card's tick adds a site), no
+ * `hide`/`unhide` (only Ressac's own « Cacher pour l'agent » gesture, unhide having no Touch ID).
+ */
+export const pagePassport = ({ addOrigin: _a, hide: _h, unhide: _u, ...pages }: PassportSettings) => pages;
+export type PagePassport = ReturnType<typeof pagePassport>;
+
 /** `RESSAC_TEST_PASSPORT_TIMES` (dev builds): « unlockMs,showMs », so an e2e waits for the relock and the remask. */
-function testTimes(): { unlockMs: number; showMs: number } | undefined {
+export function testTimes(): { unlockMs: number; showMs: number } | undefined {
   const [unlockMs, showMs] = (testEnv("RESSAC_TEST_PASSPORT_TIMES") ?? "").split(",").map(Number);
   return unlockMs! > 0 && showMs! > 0 ? { unlockMs: unlockMs!, showMs: showMs! } : undefined;
 }
 
 /** macOS's « CGSSessionScreenIsLocked » through ctypes (CoreGraphics and CoreFoundation); false when it cannot tell. */
-function macScreenLocked(): () => boolean {
+export function macScreenLocked(): () => boolean {
   let read: (() => boolean) | null = null;
   return () => {
     try {

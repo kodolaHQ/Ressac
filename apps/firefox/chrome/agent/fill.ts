@@ -1,6 +1,6 @@
 import type { FillSeal, PageField } from "../shims/kernel";
-import { boundFields, FIELDS_MAX, originOf } from "../../core/agent/bridge";
-import type { Seal } from "./fill-actor";
+import { boundFields, CARRIER_TEXT_MAX, FIELDS_MAX, originOf } from "../../core/agent/bridge";
+import type { Choice, Seal } from "./fill-actor";
 
 /** Seals not committed (a card refused) are dropped past this many, oldest first. */
 const SEALS_MAX = 32;
@@ -10,7 +10,7 @@ type Login = { guid: string; username: string; password: string };
 /** A passport entry whose « Remplissable sur » takes the seal's site once written (task 13b), and the card's window. */
 export type Remember = { profile: string; id: string; window: string };
 type Sealed = Seal & { tab: string; browser: any; origin: string; logins: string[]; remember?: Remember };
-type Value = { text: string } | { savedLogin: "password" | "username"; login?: number };
+type Value = { text: string } | { savedLogin: "password" | "username"; login?: number } | { choice: Choice };
 
 /** The current document `id` of the tab's browser, or null (another tab's, navigated away, closed). */
 function windowIn(browser: any, id: number): any {
@@ -71,6 +71,32 @@ export function createFill(deps: {
       return { fields: lists.flat().slice(0, FIELDS_MAX), frameOrigins: [...new Set<string>(origins)] };
     },
 
+    /**
+     * For the kernel's carrier check only (`BrowserBridge.carrierText`): each document's text and field values, by its
+     * origin taken here. An http(s) document asks its own actor; another document is read by its embedder's walk only
+     * when it shares the embedder's principal. Any other document, a failed or oversized answer: `unread` (fail closed).
+     */
+    async carrierText(browser: any): Promise<{ documents: { origin: string; text: string }[]; unread: boolean }> {
+      const windows = (browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []).map((bc: any) => bc.currentWindowGlobal);
+      let unread = windows.some((w: any) => !w);
+      const documents = await Promise.all(
+        windows.filter(Boolean).map(async (w: any) => {
+          const origin = w.documentPrincipal?.originNoSuffix;
+          if (/^https?:/i.test(String(w.documentURI?.spec ?? ""))) {
+            const r = await Promise.resolve().then(() => w.getActor("RessacFill").sendQuery("carrier")).catch(() => null);
+            if (typeof r?.text === "string" && r.text.length <= CARRIER_TEXT_MAX && r.over === false && typeof origin === "string") return [{ origin, text: r.text }];
+          } else {
+            const up = w.parentWindowContext;
+            // shortcut: a top document that is not http(s) (file:, about:) is covered by the page read only; upgrade if such tabs carry the user's data.
+            if (!up || (up.documentPrincipal && w.documentPrincipal?.equals(up.documentPrincipal))) return [];
+          }
+          unread = true;
+          return [];
+        }),
+      );
+      return { documents: documents.flat(), unread };
+    },
+
     async prepare(tab: string, handle: string): Promise<FillSeal> {
       const m = /^(\d+):(\d+)$/.exec(String(handle));
       if (!m) throw new Error(GONE);
@@ -83,7 +109,8 @@ export function createFill(deps: {
       const autocomplete = bounded(raw?.autocomplete, 100);
       const action = raw?.action === null ? null : bounded(raw?.action, 2_048);
       const placement = bounded(raw?.placement, 100);
-      if (type === null || autocomplete === null || placement === null || (action === null && raw?.action !== null)) throw new Error(GONE);
+      const label = bounded(raw?.label, 80);
+      if (type === null || autocomplete === null || placement === null || label === null || (action === null && raw?.action !== null)) throw new Error(GONE);
       const partnerN = Number.isInteger(raw?.partner) && raw.partner >= 0 ? (raw.partner as number) : null;
       const role = partnerN !== null && (raw?.role === "username" || raw?.role === "password") ? (raw.role as "username" | "password") : null;
       const frames = frameChain(w);
@@ -94,9 +121,9 @@ export function createFill(deps: {
       // The login form's other field, in this same document (Firefox's form detection, in the child).
       const partner = own && role ? `${w.innerWindowId}:${partnerN}` : undefined;
       const seal = crypto.randomUUID();
-      seals.set(seal, { tab, browser, innerWindowId: w.innerWindowId, handle: n, frames, action, type, autocomplete, placement, partner: role ? partnerN : null, role, origin, logins: found.map((l) => l.guid) });
+      seals.set(seal, { tab, browser, innerWindowId: w.innerWindowId, handle: n, frames, action, type, autocomplete, label, placement, partner: role ? partnerN : null, role, origin, logins: found.map((l) => l.guid) });
       if (seals.size > SEALS_MAX) seals.delete(seals.keys().next().value!);
-      return { seal, origin, path: String(w.documentURI?.filePath ?? "/"), frames, type, autocomplete, action, logins: found.map((l) => ({ username: l.username })), agentReached: deps.agentReached(tab), ...(partner ? { partner } : {}) };
+      return { seal, origin, path: String(w.documentURI?.filePath ?? "/"), frames, type, autocomplete, label, action, logins: found.map((l) => ({ username: l.username })), agentReached: deps.agentReached(tab), ...(partner ? { partner } : {}) };
     },
 
     /** The fill card ticked « Retenir ce site » for this seal: kept until its commit, dropped with it. */
@@ -111,7 +138,7 @@ export function createFill(deps: {
       seals.delete(String(id));
       if (!s || s.origin !== origin) return "changed";
       if ((await deps.browserOf(s.tab).catch(() => null)) !== s.browser) return "changed";
-      const value = typeof (v as any)?.text === "string" ? (v as { text: string }).text : await savedValue(s, v);
+      const value = typeof (v as any)?.text === "string" ? (v as { text: string }).text : "choice" in v ? v.choice : await savedValue(s, v);
       if (value === null) return "changed";
       // After every wait: the chain the value goes into is still the one sealed.
       const w = windowIn(s.browser, s.innerWindowId);
@@ -120,7 +147,7 @@ export function createFill(deps: {
         frames = w && frameChain(w);
       } catch {}
       if (!frames || JSON.stringify(frames) !== JSON.stringify(s.frames)) return "changed";
-      const seal: Seal = { innerWindowId: s.innerWindowId, handle: s.handle, frames: s.frames, action: s.action, type: s.type, autocomplete: s.autocomplete, placement: s.placement, partner: s.partner, role: s.role };
+      const seal: Seal = { innerWindowId: s.innerWindowId, handle: s.handle, frames: s.frames, action: s.action, type: s.type, autocomplete: s.autocomplete, label: s.label, placement: s.placement, partner: s.partner, role: s.role };
       const answer = await w.getActor("RessacFill").sendQuery("fill", { seal, value }).catch(() => "changed");
       if (answer !== "filled") return "changed";
       // Never awaited: the fill stands, and answers the agent the same, whatever the save does.

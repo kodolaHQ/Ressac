@@ -1,4 +1,4 @@
-import type { OverlayApi } from "../shared/api";
+import type { HideApi, MarksApi, OverlayApi } from "../shared/api";
 import { local } from "./design-api";
 
 // The chrome outlives this document: a listener into a dead document would throw on every call.
@@ -30,4 +30,20 @@ export function wrapOverlayApi(raw: OverlayApi, untilUnload: (unsubscribe: () =>
     handled: (p, batch) => copy(() => raw.handled(p, batch)),
     onChange: (cb) => untilUnload(raw.onChange(() => cb())),
   };
+}
+
+/** The API of a « Cacher pour l'agent » frame (HideApp.svelte), on what chrome/window/hide-layer.ts set on the frame. */
+export function wrapHideApi(raw: HideApi, untilUnload: (unsubscribe: () => void) => () => void = untilWindowUnload): HideApi {
+  return {
+    context: () => structuredClone(raw.context()),
+    confirm: (choice) => Promise.resolve(raw.confirm(structuredClone(choice))).then(() => {}),
+    cancel: () => raw.cancel(),
+    undo: () => Promise.resolve(raw.undo()).then(() => {}),
+    onChange: (cb) => untilUnload(raw.onChange(() => cb())),
+  };
+}
+
+/** The API of the marks frame (HideMarks.svelte). */
+export function wrapMarksApi(raw: MarksApi, untilUnload: (unsubscribe: () => void) => () => void = untilWindowUnload): MarksApi {
+  return { marks: () => structuredClone(raw.marks()), locale: () => String(raw.locale()), onChange: (cb) => untilUnload(raw.onChange(() => cb())) };
 }

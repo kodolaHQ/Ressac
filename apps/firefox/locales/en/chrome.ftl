@@ -190,10 +190,15 @@ chrome-mask-reauth-devtools = unlock the developer tools on { $site }
 chrome-mask-reauth-lift = lift the workshop lock
 chrome-mask-fill-kind = Fill { $name } on { $site }?
 chrome-mask-fill-rows = Fill { $n } fields on { $site } from your passport?
+chrome-mask-fill-rows-plain = Fill { $n ->
+    [one] this field
+   *[other] { $n } fields
+} on { $site }?
 chrome-mask-fill-row = { $field }: { $name }
 chrome-mask-fill-remember = Remember { $site } for { $name }
 chrome-mask-fill-remember-failed = The site could not be remembered.
 chrome-mask-fill-other-profile = This comes from your “{ $profile }” passport, not this tab's.
+chrome-mask-fill-no-passport = This tab has no passport: it is the agent's tab or a site app. Fill this field yourself, or open the page in one of your spaces.
 chrome-mask-fill-missing =
     Your passport has no { $kind ->
         [prenoms] first name
@@ -212,3 +217,31 @@ chrome-mask-fill-missing =
         [plaque] number plate
        *[other] such data
     }.
+
+## « Cacher pour l'agent » (chrome/window/hide-layer.ts, ui/HideApp.svelte)
+
+chrome-hide = Hide from the agent
+chrome-hide-question = Hide “{ $text }” from the agent?
+chrome-hide-type = Type
+chrome-hide-given = First name(s)
+chrome-hide-family = Last name
+chrome-hide-site = On { $site } and your other sources
+chrome-hide-cancel = Cancel
+chrome-hide-confirm = Hide
+chrome-hide-reauth = hide some data from the agent
+chrome-hide-ending-next = Hidden from the next conversation
+chrome-hide-ending-agentReached = Added to your passport. This site, opened by the agent, is not kept.
+chrome-hide-ending-notHere = Added to your passport, but not hidden on this page.
+chrome-hide-ending-agentReached-known = This site, opened by the agent, is not kept.
+chrome-hide-ending-notHere-known = Not hidden on this page.
+chrome-hide-toast = Hidden from the agent
+chrome-hide-toast-undo = Undo
+chrome-hide-toast-already = Already in your passport.
+chrome-hide-read-before = The agent may have already read this page.
+chrome-hide-error-long = This text is too long for the passport.
+chrome-hide-error-write = The passport could not be saved.
+chrome-hide-error-unreadable = Your passport cannot be read: open Settings › Passport.
+chrome-hide-error-full = Your passport is full.
+chrome-hide-error-invalid = This text does not fit this type: choose another one.
+chrome-hide-legend-text = Masked text: the agent reads a label instead
+chrome-hide-legend-field = Masked field: the agent never reads its value in clear

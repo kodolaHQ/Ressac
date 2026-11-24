@@ -9,6 +9,9 @@ const FRAMES = {
   panel: { id: "ressac-design-volet", mounted: "#app" },
   // The pill of the agent's last tab (chrome/window/agent-pill.ts).
   agentview: { id: "ressac-agent-pill", mounted: "#app" },
+  // « Cacher pour l'agent »'s layer over the page and its bubble (chrome/window/hide-layer.ts).
+  hide: { id: "ressac-hide-layer", mounted: "#app" },
+  hideBubble: { id: "ressac-hide-bubble", mounted: "#app" },
 };
 export type Frame = keyof typeof FRAMES;
 

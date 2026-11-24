@@ -9,7 +9,8 @@ import { memorySession, withEssentials } from "../../core/state/actions";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, pushPassports, type AgentHost } from "../agent/host";
 import { passportFiles, passportShown } from "../passport/store";
-import { passportSettings, type PassportSettings } from "../passport/settings";
+import { pagePassport, passportSettings, type PagePassport, type PassportSettings } from "../passport/settings";
+import { passwordSettings, type PasswordSettings } from "../passwords/settings";
 import { createAgentView, type AgentView } from "../agent/agent-view";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
@@ -86,8 +87,12 @@ export interface RessacStore extends Store {
   /** The Node host running the kernel, started with the store. */
   readonly agent: AgentHost;
   /** Réglages › Passeport: the process's one passport instance lives in this module, never in a UI bundle's copy. */
-  /** Without `addOrigin`: only a written fill card's tick adds a site (chrome/agent/bridge.ts), never a page. */
-  readonly passport: Omit<PassportSettings, "addOrigin">;
+  /** Without `addOrigin`, `hide` nor `unhide`: chrome gestures only, never a page (passport/settings.ts pagePassport). */
+  readonly passport: PagePassport;
+  /** « Cacher pour l'agent »: the passport's hide and unhide, for the chrome's hide layer only (never in a UI API). */
+  readonly hidePassport: Pick<PassportSettings, "hide" | "unhide">;
+  /** Réglages › Mots de passe: Firefox's saved logins behind Touch ID, for the settings page only (never the agent). */
+  readonly passwords: PasswordSettings;
   /** The « non couverte » tooltip's names and masked displays (chrome/passport/store.ts passportShown). */
   passportShown(refs: readonly { profile: string; id: string }[]): { field: string | null; display: string | null }[];
   /** The noted visits, kept by the kernel host. */
@@ -383,6 +388,17 @@ async function start(): Promise<RessacStore> {
     messageManagerGroups: ["browsers"],
     safeForUntrustedWebProcess: true,
   });
+  // « Cacher pour l'agent » (hide-actor.ts): every http(s) frame, a frame answers for its own site. Only on the parent's
+  // queries (no events, no listener); the parent bounds every answer and takes the origin from its own WindowGlobal.
+  const hideActor = actorModule("hide-actor");
+  ChromeUtils.registerWindowActor("RessacHide", {
+    parent: { esModuleURI: hideActor },
+    child: { esModuleURI: hideActor },
+    matches: ["http://*/*", "https://*/*"],
+    allFrames: true,
+    messageManagerGroups: ["browsers"],
+    safeForUntrustedWebProcess: true,
+  });
   // The same viewfinder on a site app's home (a remote frame): its top document only, armed on the copy the parent names.
   ChromeUtils.registerWindowActor("RessacDesignFrames", {
     parent: { esModuleURI: designActor },
@@ -657,6 +673,8 @@ async function start(): Promise<RessacStore> {
   agent.ensure().catch((e) => console.error("[agent] the kernel did not start:", e));
   // No `node … host.ts` may outlive the app: its sessions and MCP server stop with it.
   AsyncShutdown.profileBeforeChange.addBlocker("Ressac: stop the agent host", () => agent.stop());
+  // The process's one passport instance: Réglages' pages and « Cacher pour l'agent » share its tokens and writes.
+  const passport = passportSettings((method, params) => agent.request(method, params));
   return {
     get state() {
       return store.state;
@@ -673,8 +691,10 @@ async function start(): Promise<RessacStore> {
     flush,
     containerFor,
     agent,
-    passport: (({ addOrigin: _, ...pages }) => pages)(passportSettings((method, params) => agent.request(method, params))),
+    passport: pagePassport(passport),
+    hidePassport: { hide: (h) => passport.hide(h), unhide: (u) => passport.unhide(u) },
     passportShown: (refs) => passportShown(passportFiles(), refs),
+    passwords: passwordSettings(),
     history,
     ask,
     downloads,

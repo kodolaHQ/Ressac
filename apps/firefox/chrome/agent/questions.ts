@@ -42,6 +42,19 @@ type Reply = (d: Outcome, rights?: DevRight[], login?: number, picks?: (string |
 export const SCHEMA_WIDGET = "ressac-widget";
 
 /** The agent's « lire l'onglet » and extension grant cards waiting for the user. */
+/**
+ * The registrable domain of an origin (« evil.example » of « www.impots.gouv.fr.….evil.example »): a long host cut on
+ * the card would hide it. The host itself for an IP or a single label.
+ */
+function domainOf(origin: string): string {
+  const host = siteOf(origin).replace(/:\d+$/, "");
+  try {
+    return Services.eTLD.getBaseDomainFromHost(host);
+  } catch {
+    return host;
+  }
+}
+
 export class Questions {
   private readonly open = new Map<string, { request: PendingRequest; reply: Reply }>();
   private readonly listeners = new Set<Listener>();
@@ -106,8 +119,8 @@ export class Questions {
   }
 
   /** The card for an address the agent composed: false on a refusal, after QUESTION_DELAY_MS or on `signal`. */
-  askAddress(o: { url: string; reason: string; agent: string; danger?: string }, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
-    const fields = { tabId: null, windowId: windowId, origin: o.url, permissions: ["agent-address" as const], title: o.url, reason: o.reason, agent: o.agent, ...(o.danger ? { danger: o.danger } : {}) };
+  askAddress(o: { url: string; reason: string; agent: string; danger?: string; found?: true }, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
+    const fields = { tabId: null, windowId: windowId, origin: o.url, permissions: ["agent-address" as const], title: o.url, reason: o.reason, agent: o.agent, ...(o.danger ? { danger: o.danger } : {}), ...(o.found === true ? { found: true as const } : {}) };
     return waitForResponse((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
   }
 
@@ -139,14 +152,17 @@ export class Questions {
     const site = siteOf(o.where);
     const rows: NonNullable<PendingRequest["mask"]>["rows"] = o.rows?.map((r) => ({
       line: say("chrome-mask-fill-row", { field: r.field, name: r.name }),
-      ...(!r.choices ? {} : r.choices.length ? { choices: r.choices.map((c) => ({ ref: c.ref, shown: c.shown })) } : { missing: say("chrome-mask-fill-missing", { kind: r.kind ?? "" }) }),
+      ...(!r.choices ? {} : r.choices.length ? { choices: r.choices.map((c) => ({ ref: c.ref, shown: c.shown })) } : { missing: o.profile === undefined ? say("chrome-mask-fill-no-passport", {}) : say("chrome-mask-fill-missing", { kind: r.kind ?? "" }) }),
     }));
-    const passport = rows ? { text: rows.length === 1 ? say("chrome-mask-fill-kind", { name: o.name, site }) : say("chrome-mask-fill-rows", { n: rows.length, site }), rows } : {};
+    // « with your passport » only when a row fills from it; rows of ticks, choices and texts are just fields.
+    const fromPassport = o.rows?.some((r) => r.kind !== undefined);
+    const title = !fromPassport ? say("chrome-mask-fill-rows-plain", { n: rows?.length ?? 0, site }) : rows!.length === 1 ? say("chrome-mask-fill-kind", { name: o.name, site }) : say("chrome-mask-fill-rows", { n: rows!.length, site });
+    const passport = rows ? { text: title, rows } : {};
     const note = o.passportProfile !== undefined ? { note: say("chrome-mask-fill-other-profile", { profile: passportName(this.store.state.spaces, o.passportProfile, format(this.store.state.locale, "agent-mask-passport-no-space")) }) } : {};
     const open = o.passportProfile ?? o.profile;
     // The card gets each box's row and text only; the entry stays here.
     const boxes = (o.remember ?? []).map((r) => ({ row: r.row, ...(r.choice !== undefined ? { choice: r.choice } : {}), text: say("chrome-mask-fill-remember", { site, name: o.rows?.[r.row]?.name ?? o.name }) }));
-    const mask = { name: o.name, field: o.field, where: o.where, labels: o.labels, ...(count > 0 ? { loginCount: count, ...(o.loginsRef ? { loginsRef: o.loginsRef } : {}) } : {}), ...passport, ...note, ...(open !== undefined ? { profile: open } : {}), ...(boxes.length ? { remember: boxes } : {}) };
+    const mask = { name: o.name, field: o.field, where: o.where, domain: domainOf(o.where), labels: o.labels, ...(count > 0 ? { loginCount: count, ...(o.loginsRef ? { loginsRef: o.loginsRef } : {}) } : {}), ...passport, ...note, ...(open !== undefined ? { profile: open } : {}), ...(boxes.length ? { remember: boxes } : {}) };
     const fields = { tabId: null, windowId: windowId, origin: o.where, permissions: ["mask-fill" as const], agent: o.agent, mask, ...(o.danger ? { danger: o.danger } : {}) };
     let login: number | undefined;
     let picks: (string | null)[] | undefined;

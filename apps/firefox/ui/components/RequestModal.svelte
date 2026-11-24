@@ -10,6 +10,7 @@
   import DevToolsRequest from "./DevToolsRequest.svelte";
   import MaskRequest from "./MaskRequest.svelte";
   import MaskReveal from "./MaskReveal.svelte";
+  import { dangerLines } from "./danger-lines";
   import FrozenBackground from "./FrozenBackground.svelte";
 
   /** `ongletId`: the page shown at opening, captured for the background (null: none, or a panel hides it). */
@@ -91,6 +92,14 @@
   const focusables = () =>
     [...card.querySelectorAll<HTMLElement>("button, input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hasAttribute("disabled"));
 
+  /** A Space pressed while the card was not armed: its key up activates nothing, even once armed. */
+  let spaceEarly = false;
+  function relache(e: KeyboardEvent) {
+    if (e.key !== " " || !spaceEarly) return;
+    spaceEarly = false;
+    e.preventDefault();
+  }
+
   function clavier(e: KeyboardEvent) {
     // The command bar opened on top keeps the keyboard: the hidden modal reacts to nothing, even if focus has left the
     // bar's field (neither Enter, nor Escape before the ⌃Tab panel takes over, nor Tab).
@@ -98,6 +107,13 @@
     if (e.key === "Escape") {
       e.preventDefault();
       deny();
+    } else if (e.key === " " && armed) {
+      // A key up lost (the window left while Space was held) never swallows a later press.
+      spaceEarly = false;
+    } else if (e.key === " ") {
+      // Space presses a focused button on its key up: pressed before the delay, it grants nothing (`spaceEarly`).
+      e.preventDefault();
+      spaceEarly = true;
     } else if (e.key === "Enter") {
       // Card not visible yet, or only for too short a time: Enter does nothing, even on a button.
       if (!armed) return e.preventDefault();
@@ -110,7 +126,8 @@
       const list = focusables();
       if (list.length === 0) return e.preventDefault();
       const i = list.indexOf(document.activeElement as HTMLElement);
-      const target = e.shiftKey ? (i <= 0 ? list.at(-1) : null) : i === -1 || i === list.length - 1 ? list[0] : null;
+      // From the card itself, Shift+Tab starts on the first control, never on the last one (the grant).
+      const target = e.shiftKey ? (i === -1 ? list[0] : i === 0 ? list.at(-1) : null) : i === -1 || i === list.length - 1 ? list[0] : null;
       if (target) {
         e.preventDefault();
         target.focus();
@@ -119,7 +136,7 @@
   }
 </script>
 
-<svelte:window onkeydown={clavier} />
+<svelte:window onkeydown={clavier} onkeyup={relache} />
 
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
 <div class="modal" class:ready={ready} data-testid="request-modal" data-armed={armed || undefined} inert={!!command.open}>
@@ -153,7 +170,7 @@
             : consoleExtension
               ? "home-request-label-console"
               : agentAddress
-                ? "home-request-label-address"
+                ? request.found ? "home-request-label-address-found" : "home-request-label-address"
                 : masking
                   ? `home-request-label-${request.permissions[0]}`
                   : "home-request-label",
@@ -187,15 +204,16 @@
         </div>
       {:else if agentAddress}
         <div class="reading" data-testid="address-request">
-          <p>{t("home-request-label-address")}</p>
+          <p>{t(request.found ? "home-request-label-address-found" : "home-request-label-address")}</p>
           <p class="address" data-testid="address-request-url">{request.origin}</p>
           {#if addressLabels.length}<MaskReveal text={request.origin} labels={addressLabels} see="home-request-mask-see-address" hide="home-request-mask-hide-address" />{/if}
           {#if agentReason}<p class="reason">{t("home-request-address-reason", { reason: agentReason })}</p>{/if}
-          {#if request.danger}<p class="reason danger" role="alert" data-testid="address-request-danger">{t("home-request-address-danger", { danger: request.danger.slice(0, UNLOCK_REASON_LENGTH) })}</p>{/if}
+          <!-- One line each, bounded on its own: a long handle host never cuts the lock line (the kernel puts it first). -->
+          {#each dangerLines(request.danger) as line, i (i)}<p class="reason danger" role="alert" data-testid="address-request-danger">{t("home-request-address-danger", { danger: line })}</p>{/each}
           <button class="why-toggle" data-testid="address-request-why" aria-expanded={why} aria-controls="address-request-why" onclick={() => (why = !why)}>{t("home-request-why")}</button>
           <div class="why" class:open={why} id="address-request-why" aria-hidden={!why}>
             <div>
-              <p class="reason">{t("home-request-why-1")}</p>
+              <p class="reason">{t(request.found ? "home-request-why-1-found" : "home-request-why-1")}</p>
               <p class="reason">{t("home-request-why-2")}</p>
             </div>
           </div>

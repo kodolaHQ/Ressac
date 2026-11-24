@@ -37,7 +37,7 @@ const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
-const { hostPassport, maskingStatus, maskPaste, revealLocal } = await import("./masking.ts");
+const { hostPassport, maskGuess, maskingStatus, maskPaste, maskRuns, revealLocal } = await import("./masking.ts");
 const { createSites } = await import("./sites.ts");
 const { copyComponentRequest, copyHomeRequest } = await import("./home-copy.ts");
 const { createAsk } = await import("./ask.ts");
@@ -1043,6 +1043,9 @@ const rpc = createRpc({
     "agent.revealLocal": (p: { window?: unknown; label?: unknown }) => revealLocal(kernel?.masker ?? null, p?.window, p?.label),
     // A paste held by the terminal: the masked text and what it hid, never the original (the UI keeps it for « Coller en clair »).
     "agent.maskPaste": (p: { window?: unknown; text?: unknown }) => maskPaste(() => kernel?.masker ?? null, passport, p?.window, p?.text),
+    // Chrome's « Cacher pour l'agent » marks: where the window's agent sees labels, never a label or a value.
+    "mask.runs": (p: unknown) => maskRuns(kernel ?? null, p),
+    "mask.guess": (p: unknown) => maskGuess(p),
     "agent.revealLogins": (p: { window?: unknown; ref?: unknown }) => bridge.loginsFor(p?.ref, p?.window),
     // A fill card's passport value (ruling F10): to that card's own window only, never logged.
     "agent.revealPassport": (p: { window?: unknown; ref?: unknown }) => bridge.passportFor(p?.ref, p?.window),

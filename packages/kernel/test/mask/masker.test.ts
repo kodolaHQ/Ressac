@@ -55,3 +55,20 @@ describe("Masker and the passport", () => {
     expect(m.touchedSessions()).toEqual(["s2"]);
   });
 });
+
+describe("Masker.peekOrigins (chrome's mask.runs)", () => {
+  const entry = (id: string, origins: string[]) => ({ id, field: "nom" as const, value: { given: "Camille", family: "Aubrac" }, variants: [], origins, how: "click" as const, created: "", updated: "" });
+  it("does not take the snapshot: a site added after a peek still counts at the first tool call; after it, the peek gives the snapshot", () => {
+    const passport = new PassportStore();
+    const m = new Masker({ passport });
+    m.open("s1", "w1");
+    passport.replace("p", [entry("a", ["a.example"])]);
+    expect(m.peekOrigins("s1")?.isOrigin("https://b.example/")).toBe(false);
+    passport.replace("p", [entry("a", ["a.example", "b.example"])]);
+    // The first tool call's snapshot includes the site added after the peek.
+    expect(m.originsOf("s1")?.isOrigin("https://b.example/")).toBe(true);
+    passport.replace("p", [entry("a", ["a.example", "b.example", "c.example"])]);
+    expect(m.peekOrigins("s1")?.isOrigin("https://c.example/")).toBe(false);
+    expect(m.originsOf("s1")?.isOrigin("https://c.example/")).toBe(false);
+  });
+});

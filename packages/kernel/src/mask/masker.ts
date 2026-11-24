@@ -83,6 +83,14 @@ export class Masker {
     return o;
   }
 
+  /**
+   * What `originsOf` would give, without taking the snapshot: the stored one, else the passport's now. For chrome's
+   * questions (mask.runs), which must not fix a conversation's sources before its own first tool call.
+   */
+  peekOrigins(session: string | null): PassportOrigins | undefined {
+    return (session !== null && this.origins.get(session)) || this.passport?.origins();
+  }
+
   /** The session's lock; the main token's or an unknown session's: the main one. */
   lock(session: string | null): ConversationLock {
     return (session !== null && this.sessionLocks.get(session)) || this.mainLock;

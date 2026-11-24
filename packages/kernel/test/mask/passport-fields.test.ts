@@ -3,11 +3,13 @@ import { nirValid } from "../../src/outflow/detect.js";
 import {
   canonicalOf,
   cleanOrigin,
+  guessField,
   maskedDisplay,
   originMatches,
   parseAddress,
   passportForms,
   rawOf,
+  splitName,
   validateEntry,
   validatePassport,
   valueForKind,
@@ -331,5 +333,44 @@ describe("valueForKind", () => {
     expect(valueForKind(a, "adresse_voie", "text")).toBe("14 bis rue Saint-Jean");
     expect(valueForKind(text("adresse", "14 rue Neuve\nBruxelles"), "code_postal", "text")).toBeNull();
     expect(valueForKind(a, "tel", "tel")).toBeNull();
+  });
+});
+
+describe("guessField", () => {
+  const spaced = (v: string) => v.replace(/(.{4})/g, "$1 ").trim();
+  it("names one value by its shape, a name by its capitalised words, anything else libre", () => {
+    expect(guessField(spaced(iban))).toBe("iban");
+    expect(guessField(iban)).toBe("iban");
+    expect(guessField("06 12 34 56 78")).toBe("tel");
+    expect(guessField("camille.aubrac@exemple.test")).toBe("email");
+    expect(guessField(nir)).toBe("secu");
+    expect(guessField("AB-123-CD")).toBe("plaque");
+    expect(guessField("1990-03-14")).toBe("naissance");
+    expect(guessField("Camille Aubrac")).toBe("nom");
+    expect(guessField("Jean-Pierre de La Tour")).toBe("nom");
+    expect(guessField("AUBRAC Camille")).toBe("nom");
+    expect(guessField("Dossier 42")).toBe("libre");
+  });
+
+  it("is libre when the shape fails its check, or the text holds more than one value", () => {
+    expect(guessField(iban.slice(0, -1) + (iban.endsWith("0") ? "1" : "0"))).toBe("libre");
+    expect(guessField(nir.slice(0, -1) + (nir.endsWith("0") ? "1" : "0"))).toBe("libre");
+    expect(guessField(`${iban} 06 12 34 56 78`)).toBe("libre");
+    expect(guessField("2999-01-01")).toBe("libre");
+    expect(guessField("Camille")).toBe("libre");
+    expect(guessField("Une Phrase De Cinq Mots")).toBe("libre");
+    expect(guessField("le chat")).toBe("libre");
+    expect(guessField("")).toBe("libre");
+  });
+});
+
+describe("splitName", () => {
+  it("takes a word in capitals as the family name, else the last word, particles with it", () => {
+    expect(splitName("AUBRAC Camille")).toEqual({ given: "Camille", family: "AUBRAC" });
+    expect(splitName("Jean-Pierre de La Tour")).toEqual({ given: "Jean-Pierre", family: "de La Tour" });
+    expect(splitName("Camille Aubrac")).toEqual({ given: "Camille", family: "Aubrac" });
+    expect(splitName("Camille Marie AUBRAC")).toEqual({ given: "Camille Marie", family: "AUBRAC" });
+    expect(splitName("  Camille   Aubrac ")).toEqual({ given: "Camille", family: "Aubrac" });
+    expect(splitName("CAMILLE AUBRAC")).toEqual({ given: "CAMILLE", family: "AUBRAC" });
   });
 });

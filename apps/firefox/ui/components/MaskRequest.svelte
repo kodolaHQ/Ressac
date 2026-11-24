@@ -5,6 +5,7 @@
   import { api } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import MaskReveal from "./MaskReveal.svelte";
+  import { dangerLines } from "./danger-lines";
   import { showSection } from "./settings-section.svelte";
 
   /**
@@ -17,7 +18,7 @@
   const kind = $derived(request.permissions[0]);
   /** Kernel texts and names: data, shown as text and bounded. */
   const bound = (s: string | undefined) => (s ?? "").slice(0, UNLOCK_REASON_LENGTH);
-  const lines = $derived((request.danger ?? "").split("\n").filter(Boolean).slice(0, 5).map(bound));
+  const lines = $derived(dangerLines(request.danger));
   const labels = $derived((mask.labels ?? []).slice(0, 10));
   const count = $derived(Math.min(Math.max(0, Math.floor(mask.loginCount ?? 0)), 20));
   /** Passport fill rows (chrome's lines, entries by reference): bounded like the kernel's (11 `also` rows and the field). */
@@ -93,6 +94,7 @@
   {:else}
     <p>{bound(mask.text)}</p>
   {/if}
+  {#if kind === "mask-fill" && mask.domain}<p class="domain" data-testid="mask-request-domain">{t("home-request-mask-domain", { domain: mask.domain.slice(0, 253) })}</p>{/if}
   {#if mask.note}<p class="reason" data-testid="mask-request-profile">{bound(mask.note)}</p>{/if}
   {#each rows as row, i (i)}
     <div class="row" data-testid="mask-request-row">
@@ -131,7 +133,7 @@
     <MaskReveal text={labels.join("\n")} {labels} bind:seeing />
   {/if}
   <div class="actions">
-    {#if missing}<button data-testid="mask-request-open-passport" onclick={openPassport}>{t("agent-mask-passport-open")}</button>{/if}
+    {#if missing && mask.profile}<button data-testid="mask-request-open-passport" onclick={openPassport}>{t("agent-mask-passport-open")}</button>{/if}
     <button data-main onclick={() => answer("deny")}>{t("home-deny")}</button>
     {#if !missing}<button class="allow" disabled={unpicked} onclick={() => answer("allow")}>{t(ALLOW[kind ?? ""] ?? "home-allow")}</button>{/if}
   </div>
@@ -140,6 +142,7 @@
 <style>
   .reading p { margin: 0 0 12px; font-size: 14px; overflow-wrap: anywhere; }
   .reading p.reason { font-size: 13px; color: var(--text-muted, inherit); }
+  .reading p.domain { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
   .reading p.reason.danger { color: var(--in-error); font-weight: 500; }
   .reading p.login { font-family: var(--font-mono); font-size: 12px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .row { animation: ressac-rise var(--spring-d) var(--spring) backwards; }

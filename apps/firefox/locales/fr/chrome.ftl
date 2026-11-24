@@ -190,10 +190,15 @@ chrome-mask-reauth-devtools = débloquer les outils de développement sur { $sit
 chrome-mask-reauth-lift = lever le verrou de l'atelier
 chrome-mask-fill-kind = Remplir { $name } sur { $site } ?
 chrome-mask-fill-rows = Remplir { $n } champs sur { $site } avec votre passeport ?
+chrome-mask-fill-rows-plain = Remplir { $n ->
+    [one] ce champ
+   *[other] { $n } champs
+} sur { $site } ?
 chrome-mask-fill-row = { $field } : { $name }
 chrome-mask-fill-remember = Retenir { $site } pour { $name }
 chrome-mask-fill-remember-failed = Le site n'a pas pu être retenu.
 chrome-mask-fill-other-profile = Cette donnée vient de votre passeport « { $profile } », pas de celui de cet onglet.
+chrome-mask-fill-no-passport = Cet onglet n'a pas de passeport : c'est un onglet de l'agent ou une appli de site. Remplissez ce champ vous-même, ou ouvrez la page dans un de vos espaces.
 chrome-mask-fill-missing =
     Votre passeport n'a pas { $kind ->
         [prenoms] de prénom
@@ -212,3 +217,31 @@ chrome-mask-fill-missing =
         [plaque] de plaque d'immatriculation
        *[other] cette donnée
     }.
+
+## « Cacher pour l'agent » (chrome/window/hide-layer.ts, ui/HideApp.svelte)
+
+chrome-hide = Cacher pour l'agent
+chrome-hide-question = Cacher « { $text } » pour l'agent ?
+chrome-hide-type = Type
+chrome-hide-given = Prénom(s)
+chrome-hide-family = Nom
+chrome-hide-site = Sur { $site } et vos autres sources
+chrome-hide-cancel = Annuler
+chrome-hide-confirm = Cacher
+chrome-hide-reauth = cacher une donnée pour l'agent
+chrome-hide-ending-next = Masqué à partir de la prochaine conversation
+chrome-hide-ending-agentReached = Ajouté à votre passeport. Ce site, ouvert par l'agent, n'est pas retenu.
+chrome-hide-ending-notHere = Ajouté à votre passeport, mais pas masqué sur cette page.
+chrome-hide-ending-agentReached-known = Ce site, ouvert par l'agent, n'est pas retenu.
+chrome-hide-ending-notHere-known = Pas masqué sur cette page.
+chrome-hide-toast = Masqué pour l'agent
+chrome-hide-toast-undo = Annuler
+chrome-hide-toast-already = Déjà dans votre passeport.
+chrome-hide-read-before = L'agent a peut-être déjà lu cette page.
+chrome-hide-error-long = Ce texte est trop long pour le passeport.
+chrome-hide-error-write = Le passeport n'a pas pu être enregistré.
+chrome-hide-error-unreadable = Votre passeport est illisible : ouvrez Réglages › Passeport.
+chrome-hide-error-full = Votre passeport est plein.
+chrome-hide-error-invalid = Ce texte ne correspond pas à ce type : choisissez-en un autre.
+chrome-hide-legend-text = Texte masqué : l'agent lit une étiquette à la place
+chrome-hide-legend-field = Champ masqué : l'agent ne lit pas sa valeur en clair

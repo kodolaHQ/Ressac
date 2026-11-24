@@ -115,13 +115,50 @@ test("forget clears read and typed for that window only", () => {
   expect(o.check("b", "camille.roussel@example.com")).toMatchObject({ kind: "email" });
 });
 
-test("oldest read items are dropped past 20 000", () => {
+test("oldest read items of a kind are dropped past 6 000", () => {
   const o = new Outflow();
   o.read("w", "tok A1b2C3d4E5f6G7h8", "first");
-  // Each read retains a token and its digit run.
-  for (let i = 0; i < 10_000; i++) o.read("w", `id Zz${String(i).padStart(6, "0")}QqWw`, "page");
+  // Each read retains one token (a 5-digit run is no digits item).
+  for (let i = 0; i < 6_002; i++) o.read("w", `id Zz${String(i).padStart(5, "0")}QqWwX`, "page");
   expect(o.check("w", "A1b2C3d4E5f6G7h8")).toBeUndefined();
-  expect(o.check("w", "Zz004999QqWw")).toMatchObject({ source: "page" });
+  expect(o.check("w", "Zz00001QqWwX")).toBeUndefined();
+  expect(o.check("w", "Zz05999QqWwX")).toMatchObject({ source: "page" });
+});
+
+test("a secret read first outlives a long session of ordinary reads", () => {
+  const o = new Outflow();
+  o.read("w", `IBAN ${SPACED_IBAN}, camille.roussel@example.com, 06 12 34 56 78`, "mail.google.com");
+  // 3 000 reads of a page's ordinary ids and numbers: far past 45 000 pieces and 6 000 items.
+  for (let i = 0; i < 3_000; i++) o.read("w", `id Zz${String(i).padStart(6, "0")}QqWw n ${100000 + i * 7}`, "page");
+  expect(o.check("w", `q=${IBAN}`)).toMatchObject({ kind: "iban" });
+  expect(o.check("w", "q=camille.roussel@example.com")).toMatchObject({ kind: "email" });
+  expect(o.check("w", "q=0612345678")).toMatchObject({ kind: "phone" });
+});
+
+test("a flood of one kind does not push out another kind read first", () => {
+  const o = new Outflow();
+  o.read("w", "ref Kq7Zp2Lm9Xw4", "mail.google.com");
+  for (let i = 0; i < 4_000; i++) o.read("w", `n ${100000 + i * 7}, ${200000 + i * 7}`, "page");
+  expect(o.check("w", "q=Kq7Zp2Lm9Xw4")).toMatchObject({ kind: "token", source: "mail.google.com" });
+  const p = new Outflow();
+  p.read("w", "compte 48213977123", "mail.google.com");
+  for (let i = 0; i < 4_000; i++) p.read("w", `id Zz${String(i).padStart(5, "0")}QqWwX Yy${String(i).padStart(5, "0")}PpOoX`, "page");
+  expect(p.check("w", "q=48213977123")).toMatchObject({ kind: "digits", source: "mail.google.com" });
+});
+
+test("padding of the item's own kind in one read needs 2 000 items or 14 000 pieces to drop it", () => {
+  const tokens = (n: number, from = 0) => Array.from({ length: n }, (_, i) => `Qz${100000 + from + i}pad9x`).join(" ");
+  const real = "Zx81Qa92Lp07Wm33";
+  for (const text of [`${tokens(1990)} ${real}`, `${real} ${tokens(1990)}`, `${tokens(5000)} ${real}`]) {
+    const o = new Outflow();
+    o.read("w", text, "mail.google.com");
+    expect(o.check("w", `q=${real}`)).toMatchObject({ kind: "token" });
+  }
+  // 30-digit runs, 25 pieces each: 550 of them are 13 750 pieces.
+  const numbers = Array.from({ length: 550 }, (_, i) => String(10n ** 29n + BigInt(i) * 1_000_003n)).join(", ");
+  const o = new Outflow();
+  o.read("w", `compte 48213977123, ${numbers}`, "mail.google.com");
+  expect(o.check("w", "q=48213977123")).toMatchObject({ kind: "digits" });
 });
 
 test("check stays fast with 20 000 items and a 2 KB URL", () => {
@@ -295,8 +332,8 @@ test("evicting an item whose piece repeats keeps the other owner of that piece",
   const o = new Outflow();
   o.read("w", "id 482139-555-482139", "old");
   o.read("w", "code 482139", "kept");
-  // Each read retains a token and its digit run: with the last one, 20 001 items, so only the first is evicted.
-  for (let i = 0; i < 9_999; i++) o.read("w", `id Zz${String(i).padStart(6, "0")}QqWw`, "page");
+  // Each read retains one digits item: with the last one, 6 001 items, so only the first is evicted.
+  for (let i = 0; i < 5_998; i++) o.read("w", `n ${String(100000 + i)}`, "page");
   o.read("w", "n 771234", "page");
   expect(o.check("w", "q=139555")).toBeUndefined();
   expect(o.check("w", "q=482139")).toMatchObject({ source: "kept" });

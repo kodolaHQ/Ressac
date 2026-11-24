@@ -148,7 +148,8 @@ export function bridgeHandlers(
     const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
     const links = boundLinks(r?.links);
-    return { text, ...(selection ? { selection } : {}), links, ...boundCapture(r), ...form };
+    // The document read, as the parent knows it at the read's end: the kernel masks by it.
+    return { text, ...(selection ? { selection } : {}), links, ...boundCapture(r), ...form, ...(browser.currentURI?.spec ? { url: String(browser.currentURI.spec) } : {}) };
   };
   const snapshot = async (browser: any, win: Window) => {
     const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");
@@ -269,6 +270,8 @@ export function bridgeHandlers(
     // fill_field (chrome/agent/fill.ts): the seal and the write; a saved login never comes from the host.
     "fill.prepare": ([id, handle]: [string, string]) => fill.prepare(id, handle),
     "fill.commit": ([seal, v, origin]: Parameters<ReturnType<typeof createFill>["commit"]>) => fill.commit(seal, v, origin),
+    // The kernel's carrier check (never the agent's): every frame's text and every field's value.
+    carrierText: ([id, o]: [string, { expect?: string }?]) => onSiteView(id, (browser) => fill.carrierText(browser), o?.expect) ?? outsidePrivate(id, (browser) => fill.carrierText(browser), o?.expect),
     capture: ([id, o]: [string, { expect?: string }?]) =>
       onSiteView(id, snapshot, o?.expect) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window), o?.expect),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the
@@ -284,7 +287,7 @@ export function bridgeHandlers(
       return f ? questions.askDevTools(o, d, f, signal) : [];
     },
     // The card for an address the agent composed, in the window of its search; refused with none to show it.
-    askAddress: ([o, win]: [{ url: string; reason: string; agent: string; danger?: string }, WindowId | undefined], signal) => {
+    askAddress: ([o, win]: [{ url: string; reason: string; agent: string; danger?: string; found?: true }, WindowId | undefined], signal) => {
       const f = win ?? windows.active();
       return f ? questions.askAddress(o, f, signal) : false;
     },

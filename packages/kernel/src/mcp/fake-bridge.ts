@@ -23,6 +23,7 @@ import {
   type PageLink,
   type PageField,
   type FillSeal,
+  type CarrierText,
 } from "./bridge.js";
 
 // Transparent 1×1 PNG.
@@ -201,7 +202,7 @@ export class FakeBridge implements BrowserBridge {
   /** What the browser would add to a read of a tab at this address (status, blocks, structured data…). */
   captures = new Map<string, Partial<TabRead>>();
   /** A tab's page, by tab id, instead of the generated « Texte de … » and its one link. */
-  pages = new Map<string, { text: string; links?: PageLink[]; fields?: PageField[]; frameOrigins?: string[] }>();
+  pages = new Map<string, { text: string; links?: PageLink[]; fields?: PageField[]; frameOrigins?: string[]; documents?: CarrierText["documents"]; unread?: boolean }>();
   /** What `fill.prepare` seals for a field, by handle, over the default: the page's field on its tab's origin, in the top frame, no login. */
   seals = new Map<string, Partial<FillSeal>>();
   /** What the next `fill.commit` calls answer (then `"filled"`). */
@@ -412,7 +413,7 @@ export class FakeBridge implements BrowserBridge {
           const t = this.find(tab);
           const url = new URL(t.url);
           const field = this.pages.get(tab)?.fields?.find((f) => f.handle === handle);
-          return { seal: `seal-${++this.counter}`, origin: url.origin, path: url.pathname, frames: [url.origin], type: field?.type ?? "text", autocomplete: field?.autocomplete ?? "", action: null, logins: [], agentReached: t.agentReached ?? true, ...this.seals.get(handle) };
+          return { seal: `seal-${++this.counter}`, origin: url.origin, path: url.pathname, frames: [url.origin], type: field?.type ?? "text", autocomplete: field?.autocomplete ?? "", label: field?.label ?? "", action: null, logins: [], agentReached: t.agentReached ?? true, ...this.seals.get(handle) };
         },
         commit: async (seal, v, origin) => {
           this.note("fill.commit", seal, { ...v }, origin);
@@ -547,7 +548,7 @@ export class FakeBridge implements BrowserBridge {
     const seq = this.linkSequence;
     const page = this.pages.get(id);
     const links = page?.links ?? (seq?.length ? (seq.length > 1 ? seq.shift()! : seq[0]!) : [{ text: "Annonce", url: "https://exemple.fr/a" }]);
-    return { text: page?.text ?? `Texte de ${tab.title} (${tab.url})`, links, ...(page?.fields ? { fields: page.fields.map((f) => ({ ...f })) } : {}), ...(page?.frameOrigins ? { frameOrigins: [...page.frameOrigins] } : {}), ...(o?.capture ? this.captures.get(tab.url) : {}) };
+    return { url: tab.url, text: page?.text ?? `Texte de ${tab.title} (${tab.url})`, links, ...(page?.fields ? { fields: page.fields.map((f) => ({ ...f })) } : {}), ...(page?.frameOrigins ? { frameOrigins: [...page.frameOrigins] } : {}), ...(o?.capture ? this.captures.get(tab.url) : {}) };
   }
 
   async openTab(start: string, space?: string, options?: LoadOptions) {
@@ -566,6 +567,15 @@ export class FakeBridge implements BrowserBridge {
     o.url = this.land(start, options);
     // Taken over by the agent: no longer reached by the user (spec § 5.3).
     if (o.site === undefined) o.agentReached = true;
+  }
+
+  /** The page's own `documents` (fields, frames) besides its text on its tab's origin; `unread` as the page says. */
+  async carrierText(id: string, o?: { expect?: string }): Promise<CarrierText> {
+    this.note("carrierText", id);
+    const tab = this.find(id);
+    if (o?.expect !== undefined && originOf(o.expect) !== originOf(tab.url)) throw new SiteChanged(id);
+    const page = this.pages.get(id);
+    return { documents: [{ origin: originOf(tab.url), text: page?.text ?? "" }, ...(page?.documents ?? [])], unread: page?.unread === true };
   }
 
   async capture(id: string, o?: { expect?: string }) {

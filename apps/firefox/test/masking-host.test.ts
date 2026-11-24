@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
-import { Masker } from "../../../packages/kernel/src/index.ts";
+import { Masker, tabZone } from "../../../packages/kernel/src/index.ts";
 import { readFileSync } from "node:fs";
-import { hostPassport, maskPaste, maskingStatus, revealLocal } from "../host/masking";
+import { hostPassport, maskGuess, maskPaste, maskRuns, maskingStatus, revealLocal } from "../host/masking";
 
 const lock = (info: { since: string; names: string[] } | null) => ({ info: () => info && { ...info, codes: {} } });
 
@@ -206,4 +206,46 @@ it("pushPassports: no passport file, the hosts are known at once", async () => {
   const { onPassportHost } = await import("../chrome/passport/hosts");
   await pushPassports(async () => {}, { list: async () => [], load: async () => { throw new Error("unused"); } } as never);
   await vi.waitFor(() => expect(onPassportHost("https://any.test/")).toBe(false));
+});
+
+it("mask.runs: the window's session, the zone its passport origins give the tab, no label issued; no session, null", () => {
+  const store = hostPassport({});
+  const created = "2026-11-23T10:00:00.000Z";
+  store.replace("perso", [{ id: "0000000000000001", field: "nom", value: { given: "Camille", family: "Aubrac" }, variants: [], origins: ["banque.example"], how: "typed", created, updated: created }]);
+  store.markReady([]);
+  const masker = new Masker({ passport: store });
+  masker.open("s1", "f1");
+  // The kernel's reads of a tab: a site app the agent navigated in conversation 3 is no source.
+  const agentSites = new Set(["3:site:banque"]);
+  const kernel = { masker, tabZone: (s: string | null, t: Parameters<typeof tabZone>[0]) => tabZone(t, agentSites, 3, masker.originsOf(s)) };
+  const iban = "FR76 3000 6000 " + "0112 3456 7890 189";
+  const text = `Camille Aubrac, ${iban}`;
+  const spans = (r: { runs: { start: number; end: number; type: string }[][] | null }) => r.runs!.map((rs) => rs.map((x) => [text.slice(x.start, x.end), x.type]));
+  const runs = (p: Record<string, unknown>) => spans(maskRuns(kernel, { window: "f1", tab: "t1", url: "https://banque.example/compte", agentReached: false, texts: [text, "rien"], ...p }));
+  expect(runs({})).toEqual([[["Camille Aubrac", "nom"], [iban, "iban"]], []]);
+  // Reached by the agent, or off the passport's origins: the web zone, no name.
+  expect(runs({ agentReached: true })).toEqual([[[iban, "iban"]], []]);
+  expect(runs({ url: "https://news.example/" })).toEqual([[[iban, "iban"]], []]);
+  // A site app: the user's until the agent navigates it in this conversation, whatever chrome's flag says.
+  expect(runs({ tab: "site:poste" })).toEqual([[["Camille Aubrac", "nom"], [iban, "iban"]], []]);
+  expect(runs({ tab: "site:banque" })).toEqual([[[iban, "iban"]], []]);
+  const table = masker.table("s1");
+  expect([table.entries("sources").length, table.entries("web").length]).toEqual([0, 0]);
+  expect(maskRuns(kernel, { window: "f2", tab: "t1", url: "https://banque.example/compte", agentReached: false, texts: [text] })).toEqual({ runs: null });
+  expect(maskRuns(null, { window: "f1", tab: "t1", url: "https://banque.example/", agentReached: false, texts: [text] })).toEqual({ runs: null });
+  // The main token (`window: null`): its own table, no session needed, still no label issued.
+  expect(spans(maskRuns(kernel, { window: null, tab: "t1", url: "https://banque.example/compte", agentReached: false, texts: [text] }))).toEqual([[["Camille Aubrac", "nom"], [iban, "iban"]]]);
+  expect(masker.table(null).entries("sources").length).toBe(0);
+  expect(maskRuns(null, { window: null, tab: "t1", url: "https://banque.example/", agentReached: false, texts: [text] })).toEqual({ runs: null });
+  expect(() => maskRuns(kernel, { window: "f1", tab: "t1", url: "https://banque.example/", texts: [text] })).toThrow();
+  expect(() => maskRuns(kernel, { window: "f1", url: "https://banque.example/", agentReached: false, texts: [text] })).toThrow();
+  expect(() => maskRuns(kernel, { window: "f1", tab: "t1", url: "https://banque.example/", agentReached: false, texts: [42] })).toThrow();
+});
+
+it("mask.guess: the field, and the name's parts for a name", () => {
+  expect(maskGuess({ text: "AUBRAC Camille" })).toEqual({ field: "nom", name: { given: "Camille", family: "AUBRAC" } });
+  expect(maskGuess({ text: "Dossier 42" })).toEqual({ field: "libre" });
+  expect(maskGuess({ text: "Camille Aubrac".repeat(30) })).toEqual({ field: "libre" });
+  expect(() => maskGuess({ text: 42 })).toThrow();
+  expect(() => maskGuess(null)).toThrow();
 });

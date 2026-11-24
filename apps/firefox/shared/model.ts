@@ -468,6 +468,8 @@ export interface Request {
   agent?: string;
   /** « agent-address »: the sensitive data the address carries (already masked), displayed as text. */
   danger?: string;
+  /** « agent-address »: a link the agent read on a page (not one it wrote), stopped for what it carries. */
+  found?: true;
   /** « mask-* »: how the kernel names the value, never the value itself (a screen capture of the card shows no value). */
   mask?: {
     /** The kernel's rendered sentence (reveal, label alert, dev tools). */
@@ -483,6 +485,8 @@ export interface Request {
     loginCount?: number;
     /** The host's reference for those usernames, answered only to this window. */
     loginsRef?: string;
+    /** « mask-fill »: the site's registrable domain (« evil.example » of a long host), shown whole on its own line. */
+    domain?: string;
     /** « mask-fill » of a passport value from another profile than the tab's: chrome's sentence naming that passport. */
     note?: string;
     /** « mask-fill » of the passport: the profile « Ouvrir le passeport » opens (the value's other profile, else the tab's). */

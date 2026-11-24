@@ -50,6 +50,7 @@ declare class JSWindowActorParent {
   readonly manager: any;
   readonly browsingContext: any;
   sendAsyncMessage(name: string, data?: unknown): void;
+  sendQuery(name: string, data?: unknown): Promise<unknown>;
 }
 declare class JSProcessActorParent {
   readonly manager: { childID: number; remoteType: string };

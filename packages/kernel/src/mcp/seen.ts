@@ -1,8 +1,8 @@
 import { unwrapLink, withoutHash } from "./links.js";
 
-// 20 000 addresses of 2000 characters at most: a long session on hostile pages stays under ~100 MB.
+// 20 000 addresses of 500 characters at most (what the tools accept): a long session on hostile pages stays under ~25 MB.
 export const SEEN_MAX = 20_000;
-const URL_MAX = 2000;
+const URL_MAX = 500;
 
 const web = (url: string) => url.length <= URL_MAX && URL.canParse(url) && /^https?:$/.test(new URL(url).protocol);
 

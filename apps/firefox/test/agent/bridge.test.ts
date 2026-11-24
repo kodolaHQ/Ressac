@@ -43,6 +43,20 @@ test("tabInfos: profile is the tab's login profile (its space's, or its own: `ag
   expect([profileOf("https://a.test/"), profileOf("https://w.test/"), profileOf("https://s.test/")]).toEqual(["default", work, "agent"]);
 });
 
+test("tabInfos: the agent's own tab carries its window's active space's profile, never a private space's", () => {
+  const { e, ag, F } = prepare();
+  ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "new", windowId: F });
+  ag({ type: "openTab", windowId: F, url: "https://s.test/", profile: "agent" });
+  ag({ type: "openTab", windowId: F, url: "https://w.test/" });
+  const of = (url: string) => tabInfos(e()).find((o) => o.url === url)!;
+  const work = e().spaces.find((x) => x.name === "Boulot")!.profile;
+  expect(of("https://s.test/").activeProfile).toBe(work);
+  // A user tab keeps its own passport and borrows none.
+  expect(of("https://w.test/").activeProfile).toBeUndefined();
+  ag({ type: "createSpace", name: "Secret", icon: "🔒", private: true, profile: "default", windowId: F });
+  expect(of("https://s.test/").activeProfile).toBeUndefined();
+});
+
 test("tabInfos carries agentReached; a tab in the agent's own profile is always the agent's", () => {
   const { e, ag, F } = prepare();
   ag({ type: "openTab", windowId: F, url: "https://u.test/", agentReached: false });
@@ -494,4 +508,16 @@ test("boundFields: a web process's field list, checked and bounded; each handle 
   ]);
   expect(boundFields(Array.from({ length: 60 }, (_, n) => ({ n, type: "text", autocomplete: "", label: "" })), 1)).toHaveLength(40);
   expect(boundFields("nope", 1)).toEqual([]);
+  // A box's state and a list's options, only on their own types, bounded; a chosen index off the list is none.
+  expect(boundFields([
+    { n: 0, type: "checkbox", autocomplete: "", label: "Oui", checked: true, options: ["x"] },
+    { n: 1, type: "select", autocomplete: "", label: "Pays", options: ["  France ", "y".repeat(90), ...Array.from({ length: 60 }, () => "z")], selected: 70 },
+    { n: 2, type: "text", autocomplete: "", label: "Ville", checked: true, options: ["a"] },
+  ], 3)).toEqual([
+    { handle: "3:0", type: "checkbox", autocomplete: "", label: "Oui", checked: true },
+    { handle: "3:1", type: "select", autocomplete: "", label: "Pays", options: ["France", "y".repeat(80), ...Array.from({ length: 48 }, () => "z")], selected: -1 },
+    { handle: "3:2", type: "text", autocomplete: "", label: "Ville" },
+  ]);
+  // Out of view: kept only as `true`.
+  expect(boundFields([{ n: 0, type: "email", autocomplete: "", label: "", offscreen: true }, { n: 1, type: "email", autocomplete: "", label: "", offscreen: "yes" }], 2).map((f) => f.offscreen)).toEqual([true, undefined]);
 });

@@ -78,6 +78,8 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       listTabs: () => tabs,
       readText: ([id]: [string]) => ({ text: `texte de ${id}` }),
       capture: () => png,
+      // The carrier check's read: without it every capture is refused (fail closed).
+      carrierText: () => ({ documents: [], unread: false }),
       askPermission: () => true,
       "agent.data": (p: { data: string }) => void (data += p.data),
       "agent.state": (p: { state: unknown }) => void states.push(p.state),

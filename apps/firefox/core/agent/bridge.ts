@@ -1,6 +1,13 @@
 import type { DevRight, PageBlock, PageField, PageLink, TabInfo, TabRead, Zone } from "@ressac/kernel";
-import { FIELDS_MAX } from "../../../../packages/kernel/src/mcp/bridge";
+import { CARRIER_TEXT_MAX, FIELDS_MAX } from "../../../../packages/kernel/src/mcp/bridge";
 import { AGENT_PROFILE, privateTab, tabProfile, recapOfUrl, type Decision, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
+
+const activeOf = (state: BrowserState, o: Tab): { activeProfile?: string } => {
+  if (tabProfile(state, o) !== AGENT_PROFILE) return {};
+  const w = state.windows.find((x) => x.id === o.windowId);
+  const space = state.spaces.find((e) => e.id === w?.activeSpace);
+  return space && !space.private ? { activeProfile: space.profile } : {};
+};
 
 const info = (state: BrowserState, o: Tab): TabInfo => ({
   id: o.id,
@@ -11,6 +18,8 @@ const info = (state: BrowserState, o: Tab): TabInfo => ({
   agentReached: o.agentReached !== false || o.profile === AGENT_PROFILE || !!o.tweakScript,
   // Fill by kind offers this profile's passport only (design § 8.3).
   profile: tabProfile(state, o),
+  // The agent's own tab borrows its window's active space's passport, unless that space is private.
+  ...activeOf(state, o),
 });
 
 /** Ressac internal pages (`ressac:`): the agent never sees them. */
@@ -287,8 +296,17 @@ export function boundCapture(raw: unknown): Omit<TabRead, "text" | "selection" |
   return out;
 }
 
-export { FIELDS_MAX };
-const FIELD_TYPES = new Set(["text", "password", "email", "tel", "search", "url", "number", "textarea", "contenteditable"]);
+export { CARRIER_TEXT_MAX, FIELDS_MAX };
+const FIELD_TYPES = new Set(["text", "password", "email", "tel", "search", "url", "number", "textarea", "contenteditable", "checkbox", "radio", "select"]);
+/** One line, without « » (fill-actor.ts strips them too: a sealed label compares equal). */
+const label = (s: unknown) => String(s ?? "").replace(/[«»]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+/** A box's state or a list's options, as the fill actor gives them: only on their own types, bounded. */
+const stateOf = (f: any) =>
+  f.type === "checkbox" || f.type === "radio"
+    ? { checked: f.checked === true }
+    : f.type === "select" && Array.isArray(f.options)
+      ? { options: f.options.slice(0, 50).map(label), selected: Number.isInteger(f.selected) && f.selected >= 0 && f.selected < Math.min(f.options.length, 50) ? f.selected : -1 }
+      : {};
 /**
  * The fields of one document as the agent gets them (chrome/agent/fill-actor.ts): from a web process, so bounded and
  * checked. Each handle is `<innerWindowId>:<n>`: the document's own, so a frame that navigated never resolves an old one.
@@ -297,5 +315,5 @@ export function boundFields(raw: unknown, innerWindowId: number): PageField[] {
   return (Array.isArray(raw) ? raw : [])
     .filter((f: any) => Number.isInteger(f?.n) && f.n >= 0 && FIELD_TYPES.has(f.type) && typeof f.autocomplete === "string" && f.autocomplete.length <= 100)
     .slice(0, FIELDS_MAX)
-    .map((f: any) => ({ handle: `${innerWindowId}:${f.n}`, type: f.type, autocomplete: f.autocomplete, label: String(f.label ?? "").replace(/\s+/g, " ").trim().slice(0, 80) }));
+    .map((f: any) => ({ handle: `${innerWindowId}:${f.n}`, type: f.type, autocomplete: f.autocomplete, label: label(f.label), ...(f.offscreen === true ? { offscreen: true as const } : {}), ...stateOf(f) }));
 }

@@ -27,7 +27,7 @@ import { pageState, reducedPage, stateLine } from "./reduce.js";
 import { outflowLabel, type Outflow, type OutflowHit, type ReadPlace } from "../outflow/outflow.js";
 import { say } from "../i18n.js";
 import { isSensitive } from "../access/sensitive.js";
-import { labelFilled, labelWritten, passportHits } from "../mask/mask.js";
+import { labelFilled, labelWritten, maskedRuns, passportHits } from "../mask/mask.js";
 import { Masker } from "../mask/masker.js";
 import type { PassportOrigins, PassportRef, PassportStore } from "../mask/passport.js";
 import { canonicalOf, cleanOrigin, dayFirst, FIELD_LABEL, maskedDisplay, originMatches, PASSPORT_KINDS, PASSPORT_LIMITS, rawOf, valueForKind, type PassportField } from "../mask/passport-fields.js";
@@ -38,11 +38,18 @@ import { TOOL_KINDS } from "../mask/inventory.js";
 import { NO_WORKSPACE_LOCK, type WorkspaceLockHook } from "../mask/lock.js";
 import { nameAgreement, valueName } from "../mask/names.js";
 import { LABEL_SOURCE, LABELS, type Pin } from "../mask/table.js";
-import { FIELDS_MAX, TabNotFound, PrivateTab, SiteChanged, LoadRefused, PRIVATE_TEXT, type TabInfo, type PageLink, type TabRead, type PageField, type BrowserDevTools, type BrowserBridge, type HistoryResult, type FillSeal } from "./bridge.js";
+import { FIELDS_MAX, TabNotFound, PrivateTab, SiteChanged, LoadRefused, PRIVATE_TEXT, type TabInfo, type PageLink, type TabRead, type PageField, type FieldChoice, type BrowserDevTools, type BrowserBridge, type HistoryResult, type FillSeal } from "./bridge.js";
 
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
 /** While the user has the search tab (a hand_over or an outflow pause), the agent gets nothing from it. */
 export const HANDING_TEXT = "La page est à l'utilisateur : attends la fin de hand_over.";
+/** Queues a call behind the window's previous one. The map keeps a tail that resolves to nothing, dropped once it
+ *  settles while still the last: a settled result (page texts) is not held for every window ever used. */
+function chain(chains: Map<string, Promise<unknown>>, key: string, mine: Promise<unknown>): void {
+  const tail = mine.then(() => {}, () => {});
+  chains.set(key, tail);
+  void tail.then(() => { if (chains.get(key) === tail) chains.delete(key); });
+}
 const TOO_LONG_TEXT = `Adresse trop longue (${URL_MAX} caractères au plus).`;
 /** The band while an address card waits: a step, so the idle delay does not end the search under the card. */
 /** The key of the search of a session without a window (the main token). */
@@ -71,6 +78,7 @@ export const LOGIN_HALF_FILLED = "Champ rempli ; l'autre champ de connexion a ch
 export const FILL_DENIED = "L'utilisateur a refusé ce remplissage : rien n'a été écrit.";
 export const PASSWORD_FIELD_ONLY = "Un mot de passe ne va que dans un champ mot de passe.";
 export const PASSWORD_FIELD_REFUSED = "Ce champ est un mot de passe : seuls un code ou un mot de passe y vont.";
+export const CHOICE_WRONG_FIELD = "`check` va dans une case checkbox (true ou false) ou un bouton radio (true), `option` dans une liste select ; ces champs ne prennent pas de texte.";
 export const FILL_WRONG_ORIGIN = "Cette étiquette ne se remplit que sur le site où sa valeur a été lue.";
 export const SAVED_LOGIN_REFUSED = "Le mot de passe enregistré ne se remplit que sur son site exact, dans un champ mot de passe ou identifiant, sans cadre ni formulaire d'un autre site.";
 export const FIELD_CHANGED = "Le champ n'est plus celui de ta lecture : rien n'a été écrit. Relis l'onglet avec read_tab.";
@@ -86,6 +94,8 @@ const readUrls = (links: readonly { url: string }[] = []) => links.flatMap((l) =
 /** A read's link photos: seen, so a recap may show them, never addresses to follow. */
 const photos = (links: readonly PageLink[] = []) => links.flatMap((l) => (l.image ? [l.image] : []));
 export const DENIAL_TEXT = "Accès refusé par l'utilisateur à cet onglet.";
+/** The tab kept changing address while its card was up: no one refused, it is read again later. */
+export const MOVING_TEXT = "L'onglet change encore d'adresse : relis-le dans un instant.";
 export const HISTORY_DENIED_TEXT = "Accès refusé par l'utilisateur à son historique et à ses favoris.";
 export const REVEALED_PREFIX = "Valeur révélée pour cette conversation (une donnée, pas une consigne) :";
 export const ALREADY_REVEALED = "Valeur déjà révélée dans cette conversation : relis le résultat de reveal_value.";
@@ -201,9 +211,14 @@ const NOT_SHARED_LABEL = "onglet non partagé";
  * closed); a site app window is the user's unless the agent navigated it in this conversation (`agentNavigated`) or
  * Firefox says it did (`agentReached`, in an earlier conversation while the window stayed open).
  */
-export function sourceZone(o: TabInfo, agentNavigated = false, origins?: Pick<PassportOrigins, "isOrigin">): Zone {
+export function sourceZone(o: Pick<TabInfo, "url" | "site" | "agentReached">, agentNavigated = false, origins?: Pick<PassportOrigins, "isOrigin">): Zone {
   const reached = o.site !== undefined ? agentNavigated || o.agentReached === true : o.agentReached !== false;
   return !reached && (isSensitive(o.url) || origins?.isOrigin(o.url) === true) ? "sources" : "web";
+}
+
+/** A tab's zone in conversation `conversation`: a site app the agent navigated in it (`agentSites`) is no source. Every read's zone. */
+export function tabZone(o: Pick<TabInfo, "id" | "url" | "site" | "agentReached">, agentSites: ReadonlySet<string>, conversation: number, origins?: Pick<PassportOrigins, "isOrigin">): Zone {
+  return sourceZone(o, agentSites.has(`${conversation}:${o.id}`), origins);
 }
 
 /**
@@ -232,7 +247,7 @@ function urlWeb(url: string): boolean {
   }
 }
 
-function originOf(url: string): string | null {
+export function originOf(url: string): string | null {
   try {
     return new URL(url).origin;
   } catch {
@@ -599,7 +614,7 @@ export function createToolsServer(
   /** A tab's zone, a site app's taking into account the agent's navigations in this conversation. */
   /** This conversation's passport origins, as at its first read (a site remembered since counts from the next conversation). Read past the passport gate, never when this server is built. */
   const started = () => masker.originsOf(session);
-  const zoneOf = (o: TabInfo) => sourceZone(o, agentSites.has(`${policy.conversation}:${o.id}`), started());
+  const zoneOf = (o: TabInfo) => tabZone(o, agentSites, policy.conversation, started());
   /**
    * A value's origins (design § 8.1): where it was read in this conversation, plus, for a passport value, each entry's
    * « Remplissable sur » hosts both at the conversation's first read and now (fail safe: an added host still asks Touch ID, a
@@ -718,11 +733,12 @@ export function createToolsServer(
    * read on, or a destination a lock forbids. The handler that sends there asks its address card even for a free address,
    * on the shown address (a handle stays masked), with these red lines: one card, never two.
    */
-  const marked = new Map<string, { shown: string; lines: string[]; locked: boolean }>();
+  const marked = new Map<string, { shown: string; lines: string[]; locked: boolean; found: boolean }>();
   /** `card` with the gate's lines for `url`, if it marked it. */
   const withMask = <C extends { url: string; danger?: string }>(card: C, url: string): C => {
     const m = marked.get(url);
-    return m ? { ...card, url: m.shown, danger: [card.danger, ...m.lines].filter(Boolean).join("\n") } : card;
+    // `found`: a link read on a page (a handle), not an address the agent wrote: the card says so.
+    return m ? { ...card, url: m.shown, danger: [...m.lines, card.danger].filter(Boolean).join("\n"), ...(m.found ? { found: true as const } : {}) } : card;
   };
   /** The key of `url`'s card: a marked one is this session's own, never shared with an unmarked card for it. */
   const cardKey = (url: string, otherwise: string) => (marked.has(url) ? `mask:${session}:${url}` : otherwise);
@@ -772,11 +788,11 @@ export function createToolsServer(
     if (dests !== null) {
       for (const d of dests) {
         const to = originOf(d.real);
-        const lines: string[] = [];
+        // The lock first: the card bounds each line, and a handle's host is the page's to make long.
+        const lines: string[] = allows(to) ? [] : [lockedLine()];
         // The shown host, not the real one: a value in the host stays masked on the card too.
         if (d.read !== undefined && to !== d.read) lines.push(l10n("kernel-mask-handle-danger", { ...named(issuedNames(d.shown)), from: siteOf(d.read), to: siteOf(d.shown) }));
-        if (!allows(to)) lines.push(lockedLine());
-        if (lines.length) marked.set(d.real, { shown: d.shown, lines, locked: !allows(to) });
+        if (lines.length) marked.set(d.real, { shown: d.shown, lines, locked: !allows(to), found: !d.composed });
       }
       return null;
     }
@@ -822,7 +838,7 @@ export function createToolsServer(
     if (!bridge.askAddress) return refused;
     const why = typeof a.reason === "string" ? a.reason : typeof a.goal === "string" ? a.goal : "";
     const url = `${tool} ${JSON.stringify(a)}`.slice(0, URL_MAX);
-    const danger = [hit ? OUTFLOW_DANGER(locale(), hit) : "", locked ? lockedLine() : ""].filter(Boolean).join("\n");
+    const danger = [locked ? lockedLine() : "", hit ? OUTFLOW_DANGER(locale(), hit) : ""].filter(Boolean).join("\n");
     const card = { url, reason: why.slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", danger };
     // During a search, a step like the other cards: the idle delay does not end the search under the card.
     const cur = searching?.sessions.current(key);
@@ -926,13 +942,26 @@ export function createToolsServer(
     }
   }
 
-  /** Reads the tab now (never shown to the agent) and marks it if it shows the user's data: checked at each call. */
+  /**
+   * Reads the tab now (never shown to the agent) and marks it if it shows the user's data: checked at each call. A capture
+   * shows every frame and field: their text counts too, and a document the browser could not read marks it (fail closed).
+   */
   async function checkCarrier(o: TabInfo): Promise<void> {
-    const { text, frameOrigins } = await bridge.readText(o.id, { expect: o.url });
+    const [{ text, frameOrigins, url }, deep] = await Promise.all([bridge.readText(o.id, { expect: o.url }), bridge.carrierText?.(o.id, { expect: o.url })]);
+    // The page read, not the one the call started on: the tab may have moved within its origin (to a sensitive path).
+    o = movedTo(o, url);
     // A sensitive frame shows its pixels in a capture, not its text in the top document's.
     const frames = frameOrigins?.some((f) => isSensitive(f)) === true;
-    if (frames || carrier(o, text, agentSites.has(`${policy.conversation}:${o.id}`), masker.passport, started())) policy.markCarrier(o);
+    const documents = [{ origin: originOf(o.url), text }, ...(deep?.documents ?? [])];
+    const all = documents.map((d) => d.text).join("\n");
+    if (!deep || deep.unread || frames || documents.some(filledHere) || carrier(o, all, agentSites.has(`${policy.conversation}:${o.id}`), masker.passport, started())) policy.markCarrier(o);
   }
+  /**
+   * A document showing a value this conversation filled on its origin (design § 8.5): masked in its text there, so in its
+   * pixels too. No oracle: that origin already holds the value, and a read there masks it the same.
+   */
+  const filledHere = (d: { origin: string | null; text: string }) =>
+    d.origin !== null && labels.entries("web").some((e) => e.origins.includes(d.origin!)) && maskedRuns(d.text, { table: labels, zone: "web", origin: d.origin }).length > 0;
 
   /** A tab whose links the agent may follow: not a local page nor a site app, whose text and links the agent writes. */
   const linksFollowable = (o: TabInfo) => !isLocal(o.url) && o.site === undefined;
@@ -969,7 +998,10 @@ export function createToolsServer(
     listedFields.delete(o.id);
     if (fields.length) listedFields.set(o.id, fields.map((f) => ({ ...f })));
     if (listedFields.size > LISTS_KEPT) listedFields.delete(listedFields.keys().next().value!);
-    const fieldLines = fields.length ? ["", FIELDS_HEADER, ...fields.map((f, i) => wrap(`${i}. ${f.type} — ${f.label}`, zone, origin))] : [];
+    // A box says whether it is ticked, a list its options by number (each masked like the page's text).
+    const stateLine = (f: PageField) =>
+      f.checked !== undefined ? (f.checked ? " (coché)" : " (pas coché)") : f.options ? ` (choisi : ${f.options[f.selected ?? -1] ?? "aucun"}) ; options : ${f.options.map((t, n) => `${n}. ${t}`).join(" · ")}` : "";
+    const fieldLines = fields.length ? ["", FIELDS_HEADER, ...fields.map((f, i) => wrap(`${i}. ${f.type} — ${f.label}${f.offscreen ? " (hors de l'écran)" : ""}${stateLine(f)}`, zone, origin))] : [];
     const body = view?.text ?? r.text;
     const note = view?.text !== undefined && view.shown! < view.total! ? ["", reducedNote(view.shown!, view.total!)] : [];
     const page = [...(view ? [view.state] : []), ...(r.selection ? [`Sélection : ${r.selection}`] : []), "", body, ...note].join("\n");
@@ -1143,6 +1175,24 @@ export function createToolsServer(
     );
   }
 
+  /** `o` at the address a read reports, when it is on the same origin (another one never reads: SiteChanged). */
+  const movedTo = (o: TabInfo, url: string | undefined): TabInfo => (url && url !== o.url && originOf(url) !== null && originOf(url) === originOf(o.url) ? { ...o, url } : o);
+
+  /**
+   * `readAccess`, then the tab as it is once granted: a tab that moved during the card (within its origin, to a sensitive
+   * path) is judged again where it is now. null: refused, or still moving after a few turns (fail closed).
+   */
+  /** The tab as granted, null when refused, "moving" when it still changed address after 3 cards. */
+  async function settledAccess(o: TabInfo): Promise<TabInfo | null | "moving"> {
+    for (let turn = 0; turn < 3; turn++) {
+      if (!(await readAccess(o))) return null;
+      const now = await tab(o.id);
+      if (now.url === o.url) return now;
+      o = now;
+    }
+    return "moving";
+  }
+
   /**
    * Outside a search, a web address is free when it is local, was read (a page, its links, a search's results), is the address
    * of a tab the agent may read, or was approved in this conversation. Otherwise the user decides on the « agent-address » card.
@@ -1202,7 +1252,8 @@ export function createToolsServer(
     const from = (pin && (labels.unhandle(pin.handle)?.origin ?? originOf(pin.real))) || "";
     const danger = l10n("kernel-mask-handle-danger", { ...named(pin ? issuedNames(pin.handle) : []), from: siteOf(from), to: siteOf(to) });
     const card = { url: to, reason: "", agent: dev?.agent ?? "L'agent", danger };
-    return askAddressCard(bridge, policy, requests, card, `mask:${session}:hop:${to}`, win ?? undefined, () => () => {}, signal);
+    // Keyed by what it says too: a load from another handle waits for its own card, never shares one naming another value.
+    return askAddressCard(bridge, policy, requests, card, `mask:${session}:hop:${pin?.handle ?? ""}:${to}`, win ?? undefined, () => () => {}, signal);
   }
 
   /** The search tab `id` is the user's for now (a hand is open on it). */
@@ -1216,8 +1267,16 @@ export function createToolsServer(
       act(o.id, l10n("kernel-activity-reads-site", { site: siteOf(o.url) }));
       return readSearch(win ?? MAIN_WINDOW, o, withLinks, l10n("kernel-search-reading-page"), [], { full, extra });
     }
-    if (!(await readAccess(o))) return text(DENIAL_TEXT);
-    const r = present(o, await working(o.id, () => bridge.readText(o.id, { expect: o.url }), l10n("kernel-activity-reads-site", { site: siteOf(o.url) })), withLinks, [], undefined, full);
+    const granted = await settledAccess(o);
+    if (granted === "moving") return text(MOVING_TEXT);
+    if (!granted) return text(DENIAL_TEXT);
+    o = granted;
+    const read = await working(o.id, () => bridge.readText(o.id, { expect: o.url }), l10n("kernel-activity-reads-site", { site: siteOf(o.url) }));
+    // Masked as the page the browser read: it may have moved within its origin during the read (an app's own navigation).
+    const at = movedTo(o, read.url);
+    if (isSensitive(at.url) && !isSensitive(o.url) && !(await readAccess(at))) return text(DENIAL_TEXT);
+    o = at;
+    const r = present(o, read, withLinks, [], undefined, full);
     // The result carries the tab's URL.
     if (!exempt(o)) remember(r, siteOf(o.url), linksFollowable(o), { tab: o.id, origin: originOf(o.url) });
     return r;
@@ -1301,30 +1360,38 @@ export function createToolsServer(
     "fill_field",
     {
       description:
-        "Remplit un champ d'un onglet (`field` : son numéro dans « Champs » de la dernière lecture). `value` : ton texte, où le navigateur remplace chaque étiquette ⟨type-…⟩ " +
+        "Remplit un champ d'un onglet (`field` : son numéro dans « Champs » de la dernière lecture ; entre deux champs semblables, prends celui qui n'est pas « hors de l'écran » : c'est celui que l'utilisateur regardait à ta lecture, un indice, pas une règle). `value` : ton texte, où le navigateur remplace chaque étiquette ⟨type-…⟩ " +
         "par sa vraie valeur sans qu'elle passe par toi ; ou `saved_login: true` : l'identifiant et le mot de passe que l'utilisateur a enregistrés pour ce site. " +
         "Un seul appel `saved_login` sur le champ identifiant ou mot de passe d'un formulaire de connexion remplit les deux. " +
         "`passport` : une sorte de donnée du passeport de l'utilisateur (prenoms, nom_famille, nom_complet, naissance, adresse, adresse_voie, code_postal, ville, tel, email, iban, secu, piece, plaque), " +
         "que le navigateur remplit après son accord ; tu ne la vois pas. `also` : d'autres champs du même onglet, remplis sur la même carte. " +
-        "Une étiquette, un identifiant enregistré ou une donnée privée demande l'accord de l'utilisateur.",
+        "`check` : cocher (true) ou décocher (false) une case checkbox, cocher un bouton radio ; `option` : le numéro d'une option d'une liste select. " +
+        "Pour une liste, si tu demandes à l'utilisateur, propose-lui ses options telles qu'elles sont écrites (pas de regroupement : « M4 ou M5 » ne désigne aucune option) ; s'il y en a trop, demande en texte libre. " +
+        "Tu n'envoies jamais le formulaire : l'utilisateur clique lui-même sur son bouton d'envoi. " +
+        "Une étiquette, un identifiant enregistré ou une donnée privée demande l'accord de l'utilisateur, et cocher ou choisir aussi sur ses onglets à lui.",
       inputSchema: {
         id: z.string(),
         field: z.number().int().min(0),
         value: z.string().max(SEARCH_QUERY_MAX).optional(),
         saved_login: z.literal(true).optional(),
         passport: z.enum(PASSPORT_KINDS).optional(),
-        also: z.array(z.object({ field: z.number().int().min(0), value: z.string().max(SEARCH_QUERY_MAX).optional(), passport: z.enum(PASSPORT_KINDS).optional() })).max(11).optional(),
+        check: z.boolean().optional(),
+        option: z.number().int().min(0).optional(),
+        also: z
+          .array(z.object({ field: z.number().int().min(0), value: z.string().max(SEARCH_QUERY_MAX).optional(), passport: z.enum(PASSPORT_KINDS).optional(), check: z.boolean().optional(), option: z.number().int().min(0).optional() }))
+          .max(11)
+          .optional(),
       },
     },
-    protect(async ({ id, field, value: given, saved_login, passport, also = [] }, extra) => {
+    protect(async ({ id, field, value: given, saved_login, passport, check, option, also = [] }, extra) => {
       if (blocked()) return text(l10n("kernel-mask-fill-blocked"), true);
-      if ([given, saved_login, passport].filter((x) => x !== undefined).length !== 1) return text("Donne soit `value`, soit `saved_login`, soit `passport`.", true);
+      if ([given, saved_login, passport, check, option].filter((x) => x !== undefined).length !== 1) return text("Donne soit `value`, soit `saved_login`, soit `passport`, soit `check`, soit `option`.", true);
       if (saved_login && also.length) return text("`also` ne va pas avec `saved_login`.", true);
-      if (also.some((r) => (r.value === undefined) === (r.passport === undefined))) return text("Chaque ligne de `also` donne soit `value`, soit `passport`.", true);
+      if (also.some((r) => [r.value, r.passport, r.check, r.option].filter((x) => x !== undefined).length !== 1)) return text("Chaque ligne de `also` donne soit `value`, soit `passport`, soit `check`, soit `option`.", true);
       const o = await tab(id);
       // Row 0 is `field`, then `also`: each row is sealed and checked as a call of its own (design § 8.4).
       // Issued labels the agent wrote without their brackets are labels too.
-      const asked = [{ field, value: given, passport }, ...also].map((r) => ({ ...r, value: r.value === undefined ? undefined : bracketed(r.value), listed: listedFields.get(id)?.[r.field] }));
+      const asked = [{ field, value: given, passport, check, option }, ...also].map((r) => ({ ...r, value: r.value === undefined ? undefined : bracketed(r.value), listed: listedFields.get(id)?.[r.field] }));
       const unlisted = asked.find((r) => r.listed === undefined);
       if (unlisted) return text(`Champ ${unlisted.field} inconnu : relis l'onglet avec read_tab.`, true);
       if (!bridge.fill || !bridge.askFill) return text("Ce navigateur ne remplit pas de champ.", true);
@@ -1337,7 +1404,8 @@ export function createToolsServer(
       for (const r of asked) {
         const s = await bridge.fill.prepare(id, r.listed!.handle);
         // The field sealed is not the one the agent read (same handle, another field): nothing goes, before any card.
-        if (s.type !== r.listed!.type || s.autocomplete !== r.listed!.autocomplete) return text(FIELD_CHANGED, true);
+        // Nor one relabelled since: the card names it by the read's label.
+        if (s.type !== r.listed!.type || s.autocomplete !== r.listed!.autocomplete || s.label !== r.listed!.label) return text(FIELD_CHANGED, true);
         seals.push(s);
       }
       const seal = seals[0]!;
@@ -1359,9 +1427,12 @@ export function createToolsServer(
       let pair: { seal: FillSeal; label: string; kind: "password" | "username" } | undefined;
       let hit: OutflowHit | undefined;
       /** Per row: its labels' entries, or for a kind the tab's passport entries on offer (`choices`). */
-      const rows: { name: string; entries: Entry[]; kind?: string; choices?: FillChoice[] }[] = [];
-      // Fill by kind offers the tab's passport only (design § 8.3): the agent's profile and site apps have none.
-      const profile = o.profile !== undefined && o.profile !== "agent" && !o.profile.startsWith("site-") ? o.profile : undefined;
+      const rows: { name: string; entries: Entry[]; kind?: string; choices?: FillChoice[]; choice?: FieldChoice }[] = [];
+      // Fill by kind offers the tab's passport (design § 8.3): site apps have none; the agent's own tab borrows its
+      // window's active space's, named on the card and behind Touch ID (`borrowed`).
+      const own = o.profile !== undefined && o.profile !== "agent" && !o.profile.startsWith("site-") ? o.profile : undefined;
+      const profile = own ?? (o.profile === "agent" ? o.activeProfile : undefined);
+      const borrowed = own === undefined && profile !== undefined;
       if (saved_login) {
         kind = loginKind(seal);
         // No card can widen this (spec § 5.4): the exact origin, every frame on it.
@@ -1394,6 +1465,20 @@ export function createToolsServer(
         for (const [i, r] of asked.entries()) {
           const s = seals[i]!;
           const inPassword = s.type === "password";
+          // A box takes a tick, a list an option it listed, nothing else; and neither takes a value.
+          const box = s.type === "checkbox" || s.type === "radio";
+          if ((r.check !== undefined) !== box || (r.option !== undefined) !== (s.type === "select")) return text(CHOICE_WRONG_FIELD, true);
+          if (r.check !== undefined) {
+            if (s.type === "radio" && !r.check) return text(CHOICE_WRONG_FIELD, true);
+            rows.push({ name: l10n(r.check ? "kernel-mask-fill-check" : "kernel-mask-fill-uncheck"), entries: [], choice: { check: r.check } });
+            continue;
+          }
+          if (r.option !== undefined) {
+            const shown = r.listed!.options?.[r.option];
+            if (shown === undefined) return text(`Option ${r.option} inconnue : relis l'onglet avec read_tab.`, true);
+            rows.push({ name: l10n("kernel-mask-fill-option", { option: shown }), entries: [], choice: { option: r.option, text: shown } });
+            continue;
+          }
           if (r.passport) {
             if (inPassword) return text(PASSWORD_FIELD_REFUSED, true);
             const kindOf = r.passport;
@@ -1421,18 +1506,32 @@ export function createToolsServer(
         name = rows.map((r) => r.name).join(", ");
       }
       const byKind = rows.some((r) => r.choices);
+      // A tick or a choice can act at once (a setting saved on change): a card, as for data. On the agent's own tab too:
+      // a hand_over sign-in leaves the user's account open in its profile.
+      const choosing = rows.some((r) => r.choice);
+      // The tick is the page's own click: its scripts may save or send at once, which the card says.
+      const acts = choosing ? l10n(o.profile === "agent" ? "kernel-mask-fill-choice-acts-agent" : "kernel-mask-fill-choice-acts") : undefined;
       /** What may go into the page: the labels' entries and every passport entry on offer. */
       const offered = [...new Set(rows.flatMap((r) => r.entries))];
       const locked = !allows(seal.origin) || actions.some((a) => !allows(a));
       const elsewhere = [...new Set(asked.flatMap((r, i) => ((r.passport || usedOf(r.value).length) && actions[i] !== seal.origin ? [l10n("kernel-mask-fill-action-danger", { to: actions[i] ?? String(seals[i]!.action) })] : [])))];
-      // Rule 2 for a label: a value of the user's sources onto a page the agent reached, off every origin it was read on
-      // (B3, the « fill » family: a granted plain card gave the attacker's form the code). The user's own page stays plain.
+      // Rule 2 for a label: a value of the user's sources off every origin it was read on (B3, the « fill » family: a
+      // granted plain card gave the attacker's form the code). The user's own tab says it too, without « opened by the
+      // agent »: a phishing link the user clicked is a page they reached.
       const reached = seals.some((s) => s.agentReached);
-      const foreign = reached
-        ? offered.filter((e) => e.zone === "sources" && !passportOrigins(e).includes(seal.origin))
-            .map((e) => l10n("kernel-mask-fill-foreign-danger", { ...named([valueName(e.type, e.zone, locale())]), from: passportOrigins(e).map(siteOf).join(", ") || "?", to: siteOf(seal.origin) }))
-        : [];
-      const danger = [hit && OUTFLOW_DANGER(locale(), hit), ...elsewhere, ...foreign, locked && lockedLine()].filter(Boolean).join("\n");
+      const foreign = offered
+        .filter((e) => e.zone === "sources" && !passportOrigins(e).includes(seal.origin))
+        // A passport value was not read anywhere: the card names the sites it is meant for, each once.
+        .map((e) => l10n(`kernel-mask-fill-foreign-${e.passport?.length ? "passport" : "danger"}${reached ? "" : "-user"}`, { ...named([valueName(e.type, e.zone, locale())]), from: [...new Set(passportOrigins(e).map(siteOf))].join(", ") || "?", to: siteOf(seal.origin) }));
+      // A field in a frame of another site, or under one (even an invisible one): the card names the frame's site and the page around it.
+      const framed = [...new Set(seals.flatMap((s) => {
+        const top = s.frames.at(-1);
+        // The field's own frame when it is foreign to the page; else the foreign frame it sits under.
+        const frame = top !== s.origin ? s.origin : s.frames.find((f) => f !== s.origin);
+        return top !== undefined && frame !== undefined ? [l10n("kernel-mask-fill-framed", { frame: siteOf(frame), top: siteOf(top) })] : [];
+      }))];
+      // By severity: the card bounds its lines, and the agent picks how many forms post elsewhere (12 rows at most).
+      const danger = [...foreign, ...framed, locked && lockedLine(), hit && OUTFLOW_DANGER(locale(), hit), acts, ...elsewhere].filter(Boolean).join("\n");
       // Design § 8.1: a passport value off all its origins asks Touch ID, once per origin for TOUCH_ID_WINDOW_MS (ruling F16:
       // the window spares only that reason; a tab the agent reached still asks).
       const fromPassport = offered.filter((e) => e.passport?.length);
@@ -1440,7 +1539,7 @@ export function createToolsServer(
       const windows = (session !== null && touchIdUntil.get(labels)) || new Map<string, number>();
       if (session !== null) touchIdUntil.set(labels, windows);
       const offOrigin = fromPassport.some((e) => !passportOrigins(e).includes(seal.origin)) && (windows.get(seal.origin) ?? 0) <= Date.now();
-      const touchId = reached || !!pair?.seal.agentReached || offOrigin;
+      const touchId = reached || !!pair?.seal.agentReached || offOrigin || borrowed;
       const otherProfile = fromPassport.find((e) => !e.passport!.some((r) => r.profile === o.profile))?.passport![0]!.profile;
       // « Retenir ce site » (task 13b): an entry of the tab's own passport, off its hosts and under their cap, on a tab
       // the user reached, whose cleaned host covers the field's origin. For Firefox only; the agent's answer never says.
@@ -1460,10 +1559,10 @@ export function createToolsServer(
       let login: number | undefined;
       /** Per row, the passport entry the user's card settled on (kind rows only). */
       let chosen: (FillChoice | undefined)[] = [];
-      if (saved_login || used.length || byKind || danger) {
+      if (saved_login || used.length || byKind || danger || choosing) {
         // The pair's card names both fields, username first; Touch ID if either seal says the agent reached the tab.
         const field = !pair ? asked.map((r) => r.listed!.label).join(", ") : (pair.kind === "username" ? [pair.label, listedField.label] : [listedField.label, pair.label]).join(", ");
-        const cardRows = byKind || also.length ? rows.map((r, i) => ({ field: asked[i]!.listed!.label, name: r.name, ...(r.kind ? { kind: r.kind } : {}), ...(r.choices ? { choices: r.choices.map(({ ref, shown, value }) => ({ ref, shown, value })) } : {}) })) : undefined;
+        const cardRows = byKind || also.length || choosing ? rows.map((r, i) => ({ field: asked[i]!.listed!.label, name: r.name, ...(r.kind ? { kind: r.kind } : {}), ...(r.choices ? { choices: r.choices.map(({ ref, shown, value }) => ({ ref, shown, value })) } : {}) })) : undefined;
         const card = { name, field, where: seal.origin + seal.path, touchId, labels: used, ...(logins ? { logins } : {}), agent: dev?.agent ?? "L'agent", ...(danger ? { danger } : {}), ...(otherProfile ? { passportProfile: otherProfile } : {}), ...(cardRows ? { rows: cardRows } : {}), ...(byKind && profile !== undefined ? { profile } : {}), ...(remember.length ? { remember } : {}) };
         const ask = bridge.askFill.bind(bridge);
         let picks: (string | null)[] | undefined;
@@ -1477,6 +1576,9 @@ export function createToolsServer(
         // as a refusal does, so the agent never learns whether the passport holds that kind (design § 7, point 4).
         chosen = rows.map((r, i) => r.choices && (picks?.[i] === undefined && r.choices.length === 1 ? r.choices[0] : r.choices.find((c) => c.ref === picks?.[i])));
         if (!yes || rows.some((r, i) => r.choices && !chosen[i])) return text(locked ? l10n("kernel-mask-locked-refused") : FILL_DENIED);
+        // A borrowed passport is the active space's: another space (or a private one) taken while the card was up
+        // borrows nothing (audit 2026-11-24).
+        if (borrowed && byKind && (await tab(id).catch(() => undefined))?.activeProfile !== profile) return text(FILL_DENIED);
       }
       if (saved_login) {
         const done = await bridge.fill.commit(seal.seal, { savedLogin: kind!, ...(login !== undefined ? { login } : {}) }, seal.origin);
@@ -1497,8 +1599,9 @@ export function createToolsServer(
       // In order, each on its own seal (design § 8.4).
       for (const [i, r] of asked.entries()) {
         const choice = chosen[i];
-        const v = choice ? choice.value : r.value!.replace(BRACKETED, (l) => out(labels.resolve(l)!, seals[i]!.type));
-        if ((await bridge.fill.commit(seals[i]!.seal, { text: v }, seal.origin)) !== "filled") {
+        const set = rows[i]!.choice;
+        const v = set ? "" : choice ? choice.value : r.value!.replace(BRACKETED, (l) => out(labels.resolve(l)!, seals[i]!.type));
+        if ((await bridge.fill.commit(seals[i]!.seal, set ? { choice: set } : { text: v }, seal.origin)) !== "filled") {
           changed.push(i);
           continue;
         }
@@ -1725,8 +1828,10 @@ export function createToolsServer(
     protect(async ({ id }) => {
       // shortcut: the kernel does not know a tab's window, so any capture waits while this window's search is the user's; refine if it annoys.
       if (handing(id) || handing(searching?.sessions.current(win ?? MAIN_WINDOW)?.tabId)) return text(HANDING_TEXT, true);
-      const o = await tab(id);
-      if (!(await (searching?.sessions.owns(id) ? access(o) : readAccess(o)))) return text(DENIAL_TEXT);
+      let o: TabInfo | null | "moving" = await tab(id);
+      o = searching?.sessions.owns(id) ? ((await access(o)) ? o : null) : await settledAccess(o);
+      if (o === "moving") return text(MOVING_TEXT);
+      if (!o) return text(DENIAL_TEXT);
       // Pixels the masker cannot mask (spec § 5.5, step 1).
       await checkCarrier(o);
       if (policy.captureLocked(id)) return text(l10n("kernel-mask-capture-refused"));
@@ -1850,7 +1955,7 @@ export function createToolsServer(
           const notes = current?.goal ? "" : ((await searching.notes?.shown()) ?? "");
           return readSearch(key, o, true, l10n("kernel-search-query", { query }), [`Onglet : ${o.id}`, ...(notes ? [`${NOTES_PREFIX}\n${wrap(notes, "sources", null)}`] : [])], { extra });
         });
-        searching.chains.set(key, mine);
+        chain(searching.chains, key, mine);
         return mine;
       }),
     );
@@ -1980,7 +2085,7 @@ export function createToolsServer(
           }
           return text(urls.map((u) => `## ${u}\n${errors.get(u) ?? sections.get(u) ?? "Erreur : page non lue."}`).join("\n\n"));
         });
-        searching.chains.set(key, mine);
+        chain(searching.chains, key, mine);
         return mine;
       }),
     );
@@ -2140,13 +2245,22 @@ export function createToolsServer(
       acted: (o) => void (o.site !== undefined && agentSites.add(`${policy.conversation}:${o.id}`)),
       unlocked: async (o) => {
         await checkCarrier(o);
-        if (!policy.devLocked(o)) return true;
+        // A tab of the user's sources holds their data even when its text shows none (a log, a request body, a field, a
+        // page run_js would fill with guesses to read back masked): its raw view asks the card too.
+        const locked = (t: TabInfo) => policy.devLocked(t) || (zoneOf(t) === "sources" && !policy.devUnlocked(t));
+        if (!locked(o)) return true;
         const ask = bridge.askDevUnlock?.bind(bridge);
         const card = { agent: dev.agent, text: l10n("kernel-mask-devtools-card") };
         if (!ask || !(await conversationCard(policy, requests, `dev-unlock:${o.id}`, (signal) => ask(o, card, signal), () => policy.unlockDev(o)))) return false;
         // Unlocked for the origin the card showed: a tab that left it meanwhile stays locked.
         const now = await tab(o.id);
-        return originOf(now.url) === originOf(o.url) && !policy.devLocked(now);
+        return originOf(now.url) === originOf(o.url) && !locked(now);
+      },
+      // What the dev tools give from a tab is masked as a read of it is: its passport and phone in the sources, a value filled on its origin.
+      place: (o) => {
+        const zone = zoneOf(o);
+        const origin = originOf(o.url);
+        return (t) => wrap(t, zone, origin);
       },
       ...(dev.tools ? { tools: dev.tools } : {}),
       ...dev.profiles,
@@ -2618,7 +2732,7 @@ export async function startMcpServer(o: {
   otherSessions?: () => boolean;
   /** The workspace lock a reveal awaits before giving the value (Task 10); a no-op without it. */
   workspaceLock?: WorkspaceLockHook;
-}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string): string; closeSession(token: string): void; stop(): Promise<void> }> {
+}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string): string; closeSession(token: string): void; tabZone(session: string | null, tab: Pick<TabInfo, "id" | "url" | "site" | "agentReached">): Zone; stop(): Promise<void> }> {
   const expected = Buffer.from(o.token);
   // Session tokens: one per window agent. Security note: their config files are readable by the
   // agents in the container; a session token gives nothing more than the main token, otherwise the link to
@@ -2680,6 +2794,9 @@ export async function startMcpServer(o: {
     closeSession(token) {
       sessions.delete(token);
     },
+    /** The zone `session`'s reads of `tab` get now (chrome's marks). */
+    // A peek: chrome's question never takes the conversation's snapshot (its first tool call does).
+    tabZone: (session, tab) => tabZone(tab, agentSites, o.policy.conversation, masker.peekOrigins(session)),
     stop: () =>
       new Promise<void>((ok) => {
         http.closeAllConnections();

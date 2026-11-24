@@ -204,6 +204,18 @@ kernel-mask-fill-foreign-danger = Cette page, ouverte par l'agent, est sur { $to
         [one-f] lue
        *[one-m] lu
     } sur { $from }.
+kernel-mask-fill-foreign-passport = Cette page, ouverte par l'agent, est sur { $to }, pas sur un des sites prévus pour { $name } dans votre passeport ({ $from }).
+kernel-mask-fill-foreign-danger-user = Cette page est sur { $to }, et { $name } a été { $agreement ->
+        [one-f] lue
+       *[one-m] lu
+    } sur { $from } : vérifiez que c'est bien le site attendu.
+kernel-mask-fill-foreign-passport-user = Cette page est sur { $to }, pas sur un des sites prévus pour { $name } dans votre passeport ({ $from }).
+kernel-mask-fill-framed = Ce champ est dans un cadre de { $frame }, intégré à la page de { $top }.
+kernel-mask-fill-check = cocher
+kernel-mask-fill-uncheck = décocher
+kernel-mask-fill-option = choisir « { $option } »
+kernel-mask-fill-choice-acts = Sur votre onglet, cocher ou choisir peut agir tout de suite : un réglage enregistré, voire le formulaire envoyé.
+kernel-mask-fill-choice-acts-agent = Sur cet onglet de l'agent, un compte où vous vous êtes connecté peut rester ouvert : cocher ou choisir peut agir tout de suite, un réglage enregistré, voire le formulaire envoyé.
 kernel-mask-name-fill-text = un texte de l'agent
 kernel-mask-fill-login-pair = votre identifiant et votre mot de passe
 kernel-mask-capture-refused = Capture refusée : cet onglet montre vos données.

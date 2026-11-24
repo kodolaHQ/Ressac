@@ -7,7 +7,7 @@ import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type
 import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile, type InstructionChange, type ChangedFile, type LiftChoice, type QuarantinedFile } from "@ressac/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, MachineIdleSchema, type DockerStatus, type MachineShown, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
-import type { PassportEntry } from "../../../packages/kernel/src/mask/passport-fields.ts";
+import type { PassportEntry, PassportField } from "../../../packages/kernel/src/mask/passport-fields.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
 import type { ExtensionsBar, ExtensionLine, SpaceExtensionLine, SiteExtensionLine } from "./extensions";
@@ -532,6 +532,8 @@ export interface ApiRessac {
   };
   /** Design mode of this window's active tab, and baskets of notes. */
   design: ApiDesign;
+  /** « Cacher pour l'agent »: the toolbar button arms (or leaves) the viewfinder over this window's tab. */
+  hide: { toggle(): void; picking(): boolean; onChange(cb: () => void): () => void };
   external: ExternalApi;
   review: ReviewApi;
   settings: SettingsApi;
@@ -648,6 +650,33 @@ export interface SettingsApi {
   downloadUpdate(): void;
   /** Only in the document showing ressac://settings (design § 9.2): absent from the agent panel's API. */
   passport?: PassportSettingsApi;
+  /** Réglages › Mots de passe: only in the document showing ressac://settings, like `passport`. */
+  passwords?: PasswordsSettingsApi;
+}
+
+/** A saved login as Réglages › Mots de passe lists it: never its password. `host`: the origin itself when not http(s). */
+export type SavedLogin = { guid: string; origin: string; host: string; username: string };
+export type PasswordResult = { ok: true; guid: string } | { ok: false; error: "locked" | "origin" | "password" | "duplicate" | "missing" | "primary" | "write" };
+/**
+ * Réglages › Mots de passe: Firefox's saved logins. The list has no password; showing or copying one and every write
+ * need this page's token from `unlock` (Touch ID, 5 minutes).
+ */
+export interface PasswordsSettingsApi {
+  /** Sorted by host then username; empty while a Firefox primary password is set. */
+  list(): Promise<SavedLogin[]>;
+  /** Touch ID « gérer vos mots de passe »; null when refused or a primary password is set. */
+  unlock(): Promise<{ token: string; until: number; showMs: number } | null>;
+  /** Revokes this page's tokens. */
+  lock(): void;
+  /** The Mac slept or its screen locked: the tokens are gone. */
+  onLocked(callback: () => void): () => void;
+  reveal(token: string, guid: string): Promise<string | null>;
+  copyPassword(token: string, guid: string): Promise<boolean>;
+  copyUsername(guid: string): Promise<boolean>;
+  add(token: string, login: { origin: string; username: string; password: string }): Promise<PasswordResult>;
+  edit(token: string, guid: string, change: { username: string; password: string }): Promise<PasswordResult>;
+  remove(token: string, guid: string): Promise<PasswordResult>;
+  primaryPassword(): boolean;
 }
 
 /** A connection profile's passport as Réglages › Passeport lists it, without its values. */
@@ -1061,6 +1090,58 @@ export type OverlayApi = {
   /** Esc or « Annuler » in the bubble; « Fermer » of the basket. */
   cancel(): void;
 } & Pick<ApiDesign, "basket" | "remove" | "send" | "batches" | "handled" | "onChange">;
+/** A rect in the hide layer frame's CSS px (its origin is the page's top left corner). */
+/** `field`: a mark over a form field's value (marks only), drawn in its own colour. */
+export type HideRect = { x: number; y: number; width: number; height: number; field?: true };
+/**
+ * « Cacher pour l'agent » (chrome/window/hide-layer.ts), what both of its frames show: the layer (outline, animation,
+ * ending) and the bubble frame (bubble, error, toast). The frozen text is the chrome's; the frames only show it.
+ */
+export interface HideContext {
+  /** pick: the viewfinder is armed; bubble: the confirmation; saving: Touch ID and the write; toast: saved. */
+  phase: "pick" | "bubble" | "saving" | "toast" | "error";
+  /** The text frozen at the pick (what is saved), and its start…end over 60 characters. */
+  text: string;
+  short: string;
+  /** « Sur {site} et vos autres sources »; null: no site is added (an agent-reached tab, a page without a host). */
+  site: string | null;
+  field: PassportField;
+  name?: { given: string; family: string };
+  /** notHere: in the passport, but this page (not https) is no passport site, so it is not masked here. */
+  ending?: "hidden" | "next" | "agentReached" | "notHere";
+  /** The hide wrote a new entry (else it only added a site, or the value was already there): the chip never says « Ajouté » then. */
+  created?: boolean;
+  /** The toast's « Annuler »: false when the hide wrote nothing (the value was already there, with this site). */
+  undoable?: boolean;
+  /** The tab's conversation had already read this page: the toast says so. */
+  readBefore?: boolean;
+  /** invalid: the text does not fit the chosen type (the bubble stays open). */
+  error?: "long" | "write" | "unreadable" | "full" | "invalid";
+  hover?: HideRect;
+  target?: HideRect;
+  /** The target's pixels at the pick (data: URL), and the page colour behind it, for the animation. */
+  snapshot?: { url: string; background: string };
+  /** The ending's label chip, `⟨nom-…⟩`. */
+  chip?: string;
+  /** Changes at each hide: the layer plays its animation once per value. */
+  seq: number;
+  locale: string;
+}
+/** What the hide frames may do: the gesture's endpoints only, never a raw hide or unhide. */
+export type HideApi = {
+  context(): HideContext | null;
+  confirm(choice: { field: PassportField; name?: { given: string; family: string } }): Promise<void>;
+  cancel(): void;
+  undo(): Promise<void>;
+  onChange(cb: () => void): () => void;
+};
+/** « Voir ce qu'il ne voit pas » (chrome/window/hide-layer.ts mountMarks): the rects the agent receives masked; null while the aura is off. */
+export type MarksApi = {
+  marks(): HideRect[] | null;
+  /** The shown language, for the legend. */
+  locale(): string;
+  onChange(cb: () => void): () => void;
+};
 /** Text of a note: bounded at the entry of the main process. */
 export const REMARK_TEXT_MAX = 4000;
 

@@ -61,6 +61,14 @@ async function serve(o: { bridge?: Partial<Opts>; outflow?: Outflow }, attempt: 
   }
 }
 
+test("a field out of view is listed as « hors de l'écran »: of two alike, the agent can tell the one the user sees", async () => {
+  await serve({}, async ({ call, bridge }) => {
+    const email = (handle: string, offscreen?: true) => ({ handle, type: "email", autocomplete: "email", label: "Email", ...(offscreen ? { offscreen } : {}) });
+    bridge.pages.set("mail", { text: "Inscription", links: [], fields: [email("1:0", true), email("1:1")] });
+    expect((await call("read_tab", { id: "mail" })).text).toContain("0. email — Email (hors de l'écran)\n1. email — Email");
+  });
+});
+
 test("a read lists the page's fields; a code label filled into a text field goes to commit after the card, never to the agent", async () => {
   await serve({}, async ({ call, bridge, results, of }) => {
     const read = (await call("read_tab", { id: "mail" })).text;
@@ -790,6 +798,27 @@ test("passport: a tab of the agent's own profile, a site app's or with no profil
   });
 });
 
+test("passport: the agent's own tab borrows its window's active space's passport, named on the card, behind Touch ID", async () => {
+  const tabs = [ptab("mail", `${P_MAIL}/inbox`), { ...ptab("a", `${P_SHOP}/a`, true, "agent"), activeProfile: "perso" }];
+  await servePassport({ tabs, passports: { perso: [ADDRESS_ENTRY] } }, async ({ call, cards, of }) => {
+    await call("read_tab", { id: "a" });
+    await call("fill_field", { id: "a", field: 0, passport: "adresse" });
+    const card = cards()[0]!;
+    expect(rowsOf(card)[0]!.choices).toHaveLength(1);
+    expect(card).toMatchObject({ touchId: true, passportProfile: "perso", profile: "perso" });
+    // The agent reached it: never remembered as a site of the entry.
+    expect(card.remember).toBeUndefined();
+    expect(of("fill.commit")).toHaveLength(1);
+  });
+  // Off its sites: the red line names them once each (https and www are one site), never « read on ».
+  const elsewhere = [ptab("mail", `${P_MAIL}/inbox`), { ...ptab("e", `${P_ELSE}/e`, true, "agent"), activeProfile: "perso" }];
+  await servePassport({ tabs: elsewhere, passports: { perso: [ADDRESS_ENTRY] } }, async ({ call, cards }) => {
+    await call("read_tab", { id: "e" });
+    await call("fill_field", { id: "e", field: 0, passport: "adresse" });
+    expect(cards()[0]!.danger).toBe("Cette page, ouverte par l'agent, est sur autre.example, pas sur un des sites prévus pour votre adresse dans votre passeport (boutique.example).");
+  });
+});
+
 test("passport: a date by kind goes as the field takes it; nothing into a password field", async () => {
   await servePassport({}, async ({ call, of }) => {
     await call("read_tab", { id: "mail" });
@@ -812,7 +841,7 @@ test("passport: off the entry's origins, Touch ID, and the window opened then sp
 test("value, saved_login and passport exclude each other", async () => {
   await servePassport({}, async ({ call, of }) => {
     await call("read_tab", { id: "mail" });
-    const both = { text: "Donne soit `value`, soit `saved_login`, soit `passport`.", isError: true };
+    const both = { text: "Donne soit `value`, soit `saved_login`, soit `passport`, soit `check`, soit `option`.", isError: true };
     expect(await call("fill_field", { id: "mail", field: 0, value: "x", passport: "adresse" })).toEqual(both);
     expect(await call("fill_field", { id: "mail", field: 0, saved_login: true, passport: "adresse" })).toEqual(both);
     expect(await call("fill_field", { id: "mail", field: 0 })).toEqual(both);
@@ -999,5 +1028,141 @@ test("remember: a kind row names each rememberable choice; with `also` each row 
       [1, rows[1]!.choices![0]!.ref, NAME_ENTRY.id],
     ]);
     expect(new Set(remember.map((r) => r.seal)).size).toBe(2);
+  });
+});
+
+/** A sign-up form's boxes and list: a box to tick, a radio, a list of countries, and a text field. */
+const CHOICES = [
+  { handle: "7:0", type: "checkbox", autocomplete: "", label: "J'accepte les conditions", checked: false },
+  { handle: "7:1", type: "radio", autocomplete: "", label: "Formule : Annuelle", checked: false },
+  { handle: "7:2", type: "select", autocomplete: "", label: "Pays", options: ["France", "Belgique"], selected: 0 },
+  { handle: "7:3", type: "text", autocomplete: "", label: "Ville" },
+];
+
+test("boxes and lists: a read says their state and options; on the user's tab, one card names each tick and choice, then each is set", async () => {
+  await serve({}, async ({ call, bridge, of }) => {
+    bridge.pages.set("mail", { text: "Inscription", links: [], fields: CHOICES });
+    const read = (await call("read_tab", { id: "mail" })).text;
+    expect(read).toContain("0. checkbox — J'accepte les conditions (pas coché)\n1. radio — Formule : Annuelle (pas coché)\n2. select — Pays (choisi : France) ; options : 0. France · 1. Belgique\n3. text — Ville");
+    const r = await call("fill_field", { id: "mail", field: 0, check: true, also: [{ field: 1, check: true }, { field: 2, option: 1 }, { field: 3, value: "Lyon" }] });
+    expect(r.text).toBe("Rempli : 0, 1, 2, 3.");
+    const card = of("askFill")[0]![0] as { rows: { field: string; name: string }[]; touchId: boolean; danger?: string };
+    expect(card.danger).toBe("Sur votre onglet, cocher ou choisir peut agir tout de suite : un réglage enregistré, voire le formulaire envoyé.");
+    expect(card.rows.map((x) => `${x.field} : ${x.name}`)).toEqual(["J'accepte les conditions : cocher", "Formule : Annuelle : cocher", "Pays : choisir « Belgique »", "Ville : un texte de l'agent"]);
+    expect(card.touchId).toBe(false);
+    expect(of("fill.commit").map((c) => c[1])).toEqual([{ choice: { check: true } }, { choice: { check: true } }, { choice: { option: 1, text: "Belgique" } }, { text: "Lyon" }]);
+  });
+  // Refused by the card: nothing set.
+  await serve({ bridge: { fill: { yes: false } } }, async ({ call, bridge, of }) => {
+    bridge.pages.set("mail", { text: "Inscription", links: [], fields: CHOICES });
+    await call("read_tab", { id: "mail" });
+    await call("fill_field", { id: "mail", field: 0, check: true });
+    expect(of("fill.commit")).toEqual([]);
+  });
+});
+
+test("a tick or a choice goes only where it fits, before any card: no text into a box or a list, no tick into a text field, no radio unticked, no option unread", async () => {
+  const wrong: Record<string, unknown>[] = [
+    { field: 0, value: "oui" },
+    { field: 2, value: "Belgique" },
+    { field: 3, check: true },
+    { field: 0, option: 0 },
+    { field: 1, check: false },
+    { field: 2, check: true },
+    { field: 0, check: true, option: 1 },
+  ];
+  for (const args of wrong) {
+    await serve({}, async ({ call, bridge, of }) => {
+      bridge.pages.set("mail", { text: "Inscription", links: [], fields: CHOICES });
+      await call("read_tab", { id: "mail" });
+      expect((await call("fill_field", { id: "mail", ...args })).isError, JSON.stringify(args)).toBe(true);
+      expect(of("askFill")).toEqual([]);
+      expect(of("fill.commit")).toEqual([]);
+    });
+  }
+  await serve({}, async ({ call, bridge }) => {
+    bridge.pages.set("mail", { text: "Inscription", links: [], fields: CHOICES });
+    await call("read_tab", { id: "mail" });
+    expect((await call("fill_field", { id: "mail", field: 2, option: 2 })).text).toContain("Option 2 inconnue");
+  });
+});
+
+test("on the agent's own tab a tick asks the card too: a hand_over sign-in may have left the user's account open there", async () => {
+  await servePassport({ tabs: [ptab("a", `${P_ELSE}/inscription`, true, "agent")] }, async ({ call, bridge, of }) => {
+    bridge.pages.set("a", { text: "Inscription", links: [], fields: CHOICES });
+    await call("read_tab", { id: "a" });
+    expect((await call("fill_field", { id: "a", field: 0, check: true })).text).toBe("Champ rempli.");
+    expect(of("askFill")).toHaveLength(1);
+    expect((of("askFill")[0]![0] as { danger?: string }).danger).toBe(
+      "Sur cet onglet de l'agent, un compte où vous vous êtes connecté peut rester ouvert : cocher ou choisir peut agir tout de suite, un réglage enregistré, voire le formulaire envoyé.",
+    );
+    expect(of("fill.commit").map((c) => c[1])).toEqual([{ choice: { check: true } }]);
+  });
+});
+
+test("a field relabelled since the read (« Newsletter » become « Supprimer mon compte »): nothing, before any card", async () => {
+  await serve({}, async ({ call, bridge, of }) => {
+    bridge.pages.set("mail", { text: "Réglages", links: [], fields: CHOICES });
+    await call("read_tab", { id: "mail" });
+    bridge.seals.set("7:0", { label: "Supprimer mon compte" });
+    expect(await call("fill_field", { id: "mail", field: 0, check: true })).toEqual({ text: "Le champ n'est plus celui de ta lecture : rien n'a été écrit. Relis l'onglet avec read_tab.", isError: true });
+    expect(of("askFill")).toEqual([]);
+    expect(of("fill.commit")).toEqual([]);
+  });
+});
+
+test("a code read in the mail, filled into a page the user opened elsewhere (a phishing link clicked): the card says where it was read", async () => {
+  await servePassport({ text: `Ton code : ${CODE}.`, tabs: [ptab("mail", `${P_MAIL}/inbox`), ptab("phish", "https://rnabanque.example/verif")] }, async ({ call, cards }) => {
+    const code = (await call("read_tab", { id: "mail" })).text.match(/⟨code-[a-z0-9]{8}⟩/)![0];
+    await call("read_tab", { id: "phish" });
+    await call("fill_field", { id: "phish", field: 0, value: code });
+    expect(cards()[0]!.danger).toBe("Cette page est sur rnabanque.example, et votre code a été lu sur mail.example : vérifiez que c'est bien le site attendu.");
+  });
+});
+
+test("the card's red lines go by severity: the page's site before forms posting to reassuring sites (the agent cannot push it off)", async () => {
+  const fields = [0, 1, 2, 3, 4].map((n) => ({ handle: `8:${n}`, type: "text", autocomplete: "", label: `Champ ${n}` }));
+  await servePassport({ text: `Ton code : ${CODE}.`, tabs: [ptab("mail", `${P_MAIL}/inbox`), ptab("phish", "https://evil.example/f")] }, async ({ call, bridge, cards }) => {
+    const code = (await call("read_tab", { id: "mail" })).text.match(/⟨code-[a-z0-9]{8}⟩/)![0];
+    bridge.pages.set("phish", { text: "Vérification", links: [], fields });
+    const reassuring = ["https://mail.example", "https://accounts.google.test", "https://www.google.test", "https://myaccount.google.test", "https://support.google.test"];
+    fields.forEach((f, i) => bridge.seals.set(f.handle, { action: `${reassuring[i]}/post` }));
+    await call("read_tab", { id: "phish" });
+    await call("fill_field", { id: "phish", field: 0, value: code, also: [1, 2, 3, 4].map((field) => ({ field, value: code })) });
+    const lines = String(cards()[0]!.danger).split("\n");
+    expect(lines[0]).toBe("Cette page est sur evil.example, et votre code a été lu sur mail.example : vérifiez que c'est bien le site attendu.");
+    expect(lines.slice(1).every((l) => l.startsWith("Ce formulaire envoie vers"))).toBe(true);
+  });
+});
+
+test("passport: the user switches space while the borrowed card is up: « Remplir » fills nothing", async () => {
+  const agentTab: TabInfo = { ...ptab("a", `${P_SHOP}/a`, true, "agent"), activeProfile: "perso" };
+  await servePassport({ tabs: [ptab("mail", `${P_MAIL}/inbox`), agentTab], passports: { perso: [ADDRESS_ENTRY] } }, async ({ call, bridge, of }) => {
+    await call("read_tab", { id: "a" });
+    const ask = bridge.askFill!.bind(bridge);
+    bridge.askFill = async (...a) => {
+      (bridge as unknown as { tabs: TabInfo[] }).tabs.find((t) => t.id === "a")!.activeProfile = "travail";
+      return ask(...a);
+    };
+    expect((await call("fill_field", { id: "a", field: 0, passport: "adresse" })).text).toBe("L'utilisateur a refusé ce remplissage : rien n'a été écrit.");
+    expect(of("fill.commit")).toEqual([]);
+  });
+});
+
+test("a field in a frame of another site: the card names the frame and the page around it", async () => {
+  await serve({}, async ({ call, bridge, of }) => {
+    const l = (await call("read_tab", { id: "mail" })).text.match(/⟨code-[a-z0-9]{8}⟩/)![0];
+    bridge.seals.set("7:0", { origin: "https://cadre.test", frames: ["https://cadre.test", HOST] });
+    await call("fill_field", { id: "mail", field: 0, value: l });
+    expect(String((of("askFill")[0]![0] as { danger?: string }).danger)).toContain("Ce champ est dans un cadre de cadre.test, intégré à la page de mail.example-novacourriel.test.");
+  });
+});
+
+test("a field of the top page's site under a frame of another site: the card names that frame", async () => {
+  await serve({}, async ({ call, bridge, of }) => {
+    const l = (await call("read_tab", { id: "mail" })).text.match(/⟨code-[a-z0-9]{8}⟩/)![0];
+    bridge.seals.set("7:0", { frames: [HOST, "https://cadre.test", HOST] });
+    await call("fill_field", { id: "mail", field: 0, value: l });
+    expect(String((of("askFill")[0]![0] as { danger?: string }).danger)).toContain("Ce champ est dans un cadre de cadre.test, intégré à la page de mail.example-novacourriel.test.");
   });
 });

@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { AccessPolicy, DEV_RIGHTS } from "../../src/access/policy.js";
 import type { TabInfo } from "../../src/mcp/bridge.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
-import { carrier, generateToken, sourceZone, startMcpServer, type ActionsTools, type SitesTools, type WidgetsTools } from "../../src/mcp/server.js";
+import { carrier, generateToken, MOVING_TEXT, sourceZone, startMcpServer, type ActionsTools, type SitesTools, type WidgetsTools } from "../../src/mcp/server.js";
 import { Masker } from "../../src/mask/masker.js";
 import { PassportStore } from "../../src/mask/passport.js";
 import { CARD, IBAN, PHONE, windows } from "../mask/values.js";
@@ -347,4 +347,216 @@ test("a tab that leaves its origin during the unlock card stays locked", async (
     expect((await call("read_console", { id: "news" })).text).toBe(DENIAL);
     expect(bridge.calls.some((c) => c.method === "console")).toBe(false);
   });
+});
+
+test("a capture is refused when a value the read leaves out shows: a field's value, a frame of another site", async () => {
+  // A card number typed into a plain input: the page's text never holds it.
+  await serve({}, async ({ call, bridge }) => {
+    bridge.pages.set("news", { text: "Paiement", documents: [{ origin: "https://news.test", text: CARD }] });
+    expect((await call("capture_screen", { id: "news" })).text).toBe(REFUSED);
+    expect(captures(bridge)).toBe(0);
+  });
+  // A payroll frame of another (not listed) site showing an IBAN.
+  await serve({}, async ({ call, bridge }) => {
+    bridge.pages.set("news", { text: "Intranet", frameOrigins: ["https://news.test", "https://paie.test"], documents: [{ origin: "https://paie.test", text: `IBAN ${IBAN}` }] });
+    expect((await call("capture_screen", { id: "news" })).text).toBe(REFUSED);
+  });
+  // The same frame with nothing private: the capture goes.
+  await serve({}, async ({ call, bridge }) => {
+    bridge.pages.set("news", { text: "Intranet", documents: [{ origin: "https://paie.test", text: "Bulletins de paie" }] });
+    expect((await call("capture_screen", { id: "news" })).image).toBe(true);
+  });
+});
+
+test("a capture is refused when a document could not be read, or when the browser cannot say (fail closed)", async () => {
+  await serve({}, async ({ call, bridge }) => {
+    bridge.pages.set("news", { text: "Les nouvelles du jour.", unread: true });
+    expect((await call("capture_screen", { id: "news" })).text).toBe(REFUSED);
+  });
+  await serve({}, async ({ call, bridge }) => {
+    (bridge as { carrierText?: unknown }).carrierText = undefined;
+    expect((await call("capture_screen", { id: "news" })).text).toBe(REFUSED);
+    expect(captures(bridge)).toBe(0);
+  });
+});
+
+test("a value Ressac filled on an origin makes a page of that origin printing it back a carrier, in a frame too; a page of another origin printing it does not", async () => {
+  const ADDRESS = "14 rue des Tanneurs\n69005 Lyon";
+  const store = new PassportStore();
+  store.replace("perso", [{ id: "00000000000000a1", field: "adresse", value: { text: ADDRESS }, variants: [], origins: ["boutique.example"], how: "typed", created: "2026-11-23T10:00:00.000Z", updated: "2026-11-23T10:00:00.000Z" }]);
+  const ag: TabInfo = { id: "ag", title: "Commande", url: "https://boutique.example/commande", space: "perso", profile: "perso", agentReached: true };
+  const conf: TabInfo = { id: "conf", title: "Confirmation", url: "https://boutique.example/commande/confirmation", space: "perso", profile: "perso", agentReached: true };
+  const elsewhere: TabInfo = { id: "elsewhere", title: "Ailleurs", url: "https://ailleurs.example/", space: "perso", profile: "perso", agentReached: true };
+  const bridge = new FakeBridge([ag, conf, elsewhere], { active: "ag", allow: true, address: true, fill: { yes: true }, devTools: true });
+  bridge.pages.set("ag", { text: "Votre commande", links: [], fields: [{ handle: "5:0", type: "text", autocomplete: "", label: "Adresse" }] });
+  const printed = "Merci ! Livraison : 14 rue des Tanneurs, 69005 Lyon.";
+  bridge.pages.set("conf", { text: printed, links: [] });
+  bridge.pages.set("elsewhere", { text: "Accueil", links: [], documents: [{ origin: "https://boutique.example", text: printed }] });
+  const masker = new Masker({ passport: store });
+  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  masker.open("A", "W1");
+  const session = s.openSession("W1", undefined, "A");
+  const c = new Client({ name: "t", version: "0" });
+  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session}` } } }));
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const r = await c.callTool({ name, arguments: args });
+    const content = r.content as { type: string; text?: string }[];
+    return { text: content.map((x) => x.text ?? "").join("\n"), image: content.some((x) => x.type === "image") };
+  };
+  try {
+    // Before the fill the address is nobody's value on this web page: the capture goes.
+    expect((await call("capture_screen", { id: "conf" })).image).toBe(true);
+    await call("read_tab", { id: "ag" });
+    expect((await call("fill_field", { id: "ag", field: 0, passport: "adresse" })).text).toBe("Champ rempli.");
+    expect((await call("read_tab", { id: "conf" })).text).not.toContain("Tanneurs");
+    expect((await call("capture_screen", { id: "conf" })).text).toBe(REFUSED);
+    // A frame of the filled origin printing it, inside another site's page.
+    expect((await call("capture_screen", { id: "elsewhere" })).text).toBe(REFUSED);
+  } finally {
+    await c.close();
+    await s.stop();
+  }
+});
+
+test("a value filled on one origin does not make another origin's page printing it a carrier (no oracle there)", async () => {
+  const ADDRESS = "14 rue des Tanneurs\n69005 Lyon";
+  const store = new PassportStore();
+  store.replace("perso", [{ id: "00000000000000a1", field: "adresse", value: { text: ADDRESS }, variants: [], origins: ["boutique.example"], how: "typed", created: "2026-11-23T10:00:00.000Z", updated: "2026-11-23T10:00:00.000Z" }]);
+  const ag: TabInfo = { id: "ag", title: "Commande", url: "https://boutique.example/commande", space: "perso", profile: "perso", agentReached: true };
+  const other: TabInfo = { id: "other", title: "Autre", url: "https://autre.example/", space: "perso", profile: "perso", agentReached: true };
+  const bridge = new FakeBridge([ag, other], { active: "ag", allow: true, address: true, fill: { yes: true }, devTools: true });
+  bridge.pages.set("ag", { text: "Votre commande", links: [], fields: [{ handle: "5:0", type: "text", autocomplete: "", label: "Adresse" }] });
+  bridge.pages.set("other", { text: "Livraison : 14 rue des Tanneurs, 69005 Lyon.", links: [] });
+  const masker = new Masker({ passport: store });
+  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  masker.open("A", "W1");
+  const session = s.openSession("W1", undefined, "A");
+  const c = new Client({ name: "t", version: "0" });
+  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session}` } } }));
+  try {
+    await c.callTool({ name: "read_tab", arguments: { id: "ag" } });
+    await c.callTool({ name: "fill_field", arguments: { id: "ag", field: 0, passport: "adresse" } });
+    const r = await c.callTool({ name: "capture_screen", arguments: { id: "other" } });
+    expect((r.content as { type: string }[]).some((x) => x.type === "image")).toBe(true);
+  } finally {
+    await c.close();
+    await s.stop();
+  }
+});
+
+/** A user's tab on a passport host: a source whose visible text shows no value of the user's. */
+const nameStore = () => {
+  const store = new PassportStore();
+  store.replace("perso", [{ id: "00000000000000d4", field: "nom", value: { given: "Camille", family: "Aubrac" }, variants: [], origins: ["boutique.example"], how: "typed", created: "2026-11-23T10:00:00.000Z", updated: "2026-11-23T10:00:00.000Z" }]);
+  return store;
+};
+const cart: TabInfo = { id: "cart", title: "Panier", url: "https://boutique.example/panier", space: "perso", profile: "perso", agentReached: false };
+
+async function serveCart(o: { devUnlock: boolean }, attempt: (x: { call: (name: string, args: Record<string, unknown>) => Promise<string>; bridge: FakeBridge }) => Promise<void>) {
+  const bridge = new FakeBridge([cart, news], { active: "cart", allow: true, devTools: true, grantDev: [...DEV_RIGHTS], devUnlock: o.devUnlock });
+  bridge.pages.set("cart", { text: "Votre panier : 2 articles.", links: [] });
+  bridge.pages.set("news", { text: "Les nouvelles du jour.", links: [] });
+  const masker = new Masker({ passport: nameStore() });
+  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr", agent: "Claude" });
+  masker.open("A", "W1");
+  const session = s.openSession("W1", undefined, "A");
+  const c = new Client({ name: "t", version: "0" });
+  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session}` } } }));
+  const call = async (name: string, args: Record<string, unknown>) => ((await c.callTool({ name, arguments: args })).content as { text?: string }[]).map((x) => x.text ?? "").join("\n");
+  try {
+    await attempt({ call, bridge });
+  } finally {
+    await c.close();
+    await s.stop();
+  }
+}
+const LOG = `client : Camille Aubrac · tel ${PHONE}`;
+
+test("dev tools on a sources tab that shows nothing ask the unlock card; refused, nothing is read nor run", async () => {
+  await serveCart({ devUnlock: false }, async ({ call, bridge }) => {
+    bridge.setConsole("cart", [{ level: "log", text: LOG, timestamp: 1 }]);
+    expect(await call("read_console", { id: "cart" })).toBe(DENIAL);
+    expect(await call("run_js", { id: "cart", code: "document.body.innerText = 'Lucie Ferrand\\nCamille Aubrac'" })).toBe(DENIAL);
+    expect(unlockCards(bridge).length).toBeGreaterThan(0);
+    expect(bridge.calls.some((c) => c.method === "console" || c.method === "run")).toBe(false);
+  });
+});
+
+test("dev tools output on a tab is masked in that tab's zone and origin: a sources tab's log, once unlocked, keeps the user's name and phone masked", async () => {
+  await serveCart({ devUnlock: true }, async ({ call, bridge }) => {
+    bridge.setConsole("cart", [{ level: "log", text: LOG, timestamp: 1 }]);
+    const out = await call("read_console", { id: "cart" });
+    expect(out).not.toContain("Aubrac");
+    expect(out).not.toContain(PHONE);
+    expect(out).toMatch(/⟨tel-[a-z0-9]{8}⟩/);
+  });
+});
+
+test("dev tools on a web tab ask no unlock card and stay in clear there (no oracle)", async () => {
+  await serveCart({ devUnlock: false }, async ({ call, bridge }) => {
+    bridge.setConsole("news", [{ level: "log", text: LOG, timestamp: 1 }]);
+    expect(await call("read_console", { id: "news" })).toContain("Camille Aubrac");
+    expect(unlockCards(bridge)).toHaveLength(0);
+  });
+});
+
+/** The user's shop tab; while the read card is up the user goes to their account page (same origin, sensitive by path). */
+async function movedDuringCard(tool: "read_tab" | "capture_screen", moveTo: string | null, always = false) {
+  const contact = `Vos coordonnées\nTéléphone : ${PHONE}`;
+  const shop: TabInfo = { id: "shop", title: "Boutique", url: "https://shop.example/", space: "perso", agentReached: false };
+  const bridge = new FakeBridge([shop], { active: "other", allow: true });
+  bridge.pages.set("shop", { text: contact, links: [] });
+  const ask = bridge.askPermission.bind(bridge);
+  bridge.askPermission = async (o, signal) => {
+    if (moveTo) bridge.editTab("shop", { url: moveTo });
+    return ask(o, signal);
+  };
+  // A page that never settles (a redirect loop within its origin): every look at the tab finds a new address.
+  let hops = 0;
+  const list = bridge.listTabs.bind(bridge);
+  if (always) bridge.listTabs = async () => (bridge.editTab("shop", { url: `https://shop.example/page/${++hops}` }), list());
+  const masker = new Masker();
+  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  masker.open("A", "W1");
+  const session = s.openSession("W1", undefined, "A");
+  const c = new Client({ name: "t", version: "0" });
+  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session}` } } }));
+  try {
+    const r = await c.callTool({ name: tool, arguments: { id: "shop" } });
+    const content = r.content as { type: string; text?: string }[];
+    return { text: content.map((x) => x.text ?? "").join("\n"), image: content.some((x) => x.type === "image") };
+  } finally {
+    await c.close();
+    await s.stop();
+  }
+}
+
+test("a tab that moves within its origin to a sensitive page while the read card is up is read and captured as that page", async () => {
+  const read = await movedDuringCard("read_tab", "https://shop.example/compte/coordonnees");
+  expect(read.text).not.toContain(PHONE);
+  expect(read.text).toContain("https://shop.example/compte/coordonnees");
+  expect((await movedDuringCard("capture_screen", "https://shop.example/compte/coordonnees")).image).toBe(false);
+  // Control: staying on the shop's home, the phone is the web's.
+  expect((await movedDuringCard("read_tab", null)).text).toContain(PHONE);
+});
+
+test("a tab that moves within its origin during the read itself is masked as the page the browser read", async () => {
+  const shop: TabInfo = { id: "shop", title: "Boutique", url: "https://shop.example/", space: "perso", agentReached: false };
+  await serve({ tabs: [shop] }, async ({ call, bridge }) => {
+    bridge.pages.set("shop", { text: `Téléphone : ${PHONE}` });
+    const read = bridge.readText.bind(bridge);
+    bridge.readText = async (id, o) => {
+      bridge.editTab("shop", { url: "https://shop.example/compte/coordonnees" });
+      return read(id, o);
+    };
+    expect((await call("read_tab", { id: "shop" })).text).not.toContain(PHONE);
+  });
+});
+
+test("a tab that keeps moving on every card is not read, and the agent is not told the user refused", async () => {
+  for (const tool of ["read_tab", "capture_screen"] as const) {
+    const r = await movedDuringCard(tool, "https://shop.example/page", true);
+    expect(r.text).toBe(MOVING_TEXT);
+    expect(r.image).toBe(false);
+  }
 });

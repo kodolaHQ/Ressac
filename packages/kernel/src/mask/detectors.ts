@@ -20,14 +20,24 @@ export type Found = { type: LabelType; start: number; end: number; canonical: st
 type Hit = [start: number, end: number, type: LabelType, canonical: string];
 
 const CONTEXT_WINDOW = 40;
-// Matched on folded text (no accents, lower case). A postal or promo code is no secret.
-const CODE_CONTEXT = /(?<!\p{L})(?:code(?! (?:postal|promo))|verification|otp|pin|secret|a usage unique)(?!\p{L})/u;
+// Matched on folded text (no accents, lower case). A postal or promo code is no secret; « access_token= » names a URL
+// parameter, whose value the URL masking already hides, not a code shown to the user.
+const CODE_CONTEXT =
+  /(?<!\p{L})(?:code(?! (?:postal|promo))|passcode|verification|verify|otp|pin|secret|(?<![_-])token(?![_=])|2fa|authenti(?:fication|cation)|mot de passe|a usage unique)(?!\p{L})/u;
 // 4 to 8 digits, maybe grouped (381 624), whole: not glued to a letter or digit, not a price (2 340,12 €).
 const URL_HOST = /\bhttps?:\/\/[^\s/?#<>"'`]+/gi;
-const CODE_DIGITS = /(?<![\p{L}\p{N}]|\d[ .-])\d(?:[ .-]?\d){3,7}(?![\p{L}\p{N}]|[ .-]\d|[.,]\d|\s*€)/gu;
-const TEL_FR = /(?<![\p{N}+])0[1-9](?:[ .-]?\d{2}){4}(?!\p{N})/gu;
+// A code of capitals and digits (X7K9P2, QX4-7BR, X7K-9P2-QR4): 5 to 16 of them with at least one of each, maybe two
+// inner `-`. No start after a letter, digit or `-`, so each run is tried once. shortcut: lower-case codes are left out, add them if a sender uses them.
+const CODE_MIXED = /(?<![\p{L}\p{N}-])(?=[A-Z0-9-]{0,18}?\d)(?=[A-Z0-9-]{0,18}?[A-Z])[A-Z0-9]{2,16}(?:-[A-Z0-9]{2,8}){0,2}(?![\p{L}\p{N}]|-[\p{L}\p{N}])/gu;
+// Letters then digits or digits then letters is a technical name (ES2022, SHA256, RTX4090, 1080P): a code interleaves them.
+const TECH_NAME = /^[A-Z]{1,4}\d+$|^\d+[A-Z]{1,3}$/;
+const mixedCode = (v: string) => v.length >= 5 && v.length <= 16 && !TECH_NAME.test(v);
+// Not after `digit/`: a date's year (14/03/2027) is no code.
+const CODE_DIGITS = /(?<![\p{L}\p{N}]|\d[ ./-])\d(?:[ .-]?\d){3,7}(?![\p{L}\p{N}]|[ .-]\d|[.,]\d|\s*€)/gu;
+// Separators: one space or tab, or `.` `-` `+` (a GET form's space) `/` `_`, maybe spaced. A date (14/03/1990) has too few digits.
+const TEL_FR = /(?<![\p{N}+])(?:0[1-9]|\(0[1-9]\))(?:(?:[ \t]?[.+/_-][ \t]?|[ \t])?\d{2}){4}(?!\p{N})/gu;
 // No country code starts with 0: « 00042178306 » (an account number) is no phone. « 00 33 6… » is spaced after 00.
-const TEL_INTL = /(?<![\p{N}+])(?:\+|00[ .-]?)[1-9](?:[ .-]?(?:\(0\)[ .-]?)?\d){7,14}(?!\p{N})/gu;
+const TEL_INTL = /(?<![\p{N}+])(?:\+|00[ .-]?)[1-9](?:(?:[ \t]?[.+/_-][ \t]?|[ \t])?(?:\(0\)[ .-]?)?\d){7,14}(?!\p{N})/gu;
 // A French account number (11 digits) after an account word on its line: typed `id`, in the sources only.
 // shortcut: French length only, add other countries' lengths if their banks show in the sources.
 const ACCOUNT = /(?<![\p{L}\p{N}+])\d{11}(?![\p{L}\p{N}])/gu;
@@ -35,10 +45,29 @@ const ACCOUNT_CONTEXT = /(?<!\p{L})(?:compte|livret|account)(?!\p{L})[^\n]{0,30}
 // Bounded parts and no start inside a run of address characters: linear on a long token without `@`.
 const EMAIL = /(?<![A-Za-z0-9._%+-])([A-Za-z0-9._%+-]{1,64})@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g;
 const PASSWORD = /(?<!\p{L})(?:mot de passe|password|mdp)\s{0,8}:\s{0,8}(\S{1,128})/dgiu;
-const IDENTITY = /(?<![\p{L}\p{N}])(?:passeport|cni|carte d['’ ]?identit[eé]|permis)(?!\p{L})[^\n\d]{0,30}?(?<![A-Za-z0-9])((?=[A-Za-z0-9]*\d)[A-Za-z0-9]{6,20})(?![A-Za-z0-9])/dgiu;
-// The display name of a `Nom <adresse>` header: at a line start or after `:` `,` `;`, up to 5 words. Bounded, and
-// no lookbehind: a long run of spaces would make one quadratic.
-const NAME_HEADER = /(?:^|[\n:,;])[ \t]{0,8}"?(\p{L}[\p{L}\p{M}'’.-]{0,40}(?:[ \t]{1,4}\p{L}[\p{L}\p{M}'’.-]{0,40}){0,4})"?[ \t]{0,4}<[A-Za-z0-9._%+-]{1,64}@([A-Za-z0-9.-]{1,253})/dgu;
+// The number may be spaced in groups of digits (« 1903 1234 5678 »): `identityNumber` checks its length.
+const IDENTITY =
+  /(?<![\p{L}\p{N}])(?:passeport|passport|cni|carte(?:[ \t]+\p{L}{1,20}){0,3}?[ \t]+d['’ ]?identit[eé]|pi[eè]ce d['’ ]?identit[eé]|id card|identity card|document number|permis)(?!\p{L})[^\n\d]{0,30}?(?<![A-Za-z0-9])((?=[A-Za-z0-9]*\d|[A-Za-z]{1,3}[ \t]\d)[A-Za-z0-9]{2,20}(?:[ \t][A-Za-z0-9]{2,6}){0,4})(?![A-Za-z0-9])/dgiu;
+/**
+ * The identity number at the head of a match, or undefined: its chunks while each holds a digit or is in capitals
+ * (« AB 123 456 », not « for 10 years »), without trailing letter chunks; 6 to 20 characters, and when spaced, 9 or a
+ * letter (a spaced date « 12 03 2027 » is no identity number).
+ */
+function identityNumber(v: string): string | undefined {
+  const chunks = v.split(/[ \t]/);
+  let k = 0;
+  while (k < chunks.length && (/\d/.test(chunks[k]!) || chunks[k] === chunks[k]!.toUpperCase())) k++;
+  while (k > 0 && !/\d/.test(chunks[k - 1]!)) k--;
+  const s = chunks.slice(0, k).join("");
+  if (!/\d/.test(s) || s.length > 20 || s.length < (k > 1 && !/[A-Za-z]/.test(s) ? 9 : 6)) return undefined;
+  // One separator character between chunks: the kept text is as long as the chunks joined by one space.
+  return v.slice(0, chunks.slice(0, k).join(" ").length);
+}
+// The display name of a `Nom <adresse>` header: at a line start, after `:` `,` `;` or a time (a quote line's « at 10:12 AM »,
+// « à 10h12 »), up to 5 words, or a whole quoted string (Outlook's « "Ferrand, Lucie" »), maybe with a `(note)` after it.
+// Groups 1-3: the quoted name; 4: the bare one; 5: the domain. Bounded, and no lookbehind: a long run of spaces would make one quadratic.
+const NAME_HEADER =
+  /(?:^|[\n:,;]|\d{1,2}[:h]\d{2}(?:[ \t]?[AaPp]\.?[Mm]\.?)?)[ \t]{0,8}(?:"([\p{L}\p{M}'’., \t-]{1,80})"|'([\p{L}\p{M}’., \t-]{1,80})'|«[ \t\u00a0]?([\p{L}\p{M}'’.,-]{1,40}(?:[ \t]{1,4}[\p{L}\p{M}'’.,-]{1,40}){0,4})[ \t\u00a0]?»|(\p{L}[\p{L}\p{M}'’.-]{0,40}(?:[ \t]{1,4}\p{L}[\p{L}\p{M}'’.-]{0,40}){0,4}))(?:[ \t]{1,4}\([^()<>\n]{0,40}\))?[ \t]{0,4}<[A-Za-z0-9._%+-]{1,64}@([A-Za-z0-9.-]{1,253})/dgu;
 // Words that make a display name an organisation's, accents and case aside. Short on purpose: a person named « Poste »
 // would be shown. shortcut: French and a few English words, add others when the sources show more languages.
 const ORG_WORDS = new Set([
@@ -102,6 +131,8 @@ export function canonical(type: LabelType, raw: string): string {
       // The domain is case-insensitive too; the same local part at two domains is two values.
       return s.toLowerCase();
     case "nom":
+      // « Ferrand, Lucie » is Outlook's surname first: stored as « lucie ferrand », the name matcher finds both orders.
+      if (/^[^,]+,[^,]+$/.test(raw)) return canonical("nom", raw.split(",").reverse().join(" "));
       return raw.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
     default:
       return raw;
@@ -130,7 +161,11 @@ function scan(t: string, zone: Zone): Hit[] {
   for (const re of [API_KEY, PRIVATE_KEY, JWT]) for (const m of t.matchAll(re)) out.push([m.index, m.index + m[0].length, "id", m[0]]);
   for (const token of new Set(randomTokens(t)))
     for (let i = t.indexOf(token); i >= 0; i = t.indexOf(token, i + token.length)) out.push([i, i + token.length, "id", token]);
-  for (const m of t.matchAll(IDENTITY)) out.push([...m.indices![1]!, "id", m[1]!]);
+  for (const m of t.matchAll(IDENTITY)) {
+    const v = identityNumber(m[1]!);
+    const start = m.indices![1]![0];
+    if (v) out.push([start, start + v.length, "id", v.replace(/[ \t]/g, "")]);
+  }
   // A URL's host and port are never a code; its path, query and fragment may carry one (`/verify/482913`, `?code=…`).
   const addresses = [...t.matchAll(URL_HOST)].map((m) => [m.index, m.index + m[0].length] as const);
   for (const m of t.matchAll(CODE_DIGITS)) {
@@ -141,12 +176,24 @@ function scan(t: string, zone: Zone): Hit[] {
       m[0].length === 5 && /^[ \t]+\p{Lu}/u.test(t.slice(end, end + 3)) && !CODE_CONTEXT.test(fold(t.slice(Math.max(0, m.index - 20), m.index)));
     if (!postcode && nearCode(t, m.index, end)) out.push([m.index, end, "code", m[0].replace(/\D/g, "")]);
   }
+  for (const m of t.matchAll(CODE_MIXED)) {
+    const end = m.index + m[0].length;
+    const v = m[0].replace(/-/g, "");
+    if (mixedCode(v) && !addresses.some(([a, b]) => m.index >= a && m.index < b) && nearCode(t, m.index, end))
+      out.push([m.index, end, "code", v]);
+  }
   if (zone === "web") return out;
   for (const re of [TEL_FR, TEL_INTL]) for (const m of t.matchAll(re)) out.push([m.index, m.index + m[0].length, "tel", canonical("tel", m[0])]);
   for (const m of t.matchAll(ACCOUNT)) if (ACCOUNT_CONTEXT.test(fold(t.slice(Math.max(0, m.index - CONTEXT_WINDOW), m.index)))) out.push([m.index, m.index + 11, "id", m[0]]);
   for (const m of t.matchAll(EMAIL)) out.push([m.index, m.index + m[1]!.length, "email", canonical("email", m[0])]);
   for (const m of t.matchAll(PASSWORD)) out.push([...m.indices![1]!, "motdepasse", m[1]!]);
-  for (const m of t.matchAll(NAME_HEADER)) if (!organisation(m[1]!, m[2]!)) out.push([...m.indices![1]!, "nom", canonical("nom", m[1]!)]);
+  for (const m of t.matchAll(NAME_HEADER)) {
+    const g = [1, 2, 3, 4].find((i) => m[i] !== undefined)!;
+    // A quoted run may hold padding spaces and no letter at all (« " , " »): trimmed, and a name needs a letter.
+    const raw = m[g]!.trim();
+    const start = m.indices![g]![0] + m[g]!.indexOf(raw);
+    if (/\p{L}/u.test(raw) && !organisation(raw, m[5]!)) out.push([start, start + raw.length, "nom", canonical("nom", raw)]);
+  }
   return out;
 }
 

@@ -99,6 +99,11 @@ export function registerDevTools(
     acted?: (o: TabInfo) => void;
     /** A LOCKED tool may run on this tab: false when it shows the user's data and its unlock card was refused (spec § 5.5). */
     unlocked: (o: TabInfo) => Promise<boolean>;
+    /**
+     * Tags a result built from tab `o` with its masking zone and origin, as a read of the tab is (`Segments.wrap`); taken
+     * when the call starts, before run_js can rewrite the page. Absent: masked as the web with no origin.
+     */
+    place?: (o: TabInfo) => (text: string) => string;
   } & ProfileFiles,
 ): void {
   const { bridge, policy, requests } = c;
@@ -222,13 +227,14 @@ export function registerDevTools(
       // The site may have changed since the grant: the bridge is not called at all.
       if (signal.aborted) return await interruptionResponse();
       if (label) c.activity?.(id, label);
+      const placed = c.place?.(o) ?? ((t: string) => t);
       const abandon = new Promise<never>((_, ko) => signal.addEventListener("abort", () => ko(new Cut()), { once: true }));
       // Non-null: a page without an origin holds no right, so check() has already aborted.
       const call = f(o, signal, write, originOf(o.url)!);
       call.catch(() => {}); // a late result after abandonment is ignored
       const r = await Promise.race([call, abandon]);
       if (signal.aborted) throw new Cut();
-      return r;
+      return { ...r, content: r.content.map((x) => ({ ...x, text: placed(x.text) })) };
     } catch (e) {
       await Promise.all(files.map(clear));
       if (e instanceof SiteChanged) return text(SITE_CHANGED_TEXT);

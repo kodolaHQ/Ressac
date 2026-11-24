@@ -1,12 +1,14 @@
 // A site app's window: browser.xhtml opened by store/sites.ts without a toolbar, marked from its creation, never a
 // Ressac main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden, the
 // bar's frame on top (sidebar.html?site=<id>, ui/SiteWindow.svelte).
-import { auraVariables } from "../../shared/aura";
+import { auraVariables, DEFAULT_AURA } from "../../shared/aura";
+import { SITE_PREFIX } from "../../core/agent/bridge";
 import { createHalo } from "../../core/halo";
 import { HOST_EXITED } from "../agent/host";
 import type { SiteWindowController } from "../store/sites";
 import { createSiteAddons, type WindowAddons } from "./addons";
 import { cutFrameNetwork } from "./frame-network";
+import { mountMarks } from "./hide-layer";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, liveBindings, shortcutFor } from "./keys";
 import { OWN_ADOPT, TAB_ID } from "./tabs";
 
@@ -32,11 +34,25 @@ const designShortcut = (win: Window) => void ChromeUtils.importESModule(STORE).r
 export function showHalo(win: Window, id: string): void {
   void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").RessacStore) => {
     if (win.closed) return;
-    const halo = createHalo((on) => win.document.documentElement.toggleAttribute("ressac-agent-working", on));
+    // A site app's marks of what the agent receives masked follow the halo (hide-layer.ts mountMarks). An agent app
+    // (`app:`) is the agent's own page: no marks.
+    const site = id.startsWith(SITE_PREFIX) ? id.slice(SITE_PREFIX.length) : null;
+    const marks =
+      site === null
+        ? null
+        : mountMarks(win, store, {
+            agentReached: () => sitesModule().forAgent().find((s) => s.id === site)?.agentReached ?? true,
+            aura: () => sitesModule().controller(site)?.aura() ?? DEFAULT_AURA,
+          });
+    const halo = createHalo((on) => {
+      win.document.documentElement.toggleAttribute("ressac-agent-working", on);
+      if (on) marks?.start(id);
+      else marks?.stop();
+    });
     const update = () => halo.update(!!store.access.tabs[id]?.running);
     const offs = [store.agent.on("access", update), store.agent.on(HOST_EXITED, update)];
     update();
-    win.addEventListener("unload", () => (offs.forEach((off) => off()), halo.dispose()), { once: true });
+    win.addEventListener("unload", () => (offs.forEach((off) => off()), halo.dispose(), marks?.dispose()), { once: true });
   });
 }
 

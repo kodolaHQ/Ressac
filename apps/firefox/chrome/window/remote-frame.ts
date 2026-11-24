@@ -29,10 +29,12 @@ export function createFrameBrowser(doc: Document, onCrash?: (revived: boolean) =
   const b = (doc as any).createXULElement("browser") as Element;
   setFrameAttributes(b);
   b.addEventListener("oop-browser-crashed", (e) => revive(b, e, onCrash));
+  // A node of an unloaded document stays connected to its own tree: isConnected alone would keep the window alive.
+  doc.defaultView?.addEventListener("unload", () => frameBrowsers.delete(b), { once: true });
   return b;
 }
 
-/** Every frame browser made, in any window; dropped once seen out of its document (an owner unmounted it). */
+/** Every frame browser made, in any window; dropped once seen out of its document (an owner unmounted it) or when its document unloads. */
 const frameBrowsers = new Set<Element>();
 
 /**

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { rankLinks, unwrapLink } from "../../src/mcp/links.js";
+import { rankLinks, unwrapLink, withoutTracking } from "../../src/mcp/links.js";
 
 test("unwrapLink decodes DuckDuckGo and Google result redirects, nothing else", () => {
   expect(unwrapLink("https://duckduckgo.com/l/?uddg=https%3A%2F%2Fex.fr%2Fa&rut=x")).toBe("https://ex.fr/a");
@@ -55,4 +55,16 @@ test("rankLinks: copies of one address keep the photo of either", () => {
     { text: "Yuba", url: "https://ex.fr/a", zone: "main", image: "https://img.fr/a.jpg" },
     { text: "Tern", url: "https://ex.fr/b", zone: "main", image: "https://img.fr/b.jpg" },
   ]);
+});
+
+test("tracking parameters are dropped from a link (Google's srsltid, utm_*…), every other parameter kept", () => {
+  expect(unwrapLink("https://getressac.app/?srsltid=AfmBOooTx4pV9yP8vX3kQwZ2mN7bH5cRfL1sJ6dG0eYtU")).toBe("https://getressac.app/");
+  expect(unwrapLink("https://ex.fr/a?id=42&utm_source=x&UTM_Medium=y&fbclid=z#top")).toBe("https://ex.fr/a?id=42#top");
+  expect(unwrapLink("https://www.google.com/url?q=https%3A%2F%2Fex.fr%2Fb%3Fgclid%3Dabc%26p%3D1")).toBe("https://ex.fr/b?p=1");
+  // A look-alike name is no tracker; an address without any stays the same string.
+  expect(withoutTracking("https://ex.fr/?utmost=1&source=2")).toBe("https://ex.fr/?utmost=1&source=2");
+  expect(withoutTracking("pas une adresse")).toBe("pas une adresse");
+  expect(rankLinks([{ text: "Ressac", url: "https://getressac.app/?srsltid=abc" }], "https://www.google.com/search?q=ressac").map((l) => l.url)).toEqual(["https://getressac.app/"]);
+  // A page opened with trackers is still itself: its link to itself stays out.
+  expect(rankLinks([{ text: "Accueil", url: "https://ex.fr/" }], "https://ex.fr/?utm_source=a")).toEqual([]);
 });

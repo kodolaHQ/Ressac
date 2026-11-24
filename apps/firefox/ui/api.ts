@@ -368,8 +368,9 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       switchAgent,
       dataDir: win.store.dataDir,
       locale: () => win.store.state.locale,
-      ...(o.settingsPage ? { passport: win.store.passport } : {}),
+      ...(o.settingsPage ? { passport: win.store.passport, passwords: win.store.passwords } : {}),
       spaces: () => win.store.state.spaces,
+      untilUnload,
     }),
     // Import from another browser: the chrome runs the engine's migrators; answers copied into this realm.
     bookmarks: { search: (text, limit) => win.store.bookmarks.search(text, limit).then((v) => structuredClone(v)) },
@@ -384,6 +385,8 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
     },
     // The design mode of this window's tab; its cart column is a chrome frame (chrome/window/design-overlays.ts).
     design: createDesignApi({ win, untilUnload }),
+    // « Cacher pour l'agent »: the button only arms the viewfinder; the gesture's frames get their own API (hide-layer.ts).
+    hide: { toggle: () => win.hide.toggle(), picking: () => win.hide.picking(), onChange: (cb) => untilUnload(win.hide.onChange(() => cb())) },
     designPanel(isOpen) {
       const t = { type: "window" as const, windowId: windowId };
       if (isOpen === true) void win.store.design.openCart(t);

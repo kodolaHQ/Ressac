@@ -1,6 +1,6 @@
 // The passport's field rules (design §§ 3, 6, 8.3, 9.2), pure: no Node import, the settings UI and chrome use it too.
 import { IBAN_LENGTHS, ibanValid, nirValid } from "../outflow/detect.js";
-import { canonical, telDigitForms, type LabelType } from "./detectors.js";
+import { canonical, detect, telDigitForms, type LabelType } from "./detectors.js";
 import { foldWords } from "./projections.js";
 
 export const PASSPORT_FIELDS = ["nom", "naissance", "proche", "adresse", "tel", "email", "iban", "piece", "secu", "plaque", "libre"] as const;
@@ -411,4 +411,42 @@ export function valueForKind(e: PassportEntry, kind: PassportKind, inputType: st
     default:
       return t;
   }
+}
+
+/** A word written all in capitals (two letters at least): « AUBRAC », never « La » or « J. ». */
+const allCaps = (w: string) => /\p{L}.*\p{L}/u.test(w) && w === w.toUpperCase() && w !== w.toLowerCase();
+
+/**
+ * A name's given and family parts: a run of words in capitals is the family name, otherwise the last word is; the
+ * particles before it go with it (« de La Tour »). The rest is the given name. A name all in capitals ends on its family name.
+ */
+export function splitName(text: string): { given: string; family: string } {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  let at = words.findIndex(allCaps);
+  let end = at + 1;
+  if (at < 0 || words.every(allCaps)) [at, end] = [words.length - 1, words.length];
+  else while (end < words.length && allCaps(words[end]!)) end++;
+  // A particle joins the family name while a given word is left.
+  while (at > 0 && at - 1 + words.length - end > 0 && PARTICLES.has(foldWords(words[at - 1]!))) at--;
+  return { given: [...words.slice(0, at), ...words.slice(end)].join(" "), family: words.slice(at, end).join(" ") };
+}
+
+// Fields a value is guessed as by its shape, and the detector type that must find it whole (none: its check alone).
+const SHAPES: [PassportField, LabelType | null][] = [["iban", "iban"], ["secu", "secu"], ["tel", "tel"], ["email", null], ["plaque", null], ["naissance", null]];
+const CAPITALISED = /^\p{Lu}[\p{L}\p{M}'’.-]*$/u;
+
+/**
+ * The passport field `text` is, when it is exactly one value: a shape (detected whole, where a detector knows it), or
+ * two to four capitalised words for a name (particles allowed inside). The value must pass `validateEntry`; else `libre`.
+ */
+export function guessField(text: string): PassportField {
+  const t = text.trim();
+  const valid = (field: PassportField, value: PassportValue) =>
+    validateEntry({ id: "guess", field, value, variants: [], origins: [], how: "click", created: "", updated: "" }, []).problems.length === 0;
+  const found = detect(t, "sources");
+  const whole = found.length === 1 && found[0]!.start === 0 && found[0]!.end === t.length ? found[0]!.type : null;
+  for (const [field, type] of SHAPES) if ((type === null || whole === type) && valid(field, { text: t })) return field;
+  const words = t.split(/\s+/);
+  const named = words.length >= 2 && words.length <= 4 && [words[0]!, words.at(-1)!].every((w) => CAPITALISED.test(w)) && words.every((w) => CAPITALISED.test(w) || PARTICLES.has(foldWords(w)));
+  return named && valid("nom", splitName(t)) ? "nom" : "libre";
 }

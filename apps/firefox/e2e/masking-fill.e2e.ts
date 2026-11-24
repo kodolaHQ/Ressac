@@ -45,8 +45,19 @@ let w: LaunchedRessac | undefined;
 let m: Marionette;
 /** The Firefox profile a test made for its passport, deleted after it. */
 let profile: string | undefined;
+// A page's hero form and its form further down, each with an « Email » field: the user looks at the second.
+const TWO_FORMS = `<title>Inscription</title><form><input type="email" aria-label="Email"></form><div style="height:3000px"></div><form><label for="mail">Email</label><input id="mail" type="email"></form>`;
+// A sign-up form's box, radios and list; each change the page sees is counted (a framework listens the same way).
+const CHOICES = `<title>Inscription</title><form><label><input type="checkbox" id="cgu"> J'accepte les conditions</label>
+<fieldset><legend>Formule</legend><label><input type="radio" name="f" id="mois"> Mensuelle</label><label><input type="radio" name="f" id="an"> Annuelle</label></fieldset>
+<label for="pays">Pays</label><select id="pays"><option>France</option><option>Belgique</option><option>Suisse</option></select></form>
+<script>window.seen = 0; document.addEventListener("change", () => window.seen++);</script>`;
+// A page of 45 filter boxes before its form: over the 40-field cap, the form's text fields stay listed.
+const FILTERS = `<title>Filtres</title>${Array.from({ length: 45 }, (_, i) => `<label><input type="checkbox"> Filtre ${i}</label>`).join("")}<form><label for="nom">Nom</label><input id="nom"><label for="ville">Ville</label><input id="ville"></form>`;
+// A label cut at 80 characters right before a space: the sealed label must still equal the one read.
+const LONG = `<title>Long</title><form><label for="q">${"x".repeat(79)} suite du libellé</label><input id="q"></form>`;
 beforeAll(async () => {
-  a = await startServer({ routes: { "/log": logRoute(logs.a), "/fill/compte/mail.html": mail } });
+  a = await startServer({ routes: { "/log": logRoute(logs.a), "/fill/compte/mail.html": mail, "/fill/deux.html": (_req: unknown, res: ServerResponse) => html(res, TWO_FORMS), "/fill/choix.html": (_req: unknown, res: ServerResponse) => html(res, CHOICES), "/fill/filtres.html": (_req: unknown, res: ServerResponse) => html(res, FILTERS), "/fill/long.html": (_req: unknown, res: ServerResponse) => html(res, LONG) } });
   b = await startServer({ routes: { "/log": logRoute(logs.b), "/fill/client.html": client } });
 });
 afterAll(() => Promise.all([a?.close(), b?.close()]));
@@ -154,6 +165,110 @@ async function until<T>(read: () => T | Promise<T>, ok: (v: T) => boolean, ms = 
     await new Promise((r) => setTimeout(r, 100));
   }
 }
+
+it("two alike fields: the one out of view is read as « hors de l'écran », the one the user looks at is not", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/deux.html`);
+  await inPage(id, `document.getElementById("mail").scrollIntoView(); return true;`);
+  const text = await read(id);
+  expect(text).toContain("0. email — Email (hors de l'écran)");
+  expect(text).toMatch(/1\. email — Email$/m);
+});
+
+it("boxes and lists on the user's tab: one card, then the box ticked, the radio chosen, the option set; the page sees each change", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/choix.html`);
+  const text = await read(id);
+  const box = fieldOf(text, "J'accepte les conditions \\(pas coché\\)");
+  const radio = fieldOf(text, "Formule : Annuelle \\(pas coché\\)");
+  const list = Number(text.split("\n").find((l) => / select — Pays /.test(l))!.split(".")[0]);
+  expect(text).toContain("Pays (choisi : France) ; options : 0. France · 1. Belgique · 2. Suisse");
+  const { reply, card } = await fillWithCard({ id, field: box, check: true, also: [{ field: radio, check: true }, { field: list, option: 1 }] });
+  expect(card).toContain("J'accepte les conditions : cocher");
+  expect(card).toContain("Pays : choisir « Belgique »");
+  await press("Remplir");
+  expect((await reply).text).toBe(`Rempli : 0, 1, 2.`);
+  expect(await inPage(id, `return [document.getElementById("cgu").checked, document.getElementById("an").checked, document.getElementById("pays").value, window.seen]`)).toEqual([true, true, "Belgique", 3]);
+});
+
+it("over the field cap, boxes give way: the form's text fields stay listed, every number still names its field", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/filtres.html`);
+  const lines = (await read(id)).split("\n").filter((l) => /^\d+\. \S+ — /.test(l));
+  expect(lines).toHaveLength(40);
+  expect(lines.at(-2)).toBe("38. text — Nom");
+  expect(lines.at(-1)).toBe("39. text — Ville");
+  const ville = fieldOf(lines.join("\n"), "Ville");
+  expect((await call("fill_field", { id, field: ville, value: "Lyon" })).text).toBe(FILLED);
+  expect(await valueOf(id, "ville")).toBe("Lyon");
+});
+
+it("a box relabelled while the card is up: the card's yes ticks nothing", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/choix.html`);
+  const box = fieldOf(await read(id), "J'accepte les conditions \\(pas coché\\)");
+  const { reply } = await fillWithCard({ id, field: box, check: true });
+  await inPage(id, `document.getElementById("cgu").parentElement.lastChild.textContent = " Supprimer mon compte"; return true;`);
+  await press("Remplir");
+  expect((await reply).text).toContain("a changé");
+  expect(await inPage(id, `return document.getElementById("cgu").checked`)).toBe(false);
+});
+
+it("Shift+Tab then Space before the card's delay: nothing granted (a page times its prompt on the card's blur)", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/choix.html`);
+  const box = fieldOf(await read(id), "J'accepte les conditions \\(pas coché\\)");
+  const reply = call("fill_field", { id, field: box, check: true });
+  let answered = false;
+  void reply.then(() => (answered = true));
+  // One script, in the window that owns the delay: the card seen unarmed, then the two keys at once.
+  const early = await m.execute<boolean>(`return (async () => {
+    const frame = document.getElementById("ressac-sidebar");
+    for (let i = 0; i < 300; i++) {
+      const doc = frame?.contentDocument;
+      const card = doc?.querySelector('${CARD}');
+      if (card) {
+        if (doc.querySelector('[data-testid="request-modal"][data-armed]')) return false;
+        const tip = Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
+        tip.beginInputTransactionForTests(window);
+        const k = (key, code) => new KeyboardEvent("", { key, code });
+        tip.keydown(k("Shift", "ShiftLeft")); tip.keydown(k("Tab", "Tab")); tip.keyup(k("Tab", "Tab")); tip.keyup(k("Shift", "ShiftLeft"));
+        tip.keydown(k(" ", "Space")); tip.keyup(k(" ", "Space"));
+        return !doc.querySelector('[data-testid="request-modal"][data-armed]');
+      }
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    return false;
+  })();`);
+  expect(early).toBe(true);
+  // Must not happen: a grant from those keys answers at once; the card's delay (400 ms) is long past after this wait.
+  await new Promise((r) => setTimeout(r, 1_000));
+  expect(answered).toBe(false);
+  await press("Refuser");
+  await reply;
+  expect(await inPage(id, `return document.getElementById("cgu").checked`)).toBe(false);
+});
+
+it("a field whose label is cut at 80 characters on a space still fills", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/long.html`);
+  expect((await read(id)).split("\n")).toContain(`0. text — ${"x".repeat(79)}`);
+  expect((await call("fill_field", { id, field: 0, value: "bonjour" })).text).toBe(FILLED);
+  expect(await valueOf(id, "q")).toBe("bonjour");
+});
+
+it("a list reordered between the read and the card's yes: nothing chosen", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/choix.html`);
+  const text = await read(id);
+  const list = Number(text.split("\n").find((l) => / select — Pays /.test(l))!.split(".")[0]);
+  const { reply } = await fillWithCard({ id, field: list, option: 1 });
+  // The page swaps « Belgique » for « Suisse » while the card is up: option 1 is no longer the one read.
+  await inPage(id, `const s = document.getElementById("pays"); s.insertBefore(s.options[2], s.options[1]); return true;`);
+  await press("Remplir");
+  expect((await reply).text).toContain("a changé");
+  expect(await inPage(id, `return document.getElementById("pays").value`)).toBe("France");
+});
 
 it("1. a form injected after the read: its field has no number; the number read still names the field read", async () => {
   const label = await start();

@@ -62,12 +62,25 @@ export interface TabRead {
    * pixels, which the top document's text does not hold. Absent: that check is skipped.
    */
   frameOrigins?: string[];
+  /** The address of the document read, at the read's end: the kernel masks by it (the tab may move within its origin during a call). */
+  url?: string;
 }
+
+/** A document's text and values the carrier check reads at most: past it, the document counts as unread. */
+export const CARRIER_TEXT_MAX = 2_000_000;
+/** `BrowserBridge.carrierText`'s answer. */
+export type CarrierText = { documents: { origin: string; text: string }[]; unread: boolean };
 
 /** A field of a page, as a read lists it; `handle` is opaque (`"<innerWindowId>:<n>"`: its document's, so a frame that navigated never resolves an old one), only the browser resolves it. */
 /** The fields a read gives at most, numbered for `fill_field`: the fill actor lists no more, the kernel shows no more. */
 export const FIELDS_MAX = 40;
-export type PageField = { handle: string; type: string; autocomplete: string; label: string };
+/**
+ * `offscreen`: outside the viewport when read (another form of the page, or one moved off screen): not the one the user looks at.
+ * `checked`: a checkbox's or radio's state; `options` and `selected`: a select's options as shown and the one chosen (-1: none).
+ */
+export type PageField = { handle: string; type: string; autocomplete: string; label: string; offscreen?: true; checked?: boolean; options?: string[]; selected?: number };
+/** What the agent sets in a box or a list: a tick, or an option by its number with its text as read (a list reordered since takes nothing). */
+export type FieldChoice = { check: boolean } | { option: number; text: string };
 
 /**
  * What the browser sealed of a field before a fill: its document's `origin` and `path`, the origins of `frames` (its
@@ -78,6 +91,8 @@ export type PageField = { handle: string; type: string; autocomplete: string; la
  */
 export type FillSeal = {
   seal: string; origin: string; path: string; frames: string[]; type: string; autocomplete: string; action: string | null;
+  /** The field's label now, as a read lists it: the card names the field by the read's. */
+  label: string;
   logins: { username: string }[]; agentReached: boolean; partner?: string;
 };
 
@@ -115,6 +130,11 @@ export interface TabInfo {
   agentReached?: boolean;
   /** The tab's login profile, whose passport is « this tab's » (design § 8.1); absent: no passport is. */
   profile?: string;
+  /**
+   * A tab of the agent's own profile: the profile of its window's active space (never a private one). Fill by kind
+   * offers that passport there, the card naming it, always behind Touch ID (owner, 2026-11-24).
+   */
+  activeProfile?: string;
 }
 
 /**
@@ -144,6 +164,13 @@ export interface BrowserBridge {
   navigate(id: string, url: string, o?: LoadOptions): Promise<void | "pending">;
   /** PNG capture of the tab. `expect`: as for readText. */
   capture(id: string, o?: { expect?: string }): Promise<Buffer>;
+  /**
+   * What a capture would show that a read leaves out, for the kernel's carrier check only (never shown to the agent):
+   * each document's text (every frame, any origin, past the read's bound) and its fields' values, with the document's
+   * origin. `unread`: a document could not be read, or its text passed its bound: the kernel then counts the tab as a
+   * carrier. `expect`: as for readText. Absent: every tab counts as a carrier (fail closed).
+   */
+  carrierText?(id: string, o?: { expect?: string }): Promise<CarrierText>;
   /** Shows the request to the user; true if they accept. `signal` raised (new conversation): the card is removed, false. */
   askPermission(o: TabInfo, signal?: AbortSignal): Promise<boolean>;
   /** Dev tools (absent if the browser does not provide them). */
@@ -164,7 +191,7 @@ export interface BrowserBridge {
    * `danger`: what the address carries that the agent
    * read from a private source or that looks like a secret, shown as a red line (it never blocks the card).
    */
-  askAddress?(o: { url: string; reason: string; agent: string; danger?: string }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
+  askAddress?(o: { url: string; reason: string; agent: string; danger?: string; found?: true }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
   /**
    * The reveal card (`kernel-mask-reveal-card`, rendered in `text`): the agent asks to see a masked value for this
    * conversation, which then stays locked. True if the user allows it. `signal` raised: the card is removed, false.
@@ -185,7 +212,7 @@ export interface BrowserBridge {
     /** A seal is random, single-use and unique; a field's handle stays stable for its document's lifetime. */
     prepare(tab: string, handle: string): Promise<FillSeal>;
     /** `origin`: the origin the kernel approved; the browser writes nothing if the field is no longer on it. */
-    commit(seal: string, v: { text: string } | { savedLogin: "password" | "username"; login?: number }, origin: string): Promise<"filled" | "changed">;
+    commit(seal: string, v: { text: string } | { savedLogin: "password" | "username"; login?: number } | { choice: FieldChoice }, origin: string): Promise<"filled" | "changed">;
   };
   /**
    * The fill card: « Remplir { name } dans « { field } » sur { where } ? » (`field`: the label the read listed), with Touch ID when `touchId`, a choice among `logins` for a

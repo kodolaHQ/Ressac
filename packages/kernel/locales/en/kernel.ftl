@@ -173,6 +173,17 @@ kernel-mask-fill-action-danger = This form sends to { $to }, not to the field's 
 kernel-mask-fill-foreign-danger = This page, opened by the agent, is on { $to }: { $name } { $agreement ->
        *[one-m] was
     } read on { $from }.
+kernel-mask-fill-foreign-passport = This page, opened by the agent, is on { $to }, not on one of the sites your passport sets for { $name } ({ $from }).
+kernel-mask-fill-foreign-danger-user = This page is on { $to }, and { $name } { $agreement ->
+       *[one-m] was
+    } read on { $from }: check it is the site you expect.
+kernel-mask-fill-foreign-passport-user = This page is on { $to }, not on one of the sites your passport sets for { $name } ({ $from }).
+kernel-mask-fill-framed = This field is in a frame from { $frame }, inside the page of { $top }.
+kernel-mask-fill-check = tick
+kernel-mask-fill-uncheck = untick
+kernel-mask-fill-option = choose « { $option } »
+kernel-mask-fill-choice-acts = On your tab, ticking or choosing can act at once: a setting saved, or even the form sent.
+kernel-mask-fill-choice-acts-agent = On this agent tab, an account you signed into may still be open: ticking or choosing can act at once, a setting saved, or even the form sent.
 kernel-mask-name-fill-text = a text from the agent
 kernel-mask-fill-login-pair = your username and your password
 kernel-mask-capture-refused = Capture refused: this tab shows your data.
