@@ -4,7 +4,7 @@
 // keeps the seals and fetches the saved logins: nothing the child answers widens where a value goes.
 // Packaged: a change here needs build:ui.
 
-import { FIELDS_MAX } from "../../../../packages/kernel/src/mcp/bridge";
+import { CARRIER_TEXT_MAX, FIELDS_MAX } from "../../../../packages/kernel/src/mcp/bridge";
 
 /**
  * What the parent sealed, as the child checks it again before it writes. `frames[0]`: this document's origin;
@@ -28,6 +28,12 @@ const TEXT_TYPES = new Set(["text", "password", "email", "tel", "search", "url",
 const TICK_TYPES = new Set(["checkbox", "radio"]);
 /** A select's options listed at most, each bounded like a label. */
 const OPTIONS_MAX = 50;
+/** Never drawn as text: their content is code or markup, not what a capture shows. */
+const CARRIER_SKIP = new Set(["script", "style", "noscript", "template"]);
+/** Elements whose text runs on with the text around them. */
+const INLINE = new Set(["a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "em", "font", "i", "kbd", "mark", "q", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var", "wbr"]);
+/** Inputs whose value a capture never shows as typed (a password shows dots). */
+const UNSHOWN_INPUTS = new Set(["hidden", "password", "file"]);
 /** The `contenteditable` values that make an editing host. */
 const EDITABLE = new Set(["", "true", "plaintext-only"]);
 
@@ -70,6 +76,7 @@ export class RessacFillChild extends JSWindowActorChild {
 
   receiveMessage(m: { name: string; data?: any }) {
     if (m.name === "fields") return this.fields();
+    if (m.name === "carrier") return this.carrier();
     if (m.name === "facts") return this.facts(m.data?.handle);
     if (m.name === "fill") return this.fill(m.data?.seal, m.data?.value);
     return undefined;
@@ -98,6 +105,52 @@ export class RessacFillChild extends JSWindowActorChild {
       const state = TICK_TYPES.has(type) ? { checked: el.checked === true } : type === "select" ? { options: [...el.options].slice(0, OPTIONS_MAX).map(optionText), selected: el.selectedIndex } : {};
       return { n: this.numberOf(el), type, autocomplete: autocompleteOf(el), label: labelOf(el), ...(offscreen ? { offscreen: true as const } : {}), ...state };
     });
+  }
+
+  /**
+   * What a capture of this document shows, for the kernel's carrier check only (never the agent's): every text node, the
+   * values of its fields (a typed card number is in no text node) and of shadow roots, and the documents of its frames
+   * that have no actor of their own (about:blank, srcdoc). Hidden text counts too: an extra refusal, never a leak.
+   * `over`: past CARRIER_TEXT_MAX, or a walk that failed; the kernel then counts the tab as a carrier.
+   */
+  private carrier(): { text: string; over: boolean } {
+    const parts: string[] = [];
+    let length = 0;
+    try {
+      const stack: Node[] = [this.document];
+      while (stack.length) {
+        const n = stack.pop() as any;
+        if (n.nodeType === 3) {
+          parts.push(n.data);
+          length += n.data.length;
+        } else if (n.nodeType === 1) {
+          if (CARRIER_SKIP.has(n.localName)) continue;
+          // A block's text never runs into its neighbour's (« Nom » then « Camille », not « NomCamille »).
+          if (!INLINE.has(n.localName)) parts.push("\n");
+          const value = n.localName === "textarea" || (n.localName === "input" && !UNSHOWN_INPUTS.has(n.type)) ? String(n.value ?? "") : "";
+          if (value) {
+            parts.push(` ${value} `);
+            length += value.length;
+          }
+          const shadow = n.openOrClosedShadowRoot;
+          if (shadow && !shadow.isUAWidget()) stack.push(shadow);
+          // A frame with an http(s) document has its own actor: the parent asks it.
+          if (n.localName === "iframe" || n.localName === "frame") {
+            let inner: any = null;
+            try {
+              inner = n.contentDocument;
+            } catch {}
+            if (inner && !/^https?:/i.test(String(inner.documentURI))) stack.push(inner);
+          }
+        }
+        if (length > CARRIER_TEXT_MAX) return { text: "", over: true };
+        if (n.childNodes) for (let i = n.childNodes.length - 1; i >= 0; i--) stack.push(n.childNodes[i]);
+      }
+    } catch {
+      return { text: "", over: true };
+    }
+    const text = parts.join("");
+    return text.length > CARRIER_TEXT_MAX ? { text: "", over: true } : { text, over: false };
   }
 
   private numberOf(el: Element): number {

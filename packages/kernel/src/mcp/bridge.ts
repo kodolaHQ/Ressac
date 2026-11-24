@@ -64,6 +64,11 @@ export interface TabRead {
   frameOrigins?: string[];
 }
 
+/** A document's text and values the carrier check reads at most: past it, the document counts as unread. */
+export const CARRIER_TEXT_MAX = 2_000_000;
+/** `BrowserBridge.carrierText`'s answer. */
+export type CarrierText = { documents: { origin: string; text: string }[]; unread: boolean };
+
 /** A field of a page, as a read lists it; `handle` is opaque (`"<innerWindowId>:<n>"`: its document's, so a frame that navigated never resolves an old one), only the browser resolves it. */
 /** The fields a read gives at most, numbered for `fill_field`: the fill actor lists no more, the kernel shows no more. */
 export const FIELDS_MAX = 40;
@@ -157,6 +162,13 @@ export interface BrowserBridge {
   navigate(id: string, url: string, o?: LoadOptions): Promise<void | "pending">;
   /** PNG capture of the tab. `expect`: as for readText. */
   capture(id: string, o?: { expect?: string }): Promise<Buffer>;
+  /**
+   * What a capture would show that a read leaves out, for the kernel's carrier check only (never shown to the agent):
+   * each document's text (every frame, any origin, past the read's bound) and its fields' values, with the document's
+   * origin. `unread`: a document could not be read, or its text passed its bound: the kernel then counts the tab as a
+   * carrier. `expect`: as for readText. Absent: every tab counts as a carrier (fail closed).
+   */
+  carrierText?(id: string, o?: { expect?: string }): Promise<CarrierText>;
   /** Shows the request to the user; true if they accept. `signal` raised (new conversation): the card is removed, false. */
   askPermission(o: TabInfo, signal?: AbortSignal): Promise<boolean>;
   /** Dev tools (absent if the browser does not provide them). */

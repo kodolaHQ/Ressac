@@ -269,6 +269,8 @@ export function bridgeHandlers(
     // fill_field (chrome/agent/fill.ts): the seal and the write; a saved login never comes from the host.
     "fill.prepare": ([id, handle]: [string, string]) => fill.prepare(id, handle),
     "fill.commit": ([seal, v, origin]: Parameters<ReturnType<typeof createFill>["commit"]>) => fill.commit(seal, v, origin),
+    // The kernel's carrier check (never the agent's): every frame's text and every field's value.
+    carrierText: ([id, o]: [string, { expect?: string }?]) => onSiteView(id, (browser) => fill.carrierText(browser), o?.expect) ?? outsidePrivate(id, (browser) => fill.carrierText(browser), o?.expect),
     capture: ([id, o]: [string, { expect?: string }?]) =>
       onSiteView(id, snapshot, o?.expect) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window), o?.expect),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the

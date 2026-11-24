@@ -1,5 +1,5 @@
 import type { FillSeal, PageField } from "../shims/kernel";
-import { boundFields, FIELDS_MAX, originOf } from "../../core/agent/bridge";
+import { boundFields, CARRIER_TEXT_MAX, FIELDS_MAX, originOf } from "../../core/agent/bridge";
 import type { Choice, Seal } from "./fill-actor";
 
 /** Seals not committed (a card refused) are dropped past this many, oldest first. */
@@ -69,6 +69,32 @@ export function createFill(deps: {
       const lists = await Promise.all(windows.map((w: any) => Promise.resolve().then(() => w.getActor("RessacFill").sendQuery("fields")).then((r) => boundFields(r, w.innerWindowId), () => [])));
       const origins = windows.map((w: any) => w.documentPrincipal?.originNoSuffix).filter((o: unknown): o is string => typeof o === "string" && !!o);
       return { fields: lists.flat().slice(0, FIELDS_MAX), frameOrigins: [...new Set<string>(origins)] };
+    },
+
+    /**
+     * For the kernel's carrier check only (`BrowserBridge.carrierText`): each document's text and field values, by its
+     * origin taken here. An http(s) document asks its own actor; another document is read by its embedder's walk only
+     * when it shares the embedder's principal. Any other document, a failed or oversized answer: `unread` (fail closed).
+     */
+    async carrierText(browser: any): Promise<{ documents: { origin: string; text: string }[]; unread: boolean }> {
+      const windows = (browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []).map((bc: any) => bc.currentWindowGlobal);
+      let unread = windows.some((w: any) => !w);
+      const documents = await Promise.all(
+        windows.filter(Boolean).map(async (w: any) => {
+          const origin = w.documentPrincipal?.originNoSuffix;
+          if (/^https?:/i.test(String(w.documentURI?.spec ?? ""))) {
+            const r = await Promise.resolve().then(() => w.getActor("RessacFill").sendQuery("carrier")).catch(() => null);
+            if (typeof r?.text === "string" && r.text.length <= CARRIER_TEXT_MAX && r.over === false && typeof origin === "string") return [{ origin, text: r.text }];
+          } else {
+            const up = w.parentWindowContext;
+            // shortcut: a top document that is not http(s) (file:, about:) is covered by the page read only; upgrade if such tabs carry the user's data.
+            if (!up || (up.documentPrincipal && w.documentPrincipal?.equals(up.documentPrincipal))) return [];
+          }
+          unread = true;
+          return [];
+        }),
+      );
+      return { documents: documents.flat(), unread };
     },
 
     async prepare(tab: string, handle: string): Promise<FillSeal> {

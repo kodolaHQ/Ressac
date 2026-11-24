@@ -10,6 +10,7 @@ import {
   type BrowserHistory,
   type TabInfo,
   type TabRead,
+  type CarrierText,
   type PageReadOptions,
   type BrowserDevTools,
   type DevToolsOwner,
@@ -85,6 +86,7 @@ export class RemoteBridge implements BrowserBridge {
   openTab = (url: string, space?: string, o?: LoadOptions) =>
     this.call<TabInfo>("openTab", o?.allow != null ? [url, space, o] : space === undefined ? [url] : [url, space]);
   navigate = (id: string, url: string, o?: LoadOptions) => this.call<void | "pending">("navigate", o?.allow != null ? [id, url, o] : [id, url]);
+  carrierText = (id: string, o?: { expect?: string }) => this.call<CarrierText>("carrierText", o ? [id, o] : [id]);
   capture = async (id: string, o?: { expect?: string }) => Buffer.from(await this.call<string>("capture", o ? [id, o] : [id]), "base64");
   // Taken down (signal) when a new conversation starts: refused.
   askPermission = (o: TabInfo, signal?: AbortSignal) =>

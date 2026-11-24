@@ -933,12 +933,16 @@ export function createToolsServer(
     }
   }
 
-  /** Reads the tab now (never shown to the agent) and marks it if it shows the user's data: checked at each call. */
+  /**
+   * Reads the tab now (never shown to the agent) and marks it if it shows the user's data: checked at each call. A capture
+   * shows every frame and field: their text counts too, and a document the browser could not read marks it (fail closed).
+   */
   async function checkCarrier(o: TabInfo): Promise<void> {
-    const { text, frameOrigins } = await bridge.readText(o.id, { expect: o.url });
+    const [{ text, frameOrigins }, deep] = await Promise.all([bridge.readText(o.id, { expect: o.url }), bridge.carrierText?.(o.id, { expect: o.url })]);
     // A sensitive frame shows its pixels in a capture, not its text in the top document's.
     const frames = frameOrigins?.some((f) => isSensitive(f)) === true;
-    if (frames || carrier(o, text, agentSites.has(`${policy.conversation}:${o.id}`), masker.passport, started())) policy.markCarrier(o);
+    const all = [text, ...(deep?.documents ?? []).map((d) => d.text)].join("\n");
+    if (!deep || deep.unread || frames || carrier(o, all, agentSites.has(`${policy.conversation}:${o.id}`), masker.passport, started())) policy.markCarrier(o);
   }
 
   /** A tab whose links the agent may follow: not a local page nor a site app, whose text and links the agent writes. */

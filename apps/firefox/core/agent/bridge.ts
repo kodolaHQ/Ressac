@@ -1,5 +1,5 @@
 import type { DevRight, PageBlock, PageField, PageLink, TabInfo, TabRead, Zone } from "@ressac/kernel";
-import { FIELDS_MAX } from "../../../../packages/kernel/src/mcp/bridge";
+import { CARRIER_TEXT_MAX, FIELDS_MAX } from "../../../../packages/kernel/src/mcp/bridge";
 import { AGENT_PROFILE, privateTab, tabProfile, recapOfUrl, type Decision, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
 
 const activeOf = (state: BrowserState, o: Tab): { activeProfile?: string } => {
@@ -296,7 +296,7 @@ export function boundCapture(raw: unknown): Omit<TabRead, "text" | "selection" |
   return out;
 }
 
-export { FIELDS_MAX };
+export { CARRIER_TEXT_MAX, FIELDS_MAX };
 const FIELD_TYPES = new Set(["text", "password", "email", "tel", "search", "url", "number", "textarea", "contenteditable", "checkbox", "radio", "select"]);
 /** One line, without « » (fill-actor.ts strips them too: a sealed label compares equal). */
 const label = (s: unknown) => String(s ?? "").replace(/[«»]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);

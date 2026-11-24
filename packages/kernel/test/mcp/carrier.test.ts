@@ -348,3 +348,34 @@ test("a tab that leaves its origin during the unlock card stays locked", async (
     expect(bridge.calls.some((c) => c.method === "console")).toBe(false);
   });
 });
+
+test("a capture is refused when a value the read leaves out shows: a field's value, a frame of another site", async () => {
+  // A card number typed into a plain input: the page's text never holds it.
+  await serve({}, async ({ call, bridge }) => {
+    bridge.pages.set("news", { text: "Paiement", documents: [{ origin: "https://news.test", text: CARD }] });
+    expect((await call("capture_screen", { id: "news" })).text).toBe(REFUSED);
+    expect(captures(bridge)).toBe(0);
+  });
+  // A payroll frame of another (not listed) site showing an IBAN.
+  await serve({}, async ({ call, bridge }) => {
+    bridge.pages.set("news", { text: "Intranet", frameOrigins: ["https://news.test", "https://paie.test"], documents: [{ origin: "https://paie.test", text: `IBAN ${IBAN}` }] });
+    expect((await call("capture_screen", { id: "news" })).text).toBe(REFUSED);
+  });
+  // The same frame with nothing private: the capture goes.
+  await serve({}, async ({ call, bridge }) => {
+    bridge.pages.set("news", { text: "Intranet", documents: [{ origin: "https://paie.test", text: "Bulletins de paie" }] });
+    expect((await call("capture_screen", { id: "news" })).image).toBe(true);
+  });
+});
+
+test("a capture is refused when a document could not be read, or when the browser cannot say (fail closed)", async () => {
+  await serve({}, async ({ call, bridge }) => {
+    bridge.pages.set("news", { text: "Les nouvelles du jour.", unread: true });
+    expect((await call("capture_screen", { id: "news" })).text).toBe(REFUSED);
+  });
+  await serve({}, async ({ call, bridge }) => {
+    (bridge as { carrierText?: unknown }).carrierText = undefined;
+    expect((await call("capture_screen", { id: "news" })).text).toBe(REFUSED);
+    expect(captures(bridge)).toBe(0);
+  });
+});
