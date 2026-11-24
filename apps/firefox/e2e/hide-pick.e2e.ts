@@ -120,14 +120,15 @@ describe("RessacHide actor", () => {
     expect(await seenAfter()).toEqual([]);
   });
 
-  it("a frame of another site answers for itself: its text, a rect in top-window px inside the frame, its origin; offsetOf adds up", async () => {
+  it("a frame of another site answers for itself: its text, a rect in top-window px inside the frame, the top page's origin; offsetOf adds up", async () => {
     await open();
     const at = await center(m, B, "#loin", 0);
     const frameBox = await rectOf("#cadre");
     const inner = await inBrowser<Rect>(m, B, `const r = document.getElementById("loin").getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };`, { frame: 0 });
     const picked = await pickAt(at);
     expect(picked?.text).toBe("Lucie Martin");
-    expect(picked?.origin).toBe(`http://localhost:${frame.port}`);
+    // The top page's origin, from the parent: the site a hide adds is never the frame's.
+    expect(picked?.origin).toBe(new URL(page.url).origin);
     expect(inside(picked!.rect, frameBox)).toBe(true);
     expect(picked!.rect).toEqual({ ...inner, x: inner.x + frameBox.x, y: inner.y + frameBox.y });
     expect(await hide("H.offsetOf(b.browsingContext.children[0])")).toEqual({ x: frameBox.x, y: frameBox.y });

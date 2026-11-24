@@ -68,7 +68,8 @@
   function keys(e: KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
-      api.cancel();
+      // The save in flight always reaches its toast.
+      if (!busy) api.cancel();
     } else if (e.key === "Enter" && !(e.target instanceof HTMLButtonElement)) {
       e.preventDefault();
       confirm();
@@ -91,6 +92,8 @@
     if (part === "layer" && ctx?.phase !== "toast" && stage !== "done") stage = "done";
   });
 
+  /** The ending's sentence: « Ajouté à votre passeport » only when the hide made a new entry. */
+  const sentence = (c: HideContext) => `chrome-hide-ending-${c.ending}${!c.created && (c.ending === "agentReached" || c.ending === "notHere") ? "-known" : ""}`;
   const box = (r: HideRect) => `left: ${r.x}px; top: ${r.y}px; width: ${r.width}px; height: ${r.height}px`;
   const particles = (r: HideRect) => {
     const n = Math.min(26, 8 + Math.round((r.width * r.height) / 400));
@@ -146,7 +149,7 @@
           in:fade={{ duration: reduce ? 150 : 0 }}
           out:fade={{ duration: 150 }}
         >
-          {stage === "say" ? t(`chrome-hide-ending-${shown.ending}`) : shown.chip}
+          {stage === "say" ? t(sentence(shown)) : shown.chip}
         </div>
       {/if}
       {#if stage === "hatch"}
@@ -165,7 +168,7 @@
           <p class="q" data-testid="hide-question">{t("chrome-hide-question", { text: ctx.short })}</p>
           <label class="field"><span>{t("chrome-hide-type")}</span>
             <select data-testid="hide-type" bind:value={field} disabled={busy}>
-              {#each PASSPORT_FIELDS as f (f)}<option value={f}>{t(`chrome-hide-field-${f}`)}</option>{/each}
+              {#each PASSPORT_FIELDS as f (f)}<option value={f}>{t(`settings-passport-field-${f}`)}</option>{/each}
             </select>
           </label>
           {#if named}
@@ -178,7 +181,7 @@
           {#if ctx.error}<p class="error" role="alert" data-testid="hide-error">{t(`chrome-hide-error-${ctx.error}`)}</p>{/if}
         {/if}
         <div class="actions">
-          <button class="cancel" data-testid="hide-cancel" onclick={() => api.cancel()}>{t("chrome-hide-cancel")}</button>
+          <button class="cancel" data-testid="hide-cancel" disabled={busy} onclick={() => api.cancel()}>{t("chrome-hide-cancel")}</button>
           {#if ctx.phase !== "error"}
             <button class="primary" data-testid="hide-confirm" bind:this={confirmButton} disabled={busy} onclick={confirm}>{t("chrome-hide-confirm")}</button>
           {/if}

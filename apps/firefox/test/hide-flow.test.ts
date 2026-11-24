@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ending, runsForAll, shorten, undoWindow, UNDO_MS } from "../chrome/window/hide-layer";
+import { coverLength, ending, runsForAll, shorten, undoWindow, UNDO_MS } from "../chrome/window/hide-layer";
 
 // « Cacher pour l'agent »: the honest ending says what is true now (hatching only when the agent does not see it).
 describe("ending", () => {
@@ -30,6 +30,18 @@ describe("ending", () => {
   });
 });
 
+describe("coverLength", () => {
+  it("an e-mail is hidden once its local part is covered (the kernel leaves the domain readable); other fields need all", () => {
+    const mail = "camille.aubrac@exemple.fr";
+    expect(coverLength("email", mail)).toBe(14);
+    expect(ending({ agentReached: false, runs: [{ start: 0, end: 14 }], length: coverLength("email", mail), siteMatches: true })).toBe("hidden");
+    expect(ending({ agentReached: false, runs: [{ start: 0, end: 10 }], length: coverLength("email", mail), siteMatches: true })).toBe("next");
+    // No local part, or not an e-mail field: the whole value.
+    expect(coverLength("email", "@exemple.fr")).toBe(11);
+    expect(coverLength("libre", mail)).toBe(mail.length);
+  });
+});
+
 describe("undoWindow", () => {
   it("gives the kept hide once within 8 s; after 8 s, nothing", () => {
     let t = 1000;
@@ -57,15 +69,19 @@ describe("shorten", () => {
   });
 });
 
-// The ending and the marks share one rule: `hidden` only when every window with a conversation masks the value.
+// The ending and the marks share one rule: `hidden` only when every token (each window with a conversation, and the
+// main token, always asked as `window: null`) masks the value.
 describe("runsForAll", () => {
   const p = { tab: "t1", url: "https://banque.example/", agentReached: false, text: "Camille Aubrac" };
+  const name = [{ start: 0, end: 14, type: "nom" }];
+  const asked: unknown[] = [];
   const answers = (by: Record<string, unknown>) => async (_m: string, q: unknown) => {
-    const a = by[(q as { window: string }).window];
+    const w = (q as { window: string | null }).window;
+    asked.push(w);
+    const a = w === null ? (by.main ?? { runs: [name] }) : by[w];
     if (a instanceof Error) throw a;
     return a;
   };
-  const name = [{ start: 0, end: 14, type: "nom" }];
 
   it("one window masks, another (with a session) does not: no run, so the ending is not hidden", async () => {
     const runs = await runsForAll(answers({ f1: { runs: [name] }, f2: { runs: [[]] } }), ["f1", "f2"], p);
@@ -76,6 +92,22 @@ describe("runsForAll", () => {
   it("a window without a session is left out; a failed answer masks nothing", async () => {
     expect(await runsForAll(answers({ f1: { runs: [name] }, f2: { runs: null } }), ["f1", "f2"], p)).toEqual([{ start: 0, end: 14 }]);
     expect(await runsForAll(answers({ f1: { runs: [name] }, f2: new Error("down") }), ["f1", "f2"], p)).toEqual([]);
-    expect(await runsForAll(answers({ f1: { runs: null } }), ["f1"], p)).toEqual([]);
+  });
+
+  it("the main token is always asked: a value a conversation masks but the main table does not gets no hatch and no hidden", async () => {
+    asked.length = 0;
+    const runs = await runsForAll(answers({ main: { runs: [[]] }, f1: { runs: [name] } }), ["f1"], p);
+    expect(asked).toContain(null);
+    expect(runs).toEqual([]);
+    expect(ending({ agentReached: false, runs, length: 14, siteMatches: true })).toBe("next");
+    // No conversation: the main token's answer alone decides.
+    expect(await runsForAll(answers({ f1: { runs: null } }), ["f1"], p)).toEqual([{ start: 0, end: 14 }]);
+    expect(await runsForAll(answers({ main: new Error("down") }), [], p)).toEqual([]);
+  });
+
+  it("a malformed answer masks nothing (fail closed), never counts as « no conversation »", async () => {
+    for (const bad of [{}, { runs: "x" }, { runs: [5] }, null])
+      expect(await runsForAll(answers({ f1: bad }), ["f1"], p)).toEqual([]);
+    expect(await runsForAll(answers({ main: { runs: null } }), [], p)).toEqual([]);
   });
 });

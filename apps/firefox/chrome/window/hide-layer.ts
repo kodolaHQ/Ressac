@@ -12,8 +12,9 @@ import { cutFrameNetwork } from "./frame-network";
 
 // « Cacher pour l'agent »: the user points at a value on the page, confirms it in a bubble, and it becomes a passport
 // entry. Two frames of sidebar.html over the content area, drawn by Ressac and never in the page: the layer (outline,
-// animation, ending; it captures the pointer only while picking, so the page sees no move) and the bubble frame
-// (bubble, error, toast). Every decision is here; the frames only show `HideContext` and press its gesture endpoints.
+// animation, ending; it captures the pointer from the arm until the gesture closes, so the page sees no move, not even
+// the pointer coming back over the value picked) and the bubble frame (bubble, error, toast), above it. Every decision
+// is here; the frames only show `HideContext` and press its gesture endpoints.
 
 const XHTML = "http://www.w3.org/1999/xhtml";
 const SRC = "chrome://browser/content/ressac/sidebar.html?";
@@ -30,7 +31,8 @@ const EXIT_MS = 200;
 const SNAPSHOT_MAX = 2_000_000;
 
 type Frame = HTMLIFrameElement & { ressacHide?: { api: HideApi } };
-type Got = { text: string; rect: HideRect };
+/** `origin`: the top document's, from the parent (RessacHideParent.origin), whichever frame the text is in. */
+type Got = { text: string; rect: HideRect; origin: string | null };
 
 export type Ending = NonNullable<HideContext["ending"]>;
 
@@ -52,23 +54,29 @@ export function ending(o: { agentReached: boolean; runs: { start: number; end: n
 }
 
 /**
- * What every conversation masks in `text` of tab `tab` (commonRuns): mask.runs asked for each window, null (no
- * session) left out, a failed answer counted as masking nothing. The marks and the ending use this one rule: a tab's
- * tool may come from any window's conversation.
+ * What every token masks in `text` of tab `tab` (commonRuns): mask.runs asked for each window, null (no session) left
+ * out, and always for the main token (`window: null`), whose tools need no conversation. A failed or malformed answer
+ * masks nothing (fail closed). The marks and the ending use this one rule: a tab's tool may come from any token.
  */
 export async function runsForAll(request: (method: string, params: unknown) => Promise<unknown>, windows: string[], p: { tab: string; url: string; agentReached: boolean; text: string }): Promise<{ start: number; end: number }[]> {
-  const all = await Promise.all(
-    windows.map((window) =>
-      request("mask.runs", { window, tab: p.tab, url: p.url, agentReached: p.agentReached, texts: [p.text] }).then(
-        (x) => {
-          const runs = (x as { runs: MaskedRun[][] | null }).runs;
-          return runs === null ? null : (runs[0] ?? []);
-        },
-        () => [],
-      ),
-    ),
-  );
-  return commonRuns(all);
+  const ask = (window: string | null) =>
+    request("mask.runs", { window, tab: p.tab, url: p.url, agentReached: p.agentReached, texts: [p.text] }).then(
+      (x) => {
+        const runs = (x as { runs?: unknown } | null)?.runs;
+        return Array.isArray(runs) ? (Array.isArray(runs[0]) ? (runs[0] as MaskedRun[]) : []) : runs === null && window !== null ? null : [];
+      },
+      () => [],
+    );
+  return commonRuns(await Promise.all([ask(null), ...windows.map(ask)]));
+}
+
+/**
+ * How much of the trimmed `value` the runs must cover for `hidden`: all of it, but for an e-mail only its local part
+ * (the kernel masks what comes before the `@`, the domain stays readable).
+ */
+export function coverLength(field: PassportField, value: string): number {
+  const at = value.indexOf("@");
+  return field === "email" && at > 0 ? at : value.length;
 }
 
 /** The toast's « Annuler » window, on an injectable clock: what `open` keeps, `take` gives once, within `ms`. */
@@ -100,6 +108,8 @@ const originOf = (url: string) => {
   }
 };
 const scaled = (r: HideRect, z: number): HideRect => ({ x: r.x * z, y: r.y * z, width: r.width * z, height: r.height * z });
+// The same helper as hide-actor.ts's, not imported: that module is the actor's own bundle (a value import would pull it
+// into the window's).
 const actorOf = (wg: any): RessacHideParent | null => {
   try {
     return wg?.getActor("RessacHide") ?? null;
@@ -149,7 +159,8 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
   const api: HideApi = {
     context: () => ctx,
     confirm,
-    cancel: () => close(),
+    // The save in flight always reaches its toast (or its error): no cancel while saving.
+    cancel: () => void (ctx?.phase !== "saving" && close()),
     undo,
     onChange(cb) {
       listeners.add(cb);
@@ -157,11 +168,11 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     },
   };
 
-  function frame(id: string, query: string): Frame {
+  function frame(id: string, query: string, z: number): Frame {
     const f = doc.createElementNS(XHTML, "iframe") as Frame;
     f.id = id;
     // Out of the flow before it is appended (spike S8), and click-through until a phase needs it.
-    f.style.cssText = "position: fixed; z-index: 3; border: 0; background: transparent; display: none; pointer-events: none";
+    f.style.cssText = `position: fixed; z-index: ${z}; border: 0; background: transparent; display: none; pointer-events: none`;
     doc.getElementById("browser")!.append(f);
     const mayLoad = cutFrameNetwork(f);
     f.ressacHide = { api };
@@ -180,8 +191,9 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     return f;
   }
   const frames = () => {
-    if (!layer?.isConnected) layer = frame("ressac-hide-layer", "hide");
-    if (!bubble?.isConnected) bubble = frame("ressac-hide-bubble", "hide-bubble");
+    // The bubble over the layer (which keeps the pointer for the whole gesture): its buttons stay clickable.
+    if (!layer?.isConnected) layer = frame("ressac-hide-layer", "hide", 3);
+    if (!bubble?.isConnected) bubble = frame("ressac-hide-bubble", "hide-bubble", 4);
   };
 
   /** Both frames where the phase puts them; they leave after their exit fade. */
@@ -196,7 +208,7 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
       return;
     }
     const a = selected().getBoundingClientRect();
-    Object.assign(layer.style, { left: `${a.left}px`, top: `${a.top}px`, width: `${a.width}px`, height: `${a.height}px`, display: "", pointerEvents: ctx.phase === "pick" ? "auto" : "none" });
+    Object.assign(layer.style, { left: `${a.left}px`, top: `${a.top}px`, width: `${a.width}px`, height: `${a.height}px`, display: "", pointerEvents: "auto" });
     if (ctx.phase === "pick") return void (bubble.style.display = "none");
     if (ctx.phase === "toast") {
       // Centred by its fixed width, never a transform: a transformed frame gets its clicks at the wrong place.
@@ -246,8 +258,10 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
   // The pointer while picking, in the layer frame's CSS px (the content area's): the actor wants the page's, unzoomed.
   let hovering = false;
   let nextHover: [number, number] | null = null;
+  /** The pointer's last place over the layer: a scroll while armed outlines again what is now under it. */
+  let lastPointer: [number, number] | null = null;
   async function hover(x: number, y: number) {
-    nextHover = [x, y];
+    nextHover = lastPointer = [x, y];
     if (hovering) return;
     hovering = true;
     try {
@@ -270,12 +284,26 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     const g = gen;
     const r = await actorOf(b.browsingContext?.currentWindowGlobal)?.at("pickAt", x / z, y / z).catch(() => null);
     if (g !== gen || ctx?.phase !== "pick" || !r) return;
-    await open(b, { text: r.text, rect: scaled(r.rect, z) });
+    await open(b, { text: r.text, rect: scaled(r.rect, z), origin: r.origin });
+  }
+  /** A wheel over the armed layer scrolls the page itself (a plain scrollBy, no wheel event in it), then outlines again. */
+  async function scroll(e: WheelEvent) {
+    const b = selected();
+    const z = b.fullZoom || 1;
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? b.getBoundingClientRect().height : 1;
+    const g = gen;
+    await actorOf(b.browsingContext?.currentWindowGlobal)?.scrollBy((e.deltaX * unit) / z, (e.deltaY * unit) / z);
+    if (g === gen && lastPointer) void hover(...lastPointer);
   }
   function listen(w: Window) {
     w.addEventListener("mousemove", (e) => ctx?.phase === "pick" && void hover(e.clientX, e.clientY));
+    w.addEventListener("wheel", (e) => ctx?.phase === "pick" && void scroll(e), { passive: true });
     w.addEventListener("click", (e) => {
-      if (ctx?.phase !== "pick" || e.button !== 0) return;
+      if (e.button !== 0) return;
+      // Past the pick the layer still holds the pointer: a click beside the bubble or the toast ends the gesture
+      // (never during a save, which always reaches its toast).
+      if (ctx && ctx.phase !== "pick") return void (ctx.phase !== "saving" && close());
+      if (ctx?.phase !== "pick") return;
       e.preventDefault();
       void pickAt(e.clientX, e.clientY);
     });
@@ -313,12 +341,14 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     if (!tabId || !tab || b !== selected()) return close();
     frames();
     const g = ++gen;
+    // The answer's top document must still be the page shown: a navigation between the pick and here names another site.
+    const top = String(b.currentURI?.spec ?? "");
+    if (got.origin === null || got.origin !== originOf(top)) return close();
     const info = tabInfos(store.state).find((t) => t.id === tabId);
     const agentReached = info?.agentReached ?? true;
     // The top page's site (the kernel zones a tab by its top URL, so a frame's site would not mask it here), and only an
     // https one: the passport's sites match https pages only (originMatches), whatever a test seam allows.
-    const top = String(b.currentURI?.spec ?? "");
-    const origin = !agentReached && top.startsWith("https://") && cleanOrigin(top) !== null ? new URL(top).origin : null;
+    const origin = !agentReached && got.origin.startsWith("https://") && cleanOrigin(got.origin) !== null ? got.origin : null;
     const long = got.text.length > PASSPORT_LIMITS.value;
     const z = b.fullZoom || 1;
     const [guess, snap] = await Promise.all([
@@ -373,7 +403,7 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     if (g !== gen || !ctx) return;
     const host = p.origin === null ? null : cleanOrigin(p.origin);
     const siteMatches = host !== null && originMatches(host, originOf(url));
-    const end = ending({ agentReached: p.agentReached || reachedNow, runs, length: value.length, siteMatches });
+    const end = ending({ agentReached: p.agentReached || reachedNow, runs, length: coverLength(choice.field, value), siteMatches });
     const undoable = r.created || r.addedOrigin;
     if (undoable) saved.open({ profile: p.profile, id: r.id, created: r.created, addedOrigin: r.addedOrigin, updated: r.updated, origin: p.origin });
     pick = null;
@@ -382,7 +412,7 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     const here = activeTab() === p.tab;
     // The e2e read the ending here: the chip's sentence lasts 2.5 s.
     layer!.dataset.ending = end;
-    set({ ...ctx, phase: "toast", ending: end, undoable, readBefore: !!store.access.tabs[p.tab]?.read, chip: `⟨${FIELD_LABEL[choice.field]}-…⟩`, hover: undefined, ...(here ? {} : { target: undefined }), seq: ++seq });
+    set({ ...ctx, phase: "toast", ending: end, created: r.created, undoable, readBefore: !!store.access.tabs[p.tab]?.read, chip: `⟨${FIELD_LABEL[choice.field]}-…⟩`, hover: undefined, ...(here ? {} : { target: undefined }), seq: ++seq });
     toastTimer = setTimeout(close, UNDO_MS);
   }
 
@@ -411,11 +441,11 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     if (!top || !own || !offset) return null;
     if (selection) {
       const s = await own.selection();
-      return s && { text: s.text, rect: { ...s.rect, x: s.rect.x + offset.x, y: s.rect.y + offset.y } };
+      return s && { text: s.text, rect: { ...s.rect, x: s.rect.x + offset.x, y: s.rect.y + offset.y }, origin: s.origin };
     }
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     const r = await top.at("pickAt", x + offset.x, y + offset.y).catch(() => null);
-    return r && { text: r.text, rect: r.rect };
+    return r && { text: r.text, rect: r.rect, origin: r.origin };
   }
   const onMenu = (e: Event) => {
     if (e.target !== menu) return;
@@ -481,7 +511,10 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
   };
 }
 
-/** How long a page text's masked runs are reused while it does not change (a new passport entry shows within this). */
+/**
+ * How long a page's masked slices are reused (only their rects re-measured each MARKS_EVERY_MS): a new passport entry, a
+ * changed text or a new conversation shows within this; a passport push, a session change or a gone node at once.
+ */
 const RUNS_FRESH_MS = 1000;
 
 /** host/masking.ts RUNS_CHARS: a longer page text gets no runs, so it is not walked again until a new document. */
@@ -490,9 +523,9 @@ const TEXT_CAP = 200_000;
 /**
  * « Voir ce qu'il ne voit pas »: while the agent's aura is on the shown tab (`start(tab)`, `stop()`), a hatch over each
  * text of its top document the agent would receive masked (the kernel's mask.runs on the page's visible text, measured
- * by the RessacHide actor). Page-proof: the actor only answers; nothing listens in the page. The parent re-measures every
- * MARKS_EVERY_MS (a scroll, a resize or a change shows within it, the page sends nothing) and starts over at each new
- * document. Any window's conversation may run the tool behind the aura, so only what every conversation masks is
+ * by the RessacHide actor). Page-proof: the actor only answers; nothing listens in the page. The parent re-measures the
+ * masked slices' rects every MARKS_EVERY_MS (a scroll or a resize shows within it, the page sends nothing), walks the
+ * text and asks mask.runs again every RUNS_FRESH_MS, and starts over at each new document. Any window's conversation may run the tool behind the aura, so only what every conversation masks is
  * hatched (commonRuns).
  * shortcut: frames are not marked (their text is not in the top document's pieces); upgrade by walking the tab's
  * browsing contexts with RessacHideParent.offsetOf and clipping to each frame's box.
@@ -504,7 +537,14 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
   let f: (HTMLIFrameElement & { ressacMarks?: { api: MarksApi } }) | undefined;
   let poll: ReturnType<typeof setInterval> | undefined;
   let exitTimer: ReturnType<typeof setTimeout> | undefined;
-  let cache: { key: string; at: number; runs: { start: number; end: number }[] } | null = null;
+  /** The shown document's masked slices, as of `at`: each tick only measures their rects (`pieces` walks the whole page). */
+  let plan: { actor: RessacHideParent; key: string; at: number; slices: { piece: number; from: number; to: number }[][] } | null = null;
+  /** Each forget: a plan made across one is used once, never kept (its runs may predate the change). */
+  let epoch = 0;
+  const forget = () => {
+    plan = null;
+    epoch++;
+  };
   /** The shown document's text is over TEXT_CAP: not walked again until the next document. */
   let tooLong = false;
   const listeners = new Set<() => void>();
@@ -561,31 +601,35 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
       }
   }
 
-  async function runsOf(t: string, url: string, text: string): Promise<{ start: number; end: number }[]> {
-    const windows = store.state.windows.map((w) => w.id);
-    const agentReached = o.agentReached(t);
-    const key = JSON.stringify([windows, t, url, agentReached, text]);
-    if (cache?.key === key && Date.now() - cache.at < RUNS_FRESH_MS) return cache.runs;
-    const runs = await runsForAll((m, q) => store.agent.request(m, q), windows, { tab: t, url, agentReached, text });
-    cache = { key, at: Date.now(), runs };
-    return runs;
+  /** The page's text walked again and asked of the kernel: the slices to measure until RUNS_FRESH_MS have passed. */
+  async function replan(t: string, b: any, actor: RessacHideParent, key: string) {
+    const e = epoch;
+    const pieces = await actor.pieces();
+    const { text, starts } = joinPieces(pieces);
+    if (text.length > TEXT_CAP) tooLong = true;
+    const runs = !text.trim() || tooLong ? [] : await runsForAll((m, q) => store.agent.request(m, q), store.state.windows.map((w) => w.id), { tab: t, url: String(b.currentURI?.spec ?? ""), agentReached: o.agentReached(t), text });
+    // Same actor as `pieces`: its slices index into that answer's text nodes.
+    const made = { actor, key, at: Date.now(), slices: runs.length ? runsToPieces(runs, starts, pieces.map((p) => p.text.length)) : [] };
+    if (e === epoch) plan = made;
+    return made;
   }
   async function measure(): Promise<HideRect[]> {
     const t = tab, b = browser();
     const actor = actorOf(b?.browsingContext?.currentWindowGlobal);
     if (!t || !actor || tooLong) return [];
-    const pieces = await actor.pieces();
-    const { text, starts } = joinPieces(pieces);
-    if (text.length > TEXT_CAP) tooLong = true;
-    if (!text.trim() || tooLong) return [];
-    const runs = await runsOf(t, String(b.currentURI?.spec ?? ""), text);
-    if (!runs.length) return [];
-    // Same actor as `pieces`: its slices index into that answer's text nodes.
-    const got = await actor.rects(runsToPieces(runs, starts, pieces.map((p) => p.text.length)));
+    const key = JSON.stringify([store.state.windows.map((w) => w.id), t, String(b.currentURI?.spec ?? ""), o.agentReached(t)]);
+    let p = plan?.actor === actor && plan.key === key && Date.now() - plan.at < RUNS_FRESH_MS ? plan : await replan(t, b, actor, key);
+    if (!p.slices.length) return [];
+    let got = await actor.rects(p.slices);
+    // A slice's node is gone (or the answer is malformed): the page changed under the plan, so it is made again now.
+    if (!got) {
+      p = await replan(t, b, actor, key);
+      got = p.slices.length ? await actor.rects(p.slices) : [];
+    }
     const z = b.fullZoom || 1;
     const a = b.getBoundingClientRect();
     // Only what is in view: a long page's runs further down cost no drawing.
-    return got.flat().map((r) => scaled(r, z)).filter((r) => r.x < a.width && r.y < a.height && r.x + r.width > 0 && r.y + r.height > 0);
+    return (got ?? []).flat().map((r) => scaled(r, z)).filter((r) => r.x < a.width && r.y < a.height && r.x + r.width > 0 && r.y + r.height > 0);
   }
   const marks = createMarks({ measure, draw, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (x) => clearTimeout(x as ReturnType<typeof setTimeout>) });
 
@@ -594,6 +638,7 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
     onLocationChange(b: any, wp: any, _req: unknown, _loc: unknown, flags: number) {
       if (tab && b === browser() && wp?.isTopLevel && !(flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)) {
         tooLong = false;
+        forget();
         marks.stop();
         marks.start();
       }
@@ -603,6 +648,12 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
   let listening = false;
   const onResize = () => rects && place();
   win.addEventListener("resize", onResize);
+  // The host says so after each passport push (a hide, an undo, a Réglages save) and each conversation opened or ended:
+  // the plan is stale, measured again at once rather than within RUNS_FRESH_MS.
+  const offMasking = store.agent.on("agent.masking", () => {
+    forget();
+    marks.nudge();
+  });
 
   function stop() {
     tab = null;
@@ -614,7 +665,7 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
       if (tab === t) return;
       stop();
       tab = t;
-      cache = null;
+      forget();
       tooLong = false;
       if (!listening && win.gBrowser) {
         win.gBrowser.addTabsProgressListener(progress);
@@ -631,6 +682,7 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
       clearTimeout(exitTimer);
       if (listening) win.gBrowser?.removeTabsProgressListener(progress);
       win.removeEventListener("resize", onResize);
+      offMasking();
       f?.remove();
       listeners.clear();
     },

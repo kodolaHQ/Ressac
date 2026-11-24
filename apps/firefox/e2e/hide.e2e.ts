@@ -27,6 +27,18 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>Fiche</title><body sty
 <span id="known" style="position:absolute;left:100px;top:160px">Jeanne Durand</span>
 <span id="swap" style="position:absolute;left:100px;top:220px">Lucie Martin</span>
 <p id="words" style="position:absolute;left:100px;top:280px;margin:0">Rendez-vous lundi matin avec Paul</p>`;
+// The page records what reaches it: pointer and wheel events, a :hover transition, scrolls. A span below the fold.
+const SPY = `${PAGE}<style>body{height:4000px} #name{transition:color 1ms} #name:hover{color:rgb(1,2,3)}</style>
+<span id="low" style="position:absolute;left:100px;top:2400px">Paul Simon</span>
+<script>
+  // Each event's type, and when (epoch ms, comparable with the chrome's clock on the same machine).
+  window.__seen = [];
+  window.__at = [];
+  const note = (t, e) => (__seen.push(t), __at.push(performance.timeOrigin + e.timeStamp));
+  document.addEventListener("transitionrun", (e) => note("transitionrun " + e.target.id, e), true);
+  for (const t of ["mousemove", "mouseover", "mouseout", "mouseenter", "pointermove", "pointerover", "pointerenter", "pointerdown", "pointerup", "mousedown", "mouseup", "click", "wheel"]) addEventListener(t, (e) => note(t, e), true);
+  addEventListener("scroll", (e) => __seen.at(-1) !== "scroll" && note("scroll", e));
+</script>`;
 const FRAME = `<!doctype html><meta charset="utf-8"><body style="margin:0;font:16px sans-serif"><span id="far" style="position:absolute;left:40px;top:40px">Lucie Martin</span>`;
 const WITH_FRAME = (frame: string) => `${PAGE}<iframe src="${frame}" style="position:absolute;left:400px;top:340px;width:300px;height:120px;border:0"></iframe>`;
 
@@ -64,7 +76,7 @@ beforeAll(async () => {
   execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "2", "-subj", "/CN=127.0.0.1"], { stdio: "ignore" });
   tls = { key: readFileSync(key), cert: readFileSync(cert) };
   frameSite = await startHttps({ "/cadre.html": FRAME }, "localhost");
-  server = await startHttps({ "/fiche.html": PAGE, "/cadre-page.html": WITH_FRAME(`${frameSite.url}/cadre.html`) });
+  server = await startHttps({ "/fiche.html": PAGE, "/espion.html": SPY, "/cadre-page.html": WITH_FRAME(`${frameSite.url}/cadre.html`) });
   known = await startHttps({ "/fiche.html": PAGE });
   plain = await startServer({ routes: { "/fiche.html": (_req: unknown, res: ServerResponse) => html(res, PAGE) } });
 });
@@ -111,10 +123,15 @@ async function tab(url: string, agentReached = false): Promise<string> {
   return Object.keys(s.tabs).find((x) => !before.has(x))!;
 }
 
-/** The toolbar button, then the outline over `selector` (in the `frame`-th frame), moved to until the layer draws it, then the click. */
-async function pick(selector: string, frame?: number): Promise<void> {
+/** The toolbar button: the viewfinder armed, its layer taking the pointer. */
+async function arm(): Promise<void> {
   await click(m, '[data-testid="hide-button"]');
   await waitFor(m, "return document.getElementById('ressac-hide-layer')?.style.pointerEvents", (v) => v === "auto");
+}
+
+/** The toolbar button, then the outline over `selector` (in the `frame`-th frame), moved to until the layer draws it, then the click. */
+async function pick(selector: string, frame?: number, armed = false): Promise<void> {
+  if (!armed) await arm();
   const at = await center(m, B, selector, frame);
   // The layer listens once its document has loaded: moved over the target until it draws the outline.
   await expect
@@ -301,4 +318,56 @@ it("Touch ID refused: nothing is written and the bubble closes", { timeout: 120_
   // The bubble closes once `hide` has answered « cancelled », after any write it could have made.
   expect(await readPassport(profile!)).toHaveLength(1);
   expect(await has("hide-toast")).toBe(false);
+});
+
+it("the page sees no pointer from the arm to the close: through the pick, the bubble and Annuler", { timeout: 120_000 }, async () => {
+  await start();
+  await tab(`${server.url}/espion.html`);
+  // The panel's press left the pointer somewhere: moved to Ressac's UI first, then the record starts.
+  await inUi(m, `ui.synthesizeMouseEvent("mousemove", 5, 5, {}); return true;`);
+  await inBrowser(m, B, "window.__seen.length = 0; window.__at.length = 0;");
+  await pick("#name");
+  expect(await bubbleText("hide-question")).toBe("Cacher « Camille Aubrac » pour l'agent ?");
+  // The bubble is up: the pointer rests over the value picked, then moves a little there, as a hand does.
+  const at = await center(m, B, "#name");
+  await trustedMouse(m, B, { x: at.x + 3, y: at.y + 1 }, { move: true });
+  await trustedMouse(m, B, at, { move: true });
+  expect(await m.execute<string>("return document.getElementById('ressac-hide-layer').style.pointerEvents")).toBe("auto");
+  // The close's instant, on the chrome's clock: the layer lets the pointer go then.
+  await m.execute(`const l = document.getElementById("ressac-hide-layer");
+    window.ressacTestClosedAt = 0;
+    new MutationObserver(() => { if (!window.ressacTestClosedAt && l.style.pointerEvents === "none") window.ressacTestClosedAt = performance.timeOrigin + performance.now(); }).observe(l, { attributes: true, attributeFilter: ["style"] });`);
+  await click(m, '[data-testid="hide-cancel"]', { frame: "hideBubble" });
+  const closedAt = await waitFor(m, "return window.ressacTestClosedAt", (v) => typeof v === "number" && v > 0, 5000);
+  // A late :hover transition or a synthetic move dispatched for the moves above would come within a frame or two: the
+  // window starts at the close, the last moment the layer held the pointer.
+  await new Promise((r) => setTimeout(r, 200));
+  const [seen, times] = await inBrowser<[string[], number[]]>(m, B, "return [window.__seen, window.__at];");
+  expect(seen.filter((_, i) => times[i]! < (closedAt as number))).toEqual([]);
+  // After the close (measured 2026-11-24, not asserted): about 150 ms later the page got pointerover, pointerenter,
+  // mouseover and mouseenter where the pointer rested (no mousemove, no :hover transition within 200 ms), the limit
+  // SECURITY.md states. The same events are what a layer released at the bubble used to hand the page during it.
+});
+
+it("a wheel while armed scrolls the page (no wheel event in it) and a span that was below the fold is picked", { timeout: 120_000 }, async () => {
+  await start();
+  await tab(`${server.url}/espion.html`);
+  await inUi(m, `ui.synthesizeMouseEvent("mousemove", 5, 5, {}); return true;`);
+  await inBrowser(m, B, "window.__seen.length = 0; window.__at.length = 0;");
+  const below = await inBrowser<boolean>(m, B, `return document.getElementById("low").getBoundingClientRect().top > innerHeight;`);
+  expect(below).toBe(true);
+  await arm();
+  // A wheel over the layer, at its middle, until the span is in view (the layer listens once its document has loaded).
+  await expect
+    .poll(async () => {
+      await m.execute(`const b = ${B}, r = b.getBoundingClientRect(); window.windowUtils.sendWheelEvent(r.left + r.width / 2, r.top + r.height / 2, 0, 300, 0, WheelEvent.DOM_DELTA_PIXEL, 0, 0, 0, 0);`);
+      return inBrowser<boolean>(m, B, `const r = document.getElementById("low").getBoundingClientRect(); return r.top > 0 && r.bottom < innerHeight - 20;`);
+    }, { timeout: 15_000, interval: 200 })
+    .toBe(true);
+  await pick("#low", undefined, true);
+  expect(await bubbleText("hide-question")).toBe("Cacher « Paul Simon » pour l'agent ?");
+  const seen = await inBrowser<string[]>(m, B, "return window.__seen;");
+  expect(seen).toContain("scroll");
+  expect(seen).not.toContain("wheel");
+  expect(seen.filter((e) => e !== "scroll")).toEqual([]);
 });

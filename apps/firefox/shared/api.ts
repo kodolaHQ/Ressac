@@ -1081,6 +1081,8 @@ export interface HideContext {
   name?: { given: string; family: string };
   /** notHere: in the passport, but this page (not https) is no passport site, so it is not masked here. */
   ending?: "hidden" | "next" | "agentReached" | "notHere";
+  /** The hide wrote a new entry (else it only added a site, or the value was already there): the chip never says « Ajouté » then. */
+  created?: boolean;
   /** The toast's « Annuler »: false when the hide wrote nothing (the value was already there, with this site). */
   undoable?: boolean;
   /** The tab's conversation had already read this page: the toast says so. */

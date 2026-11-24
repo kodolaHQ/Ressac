@@ -156,6 +156,7 @@ const actorOf = (wg: any): RessacHideParent | null => {
 };
 
 export class RessacHideParent extends JSWindowActorParent {
+  // pickAt and hoverAt: test seams (e2e/hide-pick.e2e.ts), the layer asks `at` itself.
   /** The text a person points at in `browser`, in its top window's CSS px (frames followed): `{ text, rect, origin }` or null. */
   static pickAt(browser: any, x: number, y: number): Promise<{ text: string; rect: Rect; origin: string | null } | null> {
     return actorOf(browser.browsingContext?.currentWindowGlobal)?.at("pickAt", x, y) ?? Promise.resolve(null);
@@ -179,9 +180,12 @@ export class RessacHideParent extends JSWindowActorParent {
     return o;
   }
 
-  /** This document's origin, from its WindowGlobal (never the child's word), without a container's suffix; null for a null or opaque principal. */
+  /**
+   * The TOP document's origin, from its WindowGlobal (never a child's word), without a container's suffix; null for a
+   * null or opaque principal. A frame's answer names its top page: the site a hide adds is always the top page's.
+   */
   get origin(): string | null {
-    const p = this.manager.documentPrincipal;
+    const p = this.browsingContext.top?.currentWindowGlobal?.documentPrincipal;
     return p?.isContentPrincipal ? p.originNoSuffix : null;
   }
 
@@ -195,7 +199,7 @@ export class RessacHideParent extends JSWindowActorParent {
       const child = this.browsingContext.children.find((c: any) => c.id === id);
       const sub = await actorOf(child?.currentWindowGlobal)?.at(kind, fx, fy);
       const rect = sub && bounded({ ...sub.rect, x: sub.rect.x + x - fx, y: sub.rect.y + y - fy });
-      return sub && rect ? { ...sub, rect } : null;
+      return sub && rect ? { text: sub.text, rect, origin: this.origin } : null;
     }
     const rect = bounded(r?.rect);
     if (!rect) return null;
@@ -204,11 +208,16 @@ export class RessacHideParent extends JSWindowActorParent {
     return { text: r.text.slice(0, TEXT_MAX), rect, origin: this.origin };
   }
 
-  /** The current selection of this document: `{ text, rect, origin }` (rect in its own viewport) or null. */
+  /** The current selection of this document: `{ text, rect, origin }` (rect in its own viewport, origin the top's) or null. */
   async selection(): Promise<{ text: string; rect: Rect; origin: string | null } | null> {
     const r: any = await this.sendQuery("selection").catch(() => null);
     const rect = bounded(r?.rect);
     return rect && typeof r.text === "string" && r.text ? { text: r.text.slice(0, TEXT_MAX), rect, origin: this.origin } : null;
+  }
+
+  /** Scrolls this document by (dx, dy) CSS px, at once: what a wheel over the armed viewfinder does to the page. */
+  async scrollBy(dx: number, dy: number): Promise<void> {
+    await this.sendQuery("scrollBy", { x: dx, y: dy }).catch(() => null);
   }
 
   /** This document's visible text pieces; `rects` slices index into the last answer. */
@@ -217,10 +226,11 @@ export class RessacHideParent extends JSWindowActorParent {
     return Array.isArray(r?.pieces) ? r.pieces.filter((p: any) => typeof p?.text === "string" && typeof p.block === "boolean") : [];
   }
 
-  /** Each run's rects, in this document's viewport (add offsetOf for a frame). */
-  async rects(slices: { piece: number; from: number; to: number }[][]): Promise<Rect[][]> {
+  /** Each run's rects, in this document's viewport (add offsetOf for a frame); null when a slice's node is gone or the answer is malformed (walk `pieces` again). */
+  async rects(slices: { piece: number; from: number; to: number }[][]): Promise<Rect[][] | null> {
     const r: any = await this.sendQuery("rects", { slices }).catch(() => null);
-    return Array.isArray(r?.rects) ? r.rects.map((run: unknown) => (Array.isArray(run) ? run.map(bounded).filter((x): x is Rect => !!x) : [])) : [];
+    if (!Array.isArray(r?.rects) || r.gone !== false) return null;
+    return r.rects.map((run: unknown) => (Array.isArray(run) ? run.map(bounded).filter((x): x is Rect => !!x) : []));
   }
 }
 
@@ -234,13 +244,15 @@ export class RessacHideChild extends JSWindowActorChild {
     return sel && text && sel.rangeCount ? { text, rect: plain(sel.getRangeAt(0).getBoundingClientRect()) } : null;
   }
 
-  /** Each run's slices measured with a detached Range (never the selection), in this viewport's CSS px. */
-  private rects(slices: unknown): Rect[][] {
-    if (!Array.isArray(slices)) return [];
+  /** Each run's slices measured with a detached Range (never the selection), in this viewport's CSS px; `gone`: a slice's node left the page. */
+  private rects(slices: unknown): { rects: Rect[][]; gone: boolean } {
+    if (!Array.isArray(slices)) return { rects: [], gone: false };
     const range = this.document.createRange();
-    return slices.map((run) =>
+    let gone = false;
+    const rects = slices.map((run) =>
       (Array.isArray(run) ? run : []).flatMap((s: any) => {
         const node = this.nodes[s?.piece];
+        if (!node?.isConnected) gone = true;
         if (!node?.isConnected || !Number.isInteger(s.from) || !Number.isInteger(s.to)) return [];
         const len = node.data.length;
         range.setStart(node, Math.min(Math.max(0, s.from), len));
@@ -248,6 +260,7 @@ export class RessacHideChild extends JSWindowActorChild {
         return [...range.getClientRects()].filter((r) => r.width > 0).map(plain);
       }),
     );
+    return { rects, gone };
   }
 
   didDestroy(): void {
@@ -277,7 +290,11 @@ export class RessacHideChild extends JSWindowActorChild {
         return { pieces };
       }
       case "rects":
-        return { rects: this.rects(m.data?.slices) };
+        return this.rects(m.data?.slices);
+      case "scrollBy":
+        // A plain scroll of the page's own viewport (the page sees a scroll, never a wheel event), bounded like a rect.
+        if (at) this.contentWindow?.scrollBy({ left: Math.max(-RECT_MAX, Math.min(RECT_MAX, x)), top: Math.max(-RECT_MAX, Math.min(RECT_MAX, y)), behavior: "instant" });
+        return null;
     }
     return null;
   }
