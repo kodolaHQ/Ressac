@@ -1,8 +1,8 @@
 import { createApi, type ApiFirefox } from "./api";
 import { settingsPageDocument } from "./settings-api";
-import type { OverlayApi } from "../shared/api";
+import type { HideApi, OverlayApi } from "../shared/api";
 import { createBadgeApi } from "./badge-api";
-import { wrapOverlayApi } from "./overlay-api";
+import { wrapHideApi, wrapOverlayApi } from "./overlay-api";
 import { createSiteApi, inertRessac } from "./site-api";
 import type { BadgeChrome } from "../chrome/store/apps";
 
@@ -29,6 +29,11 @@ if (params.has("site")) {
   const overlay = (window.frameElement as (Element & { ressacOverlay?: { api: OverlayApi } }) | null)?.ressacOverlay;
   if (!overlay) throw new Error("Ressac design overlay loaded before its window controller");
   window.ressac = inertRessac(wrapOverlayApi(overlay.api)) as ApiFirefox;
+} else if (params.has("hide") || params.has("hide-bubble")) {
+  // « Cacher pour l'agent »'s layer and bubble (chrome/window/hide-layer.ts): only the gesture's endpoints.
+  const hide = (window.frameElement as (Element & { ressacHide?: { api: HideApi } }) | null)?.ressacHide;
+  if (!hide) throw new Error("Ressac hide layer loaded before its window controller");
+  window.ressac = inertRessac(wrapHideApi(hide.api)) as ApiFirefox;
 } else {
   const win = window.parent.ressacWindow;
   if (!win) throw new Error("Ressac UI loaded before its window controller");

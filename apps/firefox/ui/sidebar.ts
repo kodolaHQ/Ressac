@@ -4,6 +4,7 @@ import { mount } from "svelte";
 // Theme tokens.
 import "../ui/theme.css";
 import DesignApp from "../ui/DesignApp.svelte";
+import HideApp from "./HideApp.svelte";
 import AppBadge from "./BadgeApp.svelte";
 import AgentPill from "./AgentPill.svelte";
 import App from "./App.svelte";
@@ -30,6 +31,10 @@ else if (params.has("tabhome")) {
   const target = document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" }));
   target.style.cssText = "display: flex; flex-direction: column; height: 100%";
   mount(SiteHomeFrame, { target, props: { api: createHomeApi(controller), controller } });
+} else if (params.has("hide") || params.has("hide-bubble")) {
+  // sidebar.html?hide / ?hide-bubble: « Cacher pour l'agent »'s layer over the page and its bubble (transparent).
+  document.documentElement.style.background = document.body.style.background = "transparent";
+  mount(HideApp, { target: document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" })), props: { part: params.has("hide") ? "layer" : "bubble" } });
 } else if (params.has("badge") || params.has("overlay") || params.has("agentview")) {
   document.documentElement.style.background = "transparent";
   document.body.style.background = "transparent";

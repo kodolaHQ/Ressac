@@ -7,7 +7,7 @@ import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type
 import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile, type InstructionChange, type ChangedFile, type LiftChoice, type QuarantinedFile } from "@ressac/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, MachineIdleSchema, type DockerStatus, type MachineShown, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
-import type { PassportEntry } from "../../../packages/kernel/src/mask/passport-fields.ts";
+import type { PassportEntry, PassportField } from "../../../packages/kernel/src/mask/passport-fields.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
 import type { ExtensionsBar, ExtensionLine, SpaceExtensionLine, SiteExtensionLine } from "./extensions";
@@ -532,6 +532,8 @@ export interface ApiRessac {
   };
   /** Design mode of this window's active tab, and baskets of notes. */
   design: ApiDesign;
+  /** « Cacher pour l'agent »: the toolbar button arms (or leaves) the viewfinder over this window's tab. */
+  hide: { toggle(): void; picking(): boolean; onChange(cb: () => void): () => void };
   external: ExternalApi;
   review: ReviewApi;
   settings: SettingsApi;
@@ -1061,6 +1063,47 @@ export type OverlayApi = {
   /** Esc or « Annuler » in the bubble; « Fermer » of the basket. */
   cancel(): void;
 } & Pick<ApiDesign, "basket" | "remove" | "send" | "batches" | "handled" | "onChange">;
+/** A rect in the hide layer frame's CSS px (its origin is the page's top left corner). */
+export type HideRect = { x: number; y: number; width: number; height: number };
+/**
+ * « Cacher pour l'agent » (chrome/window/hide-layer.ts), what both of its frames show: the layer (outline, animation,
+ * ending) and the bubble frame (bubble, error, toast). The frozen text is the chrome's; the frames only show it.
+ */
+export interface HideContext {
+  /** pick: the viewfinder is armed; bubble: the confirmation; saving: Touch ID and the write; toast: saved. */
+  phase: "pick" | "bubble" | "saving" | "toast" | "error";
+  /** The text frozen at the pick (what is saved), and its start…end over 60 characters. */
+  text: string;
+  short: string;
+  /** « Sur {site} et vos autres sources »; null: no site is added (an agent-reached tab, a page without a host). */
+  site: string | null;
+  field: PassportField;
+  name?: { given: string; family: string };
+  ending?: "hidden" | "next" | "agentReached";
+  /** The toast's « Annuler »: false when the hide wrote nothing (the value was already there, with this site). */
+  undoable?: boolean;
+  /** The tab's conversation had already read this page: the toast says so. */
+  readBefore?: boolean;
+  /** invalid: the text does not fit the chosen type (the bubble stays open). */
+  error?: "long" | "write" | "unreadable" | "full" | "invalid";
+  hover?: HideRect;
+  target?: HideRect;
+  /** The target's pixels at the pick (data: URL), and the page colour behind it, for the animation. */
+  snapshot?: { url: string; background: string };
+  /** The ending's label chip, `⟨nom-…⟩`. */
+  chip?: string;
+  /** Changes at each hide: the layer plays its animation once per value. */
+  seq: number;
+  locale: string;
+}
+/** What the hide frames may do: the gesture's endpoints only, never a raw hide or unhide. */
+export type HideApi = {
+  context(): HideContext | null;
+  confirm(choice: { field: PassportField; name?: { given: string; family: string } }): Promise<void>;
+  cancel(): void;
+  undo(): Promise<void>;
+  onChange(cb: () => void): () => void;
+};
 /** Text of a note: bounded at the entry of the main process. */
 export const REMARK_TEXT_MAX = 4000;
 

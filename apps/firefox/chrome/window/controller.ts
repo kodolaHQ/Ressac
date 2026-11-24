@@ -19,6 +19,7 @@ import { setupAnchors } from "./anchor";
 import { mountSiteBanner } from "./site-banner";
 import { mountSearchBand } from "./search-band";
 import { mountAgentPill } from "./agent-pill";
+import { mountHideLayer, type HideControl } from "./hide-layer";
 import { visibleFrame } from "./frame";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
@@ -100,6 +101,8 @@ export interface WindowController {
   tabSwitch(m: TabCycleMessage): void;
   /** The sidebar's add-on strip: buttons, pins, popups and pending updates. */
   readonly addons: WindowAddons;
+  /** « Cacher pour l'agent » over this window's tab (hide-layer.ts). */
+  readonly hide: HideControl;
 }
 
 /** Binds this browser window to the state window it claimed (store.windows.claim). */
@@ -411,6 +414,8 @@ export function createController(
   const asking = new Set<TabId>();
   const calls = mountCalls(window, store);
   unsubscribe.push(calls.dispose);
+  const hide = mountHideLayer(window, store, windowId);
+  unsubscribe.push(hide.dispose);
   const showSidebarWidth = (px: number) => {
     barWidth = px;
     document.documentElement.style.setProperty("--ressac-sidebar-w", `${px}px`);
@@ -615,6 +620,7 @@ export function createController(
     },
     tabSwitch: (m) => walk.message(windowId, m),
     addons: createAddons({ win: window, gBrowser, tabs, anchors, store, windowId: windowId }),
+    hide,
   };
   return controller;
 }

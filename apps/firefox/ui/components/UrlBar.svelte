@@ -1,6 +1,7 @@
 <script lang="ts">
   import ExtensionsBar from "../ExtensionsStrip.svelte";
   import DesignButton from "./DesignButton.svelte";
+  import HideButton from "./HideButton.svelte";
   import AccessBadge from "./AccessBadge.svelte";
   import Icon from "./Icon.svelte";
   import { fade } from "svelte/transition";
@@ -88,6 +89,7 @@
     title="{win.compact ? t("chrome-ui-compact-leave") : t("chrome-ui-compact")} ({shortcutLabel("compact", appState.value?.settings)})"
     aria-pressed={win.compact}
     onclick={() => api.dispatch({ type: "toggleCompact", windowId: win.id })}><Icon name="bar" /></button>
+  <HideButton window={win} />
   <DesignButton />
 </div>
 <div class="line">

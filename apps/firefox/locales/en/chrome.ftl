@@ -212,3 +212,37 @@ chrome-mask-fill-missing =
         [plaque] number plate
        *[other] such data
     }.
+
+## « Cacher pour l'agent » (chrome/window/hide-layer.ts, ui/HideApp.svelte)
+
+chrome-hide = Hide from the agent
+chrome-hide-question = Hide “{ $text }” from the agent?
+chrome-hide-type = Type
+chrome-hide-given = First name(s)
+chrome-hide-family = Last name
+chrome-hide-site = On { $site } and your other sources
+chrome-hide-cancel = Cancel
+chrome-hide-confirm = Hide
+chrome-hide-reauth = hide some data from the agent
+chrome-hide-ending-next = Hidden from the next conversation
+chrome-hide-ending-agent = Added to your passport. This site, opened by the agent, is not kept.
+chrome-hide-toast = Hidden from the agent
+chrome-hide-toast-undo = Undo
+chrome-hide-toast-already = Already in your passport.
+chrome-hide-read-before = The agent had already read this page.
+chrome-hide-error-long = This text is too long for the passport.
+chrome-hide-error-write = The passport could not be saved.
+chrome-hide-error-unreadable = Your passport cannot be read: open Settings › Passport.
+chrome-hide-error-full = Your passport is full.
+chrome-hide-error-invalid = This text does not fit this type: choose another one.
+chrome-hide-field-nom = Name
+chrome-hide-field-naissance = Date of birth
+chrome-hide-field-proche = A relative's name
+chrome-hide-field-adresse = Postal address
+chrome-hide-field-tel = Phone
+chrome-hide-field-email = Email
+chrome-hide-field-iban = IBAN
+chrome-hide-field-piece = ID document number
+chrome-hide-field-secu = Social security number
+chrome-hide-field-plaque = Licence plate
+chrome-hide-field-libre = Free text

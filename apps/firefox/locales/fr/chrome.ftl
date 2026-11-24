@@ -212,3 +212,37 @@ chrome-mask-fill-missing =
         [plaque] de plaque d'immatriculation
        *[other] cette donnée
     }.
+
+## « Cacher pour l'agent » (chrome/window/hide-layer.ts, ui/HideApp.svelte)
+
+chrome-hide = Cacher pour l'agent
+chrome-hide-question = Cacher « { $text } » pour l'agent ?
+chrome-hide-type = Type
+chrome-hide-given = Prénom(s)
+chrome-hide-family = Nom
+chrome-hide-site = Sur { $site } et vos autres sources
+chrome-hide-cancel = Annuler
+chrome-hide-confirm = Cacher
+chrome-hide-reauth = cacher une donnée pour l'agent
+chrome-hide-ending-next = Masqué à partir de la prochaine conversation
+chrome-hide-ending-agent = Ajouté à votre passeport. Ce site, ouvert par l'agent, n'est pas retenu.
+chrome-hide-toast = Masqué pour l'agent
+chrome-hide-toast-undo = Annuler
+chrome-hide-toast-already = Déjà dans votre passeport.
+chrome-hide-read-before = L'agent avait déjà lu cette page.
+chrome-hide-error-long = Ce texte est trop long pour le passeport.
+chrome-hide-error-write = Le passeport n'a pas pu être enregistré.
+chrome-hide-error-unreadable = Votre passeport est illisible : ouvrez Réglages › Passeport.
+chrome-hide-error-full = Votre passeport est plein.
+chrome-hide-error-invalid = Ce texte ne correspond pas à ce type : choisissez-en un autre.
+chrome-hide-field-nom = Nom
+chrome-hide-field-naissance = Date de naissance
+chrome-hide-field-proche = Nom d'un proche
+chrome-hide-field-adresse = Adresse postale
+chrome-hide-field-tel = Téléphone
+chrome-hide-field-email = E-mail
+chrome-hide-field-iban = IBAN
+chrome-hide-field-piece = N° de pièce d'identité
+chrome-hide-field-secu = N° de sécurité sociale
+chrome-hide-field-plaque = Plaque d'immatriculation
+chrome-hide-field-libre = Libre
