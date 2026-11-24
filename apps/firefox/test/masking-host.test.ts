@@ -233,6 +233,10 @@ it("mask.runs: the window's session, the zone its passport origins give the tab,
   expect([table.entries("sources").length, table.entries("web").length]).toEqual([0, 0]);
   expect(maskRuns(kernel, { window: "f2", tab: "t1", url: "https://banque.example/compte", agentReached: false, texts: [text] })).toEqual({ runs: null });
   expect(maskRuns(null, { window: "f1", tab: "t1", url: "https://banque.example/", agentReached: false, texts: [text] })).toEqual({ runs: null });
+  // The main token (`window: null`): its own table, no session needed, still no label issued.
+  expect(spans(maskRuns(kernel, { window: null, tab: "t1", url: "https://banque.example/compte", agentReached: false, texts: [text] }))).toEqual([[["Camille Aubrac", "nom"], [iban, "iban"]]]);
+  expect(masker.table(null).entries("sources").length).toBe(0);
+  expect(maskRuns(null, { window: null, tab: "t1", url: "https://banque.example/", agentReached: false, texts: [text] })).toEqual({ runs: null });
   expect(() => maskRuns(kernel, { window: "f1", tab: "t1", url: "https://banque.example/", texts: [text] })).toThrow();
   expect(() => maskRuns(kernel, { window: "f1", url: "https://banque.example/", agentReached: false, texts: [text] })).toThrow();
   expect(() => maskRuns(kernel, { window: "f1", tab: "t1", url: "https://banque.example/", agentReached: false, texts: [42] })).toThrow();
