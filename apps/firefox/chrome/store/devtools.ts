@@ -366,6 +366,9 @@ export function createDevTools(o: {
     try {
       const { targetCommand, resourceCommand } = commands;
       await targetCommand.startListening();
+      // Firefox keeps every response body whole by default (0 = no limit): capped at what `body` returns. Before
+      // watchResources, the network watcher reads it at its creation.
+      await commands.targetConfigurationCommand.updateConfiguration({ networkBodyLimit: BODY_MAX });
       await targetCommand.watchTargets({
         types: [targetCommand.TYPES.FRAME],
         onAvailable: ({ targetFront }: any) => {
@@ -376,6 +379,9 @@ export function createDevTools(o: {
         },
       });
       const { TYPES } = resourceCommand;
+      // shortcut: the resource command caches every resource until a navigation, with no public way to drop one; this
+      // reaches its private cache (resource-command.js, Firefox 160), and does nothing if that ever changes.
+      const uncache = (r: any) => resourceCommand._cache?.delete?.(`${r.resourceType}:${r.resourceId}`);
       // ignoreExistingResources: only what happens after the attachment.
       await resourceCommand.watchResources([TYPES.CONSOLE_MESSAGE, TYPES.ERROR_MESSAGE, TYPES.NETWORK_EVENT, TYPES.DOCUMENT_EVENT], {
         ignoreExistingResources: true,
@@ -392,11 +398,17 @@ export function createDevTools(o: {
               const id = String(r.resourceId);
               s.requests.set(id, r);
               if (s.requests.size > MAX_REQUESTS) {
-                const oldest = s.requests.keys().next().value!;
+                const [oldest, dropped] = s.requests.entries().next().value!;
                 s.requests.delete(oldest);
                 s.headers.delete(oldest);
+                // Its actor holds its body until the page navigates: released, then forgotten by the resource command.
+                void commands.client.request({ to: dropped.actor, type: "release" }).catch(() => {});
+                uncache(dropped);
               }
-            } else feedConsole(s.buffer, r, TYPES);
+            } else {
+              feedConsole(s.buffer, r, TYPES);
+              uncache(r); // in our bounded buffer now
+            }
           }
         },
       });
