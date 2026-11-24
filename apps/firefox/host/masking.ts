@@ -1,6 +1,8 @@
 import type { Masker, WorkspaceLock } from "../../../packages/kernel/src/index.ts";
 import { PassportStore } from "../../../packages/kernel/src/mask/passport.ts";
-import { passportReady } from "../../../packages/kernel/src/mcp/server.ts";
+import { passportReady, sourceZone } from "../../../packages/kernel/src/mcp/server.ts";
+import { maskedRuns, type MaskedRun } from "../../../packages/kernel/src/mask/mask.ts";
+import { guessField, PASSPORT_LIMITS, splitName, type PassportField } from "../../../packages/kernel/src/mask/passport-fields.ts";
 import { LABEL_SOURCE } from "../../../packages/kernel/src/mask/table.ts";
 import { nameAgreement } from "../../../packages/kernel/src/mask/names.ts";
 import { hostLocale } from "./locale.ts";
@@ -59,4 +61,39 @@ export async function maskPaste(masker: () => Pick<Masker, "maskTyped"> | null, 
   if (!(await passportReady(passport, ms))) return null;
   // Read again: the kernel may have restarted while the passports came.
   return masker()?.maskTyped(win, text) ?? null;
+}
+
+// shortcut: a refresh sends a page's visible text only, these caps keep a bad call cheap; raise them if long pages lose marks.
+const RUNS_TEXTS = 2000;
+const RUNS_CHARS = 200_000;
+
+/**
+ * Where the window's agent would see labels in each of `texts`, read from `url` (chrome's marks): the session's table,
+ * the zone its passport origins give the tab. Issues no label. No session (or no kernel): no run.
+ */
+export function maskRuns(masker: Pick<Masker, "sessionOf" | "table" | "originsOf"> | null, p: unknown): { runs: MaskedRun[][] } {
+  const { window: win, url, agentReached, texts } = (p ?? {}) as Record<string, unknown>;
+  if (typeof win !== "string" || typeof url !== "string" || typeof agentReached !== "boolean" || !Array.isArray(texts) || texts.length > RUNS_TEXTS || !texts.every((t) => typeof t === "string" && t.length <= RUNS_CHARS))
+    throw new Error("mask.runs: invalid params");
+  const session = masker?.sessionOf(win) ?? null;
+  if (!masker || session === null) return { runs: texts.map(() => []) };
+  const zone = sourceZone({ url, agentReached }, false, masker.originsOf(session));
+  const ctx = { table: masker.table(session), zone, origin: originOf(url) };
+  return { runs: (texts as string[]).map((t) => maskedRuns(t, ctx)) };
+}
+
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** The passport field a clicked text looks like, and its name parts when it is a name. */
+export function maskGuess(p: unknown): { field: PassportField; name?: { given: string; family: string } } {
+  const text = (p as { text?: unknown } | null)?.text;
+  if (typeof text !== "string") throw new Error("mask.guess: invalid params");
+  const field = text.length > PASSPORT_LIMITS.value ? "libre" : guessField(text);
+  return field === "nom" ? { field, name: splitName(text) } : { field };
 }

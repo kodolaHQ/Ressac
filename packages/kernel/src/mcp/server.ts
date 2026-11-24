@@ -201,7 +201,7 @@ const NOT_SHARED_LABEL = "onglet non partagé";
  * closed); a site app window is the user's unless the agent navigated it in this conversation (`agentNavigated`) or
  * Firefox says it did (`agentReached`, in an earlier conversation while the window stayed open).
  */
-export function sourceZone(o: TabInfo, agentNavigated = false, origins?: Pick<PassportOrigins, "isOrigin">): Zone {
+export function sourceZone(o: Pick<TabInfo, "url" | "site" | "agentReached">, agentNavigated = false, origins?: Pick<PassportOrigins, "isOrigin">): Zone {
   const reached = o.site !== undefined ? agentNavigated || o.agentReached === true : o.agentReached !== false;
   return !reached && (isSensitive(o.url) || origins?.isOrigin(o.url) === true) ? "sources" : "web";
 }

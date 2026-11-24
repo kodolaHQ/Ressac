@@ -19,6 +19,9 @@ export const LABELS = new RegExp(LABEL_SOURCE, "g");
 // 252 = 7 × 36: higher bytes are dropped so every character is equally likely.
 const BYTE_LIMIT = 252;
 
+const keyOf = (type: LabelType, canonical: string, zone: Zone, origin: string | null) =>
+  JSON.stringify(zone === "sources" ? [zone, type, canonical] : [zone, type, canonical, origin]);
+
 /**
  * The labels of one session. The sources zone gives one label per value, whatever the origin (a value of several
  * sources, a passport per login profile later, accumulates origins); the web zone gives one per value and origin, and
@@ -48,7 +51,7 @@ export class LabelTable {
   }
 
   label(type: LabelType, canonical: string, zone: Zone, origin: string | null, raw = canonical, ref?: PassportRef): string {
-    const key = JSON.stringify(zone === "sources" ? [zone, type, canonical] : [zone, type, canonical, origin]);
+    const key = keyOf(type, canonical, zone, origin);
     let entry = this.byKey.get(key);
     if (!entry) {
       entry = { label: this.draw(type), type, value: canonical, raw, zone, origins: [] };
@@ -59,6 +62,11 @@ export class LabelTable {
     if (origin !== null && !entry.origins.includes(origin)) entry.origins.push(origin);
     if (ref && !entry.passport?.some((r) => r.profile === ref.profile && r.id === ref.id)) (entry.passport ??= []).push({ ...ref });
     return entry.label;
+  }
+
+  /** The label `label` would give, if it is already issued: issues nothing. */
+  labelOf(type: LabelType, canonical: string, zone: Zone, origin: string | null): string | undefined {
+    return this.byKey.get(keyOf(type, canonical, zone, origin))?.label;
   }
 
   resolve(label: string): Entry | undefined {

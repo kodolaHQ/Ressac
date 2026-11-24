@@ -308,6 +308,15 @@ function lookup(ctx: MaskContext): Lookup {
   const version = table.passport?.version ?? 0;
   // Entries are only appended (a wipe clears the cache), and a web entry's origin never changes: same size, same index.
   if (cached?.size === all.length && cached.version === version) return cached;
+  const built = buildLookup(ctx, all);
+  table.lookups.set(key, built);
+  return built;
+}
+
+/** `lookup` over `all` (the zone's entries), not cached. */
+function buildLookup(ctx: MaskContext, all: readonly Entry[]): Lookup {
+  const { table, zone, origin } = ctx;
+  const version = table.passport?.version ?? 0;
   const entries = zone === "sources" ? all : all.filter((e) => (origin === null ? !e.origins.length : e.origins.includes(origin)));
   const digits: Needle[] = [];
   const long: Needle[] = [];
@@ -326,9 +335,7 @@ function lookup(ctx: MaskContext): Lookup {
     if (!own.length) for (const form of f.literals) (form.length >= KEY ? long : short).push({ form, label: e.label });
     if (f.name) names.push([f.name, e.label]);
   }
-  const built = { size: all.length, version, byDigits: index(digits), byText: index(long), short, names, passport: formsIndex(drawn), emails };
-  table.lookups.set(key, built);
-  return built;
+  return { size: all.length, version, byDigits: index(digits), byText: index(long), short, names, passport: formsIndex(drawn), emails };
 }
 
 /** Every occurrence of the zone's known values in `s`, in any of their forms, on every projection. */
@@ -395,21 +402,26 @@ function outside<H extends { start: number; end: number; type: LabelType }>(s: s
   return out;
 }
 
+/** Gives a value its label: `LabelTable.label`'s arguments. */
+type Labeler = (type: LabelType, canonical: string, zone: Zone, origin: string | null, raw: string, ref?: PassportRef) => string;
+
 /**
- * `text` with every value to hide replaced by its label: what is found in it (registered in `ctx.table`), plus the
- * known values of the zone in any of their forms. The sources zone applies every sources entry; the web zone only the
- * web entries of `ctx.origin`, never a sources entry (that would tell a page which of its values are yours). The
- * passport masks in the sources zone only (design § 6.1); in the web zone only a value it filled there, on that origin.
- * E-mails keep their `@domain`; overlapping finds are masked as one, with the longest one's label.
+ * Issued labels of `text` hidden behind placeholder runs, alternating so two adjacent labels stay two runs: no detector
+ * reads the digits or the type word of a label, and no replacement cuts one. `labels`: the hidden labels, in order.
  */
-export function maskText(text: string, ctx: MaskContext): string {
-  const { table, zone, origin } = ctx;
-  // Internal comparisons set it too: it errs toward « non couverte » (ruling F30).
-  table.touched = true;
+function placeheld(text: string, table: LabelTable): { s: string; labels: string[] } {
   const labels: string[] = [];
-  // Issued labels hide behind placeholder runs, alternating so two adjacent labels stay two runs: no detector reads
-  // the digits or the type word of a label, and no replacement cuts one.
   const s = sanitize(text, table).replace(LABELS, (l) => (labels.push(l), (labels.length % 2 ? "\uE000" : "\uE001").repeat(l.length)));
+  return { s, labels };
+}
+
+/**
+ * The spans `maskText` replaces in `s` (placeheld), sorted and apart, each with its label. `label` gives each value its
+ * label; `known` the zone's lookup, called once every detector find has its label. `remember`: a passport hit's forms go
+ * to the table (only when `label` issues real labels).
+ */
+function maskSpans(s: string, ctx: MaskContext, label: Labeler, known: () => Lookup, remember: boolean): Span[] {
+  const { table, zone, origin } = ctx;
   const projs = projections(s);
   let foldedOnce: Projection[] | undefined;
   // The folded projection costs a pass: built only when a passport form is searched (ruling F19).
@@ -423,27 +435,77 @@ export function maskText(text: string, ctx: MaskContext): string {
   // A value goes back out as the page wrote it, but a code may have been spelled out in words: its digits go back.
   const spans: Span[] = finds
     .filter((f) => !replaced(f))
-    .map((f) => ({ start: f.start, end: f.end, label: table.label(f.type, f.canonical, zone, origin, f.type === "code" ? f.canonical : s.slice(f.start, f.end)) }));
-  const known = lookup(ctx);
-  spans.push(...variants(s, known, projs));
+    .map((f) => ({ start: f.start, end: f.end, label: label(f.type, f.canonical, zone, origin, f.type === "code" ? f.canonical : s.slice(f.start, f.end)) }));
+  const k = known();
+  spans.push(...variants(s, k, projs));
   // Design § 8.5: the web zone's detector finds no e-mail, so one filled on this origin is found as the sources find it (local part).
-  if (known.emails.size)
-    for (const f of findAll(s, "sources")) if (f.type === "email" && known.emails.has(f.canonical)) spans.push({ start: f.start, end: f.end, label: table.label("email", f.canonical, zone, origin, s.slice(f.start, f.end)) });
+  if (k.emails.size)
+    for (const f of findAll(s, "sources")) if (f.type === "email" && k.emails.has(f.canonical)) spans.push({ start: f.start, end: f.end, label: label("email", f.canonical, zone, origin, s.slice(f.start, f.end)) });
   // A known passport value (read before, or filled on this origin) yields to a detector of another type too, as on its first read.
-  for (const h of formHits(s, known.passport, projs, folded))
+  for (const h of formHits(s, k.passport, projs, folded))
     for (const part of outside(s, { start: h.start, end: h.end, type: h.value.type }, near(byStart, longestFind, h))) spans.push({ start: part.start, end: part.end, label: h.value.label });
   for (const h of passport) {
-    const label = table.label(h.type, h.canonical, "sources", origin, h.raw, h.ref);
-    rememberForms(table, label, h.type, h.canonical, table.passport!.formsOf(h.ref));
-    spans.push({ start: h.start, end: h.end, label });
+    const l = label(h.type, h.canonical, "sources", origin, h.raw, h.ref);
+    if (remember) rememberForms(table, l, h.type, h.canonical, table.passport!.formsOf(h.ref));
+    spans.push({ start: h.start, end: h.end, label: l });
   }
+  return longest(spans.filter((x) => !/[\uE000\uE001]/.test(s.slice(x.start, x.end))));
+}
+
+/**
+ * `text` with every value to hide replaced by its label: what is found in it (registered in `ctx.table`), plus the
+ * known values of the zone in any of their forms. The sources zone applies every sources entry; the web zone only the
+ * web entries of `ctx.origin`, never a sources entry (that would tell a page which of its values are yours). The
+ * passport masks in the sources zone only (design § 6.1); in the web zone only a value it filled there, on that origin.
+ * E-mails keep their `@domain`; overlapping finds are masked as one, with the longest one's label.
+ */
+export function maskText(text: string, ctx: MaskContext): string {
+  const { table } = ctx;
+  // Internal comparisons set it too: it errs toward « non couverte » (ruling F30).
+  table.touched = true;
+  const { s, labels } = placeheld(text, table);
   let out = "";
   let at = 0;
-  for (const sp of longest(spans.filter((x) => !/[\uE000\uE001]/.test(s.slice(x.start, x.end))))) {
+  for (const sp of maskSpans(s, ctx, (...a) => table.label(...a), () => lookup(ctx), true)) {
     out += s.slice(at, sp.start) + sp.label;
     at = sp.end;
   }
   out += s.slice(at);
   let i = 0;
   return out.replace(PLACEHOLDERS, () => labels[i++]!);
+}
+
+/** A span of a text `maskText` would replace by a label of `type`. */
+export type MaskedRun = { start: number; end: number; type: LabelType };
+
+/**
+ * Exactly the spans `maskText(text, ctx)` would label, as offsets in `text`, sorted and apart: for the chrome's marks.
+ * Issues no label and leaves the table as it was (bar its search caches): a value not yet in the table gets a stand-in.
+ */
+export function maskedRuns(text: string, ctx: MaskContext): MaskedRun[] {
+  const { table, zone } = ctx;
+  const { s } = placeheld(text, table);
+  const stand = new Map<string, string>();
+  const pending: Entry[] = [];
+  const label: Labeler = (type, canonical, z, origin, raw) => {
+    const issued = table.labelOf(type, canonical, z, origin);
+    if (issued) return issued;
+    const key = JSON.stringify(z === "sources" ? [z, type, canonical] : [z, type, canonical, origin]);
+    let l = stand.get(key);
+    if (!l) {
+      // The label's type is all a run reads of it; the table never sees it.
+      l = `⟨${type}-${stand.size}⟩`;
+      stand.set(key, l);
+      if (z === zone) pending.push({ label: l, type, value: canonical, raw, zone: z, origins: origin === null ? [] : [origin] });
+    }
+    return l;
+  };
+  // maskText's lookup gains the detector finds it just labelled: the same entries here, appended as the table would.
+  const known = () => (pending.length ? buildLookup(ctx, [...table.entries(zone), ...pending]) : lookup(ctx));
+  const spans = maskSpans(s, ctx, label, known, false);
+  // `sanitize` drops private-use characters and keeps every other one: map offsets in `s` back to `text`.
+  const kept: number[] = [];
+  if (s.length !== text.length) for (let i = 0; i < text.length; i++) if (!/[\uE000-\uE0FF]/.test(text[i]!)) kept.push(i);
+  const back = (i: number) => (kept.length ? kept[i]! : i);
+  return spans.map((sp) => ({ start: back(sp.start), end: back(sp.end - 1) + 1, type: /^⟨([a-z]+)-/.exec(sp.label)![1] as LabelType }));
 }
