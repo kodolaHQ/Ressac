@@ -12,8 +12,8 @@ import { cutFrameNetwork } from "./frame-network";
 
 // « Cacher pour l'agent »: the user points at a value on the page, confirms it in a bubble, and it becomes a passport
 // entry. Two frames of sidebar.html over the content area, drawn by Ressac and never in the page: the layer (outline,
-// animation, ending; it captures the pointer from the arm until the gesture closes, so the page sees no move, not even
-// the pointer coming back over the value picked) and the bubble frame (bubble, error, toast), above it. Every decision
+// animation, ending; it captures the pointer from the arm until the toast, so the page sees no move, not even the
+// pointer resting over the value while the bubble is up) and the bubble frame (bubble, error, toast), above it. Every decision
 // is here; the frames only show `HideContext` and press its gesture endpoints.
 
 const XHTML = "http://www.w3.org/1999/xhtml";
@@ -191,7 +191,7 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     return f;
   }
   const frames = () => {
-    // The bubble over the layer (which keeps the pointer for the whole gesture): its buttons stay clickable.
+    // The bubble over the layer (which keeps the pointer until the toast): its buttons stay clickable.
     if (!layer?.isConnected) layer = frame("ressac-hide-layer", "hide", 3);
     if (!bubble?.isConnected) bubble = frame("ressac-hide-bubble", "hide-bubble", 4);
   };
@@ -208,7 +208,7 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
       return;
     }
     const a = selected().getBoundingClientRect();
-    Object.assign(layer.style, { left: `${a.left}px`, top: `${a.top}px`, width: `${a.width}px`, height: `${a.height}px`, display: "", pointerEvents: "auto" });
+    Object.assign(layer.style, { left: `${a.left}px`, top: `${a.top}px`, width: `${a.width}px`, height: `${a.height}px`, display: "", pointerEvents: ctx.phase === "toast" ? "none" : "auto" });
     if (ctx.phase === "pick") return void (bubble.style.display = "none");
     if (ctx.phase === "toast") {
       // Centred by its fixed width, never a transform: a transformed frame gets its clicks at the wrong place.
@@ -300,9 +300,9 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     w.addEventListener("wheel", (e) => ctx?.phase === "pick" && void scroll(e), { passive: true });
     w.addEventListener("click", (e) => {
       if (e.button !== 0) return;
-      // Past the pick the layer still holds the pointer: a click beside the bubble or the toast ends the gesture
-      // (never during a save, which always reaches its toast).
-      if (ctx && ctx.phase !== "pick") return void (ctx.phase !== "saving" && close());
+      // Past the pick the layer holds the pointer until the toast: a click beside the bubble (or its error) ends the
+      // gesture; never during a save, which always reaches its toast.
+      if (ctx?.phase === "bubble" || ctx?.phase === "error") return void close();
       if (ctx?.phase !== "pick") return;
       e.preventDefault();
       void pickAt(e.clientX, e.clientY);

@@ -320,7 +320,7 @@ it("Touch ID refused: nothing is written and the bubble closes", { timeout: 120_
   expect(await has("hide-toast")).toBe(false);
 });
 
-it("the page sees no pointer from the arm to the close: through the pick, the bubble and Annuler", { timeout: 120_000 }, async () => {
+it("the page sees no pointer from the arm through the bubble; at the toast it gets the pointer and its clicks back", { timeout: 120_000 }, async () => {
   await start();
   await tab(`${server.url}/espion.html`);
   // The panel's press left the pointer somewhere: moved to Ressac's UI first, then the record starts.
@@ -333,20 +333,25 @@ it("the page sees no pointer from the arm to the close: through the pick, the bu
   await trustedMouse(m, B, { x: at.x + 3, y: at.y + 1 }, { move: true });
   await trustedMouse(m, B, at, { move: true });
   expect(await m.execute<string>("return document.getElementById('ressac-hide-layer').style.pointerEvents")).toBe("auto");
-  // The close's instant, on the chrome's clock: the layer lets the pointer go then.
+  // The release's instant, on the chrome's clock: the layer lets the pointer go when the toast comes.
   await m.execute(`const l = document.getElementById("ressac-hide-layer");
-    window.ressacTestClosedAt = 0;
-    new MutationObserver(() => { if (!window.ressacTestClosedAt && l.style.pointerEvents === "none") window.ressacTestClosedAt = performance.timeOrigin + performance.now(); }).observe(l, { attributes: true, attributeFilter: ["style"] });`);
-  await click(m, '[data-testid="hide-cancel"]', { frame: "hideBubble" });
-  const closedAt = await waitFor(m, "return window.ressacTestClosedAt", (v) => typeof v === "number" && v > 0, 5000);
-  // A late :hover transition or a synthetic move dispatched for the moves above would come within a frame or two: the
-  // window starts at the close, the last moment the layer held the pointer.
+    window.ressacTestReleasedAt = 0;
+    new MutationObserver(() => { if (!window.ressacTestReleasedAt && l.style.pointerEvents === "none") window.ressacTestReleasedAt = performance.timeOrigin + performance.now(); }).observe(l, { attributes: true, attributeFilter: ["style"] });`);
+  await click(m, '[data-testid="hide-confirm"]', { frame: "hideBubble" });
+  expect(await bubbleText("hide-toast")).toContain("Masqué pour l'agent");
+  const releasedAt = await waitFor(m, "return window.ressacTestReleasedAt", (v) => typeof v === "number" && v > 0, 5000);
+  // A late :hover transition or a synthetic move for the moves above would come within a frame or two: the window
+  // starts at the release, the last moment the layer held the pointer.
   await new Promise((r) => setTimeout(r, 200));
   const [seen, times] = await inBrowser<[string[], number[]]>(m, B, "return [window.__seen, window.__at];");
-  expect(seen.filter((_, i) => times[i]! < (closedAt as number))).toEqual([]);
-  // After the close (measured 2026-11-24, not asserted): about 150 ms later the page got pointerover, pointerenter,
-  // mouseover and mouseenter where the pointer rested (no mousemove, no :hover transition within 200 ms), the limit
-  // SECURITY.md states. The same events are what a layer released at the bubble used to hand the page during it.
+  expect(seen.filter((_, i) => times[i]! < (releasedAt as number))).toEqual([]);
+  // After the release the page may get the pointer back where it rests (measured 2026-11-24 at a close: pointerover,
+  // pointerenter, mouseover, mouseenter about 150 ms later), the limit SECURITY.md states; not asserted.
+  // The toast is still up, and a click on the page reaches it at once.
+  expect(await has("hide-undo")).toBe(true);
+  await trustedMouse(m, B, await center(m, B, "#words"));
+  await expect.poll(() => inBrowser<string[]>(m, B, "return window.__seen;"), { timeout: 5000 }).toContain("click");
+  expect(await has("hide-toast")).toBe(true);
 });
 
 it("a wheel while armed scrolls the page (no wheel event in it) and a span that was below the fold is picked", { timeout: 120_000 }, async () => {
