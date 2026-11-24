@@ -45,8 +45,10 @@ let w: LaunchedRessac | undefined;
 let m: Marionette;
 /** The Firefox profile a test made for its passport, deleted after it. */
 let profile: string | undefined;
+// A page's hero form and its form further down, each with an « Email » field: the user looks at the second.
+const TWO_FORMS = `<title>Inscription</title><form><input type="email" aria-label="Email"></form><div style="height:3000px"></div><form><label for="mail">Email</label><input id="mail" type="email"></form>`;
 beforeAll(async () => {
-  a = await startServer({ routes: { "/log": logRoute(logs.a), "/fill/compte/mail.html": mail } });
+  a = await startServer({ routes: { "/log": logRoute(logs.a), "/fill/compte/mail.html": mail, "/fill/deux.html": (_req: unknown, res: ServerResponse) => html(res, TWO_FORMS) } });
   b = await startServer({ routes: { "/log": logRoute(logs.b), "/fill/client.html": client } });
 });
 afterAll(() => Promise.all([a?.close(), b?.close()]));
@@ -154,6 +156,15 @@ async function until<T>(read: () => T | Promise<T>, ok: (v: T) => boolean, ms = 
     await new Promise((r) => setTimeout(r, 100));
   }
 }
+
+it("two alike fields: the one out of view is read as « hors de l'écran », the one the user looks at is not", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/deux.html`);
+  await inPage(id, `document.getElementById("mail").scrollIntoView(); return true;`);
+  const text = await read(id);
+  expect(text).toContain("0. email — Email (hors de l'écran)");
+  expect(text).toMatch(/1\. email — Email$/m);
+});
 
 it("1. a form injected after the read: its field has no number; the number read still names the field read", async () => {
   const label = await start();

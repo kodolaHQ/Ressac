@@ -974,7 +974,7 @@ export function createToolsServer(
     listedFields.delete(o.id);
     if (fields.length) listedFields.set(o.id, fields.map((f) => ({ ...f })));
     if (listedFields.size > LISTS_KEPT) listedFields.delete(listedFields.keys().next().value!);
-    const fieldLines = fields.length ? ["", FIELDS_HEADER, ...fields.map((f, i) => wrap(`${i}. ${f.type} — ${f.label}`, zone, origin))] : [];
+    const fieldLines = fields.length ? ["", FIELDS_HEADER, ...fields.map((f, i) => wrap(`${i}. ${f.type} — ${f.label}${f.offscreen ? " (hors de l'écran)" : ""}`, zone, origin))] : [];
     const body = view?.text ?? r.text;
     const note = view?.text !== undefined && view.shown! < view.total! ? ["", reducedNote(view.shown!, view.total!)] : [];
     const page = [...(view ? [view.state] : []), ...(r.selection ? [`Sélection : ${r.selection}`] : []), "", body, ...note].join("\n");
@@ -1306,7 +1306,7 @@ export function createToolsServer(
     "fill_field",
     {
       description:
-        "Remplit un champ d'un onglet (`field` : son numéro dans « Champs » de la dernière lecture). `value` : ton texte, où le navigateur remplace chaque étiquette ⟨type-…⟩ " +
+        "Remplit un champ d'un onglet (`field` : son numéro dans « Champs » de la dernière lecture ; entre deux champs semblables, prends celui qui n'est pas « hors de l'écran » : c'est celui que l'utilisateur regarde). `value` : ton texte, où le navigateur remplace chaque étiquette ⟨type-…⟩ " +
         "par sa vraie valeur sans qu'elle passe par toi ; ou `saved_login: true` : l'identifiant et le mot de passe que l'utilisateur a enregistrés pour ce site. " +
         "Un seul appel `saved_login` sur le champ identifiant ou mot de passe d'un formulaire de connexion remplit les deux. " +
         "`passport` : une sorte de donnée du passeport de l'utilisateur (prenoms, nom_famille, nom_complet, naissance, adresse, adresse_voie, code_postal, ville, tel, email, iban, secu, piece, plaque), " +

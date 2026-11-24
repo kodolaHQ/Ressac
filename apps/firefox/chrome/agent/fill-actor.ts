@@ -67,11 +67,16 @@ export class RessacFillChild extends JSWindowActorChild {
     // shortcut: fields inside shadow roots are not offered (querySelectorAll stays out of them), and submit controls in one
     // escape the formaction rule; upgrade when a real site the agent must fill puts its form in a shadow root.
     for (const [n, ref] of this.refs) if (!ref.deref()) this.refs.delete(n);
-    const out: { n: number; type: string; autocomplete: string; label: string }[] = [];
+    const out: { n: number; type: string; autocomplete: string; label: string; offscreen?: true }[] = [];
+    const w = this.contentWindow!;
     for (const el of this.document.querySelectorAll("input, textarea, [contenteditable]")) {
       if (out.length >= FIELDS_MAX) break;
       const type = this.typeOf(el);
-      if (type) out.push({ n: this.numberOf(el), type, autocomplete: autocompleteOf(el), label: labelOf(el) });
+      if (!type) continue;
+      // Two forms with the same field (a page's hero and its form below): the one in view is the one the user means.
+      const r = el.getBoundingClientRect();
+      const offscreen = r.bottom <= 0 || r.right <= 0 || r.top >= w.innerHeight || r.left >= w.innerWidth;
+      out.push({ n: this.numberOf(el), type, autocomplete: autocompleteOf(el), label: labelOf(el), ...(offscreen ? { offscreen: true as const } : {}) });
     }
     return out;
   }

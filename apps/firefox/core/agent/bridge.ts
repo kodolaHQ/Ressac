@@ -306,5 +306,5 @@ export function boundFields(raw: unknown, innerWindowId: number): PageField[] {
   return (Array.isArray(raw) ? raw : [])
     .filter((f: any) => Number.isInteger(f?.n) && f.n >= 0 && FIELD_TYPES.has(f.type) && typeof f.autocomplete === "string" && f.autocomplete.length <= 100)
     .slice(0, FIELDS_MAX)
-    .map((f: any) => ({ handle: `${innerWindowId}:${f.n}`, type: f.type, autocomplete: f.autocomplete, label: String(f.label ?? "").replace(/\s+/g, " ").trim().slice(0, 80) }));
+    .map((f: any) => ({ handle: `${innerWindowId}:${f.n}`, type: f.type, autocomplete: f.autocomplete, label: String(f.label ?? "").replace(/\s+/g, " ").trim().slice(0, 80), ...(f.offscreen === true ? { offscreen: true as const } : {}) }));
 }

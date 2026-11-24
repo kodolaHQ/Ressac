@@ -67,7 +67,8 @@ export interface TabRead {
 /** A field of a page, as a read lists it; `handle` is opaque (`"<innerWindowId>:<n>"`: its document's, so a frame that navigated never resolves an old one), only the browser resolves it. */
 /** The fields a read gives at most, numbered for `fill_field`: the fill actor lists no more, the kernel shows no more. */
 export const FIELDS_MAX = 40;
-export type PageField = { handle: string; type: string; autocomplete: string; label: string };
+/** `offscreen`: outside the viewport when read (another form of the page, or one moved off screen): not the one the user looks at. */
+export type PageField = { handle: string; type: string; autocomplete: string; label: string; offscreen?: true };
 
 /**
  * What the browser sealed of a field before a fill: its document's `origin` and `path`, the origins of `frames` (its

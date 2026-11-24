@@ -508,4 +508,6 @@ test("boundFields: a web process's field list, checked and bounded; each handle 
   ]);
   expect(boundFields(Array.from({ length: 60 }, (_, n) => ({ n, type: "text", autocomplete: "", label: "" })), 1)).toHaveLength(40);
   expect(boundFields("nope", 1)).toEqual([]);
+  // Out of view: kept only as `true`.
+  expect(boundFields([{ n: 0, type: "email", autocomplete: "", label: "", offscreen: true }, { n: 1, type: "email", autocomplete: "", label: "", offscreen: "yes" }], 2).map((f) => f.offscreen)).toEqual([true, undefined]);
 });

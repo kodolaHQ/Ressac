@@ -61,6 +61,14 @@ async function serve(o: { bridge?: Partial<Opts>; outflow?: Outflow }, attempt: 
   }
 }
 
+test("a field out of view is listed as « hors de l'écran »: of two alike, the agent can tell the one the user sees", async () => {
+  await serve({}, async ({ call, bridge }) => {
+    const email = (handle: string, offscreen?: true) => ({ handle, type: "email", autocomplete: "email", label: "Email", ...(offscreen ? { offscreen } : {}) });
+    bridge.pages.set("mail", { text: "Inscription", links: [], fields: [email("1:0", true), email("1:1")] });
+    expect((await call("read_tab", { id: "mail" })).text).toContain("0. email — Email (hors de l'écran)\n1. email — Email");
+  });
+});
+
 test("a read lists the page's fields; a code label filled into a text field goes to commit after the card, never to the agent", async () => {
   await serve({}, async ({ call, bridge, results, of }) => {
     const read = (await call("read_tab", { id: "mail" })).text;
