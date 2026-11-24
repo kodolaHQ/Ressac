@@ -6,14 +6,14 @@ const toUrl = (input: string, engine: SearchEngine) => toUrlWith(input, searchTe
 
 test.each([
   ["https://github.com", "https://github.com/"],
-  ["github.com", "https://github.com/"],
-  ["  github.com/sveltejs  ", "https://github.com/sveltejs"],
+  ["github.com", "http://github.com/"],
+  ["  github.com/sveltejs  ", "http://github.com/sveltejs"],
   ["localhost:5280", "http://localhost:5280/"],
   ["localhost", "http://localhost/"],
   ["127.0.0.1:8080/x", "http://127.0.0.1:8080/x"],
   ["file:///Users/t/doc.pdf", "file:///Users/t/doc.pdf"],
   ["about:blank", "about:blank"],
-  ["fr.wikipedia.org/wiki/Arc", "https://fr.wikipedia.org/wiki/Arc"],
+  ["fr.wikipedia.org/wiki/Arc", "http://fr.wikipedia.org/wiki/Arc"],
 ])("%s → %s", (input, expected) => expect(toUrl(input, "google")).toBe(expected));
 
 test("free text → search with the chosen engine", () => {

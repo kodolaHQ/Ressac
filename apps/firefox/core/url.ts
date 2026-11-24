@@ -16,7 +16,9 @@ export function toUrl(input: string, template: string): string | null {
     const url = schema === "about" ? text : analyze(text);
     if (url) return url;
   } else if (LOCAL.test(text) || DOMAIN.test(text)) {
-    const url = analyze(`${LOCAL.test(text) ? "http" : "https"}://${text}`);
+    // http, not https: Firefox's HTTPS-First (dom.security.https_first) tries https and falls back to http when it
+    // fails, as it does for a bare domain in Firefox. A forced https:// had no way back (a box's admin page, mafreebox.freebox.fr).
+    const url = analyze(`http://${text}`);
     if (url) return url;
   }
   // Neither a URL nor a valid domain: search the text as is.
