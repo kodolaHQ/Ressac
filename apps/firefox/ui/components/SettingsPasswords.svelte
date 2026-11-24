@@ -191,7 +191,7 @@
   const named = (l: SavedLogin) => l.username || t("settings-passwords-no-username");
 </script>
 
-<section data-testid="passwords-section" aria-label={t("settings-section-passwords")}>
+<section data-testid="settings-passwords" aria-label={t("settings-section-passwords")}>
   <div class="head">
     <h3>{t("settings-section-passwords")}</h3>
     <div class="buttons">

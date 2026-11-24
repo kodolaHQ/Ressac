@@ -46,7 +46,7 @@ const openPage = async () => {
   await click(m, '[data-testid="settings-button"]');
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [PAGE]);
 };
-const SECTIONS = ["general", "agent", "ai", "workshop", "shortcuts", "privacy", "passport", "data", "about"];
+const SECTIONS = ["general", "agent", "ai", "workshop", "shortcuts", "privacy", "passport", "passwords", "data", "about"];
 /** Shows one section of the page (Général is the one it opens on). */
 const go = async (id: string) => {
   await click(m, `[data-testid="settings-nav-${id}"]`);
