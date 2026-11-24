@@ -83,7 +83,8 @@ export function createFill(deps: {
       const autocomplete = bounded(raw?.autocomplete, 100);
       const action = raw?.action === null ? null : bounded(raw?.action, 2_048);
       const placement = bounded(raw?.placement, 100);
-      if (type === null || autocomplete === null || placement === null || (action === null && raw?.action !== null)) throw new Error(GONE);
+      const label = bounded(raw?.label, 80);
+      if (type === null || autocomplete === null || placement === null || label === null || (action === null && raw?.action !== null)) throw new Error(GONE);
       const partnerN = Number.isInteger(raw?.partner) && raw.partner >= 0 ? (raw.partner as number) : null;
       const role = partnerN !== null && (raw?.role === "username" || raw?.role === "password") ? (raw.role as "username" | "password") : null;
       const frames = frameChain(w);
@@ -94,9 +95,9 @@ export function createFill(deps: {
       // The login form's other field, in this same document (Firefox's form detection, in the child).
       const partner = own && role ? `${w.innerWindowId}:${partnerN}` : undefined;
       const seal = crypto.randomUUID();
-      seals.set(seal, { tab, browser, innerWindowId: w.innerWindowId, handle: n, frames, action, type, autocomplete, placement, partner: role ? partnerN : null, role, origin, logins: found.map((l) => l.guid) });
+      seals.set(seal, { tab, browser, innerWindowId: w.innerWindowId, handle: n, frames, action, type, autocomplete, label, placement, partner: role ? partnerN : null, role, origin, logins: found.map((l) => l.guid) });
       if (seals.size > SEALS_MAX) seals.delete(seals.keys().next().value!);
-      return { seal, origin, path: String(w.documentURI?.filePath ?? "/"), frames, type, autocomplete, action, logins: found.map((l) => ({ username: l.username })), agentReached: deps.agentReached(tab), ...(partner ? { partner } : {}) };
+      return { seal, origin, path: String(w.documentURI?.filePath ?? "/"), frames, type, autocomplete, label, action, logins: found.map((l) => ({ username: l.username })), agentReached: deps.agentReached(tab), ...(partner ? { partner } : {}) };
     },
 
     /** The fill card ticked « Retenir ce site » for this seal: kept until its commit, dropped with it. */
@@ -120,7 +121,7 @@ export function createFill(deps: {
         frames = w && frameChain(w);
       } catch {}
       if (!frames || JSON.stringify(frames) !== JSON.stringify(s.frames)) return "changed";
-      const seal: Seal = { innerWindowId: s.innerWindowId, handle: s.handle, frames: s.frames, action: s.action, type: s.type, autocomplete: s.autocomplete, placement: s.placement, partner: s.partner, role: s.role };
+      const seal: Seal = { innerWindowId: s.innerWindowId, handle: s.handle, frames: s.frames, action: s.action, type: s.type, autocomplete: s.autocomplete, label: s.label, placement: s.placement, partner: s.partner, role: s.role };
       const answer = await w.getActor("RessacFill").sendQuery("fill", { seal, value }).catch(() => "changed");
       if (answer !== "filled") return "changed";
       // Never awaited: the fill stands, and answers the agent the same, whatever the save does.

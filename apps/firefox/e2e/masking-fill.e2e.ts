@@ -52,8 +52,10 @@ const CHOICES = `<title>Inscription</title><form><label><input type="checkbox" i
 <fieldset><legend>Formule</legend><label><input type="radio" name="f" id="mois"> Mensuelle</label><label><input type="radio" name="f" id="an"> Annuelle</label></fieldset>
 <label for="pays">Pays</label><select id="pays"><option>France</option><option>Belgique</option><option>Suisse</option></select></form>
 <script>window.seen = 0; document.addEventListener("change", () => window.seen++);</script>`;
+// A page of 45 filter boxes before its form: over the 40-field cap, the form's text fields stay listed.
+const FILTERS = `<title>Filtres</title>${Array.from({ length: 45 }, (_, i) => `<label><input type="checkbox"> Filtre ${i}</label>`).join("")}<form><label for="nom">Nom</label><input id="nom"><label for="ville">Ville</label><input id="ville"></form>`;
 beforeAll(async () => {
-  a = await startServer({ routes: { "/log": logRoute(logs.a), "/fill/compte/mail.html": mail, "/fill/deux.html": (_req: unknown, res: ServerResponse) => html(res, TWO_FORMS), "/fill/choix.html": (_req: unknown, res: ServerResponse) => html(res, CHOICES) } });
+  a = await startServer({ routes: { "/log": logRoute(logs.a), "/fill/compte/mail.html": mail, "/fill/deux.html": (_req: unknown, res: ServerResponse) => html(res, TWO_FORMS), "/fill/choix.html": (_req: unknown, res: ServerResponse) => html(res, CHOICES), "/fill/filtres.html": (_req: unknown, res: ServerResponse) => html(res, FILTERS) } });
   b = await startServer({ routes: { "/log": logRoute(logs.b), "/fill/client.html": client } });
 });
 afterAll(() => Promise.all([a?.close(), b?.close()]));
@@ -185,6 +187,29 @@ it("boxes and lists on the user's tab: one card, then the box ticked, the radio 
   await press("Remplir");
   expect((await reply).text).toBe(`Rempli : 0, 1, 2.`);
   expect(await inPage(id, `return [document.getElementById("cgu").checked, document.getElementById("an").checked, document.getElementById("pays").value, window.seen]`)).toEqual([true, true, "Belgique", 3]);
+});
+
+it("over the field cap, boxes give way: the form's text fields stay listed, every number still names its field", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/filtres.html`);
+  const lines = (await read(id)).split("\n").filter((l) => /^\d+\. \S+ — /.test(l));
+  expect(lines).toHaveLength(40);
+  expect(lines.at(-2)).toBe("38. text — Nom");
+  expect(lines.at(-1)).toBe("39. text — Ville");
+  const ville = fieldOf(lines.join("\n"), "Ville");
+  expect((await call("fill_field", { id, field: ville, value: "Lyon" })).text).toBe(FILLED);
+  expect(await valueOf(id, "ville")).toBe("Lyon");
+});
+
+it("a box relabelled while the card is up: the card's yes ticks nothing", async () => {
+  await start();
+  const id = await userTab(`${a.url}/fill/choix.html`);
+  const box = fieldOf(await read(id), "J'accepte les conditions \\(pas coché\\)");
+  const { reply } = await fillWithCard({ id, field: box, check: true });
+  await inPage(id, `document.getElementById("cgu").parentElement.lastChild.textContent = " Supprimer mon compte"; return true;`);
+  await press("Remplir");
+  expect((await reply).text).toContain("a changé");
+  expect(await inPage(id, `return document.getElementById("cgu").checked`)).toBe(false);
 });
 
 it("a list reordered between the read and the card's yes: nothing chosen", async () => {

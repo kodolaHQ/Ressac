@@ -177,6 +177,7 @@ kernel-mask-fill-foreign-passport = This page, opened by the agent, is on { $to 
 kernel-mask-fill-check = tick
 kernel-mask-fill-uncheck = untick
 kernel-mask-fill-option = choose « { $option } »
+kernel-mask-fill-choice-acts = On your tab, ticking or choosing can act at once: a setting saved, or even the form sent.
 kernel-mask-name-fill-text = a text from the agent
 kernel-mask-fill-login-pair = your username and your password
 kernel-mask-capture-refused = Capture refused: this tab shows your data.

@@ -412,7 +412,7 @@ export class FakeBridge implements BrowserBridge {
           const t = this.find(tab);
           const url = new URL(t.url);
           const field = this.pages.get(tab)?.fields?.find((f) => f.handle === handle);
-          return { seal: `seal-${++this.counter}`, origin: url.origin, path: url.pathname, frames: [url.origin], type: field?.type ?? "text", autocomplete: field?.autocomplete ?? "", action: null, logins: [], agentReached: t.agentReached ?? true, ...this.seals.get(handle) };
+          return { seal: `seal-${++this.counter}`, origin: url.origin, path: url.pathname, frames: [url.origin], type: field?.type ?? "text", autocomplete: field?.autocomplete ?? "", label: field?.label ?? "", action: null, logins: [], agentReached: t.agentReached ?? true, ...this.seals.get(handle) };
         },
         commit: async (seal, v, origin) => {
           this.note("fill.commit", seal, { ...v }, origin);

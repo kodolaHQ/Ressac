@@ -12,6 +12,8 @@ import { FIELDS_MAX } from "../../../../packages/kernel/src/mcp/bridge";
  */
 export type Seal = {
   innerWindowId: number; handle: number; frames: string[]; action: string | null; type: string; autocomplete: string; placement: string;
+  /** The field's label as the card names it: relabelled since (« Newsletter » become « Supprimer mon compte »), nothing is written. */
+  label: string;
   /** Firefox's login pairing when sealed: the other field's number and this field's role in the pair; null outside one. */
   partner: number | null; role: "username" | "password" | null;
 };
@@ -139,10 +141,10 @@ export class RessacFillChild extends JSWindowActorChild {
     return action;
   }
 
-  private factsOf(el: any): { type: string; autocomplete: string; action: string | null; partner: number | null; role: "username" | "password" | null } | null {
+  private factsOf(el: any): { type: string; autocomplete: string; label: string; action: string | null; partner: number | null; role: "username" | "password" | null } | null {
     if (!el?.isConnected || el.ownerDocument !== this.document) return null;
     const type = this.typeOf(el);
-    return type ? { type, autocomplete: autocompleteOf(el), action: this.actionOf(formOf(el)), ...this.pairOf(el) } : null;
+    return type ? { type, autocomplete: autocompleteOf(el), label: labelOf(el), action: this.actionOf(formOf(el)), ...this.pairOf(el) } : null;
   }
 
   /**
@@ -200,6 +202,7 @@ export class RessacFillChild extends JSWindowActorChild {
       (this.document as any).nodePrincipal.originNoSuffix === seal.frames?.[0] &&
       now.type === seal.type &&
       now.autocomplete === seal.autocomplete &&
+      now.label === seal.label &&
       now.action === seal.action &&
       now.partner === seal.partner &&
       now.role === seal.role &&

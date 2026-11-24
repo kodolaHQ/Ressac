@@ -1046,7 +1046,8 @@ test("boxes and lists: a read says their state and options; on the user's tab, o
     expect(read).toContain("0. checkbox — J'accepte les conditions (pas coché)\n1. radio — Formule : Annuelle (pas coché)\n2. select — Pays (choisi : France) ; options : 0. France · 1. Belgique\n3. text — Ville");
     const r = await call("fill_field", { id: "mail", field: 0, check: true, also: [{ field: 1, check: true }, { field: 2, option: 1 }, { field: 3, value: "Lyon" }] });
     expect(r.text).toBe("Rempli : 0, 1, 2, 3.");
-    const card = of("askFill")[0]![0] as { rows: { field: string; name: string }[]; touchId: boolean };
+    const card = of("askFill")[0]![0] as { rows: { field: string; name: string }[]; touchId: boolean; danger?: string };
+    expect(card.danger).toBe("Sur votre onglet, cocher ou choisir peut agir tout de suite : un réglage enregistré, voire le formulaire envoyé.");
     expect(card.rows.map((x) => `${x.field} : ${x.name}`)).toEqual(["J'accepte les conditions : cocher", "Formule : Annuelle : cocher", "Pays : choisir « Belgique »", "Ville : un texte de l'agent"]);
     expect(card.touchId).toBe(false);
     expect(of("fill.commit").map((c) => c[1])).toEqual([{ choice: { check: true } }, { choice: { check: true } }, { choice: { option: 1, text: "Belgique" } }, { text: "Lyon" }]);
@@ -1093,5 +1094,16 @@ test("on the agent's own tab, a tick needs no card (none of the user's accounts 
     expect((await call("fill_field", { id: "a", field: 0, check: true })).text).toBe("Champ rempli.");
     expect(of("askFill")).toEqual([]);
     expect(of("fill.commit").map((c) => c[1])).toEqual([{ choice: { check: true } }]);
+  });
+});
+
+test("a field relabelled since the read (« Newsletter » become « Supprimer mon compte »): nothing, before any card", async () => {
+  await serve({}, async ({ call, bridge, of }) => {
+    bridge.pages.set("mail", { text: "Réglages", links: [], fields: CHOICES });
+    await call("read_tab", { id: "mail" });
+    bridge.seals.set("7:0", { label: "Supprimer mon compte" });
+    expect(await call("fill_field", { id: "mail", field: 0, check: true })).toEqual({ text: "Le champ n'est plus celui de ta lecture : rien n'a été écrit. Relis l'onglet avec read_tab.", isError: true });
+    expect(of("askFill")).toEqual([]);
+    expect(of("fill.commit")).toEqual([]);
   });
 });

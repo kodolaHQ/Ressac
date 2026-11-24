@@ -84,6 +84,8 @@ export type FieldChoice = { check: boolean } | { option: number; text: string };
  */
 export type FillSeal = {
   seal: string; origin: string; path: string; frames: string[]; type: string; autocomplete: string; action: string | null;
+  /** The field's label now, as a read lists it: the card names the field by the read's. */
+  label: string;
   logins: { username: string }[]; agentReached: boolean; partner?: string;
 };
 

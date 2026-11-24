@@ -1354,7 +1354,8 @@ export function createToolsServer(
       for (const r of asked) {
         const s = await bridge.fill.prepare(id, r.listed!.handle);
         // The field sealed is not the one the agent read (same handle, another field): nothing goes, before any card.
-        if (s.type !== r.listed!.type || s.autocomplete !== r.listed!.autocomplete) return text(FIELD_CHANGED, true);
+        // Nor one relabelled since: the card names it by the read's label.
+        if (s.type !== r.listed!.type || s.autocomplete !== r.listed!.autocomplete || s.label !== r.listed!.label) return text(FIELD_CHANGED, true);
         seals.push(s);
       }
       const seal = seals[0]!;
@@ -1459,6 +1460,8 @@ export function createToolsServer(
       // agent's own tabs hold none of the user's accounts.
       const choosing = rows.some((r) => r.choice);
       const userTab = choosing && o.profile !== "agent";
+      // The tick is the page's own click: its scripts may save or send at once, which the card says.
+      const acts = userTab ? l10n("kernel-mask-fill-choice-acts") : undefined;
       /** What may go into the page: the labels' entries and every passport entry on offer. */
       const offered = [...new Set(rows.flatMap((r) => r.entries))];
       const locked = !allows(seal.origin) || actions.some((a) => !allows(a));
@@ -1471,7 +1474,7 @@ export function createToolsServer(
             // A passport value was not read anywhere: the card names the sites it is meant for, each once.
             .map((e) => l10n(e.passport?.length ? "kernel-mask-fill-foreign-passport" : "kernel-mask-fill-foreign-danger", { ...named([valueName(e.type, e.zone, locale())]), from: [...new Set(passportOrigins(e).map(siteOf))].join(", ") || "?", to: siteOf(seal.origin) }))
         : [];
-      const danger = [hit && OUTFLOW_DANGER(locale(), hit), ...elsewhere, ...foreign, locked && lockedLine()].filter(Boolean).join("\n");
+      const danger = [hit && OUTFLOW_DANGER(locale(), hit), ...elsewhere, ...foreign, acts, locked && lockedLine()].filter(Boolean).join("\n");
       // Design § 8.1: a passport value off all its origins asks Touch ID, once per origin for TOUCH_ID_WINDOW_MS (ruling F16:
       // the window spares only that reason; a tab the agent reached still asks).
       const fromPassport = offered.filter((e) => e.passport?.length);
