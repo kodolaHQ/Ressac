@@ -150,13 +150,14 @@ function numeralsProjection(src: Projection): Projection | undefined {
   return b.done("numerals");
 }
 
-/** `src` with each match of `re` replaced by its first group (or nothing); the kept char spans the whole match. */
-function rewrite(src: Projection, re: RegExp): Projection {
+/** `src` with each match of `re` replaced by `by`, else its first group (or nothing); the kept char spans the whole match. */
+function rewrite(src: Projection, re: RegExp, by?: string): Projection {
   const b = new Builder();
   let at = 0;
   for (const m of src.text.matchAll(re)) {
     for (; at < m.index; at++) b.push(src.text[at]!, src.start[at]!, src.end[at]!);
-    if (m[1]) b.push(m[1], src.start[at]!, src.end[at + m[0].length - 1]!);
+    const kept = by ?? m[1];
+    if (kept) b.push(kept, src.start[at]!, src.end[at + m[0].length - 1]!);
     at += m[0].length;
   }
   for (; at < src.text.length; at++) b.push(src.text[at]!, src.start[at]!, src.end[at]!);
@@ -164,14 +165,18 @@ function rewrite(src: Projection, re: RegExp): Projection {
 }
 
 const IGNORABLES = /\p{Default_Ignorable_Code_Point}+/gu;
+const DIGIT_GAP = /(?<=\d)\p{Default_Ignorable_Code_Point}+(?=\d)/gu;
 const SPACED_SEP = /(?<=[\p{L}\p{N}])[ \t]+([-/_])[ \t]+(?=[\p{L}\p{N}])/gu;
 /**
  * `src` (already NFKC) without invisible characters and with spaced separators tightened (« 4111 - 1111 » → « 4111-1111 »),
- * or undefined when that changes nothing. Mailers put U+200B or a soft hyphen between digits to stop auto-linking.
+ * or none when that changes nothing. Mailers put U+200B or a soft hyphen between digits to stop auto-linking. When one sits
+ * between two digits, a second projection reads it as a space: « 4111 1111\u200b1111 1111 » is a card grouped 4-4-4-4.
  */
-function compact(src: Projection): Projection | undefined {
-  if (src.text.search(IGNORABLES) < 0 && src.text.search(SPACED_SEP) < 0) return undefined;
-  return rewrite(rewrite(src, IGNORABLES), SPACED_SEP);
+function compact(src: Projection): Projection[] {
+  if (src.text.search(IGNORABLES) < 0 && src.text.search(SPACED_SEP) < 0) return [];
+  const out = [rewrite(rewrite(src, IGNORABLES), SPACED_SEP)];
+  if (src.text.search(DIGIT_GAP) >= 0) out.push(rewrite(rewrite(rewrite(src, DIGIT_GAP, " "), IGNORABLES), SPACED_SEP));
+  return out;
 }
 
 /** Text projections the detectors scan: always nfkc and digits; percent, escapes, compact and numerals when they apply. */
@@ -193,8 +198,7 @@ export function projections(text: string): Projection[] {
     decoded.push(p);
   }
   for (const p of decoded) {
-    const c = compact(p);
-    if (c) out.push(c);
+    out.push(...compact(p));
   }
   for (const src of srcs) {
     const np = numeralsProjection(src);

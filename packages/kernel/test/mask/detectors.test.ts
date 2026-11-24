@@ -185,3 +185,104 @@ describe("detect, obfuscated separators", () => {
       expect(types(t), t).toEqual([]);
   });
 });
+
+describe("detect, common wordings (swarm findings 2-5)", () => {
+  const spanned = (text: string, zone: "sources" | "web" = "sources") => detect(text, zone).map((f) => [f.type, text.slice(f.start, f.end)]);
+  const code = "482" + "913";
+
+  it("finds a one-time code after the common code wordings, in both zones", () => {
+    for (const text of [
+      `Your one-time passcode is ${code}.`,
+      `Use ${code} to verify your email address.`,
+      `Votre mot de passe temporaire est ${code}`,
+      `Authentification forte : ${code}`,
+      `Your 2FA code: ${code}`,
+      `Your login token is ${code}`,
+    ])
+      for (const zone of ["sources", "web"] as const) expect(spanned(text, zone), `${zone}: ${text}`).toEqual([["code", code]]);
+  });
+
+  it("finds a code of capitals and digits near a code word, in both zones", () => {
+    for (const [text, value] of [
+      ["Votre code de vérification : X7K9P2", "X7K9P2"],
+      ["Your Slack confirmation code is QX4-7BR", "QX4-7BR"],
+      ["Steam Guard code: F7K2Q", "F7K2Q"],
+    ] as const)
+      for (const zone of ["sources", "web"] as const) expect(spanned(text, zone), `${zone}: ${text}`).toEqual([["code", value]]);
+  });
+
+  it("leaves code words without a code-like value next to them alone", () => {
+    for (const text of [
+      "Each token is a word piece; a 2FA app makes login safer.",
+      "GET /user?access_token=x&page=2 401",
+      "Verify your address before you publish.",
+      "Le mot de passe temporaire expire le 14/03/2027.",
+      "Authentification forte : activez-la dans vos réglages.",
+      "code postal 69005 Lyon",
+      "Your verification code expires in 10 minutes.",
+      "Use the code ABCDEF to get started",
+      "commande AB12345 expédiée le 3 mars",
+      "total 2 340,12 € TTC",
+    ])
+      expect(types(text, "web"), text).toEqual([]);
+  });
+
+  it("finds an identity number after the official and English wordings, spaced too, in both zones", () => {
+    for (const [text, value] of [
+      ["Carte nationale d'identité n° 190312345678", "190312345678"],
+      ["Passport number: 19AB12345", "19AB12345"],
+      ["Pièce d'identité : 19AB12345", "19AB12345"],
+      ["ID card number 19AB12345", "19AB12345"],
+      ["Document number: 19AB12345", "19AB12345"],
+      ["CNI : 1903 1234 5678", "1903 1234 5678"],
+    ] as const)
+      for (const zone of ["sources", "web"] as const) expect(spanned(text, zone), `${zone}: ${text}`).toEqual([["id", value]]);
+  });
+
+  it("an identity word before a date or a short number finds no identity number", () => {
+    for (const text of ["Passeport valable jusqu'au 12 03 2027", "Passport renewal takes 15 days", "carte d'identité perdue le 14/03/2020"])
+      expect(types(text, "web"), text).toEqual([]);
+  });
+
+  it("finds the whole display name of the common sender headers", () => {
+    const names = (text: string) => found(text).filter(([t]) => t === "nom").map(([, v, c]) => [v, c]);
+    const mail = "<lucie.ferrand@exemple.fr>";
+    expect(names(`De : "Ferrand, Lucie" ${mail}`)).toEqual([["Ferrand, Lucie", "lucie ferrand"]]);
+    expect(names(`On Mon, Nov 24, 2026 at 10:12 AM Lucie Ferrand ${mail} wrote:`)).toEqual([["Lucie Ferrand", "lucie ferrand"]]);
+    expect(names(`Le 24/11/2026 à 10:12 Lucie Ferrand ${mail} a écrit :`)).toEqual([["Lucie Ferrand", "lucie ferrand"]]);
+    expect(names(`Le 24 nov. 2026 à 10h12, Lucie Ferrand ${mail} a écrit :`)).toEqual([["Lucie Ferrand", "lucie ferrand"]]);
+    expect(names(`De : Lucie Ferrand (perso) ${mail}`)).toEqual([["Lucie Ferrand", "lucie ferrand"]]);
+    expect(names(`De : 'Lucie Ferrand' ${mail}`)).toEqual([["Lucie Ferrand", "lucie ferrand"]]);
+    expect(names(`De : « Lucie Ferrand » ${mail}`)).toEqual([["Lucie Ferrand", "lucie ferrand"]]);
+    expect(names(`De : "Lucie O'Brien" ${mail}`)).toEqual([["Lucie O'Brien", "lucie o'brien"]]);
+    // A quoted organisation stays clear; a quoted address is no name.
+    expect(names(`De : "Banque Ardoise" <alertes@banque-ardoise.fr>`)).toEqual([]);
+    expect(names(`De : "lucie.ferrand@exemple.fr" ${mail}`)).toEqual([]);
+  });
+
+  it("finds a card with an invisible character in one gap only, in both zones", () => {
+    const [a, b, c, d] = CARD.match(/.{4}/g)!;
+    for (const inv of ["​", "­", "&#8203;"])
+      for (const zone of ["sources", "web"] as const) {
+        const card = `${a} ${b}${inv}${c} ${d}`;
+        expect(spanned(`Carte ${card} exp`, zone), `${zone}: ${JSON.stringify(card)}`).toEqual([["carte", card]]);
+      }
+  });
+
+  it("stays linear on 50 kB adversarial strings", () => {
+    for (const s of [
+      "code " + "A1".repeat(25_000),
+      "code " + "A1-".repeat(17_000),
+      "passport " + "1 ".repeat(25_000),
+      "carte " + "nationale ".repeat(5_000),
+      ": \"" + "Lucie, ".repeat(7_000),
+      "10:12 " + "Lucie ".repeat(8_000),
+      ": « " + "a ".repeat(25_000),
+      "1​".repeat(25_000),
+    ]) {
+      const t0 = performance.now();
+      detect(s, "sources");
+      expect(performance.now() - t0, s.slice(0, 12)).toBeLessThan(2000);
+    }
+  });
+});

@@ -166,3 +166,10 @@ describe("value names", () => {
     }
   });
 });
+
+describe("maskText, Outlook's surname-first header", () => {
+  it("masks the whole quoted name and the name in either order afterwards", () => {
+    const out = maskText(`De : "Ferrand, Lucie" <lucie.ferrand@exemple.fr>\nBonjour, Lucie Ferrand vous écrit.`, { table: new LabelTable(), ...SRC });
+    expect(out).not.toMatch(/Lucie|Ferrand/);
+  });
+});
