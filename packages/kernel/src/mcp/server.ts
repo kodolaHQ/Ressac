@@ -1439,7 +1439,8 @@ export function createToolsServer(
       const reached = seals.some((s) => s.agentReached);
       const foreign = reached
         ? offered.filter((e) => e.zone === "sources" && !passportOrigins(e).includes(seal.origin))
-            .map((e) => l10n("kernel-mask-fill-foreign-danger", { ...named([valueName(e.type, e.zone, locale())]), from: passportOrigins(e).map(siteOf).join(", ") || "?", to: siteOf(seal.origin) }))
+            // A passport value was not read anywhere: the card names the sites it is meant for, each once.
+            .map((e) => l10n(e.passport?.length ? "kernel-mask-fill-foreign-passport" : "kernel-mask-fill-foreign-danger", { ...named([valueName(e.type, e.zone, locale())]), from: [...new Set(passportOrigins(e).map(siteOf))].join(", ") || "?", to: siteOf(seal.origin) }))
         : [];
       const danger = [hit && OUTFLOW_DANGER(locale(), hit), ...elsewhere, ...foreign, locked && lockedLine()].filter(Boolean).join("\n");
       // Design § 8.1: a passport value off all its origins asks Touch ID, once per origin for TOUCH_ID_WINDOW_MS (ruling F16:

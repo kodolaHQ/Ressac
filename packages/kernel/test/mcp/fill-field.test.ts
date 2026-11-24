@@ -810,6 +810,13 @@ test("passport: the agent's own tab borrows its window's active space's passport
     expect(card.remember).toBeUndefined();
     expect(of("fill.commit")).toHaveLength(1);
   });
+  // Off its sites: the red line names them once each (https and www are one site), never « read on ».
+  const elsewhere = [ptab("mail", `${P_MAIL}/inbox`), { ...ptab("e", `${P_ELSE}/e`, true, "agent"), activeProfile: "perso" }];
+  await servePassport({ tabs: elsewhere, passports: { perso: [ADDRESS_ENTRY] } }, async ({ call, cards }) => {
+    await call("read_tab", { id: "e" });
+    await call("fill_field", { id: "e", field: 0, passport: "adresse" });
+    expect(cards()[0]!.danger).toBe("Cette page, ouverte par l'agent, est sur autre.example, pas sur un des sites prévus pour votre adresse dans votre passeport (boutique.example).");
+  });
 });
 
 test("passport: a date by kind goes as the field takes it; nothing into a password field", async () => {

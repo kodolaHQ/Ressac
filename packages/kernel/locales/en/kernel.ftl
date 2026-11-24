@@ -173,6 +173,7 @@ kernel-mask-fill-action-danger = This form sends to { $to }, not to the field's 
 kernel-mask-fill-foreign-danger = This page, opened by the agent, is on { $to }: { $name } { $agreement ->
        *[one-m] was
     } read on { $from }.
+kernel-mask-fill-foreign-passport = This page, opened by the agent, is on { $to }, not on one of the sites your passport sets for { $name } ({ $from }).
 kernel-mask-name-fill-text = a text from the agent
 kernel-mask-fill-login-pair = your username and your password
 kernel-mask-capture-refused = Capture refused: this tab shows your data.
