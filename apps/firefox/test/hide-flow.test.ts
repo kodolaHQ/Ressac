@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ending, shorten, undoWindow, UNDO_MS } from "../chrome/window/hide-layer";
+import { ending, runsForAll, shorten, undoWindow, UNDO_MS } from "../chrome/window/hide-layer";
 
 // « Cacher pour l'agent »: the honest ending says what is true now (hatching only when the agent does not see it).
 describe("ending", () => {
@@ -54,5 +54,28 @@ describe("shorten", () => {
     const s = shorten(long);
     expect(s.length).toBe(60);
     expect(s.startsWith("aaaa") && s.endsWith("bbbb") && s.includes("…")).toBe(true);
+  });
+});
+
+// The ending and the marks share one rule: `hidden` only when every window with a conversation masks the value.
+describe("runsForAll", () => {
+  const p = { tab: "t1", url: "https://banque.example/", agentReached: false, text: "Camille Aubrac" };
+  const answers = (by: Record<string, unknown>) => async (_m: string, q: unknown) => {
+    const a = by[(q as { window: string }).window];
+    if (a instanceof Error) throw a;
+    return a;
+  };
+  const name = [{ start: 0, end: 14, type: "nom" }];
+
+  it("one window masks, another (with a session) does not: no run, so the ending is not hidden", async () => {
+    const runs = await runsForAll(answers({ f1: { runs: [name] }, f2: { runs: [[]] } }), ["f1", "f2"], p);
+    expect(runs).toEqual([]);
+    expect(ending({ agentReached: false, runs, length: 14, siteMatches: true })).toBe("next");
+  });
+
+  it("a window without a session is left out; a failed answer masks nothing", async () => {
+    expect(await runsForAll(answers({ f1: { runs: [name] }, f2: { runs: null } }), ["f1", "f2"], p)).toEqual([{ start: 0, end: 14 }]);
+    expect(await runsForAll(answers({ f1: { runs: [name] }, f2: new Error("down") }), ["f1", "f2"], p)).toEqual([]);
+    expect(await runsForAll(answers({ f1: { runs: null } }), ["f1"], p)).toEqual([]);
   });
 });

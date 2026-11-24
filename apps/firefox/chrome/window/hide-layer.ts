@@ -40,7 +40,7 @@ export type Ending = NonNullable<HideContext["ending"]>;
  * when the entry has the page's site (`siteMatches`: added or already there, and matching the top URL); otherwise it is
  * in the passport but not masked on this page (an http page: the passport's sites are https only).
  */
-export function ending(o: { agentReached: boolean; runs: MaskedRun[]; length: number; siteMatches: boolean }): Ending {
+export function ending(o: { agentReached: boolean; runs: { start: number; end: number }[]; length: number; siteMatches: boolean }): Ending {
   if (o.agentReached) return "agentReached";
   let covered = 0;
   for (const r of [...o.runs].sort((a, b) => a.start - b.start)) {
@@ -49,6 +49,26 @@ export function ending(o: { agentReached: boolean; runs: MaskedRun[]; length: nu
   }
   if (o.length > 0 && covered >= o.length) return "hidden";
   return o.siteMatches ? "next" : "notHere";
+}
+
+/**
+ * What every conversation masks in `text` of tab `tab` (commonRuns): mask.runs asked for each window, null (no
+ * session) left out, a failed answer counted as masking nothing. The marks and the ending use this one rule: a tab's
+ * tool may come from any window's conversation.
+ */
+export async function runsForAll(request: (method: string, params: unknown) => Promise<unknown>, windows: string[], p: { tab: string; url: string; agentReached: boolean; text: string }): Promise<{ start: number; end: number }[]> {
+  const all = await Promise.all(
+    windows.map((window) =>
+      request("mask.runs", { window, tab: p.tab, url: p.url, agentReached: p.agentReached, texts: [p.text] }).then(
+        (x) => {
+          const runs = (x as { runs: MaskedRun[][] | null }).runs;
+          return runs === null ? null : (runs[0] ?? []);
+        },
+        () => [],
+      ),
+    ),
+  );
+  return commonRuns(all);
 }
 
 /** The toast's « Annuler » window, on an injectable clock: what `open` keeps, `take` gives once, within `ms`. */
@@ -349,9 +369,7 @@ export function mountHideLayer(win: Window, store: RessacStore, windowId: Window
     const reachedNow = tabInfos(store.state).find((t) => t.id === p.tab)?.agentReached ?? true;
     const url = String(p.browser.currentURI?.spec ?? store.state.tabs[p.tab]?.url ?? "");
     const value = p.text.trim();
-    const runs = await store.agent
-      .request<{ runs: MaskedRun[][] | null }>("mask.runs", { window: windowId, tab: p.tab, url, agentReached: reachedNow, texts: [value] })
-      .then((x) => x.runs?.[0] ?? [], () => []);
+    const runs = await runsForAll((m, q) => store.agent.request(m, q), store.state.windows.map((w) => w.id), { tab: p.tab, url, agentReached: reachedNow, text: value });
     if (g !== gen || !ctx) return;
     const host = p.origin === null ? null : cleanOrigin(p.origin);
     const siteMatches = host !== null && originMatches(host, originOf(url));
@@ -548,13 +566,7 @@ export function mountMarks(win: Window, store: RessacStore, o: { agentReached(ta
     const agentReached = o.agentReached(t);
     const key = JSON.stringify([windows, t, url, agentReached, text]);
     if (cache?.key === key && Date.now() - cache.at < RUNS_FRESH_MS) return cache.runs;
-    // null: that window has no conversation. A failed answer counts as masking nothing (no hatch rather than a wrong one).
-    const all = await Promise.all(
-      windows.map((window) =>
-        store.agent.request<{ runs: MaskedRun[][] | null }>("mask.runs", { window, tab: t, url, agentReached, texts: [text] }).then((x) => (x.runs === null ? null : x.runs[0] ?? []), () => []),
-      ),
-    );
-    const runs = commonRuns(all);
+    const runs = await runsForAll((m, q) => store.agent.request(m, q), windows, { tab: t, url, agentReached, text });
     cache = { key, at: Date.now(), runs };
     return runs;
   }
