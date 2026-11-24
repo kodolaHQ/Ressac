@@ -1,85 +1,57 @@
-// « Cacher pour l'agent »: the read-only eye in the page. The child picks the element a person clicks and freezes its
-// text, lists the page's visible text pieces and measures text slices; all drawing is the parent's (Ressac's layer).
-// Page-proof: nothing is added to, styled in or selected in the page, and every listener sits on the docshell's
-// chromeEventHandler, in front of any page listener (as design-actor.ts's guard). Packaged: a change here needs build:ui.
+// « Cacher pour l'agent »: the read-only eye in the page. The child answers the parent's questions only (what text is
+// at a point, the page's visible text pieces, the rects of text slices); it listens to nothing, so the page never sees
+// a pointer while picking: Ressac's layer over the <browser> captures it and asks here with coordinates. All drawing
+// is the parent's. Nothing is added to, styled in or selected in the page. Packaged: a change here needs build:ui.
 
-import type { TextPiece } from "../../core/hide/text-map";
+import { joinPieces, type TextPiece } from "../../core/hide/text-map";
 
-// An actor module has no timers of its own.
-const { setTimeout, clearTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
-
-/** Every mouse event the page could see while picking: swallowed when trusted. */
-const MOUSE = ["pointerdown", "pointerup", "pointermove", "pointerover", "pointerout", "pointerenter", "pointerleave", "mousedown", "mouseup", "mousemove", "mouseover", "mouseout", "mouseenter", "mouseleave", "click", "auxclick", "dblclick", "contextmenu"];
-const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "HEAD", "TITLE", "SELECT", "TEXTAREA"]);
+// The agent read's filter (page-actor.ts, 158072da): the same skipped tags and opacity threshold, UA widget roots
+// skipped. Copied, not imported: a module shared by two actor entries would become a chunk the jar does not ship.
+const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "HEAD", "TITLE", "SELECT", "TEXTAREA", "svg"]);
+const FADED = 0.05;
 /** Far above any passport value: the parent refuses what is too long, this only bounds a message. */
 const TEXT_MAX = 10_000;
-const FADED = 0.05;
+const RECT_MAX = 100_000;
 
 type Rect = { x: number; y: number; width: number; height: number };
-type Point = { x: number; y: number };
-type Callback = (name: string, data: unknown) => void;
+type Frame = { frame: { browsingContextId: number; x: number; y: number } };
+type Hit = { text: string; rect: Rect } | Frame | null;
 
-const collapse = (s: string | null) => (s ?? "").replace(/\s+/g, " ").trim();
-/** What a person reads in `el`: innerText leaves out its hidden descendants (a display:none decoy), textContent not. */
-const textOf = (el: Element) => collapse((el as HTMLElement).innerText ?? el.textContent);
+const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
+const styleOf = (el: Element) => el.ownerDocument.defaultView!.getComputedStyle(el);
+const alpha = (c: string) => (c === "transparent" ? 0 : (((c.match(/[\d.]+/g) ?? []).map(Number))[3] ?? 1));
+/** The element's own shadow root, unless a UA widget's (a text input's value, video controls): the agent read skips those. */
+const ownRoot = (el: Element): ShadowRoot | null => {
+  const own = (el as any).openOrClosedShadowRoot as (ShadowRoot & { isUAWidget(): boolean }) | null;
+  return own && !own.isUAWidget() ? own : null;
+};
+const parentOf = (n: Node): Element | null => (n as Element).assignedSlot ?? n.parentElement ?? ((n.parentNode as ShadowRoot | null)?.host ?? null);
+
+/** Finite, non-negative size, within RECT_MAX: what a compromised process sends is never a huge or NaN drawing. */
+function bounded(v: any): Rect | null {
+  if (!v || typeof v !== "object") return null;
+  const n = [v.x, v.y, v.width, v.height];
+  if (!n.every((x) => typeof x === "number" && Number.isFinite(x))) return null;
+  const c = (x: number, lo: number) => Math.min(RECT_MAX, Math.max(lo, x));
+  return { x: c(v.x, -RECT_MAX), y: c(v.y, -RECT_MAX), width: c(v.width, 0), height: c(v.height, 0) };
+}
+const plain = (r: DOMRect): Rect => bounded({ x: r.x, y: r.y, width: r.width, height: r.height })!;
 
 /**
- * Where `win`'s viewport sits in the top window, CSS px (zoom is the tab's, the same in every frame).
- * shortcut: stops at a frame of another process (its embedder is not here), so such a frame's rects are its own
- * viewport's; upgrade when the parent layer draws over cross-process frames (ask the embedder's actor for the offset).
+ * The visible text nodes under `root`, in order, each with whether a block boundary precedes it. One rule for the
+ * page's pieces, a pick and its frozen text: no display:none, visibility other than visible, opacity (with the
+ * ancestors') under FADED, fully transparent colour (gradient text aside), skipped tag or UA widget root.
  */
-function offsetOf(win: Window): Point {
-  const o = { x: 0, y: 0 };
-  for (let bc = (win as any).browsingContext; bc?.parent; bc = bc.parent) {
-    const el = bc.embedderElement as Element | null;
-    if (!el) break;
-    const r = el.getBoundingClientRect(), cs = el.ownerDocument.defaultView!.getComputedStyle(el);
-    o.x += r.x + el.clientLeft + parseFloat(cs.paddingLeft);
-    o.y += r.y + el.clientTop + parseFloat(cs.paddingTop);
-  }
-  return o;
-}
-
-const plain = (r: DOMRect, o: Point): Rect => ({ x: r.x + o.x, y: r.y + o.y, width: r.width, height: r.height });
-
-/** Seen by a person at the point: takes the pointer, not hidden, not faded with its ancestors. */
-function shown(el: Element): boolean {
-  const view = el.ownerDocument.defaultView!;
-  const cs = view.getComputedStyle(el);
-  if (cs.pointerEvents === "none" || cs.visibility === "hidden") return false;
-  let o = 1;
-  for (let e: Element | null = el; e; e = e.parentElement) if ((o *= Number(view.getComputedStyle(e).opacity)) < FADED) return false;
-  return true;
-}
-
-/**
- * The element a click at (x, y) means: through invisible and pointer-less layers, the first one with text, then its
- * smallest descendant under the point that still has text. A frame's element yields null (its own document answers),
- * and so do body and html.
- */
-function pickAt(doc: Document, x: number, y: number): Element | null {
-  const under = (p: Element): Element | null => {
-    for (const c of p.children) {
-      const r = c.getBoundingClientRect();
-      if (x >= r.left && x < r.right && y >= r.top && y < r.bottom && textOf(c) && shown(c)) return c;
-    }
-    return null;
-  };
-  for (const el of doc.elementsFromPoint(x, y)) {
-    // The page itself is not « the text clicked »: an empty spot picks nothing.
-    if (el.tagName === "IFRAME" || el.tagName === "FRAME" || el === doc.body || el === doc.documentElement) return null;
-    if (!textOf(el) || !shown(el)) continue;
-    let best = el;
-    for (let c = under(best); c; c = under(best)) best = c;
-    return best;
-  }
-  return null;
-}
-
-/** The visible text nodes of `doc`, in order, each with whether a block boundary precedes it. */
-function piecesOf(doc: Document): { nodes: Text[]; pieces: TextPiece[] } {
+function piecesOf(root: Element): { nodes: Text[]; pieces: TextPiece[] } {
   const nodes: Text[] = [];
   const pieces: TextPiece[] = [];
+  // The context above `root`: its ancestors' opacity and tags (a display:none ancestor leaves root unrendered).
+  let above = 1;
+  for (let e = parentOf(root); e; e = parentOf(e)) {
+    if (SKIP.has(e.tagName)) return { nodes, pieces };
+    above *= Number(styleOf(e).opacity);
+  }
+  if (!(root as any).checkVisibility?.()) return { nodes, pieces };
   let block = false;
   const walk = (node: Node, opacity: number, visible: boolean): void => {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -98,147 +70,153 @@ function piecesOf(doc: Document): { nodes: Text[]; pieces: TextPiece[] } {
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const el = node as Element;
     if (SKIP.has(el.tagName)) return;
-    const cs = el.ownerDocument.defaultView!.getComputedStyle(el);
-    if (!cs || cs.display === "none") return;
+    const cs = styleOf(el);
+    if (cs.display === "none") return;
     const o = opacity * Number(cs.opacity);
     if (o < FADED) return;
     const isBlock = el.tagName === "BR" || (!cs.display.startsWith("inline") && cs.display !== "contents");
     if (isBlock) block = true;
-    const v = cs.visibility === "visible";
-    // A UA widget's root (a text input's value, video controls) is the browser's, not the page's (page-actor.ts too).
-    const own = (el as any).openOrClosedShadowRoot as (ShadowRoot & { isUAWidget(): boolean }) | null;
-    if (own && !own.isUAWidget()) walk(own, o, v);
+    const v = cs.visibility === "visible" && (alpha(cs.color) > 0 || cs.backgroundClip === "text");
+    const shadow = ownRoot(el);
+    if (shadow) walk(shadow, o, v);
     else if (el.tagName === "SLOT") {
       const assigned = (el as HTMLSlotElement).assignedNodes({ flatten: true });
       for (const c of assigned.length ? assigned : el.childNodes) walk(c, o, v);
     } else if (el.tagName !== "IFRAME" && el.tagName !== "FRAME") for (const c of el.childNodes) walk(c, o, v);
     if (isBlock) block = true;
   };
-  const root = doc.body ?? doc.documentElement;
-  if (root) walk(root, 1, true);
+  walk(root, above, true);
   return { nodes, pieces };
 }
 
-const owners = new WeakMap<object, Callback>();
-
-/** The parent layer listens to the `hover`/`picked`/`stopped` messages of a tab's `<browser>`; returns how to stop. */
-export function onHideMessage(browser: Element, cb: Callback): () => void {
-  owners.set(browser, cb);
-  return () => {
-    if (owners.get(browser) === cb) owners.delete(browser);
-  };
+/** A frame element's content box in its document's viewport, CSS px. */
+function contentBox(el: Element): Rect {
+  const r = el.getBoundingClientRect(), cs = styleOf(el);
+  const x = r.x + el.clientLeft + parseFloat(cs.paddingLeft), y = r.y + el.clientTop + parseFloat(cs.paddingTop);
+  return { x, y, width: el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), height: el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) };
 }
 
-const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-const rectOf = (v: any): Rect | null => (v && typeof v === "object" ? { x: num(v.x), y: num(v.y), width: num(v.width), height: num(v.height) } : null);
+/**
+ * What a click at (x, y) of `doc`'s viewport means: the first element under the point, through pointer-less layers,
+ * whose own text node is rendered under the point and visible by piecesOf's rule; it is the smallest element holding
+ * that text. Its frozen text is its subtree's visible text. A frame first under the point answers for itself (its
+ * coordinates translated into its viewport); an empty spot of a wrapper, or text nobody sees there, picks nothing.
+ * shortcut: text inside a shadow root is reached only through its host's own text nodes; upgrade if a site needs it.
+ */
+function hitAt(doc: Document, x: number, y: number): Hit {
+  const range = doc.createRange();
+  const under = (t: Text) => {
+    range.selectNodeContents(t);
+    return [...range.getClientRects()].some((r) => x >= r.left && x < r.right && y >= r.top && y < r.bottom);
+  };
+  for (const el of doc.elementsFromPoint(x, y)) {
+    if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
+      const bc = (el as any).browsingContext;
+      if (!bc) return null;
+      const box = contentBox(el);
+      return { frame: { browsingContextId: bc.id, x: x - box.x, y: y - box.y } };
+    }
+    if (styleOf(el).pointerEvents === "none") continue;
+    const texts = [...el.childNodes].filter((n): n is Text => n.nodeType === Node.TEXT_NODE && !!(n as Text).data.trim() && under(n as Text));
+    if (!texts.length) continue;
+    const { nodes, pieces } = piecesOf(el);
+    if (!texts.some((t) => nodes.includes(t))) continue;
+    // Frozen here: what the page does to the element after the pick never reaches the passport.
+    return { text: collapse(joinPieces(pieces).text), rect: plain(el.getBoundingClientRect()) };
+  }
+  return null;
+}
+
+const actorOf = (wg: any): RessacHideParent | null => {
+  try {
+    return wg?.getActor("RessacHide") ?? null;
+  } catch {
+    return null; // not an http(s) document: no actor
+  }
+};
 
 export class RessacHideParent extends JSWindowActorParent {
-  receiveMessage(msg: { name: string; data: any }): void {
-    const browser = this.browsingContext?.top?.embedderElement;
-    const cb = browser && owners.get(browser);
-    if (!cb) return;
-    // The sender may be a compromised web process: known names, typed fields, the origin from its own WindowGlobal.
-    const d = msg.data ?? {};
-    switch (msg.name) {
-      case "RessacHide:hover":
-        return cb("hover", { rect: rectOf(d.rect) });
-      case "RessacHide:picked":
-        if (typeof d.text !== "string" || !d.text) return;
-        return cb("picked", { text: d.text.slice(0, TEXT_MAX), rect: rectOf(d.rect), origin: this.manager.documentPrincipal.origin });
-      case "RessacHide:stopped":
-        return cb("stopped", {});
+  /** The text a person points at in `browser`, in its top window's CSS px (frames followed): `{ text, rect, origin }` or null. */
+  static pickAt(browser: any, x: number, y: number): Promise<{ text: string; rect: Rect; origin: string | null } | null> {
+    return actorOf(browser.browsingContext?.currentWindowGlobal)?.at("pickAt", x, y) ?? Promise.resolve(null);
+  }
+
+  /** The outline under the point: `{ rect }` or null. */
+  static async hoverAt(browser: any, x: number, y: number): Promise<{ rect: Rect } | null> {
+    const r = await actorOf(browser.browsingContext?.currentWindowGlobal)?.at("hoverAt", x, y);
+    return r ? { rect: r.rect } : null;
+  }
+
+  /** Where frame `bc`'s viewport sits in its top window, CSS px, each embedder's document reporting its frame's box. */
+  static async offsetOf(bc: any): Promise<{ x: number; y: number } | null> {
+    const o = { x: 0, y: 0 };
+    for (let c = bc; c?.parent; c = c.parent) {
+      const box = bounded(await actorOf(c.parent.currentWindowGlobal)?.sendQuery("frameBox", { browsingContextId: c.id }).catch(() => null));
+      if (!box) return null;
+      o.x += box.x;
+      o.y += box.y;
     }
+    return o;
+  }
+
+  /** This document's origin, from its WindowGlobal (never the child's word), without a container's suffix; null for a null or opaque principal. */
+  get origin(): string | null {
+    const p = this.manager.documentPrincipal;
+    return p?.isContentPrincipal ? p.originNoSuffix : null;
+  }
+
+  /** This document's answer at (x, y) of its viewport; a frame's is asked of that frame's actor and shifted back. */
+  async at(kind: "pickAt" | "hoverAt", x: number, y: number): Promise<{ text: string; rect: Rect; origin: string | null } | null> {
+    const r: any = await this.sendQuery(kind, { x, y }).catch(() => null);
+    if (r?.frame) {
+      const { browsingContextId: id, x: fx, y: fy } = r.frame;
+      if (typeof fx !== "number" || typeof fy !== "number" || !Number.isFinite(fx) || !Number.isFinite(fy)) return null;
+      // Only a frame of this document: a child cannot send the parent to another tab's frame.
+      const child = this.browsingContext.children.find((c: any) => c.id === id);
+      const sub = await actorOf(child?.currentWindowGlobal)?.at(kind, fx, fy);
+      const rect = sub && bounded({ ...sub.rect, x: sub.rect.x + x - fx, y: sub.rect.y + y - fy });
+      return sub && rect ? { ...sub, rect } : null;
+    }
+    const rect = bounded(r?.rect);
+    if (!rect) return null;
+    if (kind === "hoverAt") return { text: "", rect, origin: null };
+    if (typeof r.text !== "string" || !r.text) return null;
+    return { text: r.text.slice(0, TEXT_MAX), rect, origin: this.origin };
+  }
+
+  /** The current selection of this document: `{ text, rect, origin }` (rect in its own viewport) or null. */
+  async selection(): Promise<{ text: string; rect: Rect; origin: string | null } | null> {
+    const r: any = await this.sendQuery("selection").catch(() => null);
+    const rect = bounded(r?.rect);
+    return rect && typeof r.text === "string" && r.text ? { text: r.text.slice(0, TEXT_MAX), rect, origin: this.origin } : null;
+  }
+
+  /** This document's visible text pieces; `rects` slices index into the last answer. */
+  async pieces(): Promise<TextPiece[]> {
+    const r: any = await this.sendQuery("pieces").catch(() => null);
+    return Array.isArray(r?.pieces) ? r.pieces.filter((p: any) => typeof p?.text === "string" && typeof p.block === "boolean") : [];
+  }
+
+  /** Each run's rects, in this document's viewport (add offsetOf for a frame). */
+  async rects(slices: { piece: number; from: number; to: number }[][]): Promise<Rect[][]> {
+    const r: any = await this.sendQuery("rects", { slices }).catch(() => null);
+    return Array.isArray(r?.rects) ? r.rects.map((run: unknown) => (Array.isArray(run) ? run.map(bounded).filter((x): x is Rect => !!x) : [])) : [];
   }
 }
 
 export class RessacHideChild extends JSWindowActorChild {
-  private unarm: (() => void) | null = null;
   /** The text nodes of the last `pieces`: `rects` slices index into them. */
   private nodes: Text[] = [];
 
-  /** The actor of `doc`'s own window (a frame of this process sends for its own site). */
-  private actorOf(doc: Document): RessacHideChild | null {
-    if (doc === this.document) return this;
-    try {
-      return (doc.defaultView as any)?.windowGlobalChild?.getActor("RessacHide") ?? null;
-    } catch {
-      return null; // not an http(s) document: no actor
-    }
-  }
-
-  /**
-   * Capture listeners on this window's chrome event handler, which also handles the frames of this process. Trusted
-   * mouse events stop there; a move reports the element under it, a primary click freezes its text and disarms (the
-   * rest of a double click is swallowed 500 ms more), Escape disarms.
-   */
-  private arm(): boolean {
-    this.unarm?.();
-    const h = this.docShell.chromeEventHandler;
-    const doc = this.document;
-    let last: Element | null | undefined;
-    let picking = true;
-    let timer: unknown;
-    const target = (e: Event): Document | null => {
-      const t = e.target as Node | null;
-      return t ? (t.nodeType === Node.DOCUMENT_NODE ? (t as Document) : t.ownerDocument) : null;
-    };
-    const mouse = (e: MouseEvent) => {
-      if (!e.isTrusted) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      const d = picking && target(e);
-      if (!d) return;
-      if (e.type === "mousemove") {
-        const el = pickAt(d, e.clientX, e.clientY);
-        if (el === last) return;
-        last = el;
-        this.actorOf(d)?.sendAsyncMessage("RessacHide:hover", { rect: el ? plain(el.getBoundingClientRect(), offsetOf(d.defaultView!)) : null });
-      } else if (e.type === "click" && e.button === 0) {
-        const el = pickAt(d, e.clientX, e.clientY);
-        if (!el) return;
-        // Frozen now: what the page does to the element after the click never reaches the passport.
-        const text = textOf(el);
-        picking = false;
-        this.actorOf(d)?.sendAsyncMessage("RessacHide:picked", { text, rect: plain(el.getBoundingClientRect(), offsetOf(d.defaultView!)), origin: (d as any).nodePrincipal.origin });
-        timer = setTimeout(unarm, 500);
-      }
-    };
-    const key = (e: KeyboardEvent) => {
-      if (!e.isTrusted || e.key !== "Escape") return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      unarm();
-      this.sendAsyncMessage("RessacHide:stopped", {});
-    };
-    // A page kept in the bfcache is never destroyed (no didDestroy): leaving it disarms.
-    const hide = (e: Event) => {
-      if (e.isTrusted && e.target === doc) unarm();
-    };
-    for (const t of MOUSE) h.addEventListener(t, mouse, true);
-    h.addEventListener("keydown", key, true);
-    h.addEventListener("pagehide", hide, true);
-    const unarm = () => {
-      clearTimeout(timer);
-      for (const t of MOUSE) h.removeEventListener(t, mouse, true);
-      h.removeEventListener("keydown", key, true);
-      h.removeEventListener("pagehide", hide, true);
-      if (this.unarm === unarm) this.unarm = null;
-    };
-    this.unarm = unarm;
-    return true;
-  }
-
-  private selection(): { text: string; rect: Rect; origin: string } | null {
+  private selection(): { text: string; rect: Rect } | null {
     const sel = this.contentWindow?.getSelection();
     const text = collapse(sel?.toString() ?? "");
-    if (!sel || !text || !sel.rangeCount) return null;
-    return { text, rect: plain(sel.getRangeAt(0).getBoundingClientRect(), offsetOf(this.contentWindow!)), origin: (this.document as any).nodePrincipal.origin };
+    return sel && text && sel.rangeCount ? { text, rect: plain(sel.getRangeAt(0).getBoundingClientRect()) } : null;
   }
 
-  /** Each run's slices measured with a detached Range (never the selection), top-window CSS px. */
+  /** Each run's slices measured with a detached Range (never the selection), in this viewport's CSS px. */
   private rects(slices: unknown): Rect[][] {
     if (!Array.isArray(slices)) return [];
-    const o = offsetOf(this.contentWindow!);
     const range = this.document.createRange();
     return slices.map((run) =>
       (Array.isArray(run) ? run : []).flatMap((s: any) => {
@@ -247,29 +225,34 @@ export class RessacHideChild extends JSWindowActorChild {
         const len = node.data.length;
         range.setStart(node, Math.min(Math.max(0, s.from), len));
         range.setEnd(node, Math.min(Math.max(0, s.to), len));
-        return [...range.getClientRects()].filter((r) => r.width > 0).map((r) => plain(r, o));
+        return [...range.getClientRects()].filter((r) => r.width > 0).map(plain);
       }),
     );
   }
 
-  // The chrome event handler is the tab's (or the frame's), not this document's: the listeners go with the window.
   didDestroy(): void {
-    this.unarm?.();
     this.nodes = [];
   }
 
   receiveMessage(m: { name: string; data?: any }): unknown {
+    const x = m.data?.x, y = m.data?.y;
+    const at = typeof x === "number" && typeof y === "number" && Number.isFinite(x) && Number.isFinite(y);
     switch (m.name) {
-      // One guard per process: a frame of this process is already behind its process root's.
-      case "arm":
-        return this.manager.isProcessRoot ? this.arm() : false;
-      case "stop":
-        this.unarm?.();
-        return true;
+      case "pickAt":
+        return at ? hitAt(this.document, x, y) : null;
+      case "hoverAt": {
+        const hit = at ? hitAt(this.document, x, y) : null;
+        return hit && "rect" in hit ? { rect: hit.rect } : hit;
+      }
+      case "frameBox": {
+        const el = [...this.document.querySelectorAll("iframe, frame")].find((f) => (f as any).browsingContext?.id === m.data?.browsingContextId);
+        return el ? contentBox(el) : null;
+      }
       case "selection":
         return this.selection();
       case "pieces": {
-        const { nodes, pieces } = piecesOf(this.document);
+        const root = this.document.body ?? this.document.documentElement;
+        const { nodes, pieces } = root ? piecesOf(root) : { nodes: [], pieces: [] };
         this.nodes = nodes;
         return { pieces };
       }
