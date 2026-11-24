@@ -260,7 +260,8 @@ function valueProblem(e: PassportEntry): ProblemCode | null {
     case "tel":
       return /^(?:0\d{9}|\+\d{8,15})$/.test(t.replace(/[\s.()-]/g, "")) ? null : "tel";
     case "email":
-      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) ? null : "email";
+      // Domain labels exclude « . »: one way to split the domain, so a long « !.!.!. » stays linear (CodeQL polynomial-redos).
+      return /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(t) ? null : "email";
     case "iban":
       return compact.length !== IBAN_LENGTHS.get(compact.slice(0, 2)) ? "iban-short" : ibanValid(compact) ? null : "iban-key";
     case "secu":

@@ -177,7 +177,8 @@ describe("maskText, Outlook's surname-first header", () => {
 test("a US or UK phone is masked in each of its national spellings, under one label", () => {
   for (const t of ["Call (415) 555-0132, or text 415 555 0132 / 4155550132", "Ring 020 7946 0958, fax 020-7946-0958"]) {
     const out = maskText(t, { table: new LabelTable(), ...SRC });
-    expect(out, t).not.toMatch(/\d{4}/);
+    // Labels are random letters and digits: look for digits outside them only.
+    expect(out.replace(/⟨tel-[a-z0-9]{8}⟩/g, ""), t).not.toMatch(/\d{4}/);
     expect(new Set(out.match(/⟨tel-[a-z0-9]{8}⟩/g)).size, t).toBe(1);
   }
 });

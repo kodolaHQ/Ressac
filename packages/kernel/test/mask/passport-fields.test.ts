@@ -206,6 +206,9 @@ describe("email", () => {
     expect(passportForms(e)).toEqual({ folded: [], digits: [] });
     expect(validateEntry(e, [])).toEqual({ problems: [], warnings: [{ code: "email-domain" }] });
     expect(codes(text("email", "camille@exemple"))).toEqual(["email"]);
+    expect(codes(text("email", "camille@mail.exemple.fr"))).toEqual([]);
+    expect(codes(text("email", "camille@exemple..fr"))).toEqual(["email"]);
+
     expect(canonicalOf(text("email", "Camille@Exemple.FR"))).toBe("camille@exemple.fr");
   });
 });
