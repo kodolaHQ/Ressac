@@ -207,6 +207,9 @@ describe("detect, common wordings (swarm findings 2-5)", () => {
       ["Votre code de vérification : X7K9P2", "X7K9P2"],
       ["Your Slack confirmation code is QX4-7BR", "QX4-7BR"],
       ["Steam Guard code: F7K2Q", "F7K2Q"],
+      ["Backup code: X7K-9P2-QR4", "X7K-9P2-QR4"],
+      ["Votre code : ABC123DEF456", "ABC123DEF456"],
+      ["Recovery code ABCD-1234-EFGH", "ABCD-1234-EFGH"],
     ] as const)
       for (const zone of ["sources", "web"] as const) expect(spanned(text, zone), `${zone}: ${text}`).toEqual([["code", value]]);
   });
@@ -223,6 +226,9 @@ describe("detect, common wordings (swarm findings 2-5)", () => {
       "Use the code ABCDEF to get started",
       "commande AB12345 expédiée le 3 mars",
       "total 2 340,12 € TTC",
+      "Le code cible ES2022 et SHA256",
+      "source code: HTTP2, ISO8601, RTX4090",
+      "code 4K, 1080P et MP3",
     ])
       expect(types(text, "web"), text).toEqual([]);
   });
@@ -235,12 +241,15 @@ describe("detect, common wordings (swarm findings 2-5)", () => {
       ["ID card number 19AB12345", "19AB12345"],
       ["Document number: 19AB12345", "19AB12345"],
       ["CNI : 1903 1234 5678", "1903 1234 5678"],
+      ["passport no. AB 123 456", "AB 123 456"],
+      ["passeport : 12 AB 34567", "12 AB 34567"],
+      ["Passeport n° AB 123 456 le 3 mars", "AB 123 456"],
     ] as const)
       for (const zone of ["sources", "web"] as const) expect(spanned(text, zone), `${zone}: ${text}`).toEqual([["id", value]]);
   });
 
   it("an identity word before a date or a short number finds no identity number", () => {
-    for (const text of ["Passeport valable jusqu'au 12 03 2027", "Passport renewal takes 15 days", "carte d'identité perdue le 14/03/2020"])
+    for (const text of ["Passeport valable jusqu'au 12 03 2027", "Passport renewal takes 15 days", "carte d'identité perdue le 14/03/2020", "Passport valid for 10 years", "passeport de 10 ans"])
       expect(types(text, "web"), text).toEqual([]);
   });
 
@@ -273,6 +282,9 @@ describe("detect, common wordings (swarm findings 2-5)", () => {
     for (const s of [
       "code " + "A1".repeat(25_000),
       "code " + "A1-".repeat(17_000),
+      "code " + "AB-".repeat(17_000),
+      "passport " + "AB ".repeat(17_000),
+      "passport " + "le 1".repeat(12_000),
       "passport " + "1 ".repeat(25_000),
       "carte " + "nationale ".repeat(5_000),
       ": \"" + "Lucie, ".repeat(7_000),
