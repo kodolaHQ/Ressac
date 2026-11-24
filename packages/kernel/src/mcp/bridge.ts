@@ -170,7 +170,7 @@ export interface BrowserBridge {
    * `danger`: what the address carries that the agent
    * read from a private source or that looks like a secret, shown as a red line (it never blocks the card).
    */
-  askAddress?(o: { url: string; reason: string; agent: string; danger?: string }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
+  askAddress?(o: { url: string; reason: string; agent: string; danger?: string; found?: true }, window: string | undefined, signal?: AbortSignal): Promise<boolean>;
   /**
    * The reveal card (`kernel-mask-reveal-card`, rendered in `text`): the agent asks to see a masked value for this
    * conversation, which then stays locked. True if the user allows it. `signal` raised: the card is removed, false.

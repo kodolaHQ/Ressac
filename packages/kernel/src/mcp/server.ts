@@ -723,11 +723,12 @@ export function createToolsServer(
    * read on, or a destination a lock forbids. The handler that sends there asks its address card even for a free address,
    * on the shown address (a handle stays masked), with these red lines: one card, never two.
    */
-  const marked = new Map<string, { shown: string; lines: string[]; locked: boolean }>();
+  const marked = new Map<string, { shown: string; lines: string[]; locked: boolean; found: boolean }>();
   /** `card` with the gate's lines for `url`, if it marked it. */
   const withMask = <C extends { url: string; danger?: string }>(card: C, url: string): C => {
     const m = marked.get(url);
-    return m ? { ...card, url: m.shown, danger: [card.danger, ...m.lines].filter(Boolean).join("\n") } : card;
+    // `found`: a link read on a page (a handle), not an address the agent wrote: the card says so.
+    return m ? { ...card, url: m.shown, danger: [card.danger, ...m.lines].filter(Boolean).join("\n"), ...(m.found ? { found: true as const } : {}) } : card;
   };
   /** The key of `url`'s card: a marked one is this session's own, never shared with an unmarked card for it. */
   const cardKey = (url: string, otherwise: string) => (marked.has(url) ? `mask:${session}:${url}` : otherwise);
@@ -781,7 +782,7 @@ export function createToolsServer(
         // The shown host, not the real one: a value in the host stays masked on the card too.
         if (d.read !== undefined && to !== d.read) lines.push(l10n("kernel-mask-handle-danger", { ...named(issuedNames(d.shown)), from: siteOf(d.read), to: siteOf(d.shown) }));
         if (!allows(to)) lines.push(lockedLine());
-        if (lines.length) marked.set(d.real, { shown: d.shown, lines, locked: !allows(to) });
+        if (lines.length) marked.set(d.real, { shown: d.shown, lines, locked: !allows(to), found: !d.composed });
       }
       return null;
     }

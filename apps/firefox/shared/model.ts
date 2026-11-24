@@ -468,6 +468,8 @@ export interface Request {
   agent?: string;
   /** « agent-address »: the sensitive data the address carries (already masked), displayed as text. */
   danger?: string;
+  /** « agent-address »: a link the agent read on a page (not one it wrote), stopped for what it carries. */
+  found?: true;
   /** « mask-* »: how the kernel names the value, never the value itself (a screen capture of the card shows no value). */
   mask?: {
     /** The kernel's rendered sentence (reveal, label alert, dev tools). */

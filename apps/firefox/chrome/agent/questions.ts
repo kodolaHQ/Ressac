@@ -106,8 +106,8 @@ export class Questions {
   }
 
   /** The card for an address the agent composed: false on a refusal, after QUESTION_DELAY_MS or on `signal`. */
-  askAddress(o: { url: string; reason: string; agent: string; danger?: string }, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
-    const fields = { tabId: null, windowId: windowId, origin: o.url, permissions: ["agent-address" as const], title: o.url, reason: o.reason, agent: o.agent, ...(o.danger ? { danger: o.danger } : {}) };
+  askAddress(o: { url: string; reason: string; agent: string; danger?: string; found?: true }, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
+    const fields = { tabId: null, windowId: windowId, origin: o.url, permissions: ["agent-address" as const], title: o.url, reason: o.reason, agent: o.agent, ...(o.danger ? { danger: o.danger } : {}), ...(o.found === true ? { found: true as const } : {}) };
     return waitForResponse((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
   }
 

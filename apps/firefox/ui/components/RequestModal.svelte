@@ -153,7 +153,7 @@
             : consoleExtension
               ? "home-request-label-console"
               : agentAddress
-                ? "home-request-label-address"
+                ? request.found ? "home-request-label-address-found" : "home-request-label-address"
                 : masking
                   ? `home-request-label-${request.permissions[0]}`
                   : "home-request-label",
@@ -187,7 +187,7 @@
         </div>
       {:else if agentAddress}
         <div class="reading" data-testid="address-request">
-          <p>{t("home-request-label-address")}</p>
+          <p>{t(request.found ? "home-request-label-address-found" : "home-request-label-address")}</p>
           <p class="address" data-testid="address-request-url">{request.origin}</p>
           {#if addressLabels.length}<MaskReveal text={request.origin} labels={addressLabels} see="home-request-mask-see-address" hide="home-request-mask-hide-address" />{/if}
           {#if agentReason}<p class="reason">{t("home-request-address-reason", { reason: agentReason })}</p>{/if}
@@ -195,7 +195,7 @@
           <button class="why-toggle" data-testid="address-request-why" aria-expanded={why} aria-controls="address-request-why" onclick={() => (why = !why)}>{t("home-request-why")}</button>
           <div class="why" class:open={why} id="address-request-why" aria-hidden={!why}>
             <div>
-              <p class="reason">{t("home-request-why-1")}</p>
+              <p class="reason">{t(request.found ? "home-request-why-1-found" : "home-request-why-1")}</p>
               <p class="reason">{t("home-request-why-2")}</p>
             </div>
           </div>

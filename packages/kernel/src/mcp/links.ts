@@ -8,17 +8,39 @@ const REDIRECTS: [RegExp, string, string][] = [
   [/^(www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/, "/url", "q"],
 ];
 
-/** The target of an engine's result redirect (DuckDuckGo `/l/?uddg=`, Google `/url?q=`); any other address unchanged. */
+/**
+ * Click and campaign trackers a page or an engine adds to a link (Google's `srsltid` on its results, `utm_*`…): opaque
+ * tokens of the page read, never the user's, that the masking would take for identifiers and the next site would receive.
+ */
+const TRACKING = /^(utm_[a-z_]+|srsltid|gclid|gclsrc|dclid|gbraid|wbraid|fbclid|msclkid|yclid|twclid|ttclid|igshid|mc_cid|mc_eid|_gl|li_fat_id)$/i;
+
+/** An address without its tracking parameters (TRACKING); unchanged when it has none or does not parse. */
+export function withoutTracking(url: string): string {
+  try {
+    const u = new URL(url);
+    const keys = [...new Set(u.searchParams.keys())].filter((k) => TRACKING.test(k));
+    if (!keys.length) return url;
+    for (const k of keys) u.searchParams.delete(k);
+    return u.href;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * The address a link means: an engine's result redirect unwrapped (DuckDuckGo `/l/?uddg=`, Google `/url?q=`), and its
+ * tracking parameters dropped; any other address unchanged.
+ */
 export function unwrapLink(url: string): string {
   try {
     const u = new URL(url);
     for (const [host, path, param] of REDIRECTS) {
       if (!host.test(u.hostname) || u.pathname !== path) continue;
       const target = u.searchParams.get(param) ?? "";
-      return URL.canParse(target) && /^https?:$/.test(new URL(target).protocol) ? target : url;
+      return URL.canParse(target) && /^https?:$/.test(new URL(target).protocol) ? withoutTracking(target) : url;
     }
   } catch {}
-  return url;
+  return withoutTracking(url);
 }
 
 export const withoutHash = (url: string) => {

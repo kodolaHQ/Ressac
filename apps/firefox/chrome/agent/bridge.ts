@@ -284,7 +284,7 @@ export function bridgeHandlers(
       return f ? questions.askDevTools(o, d, f, signal) : [];
     },
     // The card for an address the agent composed, in the window of its search; refused with none to show it.
-    askAddress: ([o, win]: [{ url: string; reason: string; agent: string; danger?: string }, WindowId | undefined], signal) => {
+    askAddress: ([o, win]: [{ url: string; reason: string; agent: string; danger?: string; found?: true }, WindowId | undefined], signal) => {
       const f = win ?? windows.active();
       return f ? questions.askAddress(o, f, signal) : false;
     },

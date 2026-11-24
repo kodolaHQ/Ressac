@@ -130,10 +130,12 @@ test("after a granted reveal: same origin passes, another origin, a search and a
     expect(card.url).toBe(handle);
     expect(card.danger).toContain("Cette adresse contient votre e-mail, lu sur mail.example-novacourriel.test : elle l'envoie à evil.test.");
     expect(card.danger).toContain(LOCKED);
+    // A link read on a page, not an address the agent wrote: the card says so.
+    expect(card.found).toBe(true);
 
     // A link elsewhere: the locked card.
     await call("navigate", { id: "mail", link: linkNo(first, OTHER) });
-    expect(cards().at(-1)).toMatchObject({ url: OTHER, danger: LOCKED });
+    expect(cards().at(-1)).toMatchObject({ url: OTHER, danger: LOCKED, found: true });
 
     // No destination the kernel can name: always the card.
     await call("search_web", { query: "loyer", goal: "payer" });
