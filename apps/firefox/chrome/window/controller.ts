@@ -240,15 +240,24 @@ export function createController(
   markWebPage(store.state);
   unsubscribe.push(store.subscribe(markWebPage));
   // The agent's halo: lit while one of its tools runs on the displayed tab (a tab or space switch is a state change).
-  // Under it, what the agent receives masked from that tab (hide-layer.ts mountMarks), on and off with it.
+  // Under it, what the agent receives masked from that tab (hide-layer.ts mountMarks), on and off with it; also while
+  // « Cacher pour l'agent » picks on the shown tab, so the user sees what is already hidden before hiding more.
   const marks = mountMarks(window, store, {
     agentReached: (id) => tabInfos(store.state).find((t) => t.id === id)?.agentReached ?? true,
     aura: () => auraOf(store.state),
   });
+  let haloOn = false;
+  let picking = false;
+  const syncMarks = () => {
+    const f = store.state.windows.find((x) => x.id === windowId);
+    const t = haloOn ? haloTab : picking ? f?.active[f.activeSpace] : null;
+    if (t) marks.start(t);
+    else marks.stop();
+  };
   const halo = createHalo((on) => {
     document.documentElement.toggleAttribute("ressac-agent-working", on);
-    if (on && haloTab) marks.start(haloTab);
-    else marks.stop();
+    haloOn = on;
+    syncMarks();
   });
   let haloTab: TabId | null | undefined;
   const updateHalo = () => {
@@ -425,7 +434,14 @@ export function createController(
   const calls = mountCalls(window, store);
   unsubscribe.push(calls.dispose);
   const hide = mountHideLayer(window, store, windowId);
-  unsubscribe.push(hide.dispose);
+  unsubscribe.push(
+    hide.onChange(() => {
+      if (picking === hide.picking()) return;
+      picking = hide.picking();
+      syncMarks();
+    }),
+    hide.dispose,
+  );
   const showSidebarWidth = (px: number) => {
     barWidth = px;
     document.documentElement.style.setProperty("--ressac-sidebar-w", `${px}px`);

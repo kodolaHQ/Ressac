@@ -167,3 +167,31 @@ it("the marks hatch what the agent receives masked, follow a scroll, fade with t
   await waitFor(m, working, (v) => v === true, 20_000);
   expect(await inPage<string[]>("return window.__seen;")).toEqual([]);
 }, 180_000);
+
+it("the viewfinder of « Cacher pour l'agent » shows the hatches without the aura, and leaving it takes them away", async () => {
+  const dataDir = await mkdtemp(join(os.tmpdir(), "ressac-data-"));
+  const profile = await mkdtemp(join(os.tmpdir(), "ressac-firefox-"));
+  dirs.push(dataDir, profile);
+  await writePassport(profile, [{ id: "0000000000000001", field: "nom", value: { given: "Camille", family: "Aubrac" }, origins: [] }]);
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_PASSPORT_CIPHER: "memory", RESSAC_TEST_LOCAL_ADDRESSES: "1", RESSAC_TEST_PUBLIC_ADDRESSES: "127.0.0.1" } });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  await until(async () => existsSync(join(w!.dataDir, "workspace", ".ressac", "mcp.json")), Boolean, "the MCP config", 20_000);
+  await userTab(`${server.url}/compte/fiche.html`);
+  await inPage("window.__seen.length = 0; return true;");
+  expect(await marks()).toEqual([]);
+
+  // Armed: the passport's name and the IBAN are hatched, no aura needed; the plain line is not.
+  await click(m, '[data-testid="hide-button"]');
+  await waitFor(m, "return document.getElementById('ressac-hide-layer')?.style.pointerEvents", (v) => v === "auto");
+  expect(await m.execute<boolean>(working)).toBe(false);
+  const [iban, name, plain] = [await rectOf("iban"), await rectOf("nom"), await inPage<Rect>(`const p = document.querySelectorAll("p")[2].getBoundingClientRect(); return { x: p.x, y: p.y, width: p.width, height: p.height };`)];
+  const shown = await until(marks, (rs) => covers(rs, iban) && covers(rs, name), "the hatches while picking");
+  expect(covers(shown, plain)).toBe(false);
+
+  // A second press leaves the viewfinder: the hatches go.
+  await click(m, '[data-testid="hide-button"]');
+  await until(marks, (rs) => rs.length === 0, "no hatch once the viewfinder is left");
+  expect(await inPage<string[]>("return window.__seen.filter((e) => !/^(mouse|pointer|click)/.test(e));")).toEqual([]);
+}, 120_000);
