@@ -6,19 +6,25 @@ import { spacePaths } from "../../src/paths.js";
 import { watchHome, watchActions } from "../../src/home/watch.js";
 import { tempFolder } from "../helpers/temp.js";
 
+// macOS FSEvents can replay the folders' own creation, just before the watch started, despite ignoreInitial: that setup
+// burst may call back once on its own. So each check counts from just before the writes it makes (a setup event still
+// pending merges into them through the grouping delay).
 test("watchHome calls the callback only once for a burst of writes", async () => {
   const c = spacePaths(await tempFolder());
   await mkdir(join(c.widgets, "x"), { recursive: true });
   let calls = 0;
   const stop = watchHome(c, () => calls++);
   await sleep(300); // laisse chokidar s'initialiser
+  const before = calls;
   for (let i = 0; i < 5; i++) {
     await writeFile(join(c.widgets, "x", "display.html"), `<p>${i}</p>`);
     await sleep(4);
   }
+  await expect.poll(() => calls - before, { timeout: 5000 }).toBe(1);
+  // Must not happen: a second call. Window started after the call above, i.e. after the burst's grouping delay ran out.
   await sleep(500);
   await stop();
-  expect(calls).toBe(1);
+  expect(calls - before).toBe(1);
 });
 
 test("watchActions follows ~/Ressac/actions and components, once per burst", async () => {
@@ -26,15 +32,17 @@ test("watchActions follows ~/Ressac/actions and components, once per burst", asy
   let calls = 0;
   const stop = watchActions(c, () => calls++);
   await sleep(300);
+  const before = calls;
   await mkdir(join(c.actions, "gitlab"), { recursive: true });
   await writeFile(join(c.actions, "gitlab", "action.json"), "{}");
-  await sleep(500);
-  expect(calls).toBe(1);
+  await expect.poll(() => calls - before, { timeout: 5000 }).toBe(1);
   await mkdir(join(c.components, "barres"), { recursive: true });
   await writeFile(join(c.components, "barres", "component.html"), "<svg/>");
+  await expect.poll(() => calls - before, { timeout: 5000 }).toBe(2);
+  // Must not happen: a third call, in the window after the second burst's call.
   await sleep(500);
   await stop();
-  expect(calls).toBe(2);
+  expect(calls - before).toBe(2);
 });
 
 test("watchHome does not follow a link the agent puts in home/", async () => {
