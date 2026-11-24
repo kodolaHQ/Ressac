@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import type { BrowserState } from "../shared/model";
-import { HIDDEN_CATEGORIES, HIDDEN_GROUPS, HIDDEN_PANES } from "../chrome/store/preferences-cleanup";
+import { HIDDEN_CATEGORIES, HIDDEN_CONTROLS, HIDDEN_GROUPS, HIDDEN_PANES } from "../chrome/store/preferences-cleanup";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
@@ -57,24 +57,40 @@ const KEPT = [
   ["paneDownloads", ["downloads"]],
   ["paneAccessibility", ["fonts", "zoom"]],
   ["paneLanguages", ["browserLanguage"]],
-  ["paneConnectionSecurity", ["networkProxy"]],
+  ["paneConnectionSecurity", ["networkProxy", "httpsOnly", "certificates"]],
   ["panePasswordsAutofill", ["passwords"]],
-  ["panePrivacy", ["cookiesAndSiteData2"]],
+  // nonTechnicalPrivacy2: GPC and DNT, beside the hidden Firefox Relay row.
+  ["panePrivacy", ["cookiesAndSiteData2", "nonTechnicalPrivacy2", "dnsOverHttps"]],
   ["paneSearch", ["defaultEngine"]],
+] as const;
+// Panes kept for some of their groups, where hidden ones live too (tabs, layout, AI rows).
+const MIXED = [
+  ["paneAppearance", ["browserTheme"]],
+  ["paneTabsBrowsing", ["pageNavigation"]],
 ] as const;
 
 it("hidden: Firefox's panes and groups that contradict Ressac are not shown", async () => {
   await launch();
   await openPrefs();
-  for (const [pane, rendered] of KEPT) {
+  // Every hidden name still exists in this Firefox: a rename (history became history2) must fail here, not show.
+  expect(
+    await inPrefs<string[]>(
+      `const [categories, groups, panes] = arguments;
+       return [...categories.filter((id) => !doc.getElementById(id)), ...groups.filter((g) => !doc.querySelector('setting-group[groupid="' + g + '"], [data-srd-groupid="' + g + '"]')),
+               ...panes.filter((p) => !doc.querySelector('[data-category="' + p + '"]'))];`,
+      [HIDDEN_CATEGORIES, HIDDEN_GROUPS, HIDDEN_PANES],
+    ),
+  ).toEqual([]);
+  for (const [pane, rendered] of [...KEPT, ...MIXED]) {
     await showPane(pane, [...rendered]);
     const visible = await inPrefs<string[]>(
-      `const [categories, groups, panes] = arguments;
+      `const [categories, groups, panes, controls] = arguments;
        return [...categories.map((id) => doc.getElementById(id)), ...groups.flatMap((g) => [...doc.querySelectorAll('setting-group[groupid="' + g + '"], [data-srd-groupid="' + g + '"]')]),
                ...panes.flatMap((p) => [...doc.querySelectorAll('[data-category="' + p + '"]')])]
          .filter((e) => e && doc.defaultView.getComputedStyle(e).display !== "none")
-         .map((e) => e.id || e.getAttribute("groupid") || e.getAttribute("data-srd-groupid") || e.getAttribute("data-category"));`,
-      [HIDDEN_CATEGORIES, HIDDEN_GROUPS, HIDDEN_PANES],
+         .map((e) => e.id || e.getAttribute("groupid") || e.getAttribute("data-srd-groupid") || e.getAttribute("data-category"))
+         .concat(controls.filter((id) => deepFind(doc.documentElement, "#" + id)));`,
+      [HIDDEN_CATEGORIES, HIDDEN_GROUPS, HIDDEN_PANES, HIDDEN_CONTROLS],
     );
     expect(visible, pane).toEqual([]);
   }
@@ -107,6 +123,8 @@ it("logins tab: the saved passwords open in a store tab of the current space", a
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"open-advanced\"]')");
   await click(m, '[data-testid="open-advanced"]');
   await waitFor(m, "return gBrowser.selectedBrowser.contentDocument?.readyState === 'complete' && !!gBrowser.selectedBrowser.contentDocument.defaultView.gotoPref", (v) => v === true);
+  // It opens on a pane with content, not on Firefox's hidden account pane.
+  await waitFor(m, PREFS + `return [...doc.querySelectorAll("setting-pane")].filter(shown).map((e) => e.getAttribute("data-category"));`, (v) => JSON.stringify(v) === '["panePrivacy"]');
   await showPane("panePasswordsAutofill", ["passwords"]);
   await inPrefs(`deepFind(doc.documentElement, "#showPasswords, #manageSavedPasswords").click();`);
   const s = await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).state)();`, (s) => !!activeTab(s)?.url.startsWith("about:logins"));

@@ -203,7 +203,8 @@ export function createSettingsApi(o: {
     defaultBrowser: async () => o.chrome.defaultBrowser(),
     setDefaultBrowser: () => o.chrome.setDefaultBrowser(),
     repairScreenSharing: () => o.chrome.repairScreenSharing().catch(() => false),
-    openAdvanced: () => o.dispatch({ type: "openTab", windowId: o.windowId, url: "about:preferences", activate: true }),
+    // #privacy: Firefox 161's page opens on its account pane, which Ressac hides (chrome/store/preferences-cleanup.ts).
+    openAdvanced: () => o.dispatch({ type: "openTab", windowId: o.windowId, url: "about:preferences#privacy", activate: true }),
     openNotificationSettings: () => o.chrome.openNotificationSettings(),
     openFullDiskAccessSettings: () => o.chrome.openFullDiskAccessSettings(),
     openFilesAndFoldersSettings: () => o.chrome.openFilesAndFoldersSettings(),

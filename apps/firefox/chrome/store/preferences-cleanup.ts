@@ -10,8 +10,6 @@ const CATEGORIES: Record<string, string> = {
   "category-experimental": "paneExperimental",
   // Firefox's version and updates: Ressac ships its own.
   "category-about-firefox": "paneAbout",
-  // Mozilla's other products.
-  "category-more-from-mozilla": "paneMoreFromMozilla",
   // Firefox's AI features: the agent is Ressac's.
   "category-ai-features": "paneAi",
   // Firefox 161: notifications, site permissions and data collection, all kept by Ressac (see HIDDEN_GROUPS).
@@ -32,17 +30,13 @@ export const HIDDEN_PANES = [
 ];
 
 export const HIDDEN_GROUPS = [
-  // Startup, tabs and their layout: the store manages them.
-  "startup",
+  // Tabs and their layout: the store manages them.
   "tabs",
   "browserLayout",
   // Firefox's updates and profiles have no meaning here.
   "updates",
   "profiles",
-  // Default browser: external links would open tabs outside the store.
-  "defaultBrowser",
-  // Ressac keeps its own history (« history2 » since Firefox 161).
-  "history",
+  // Ressac keeps its own history.
   "history2",
   // Site permissions are kept by Ressac (copied into Firefox), listed and revoked in its Settings page.
   "permissions",
@@ -54,7 +48,15 @@ export const HIDDEN_GROUPS = [
   "recommendations",
 ];
 
-export const HIDDEN_CONTROLS = ["relayIntegration"];
+/** Single rows of groups Ressac keeps. */
+export const HIDDEN_CONTROLS = [
+  // Mozilla's services: Firefox Relay (e-mail masks, with a Mozilla account) beside GPC and DNT, Mozilla Monitor's breach alerts.
+  "relayIntegration",
+  "trustPanelBreachAlertsMain",
+  // Firefox's AI: key points of a link preview, « ask a chatbot » on a selection. The agent is Ressac's.
+  "linkPreviewKeyPoints",
+  "highlightToSearchAskChatbot",
+];
 
 /** The stylesheet, for the preferences pages only. */
 export function preferencesSheet(): string {
@@ -63,7 +65,6 @@ export function preferencesSheet(): string {
     ...[...Object.values(CATEGORIES), ...HIDDEN_PANES].map((pane) => `[data-category="${pane}"]`),
     // A group not yet migrated to setting-group is a groupbox naming it.
     ...HIDDEN_GROUPS.flatMap((g) => [`setting-group[groupid="${g}"]`, `[data-srd-groupid="${g}"]`]),
-    // Firefox Relay (Mozilla's e-mail masks, with a Mozilla account), in Privacy since Firefox 161; its group keeps GPC and DNT.
     ...HIDDEN_CONTROLS.map((id) => `#${id}`),
   ];
   return `@-moz-document url-prefix("about:preferences"), url-prefix("about:settings") {\n${selectors.join(",\n")} { display: none !important }\n}\n`;
@@ -71,9 +72,8 @@ export function preferencesSheet(): string {
 
 export function installPreferencesCleanup(): void {
   const prefs = Services.prefs.getDefaultBranch("");
-  // The redesigned page opens on Firefox's account pane and shows it whatever identity.fxaccounts.enabled says; the
-  // classic one opens on General, leaves out the account pane without accounts and keeps the ids hidden above.
-  prefs.setBoolPref("browser.settings-redesign.enabled", false);
+  // Firefox 161 locks the redesigned page on; it opens on the account pane, hidden above, so Ressac opens it on
+  // #privacy (ui/settings-api.ts openAdvanced).
   prefs.setBoolPref("identity.fxaccounts.enabled", false);
   prefs.setBoolPref("browser.preferences.moreFromMozilla", false);
   const sss = Cc["@mozilla.org/content/style-sheet-service;1"].getService(Ci.nsIStyleSheetService);

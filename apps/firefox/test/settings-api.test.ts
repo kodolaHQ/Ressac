@@ -207,7 +207,7 @@ describe("settings api", () => {
   it("openAdvanced", () => {
     const { api, dispatched } = setup();
     api.openAdvanced();
-    expect(dispatched).toEqual([{ type: "openTab", windowId: "W", url: "about:preferences", activate: true }]);
+    expect(dispatched).toEqual([{ type: "openTab", windowId: "W", url: "about:preferences#privacy", activate: true }]);
   });
 
   it("passport profiles: the spaces' profiles in sidebar order, then kept passports « Sans espace »; none used only by private spaces", async () => {
