@@ -2,6 +2,7 @@ import { expect, test, vi } from "vitest";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { domainToASCII } from "node:url";
 import { createHash } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -571,5 +572,35 @@ test("an address the agent writes with a host word read only in the user's sourc
     // The same words seen on the open web: no line.
     await call("read_tab", { id: "web" }, t);
     expect(await danger("https://verreries-gerland.test/")).toBeUndefined();
+  });
+});
+
+test("source words: a search of them does not clear them, joined words and an accented host match, history names its kind", async () => {
+  const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
+  const history = { results: [{ url: "https://www.marmiton.test/recette", title: "Gratin de Lucette Bouvreuil", lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "", byUser: true }] };
+  const bands: (Band | null)[] = [];
+  const search = new SearchSessions({ show: (_id, band) => bands.push(band) });
+  const outflow = new Outflow();
+  const bridge = bridgeWith({ banque: { text: "VIR SALAIRE VERRERIES GERLAND\nCB BOULANGERIE CHÂTEAUNEUF" } }, { search: { privateWindows: [], failing: [], hanging: [] }, history, widgetData: true }, [user, bank]);
+  await serve({ bridge, search, outflow, settleMs: 0, emptySpanMs: 0 }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    await call("read_tab", { id: "banque" }, t);
+    // The agent searches the words itself: the results show them on the web, the address still gets its line.
+    const found = await call("search_web", { query: "verreries gerland", goal: "but" }, t);
+    expect(found.text).toContain("verreries");
+    expect(bands.some((b) => b?.text.includes("pause"))).toBe(false);
+    expect(await danger("https://www.verreries-gerland.test/")).toBe("Adresse construite avec un nom lu dans banque-ardoise.test : ve••••es");
+    // Two words of the source joined in one host label.
+    expect(await danger("https://verreriesgerland.test/")).toBe("Adresse construite avec un nom lu dans banque-ardoise.test : verr••••land");
+    // An accented host, as Firefox gives it (punycode).
+    expect(await danger(`https://${domainToASCII("boulangerie-châteauneuf.test")}/`)).toContain("lu dans banque-ardoise.test");
+    // A history line is named as the user's history, not as the site visited.
+    await call("search_history", { query: "gratin" }, t);
+    expect(await danger("https://bouvreuil-traiteur.test/")).toBe("Adresse construite avec un nom lu dans votre historique : bo••••il");
   });
 });

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { domainToUnicode } from "node:url";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { z } from "zod";
@@ -141,8 +142,10 @@ export type OpenWorkflow = { widget: string; block: string | null } | { action: 
 const HISTORY_LIMIT = { default: 20, max: 50 };
 /** Words of a masked name too common in addresses and queries to mean the person: organisation words and titles. */
 const NAME_STOP_WORDS = new Set([...ORG_WORDS, "cabinet", "docteur", "maitre", "madame", "monsieur", "mademoiselle", "professeur", "maison", "famille"]);
+/** Sources listing many sites (a line's origin is the site visited): a card names the list, not the site. */
+const USER_LISTS = new Set(["history", "bookmarks"]);
 /** Words of an address host too common to come from what the agent read: the web's own words, besides `NAME_STOP_WORDS`. */
-const HOST_STOP_WORDS = new Set([...NAME_STOP_WORDS, "http", "https", "site", "page", "accueil", "home", "info", "infos", "online", "shop", "store", "blog", "mail", "login", "compte", "account", "official"]);
+const HOST_STOP_WORDS = new Set([...NAME_STOP_WORDS, "http", "https", "site", "page", "accueil", "home", "info", "infos", "online", "shop", "store", "blog", "mail", "login", "compte", "account", "official", "france", "public", "paris", "group", "client", "espace"]);
 
 const outflowWhat = (locale: string, hit: OutflowHit) => {
   const what = outflowLabel(locale, hit.kind);
@@ -883,7 +886,7 @@ export function createToolsServer(
       // What the agent was shown, word by word: a host word read only in the user's sources gets a red line (`danger`).
       const where = l10n(`kernel-outflow-source-${OUTFLOW_SOURCES[name] ?? "tool"}`, { id: String((a[0] as { id?: unknown } | undefined)?.id) });
       const words = (masked: string, zone: Zone, origin: string | null) =>
-        outflow?.shownWords(key, masked.replace(LABELS, " "), zone === "sources" ? { source: origin ? siteOf(origin) : where, ...(origin ? { host: siteOf(origin) } : {}) } : undefined);
+        outflow?.shownWords(key, masked.replace(LABELS, " "), zone === "sources" ? { source: origin && !USER_LISTS.has(OUTFLOW_SOURCES[name] ?? "") ? siteOf(origin) : where, ...(origin ? { host: siteOf(origin) } : {}) } : undefined);
       const content = r.content.map((c) => (c.type === "text" ? { type: "text" as const, text: segments.apply(c.text, labels, words) } : c));
       return { content, ...(r.isError ? { isError: true } : {}) };
     };
@@ -1137,7 +1140,7 @@ export function createToolsServer(
     const hit = clicks ?? checkOutflow(url, true) ?? maskedNameIn(url);
     if (hit) return { danger: OUTFLOW_DANGER(locale(), hit) };
     // The fallback: a word of its host the agent read only in the user's sources (an employer, a shop on a statement).
-    const host = URL.canParse(url) ? new URL(url).hostname : "";
+    const host = URL.canParse(url) ? domainToUnicode(new URL(url).hostname) : "";
     const read = outflow?.sourceWord(key, foldedWords(host).filter((w) => !HOST_STOP_WORDS.has(w)));
     return read ? { danger: l10n("kernel-outflow-danger-source-word", { source: read.source, masked: mask(read.word) }) } : {};
   }
