@@ -20,6 +20,13 @@ describe("suggestion", () => {
     expect(suggestion({ ...record, email: "piege@example.fr" }, new Set(["camille@example.fr"]), ctx)).toBeNull();
   });
 
+  it("« Nom » read as a full name: the first name is cut off only as a whole word", () => {
+    const nameOf = (given: string, name: string) => suggestion({ "given-name": given, name }, new Set([given, name]), ctx)?.[0]?.value;
+    expect(nameOf("Jean", "Jeanneau")).toEqual({ given: "Jean", family: "Jeanneau" });
+    expect(nameOf("Martin", "Martineau")).toEqual({ given: "Martin", family: "Martineau" });
+    expect(nameOf("Jean", "Jean Jeanneau")).toEqual({ given: "Jean", family: "Jeanneau" });
+  });
+
   it("a French form as Firefox reads it (labels only): « Nom » as name, « Adresse » as address-line1, still offered whole", () => {
     // Measured on Firefox 161 (e2e passport-suggest): Prénom → given-name, Nom → name, one « Adresse » field → address-line1.
     const fr = { "given-name": "Camille", name: "Aubrac", "address-line1": "14 rue des Tanneurs", "postal-code": "69001", "address-level2": "Lyon", tel: "06 12 34 56 78", email: "camille@example.fr" };

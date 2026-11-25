@@ -422,6 +422,41 @@ describe("passport suggestions from typed forms", () => {
     expect(await inUi(m, `return doc.querySelector('${tid("passport-suggest-remember")}').checked`, [], "passportSuggest")).toBe(true);
   });
 
+  it("press guard: a press as the bubble shows again does nothing; once armed, its buttons answer", async () => {
+    await start();
+    const sent = await tab(`${server.url}/twice.html`);
+    await typeForm("a-");
+    await press("#a-send");
+    await submitted(1);
+    await oneOffer();
+    await tab(`${server.url}/merci`);
+    await gone();
+    // In the frame, before the tab comes back: the moment the bubble is inserted, its « Non » is pressed at its centre.
+    await inUi(
+      m,
+      `ui.ressacTestEarly = null;
+       const seen = new MutationObserver(() => {
+         const b = doc.querySelector('${tid("passport-suggest")}');
+         if (!b || ui.ressacTestEarly) return;
+         seen.disconnect();
+         const no = b.querySelector('${tid("passport-suggest-no")}').getBoundingClientRect();
+         const [x, y] = [no.left + no.width / 2, no.top + no.height / 2];
+         ui.ressacTestEarly = { armed: b.hasAttribute("data-armed"), inBubble: b.contains(doc.elementFromPoint(x, y)) };
+         for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, x, y, { button: 0, clickCount: 1 });
+       });
+       seen.observe(doc.body, { childList: true, subtree: true });`,
+      [],
+      "passportSuggest",
+    );
+    await dispatch(m, { type: "activateTab", id: sent });
+    expect(await waitUi(m, "return ui.ressacTestEarly", [], 20_000, "passportSuggest")).toEqual({ armed: false, inBubble: true });
+    // Armed now: the early press, synchronous in the chrome had it landed, did nothing.
+    await waitUi(m, `return doc.querySelector('${tid("passport-suggest")}')?.hasAttribute("data-armed")`, [], 10_000, "passportSuggest");
+    expect(await decided()).not.toBeNull();
+    await pressBubble("passport-suggest-no");
+    await gone();
+  });
+
   it("a page script fills the form (execCommand, then requestSubmit): Firefox captures it, no bubble; typed by the user, it offers", async () => {
     await start();
     await tab(`${server.url}/twice.html`);

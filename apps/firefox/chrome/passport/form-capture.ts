@@ -32,7 +32,8 @@ export function suggestion(record: Record<string, string>, typed: ReadonlySet<st
   };
   // Firefox reads a labels-only French form as given-name + name (« Nom ») and address-line1 (« Adresse »).
   const given = t("given-name"), full = t("name");
-  const family = t("family-name") || (given && full ? (full.startsWith(given) ? full.slice(given.length).trim() : full) : "");
+  // The first name is cut off a full name only as a whole word: « Jeanneau » after « Jean » is a surname.
+  const family = t("family-name") || (given && full ? (full === given ? "" : full.startsWith(given + " ") ? full.slice(given.length + 1).trim() : full) : "");
   const street = t("street-address") || ["address-line1", "address-line2", "address-line3"].map(t).filter(Boolean).join(" ");
   const raw = fieldsToProposal({ given, family, full, street, postcode: t("postal-code"), city: t("address-level2"), tel: t("tel"), email: t("email") });
   const all = drafts({ key: "", ...raw, ticked: true, other: false }, "me");
@@ -60,8 +61,8 @@ const DONE_MS = 5000;
 const EXIT_MS = 200;
 
 type SuggestFrame = HTMLIFrameElement & { ressacPassportSuggest?: { api: PassportSuggestApi }; ressacExit?: ReturnType<typeof setTimeout> };
-/** A tab's bubble. `persist`: the navigations it still outlives. */
-type Entry = { profile: string; host: string; docId: number; found: Draft[]; remember: boolean; phase: "offer" | "busy" | "done"; done?: string; failed?: boolean; persist: number; timer?: ReturnType<typeof setTimeout>; show(): void };
+/** A tab's bubble: kept while the tab shows the sending document (`docId`) or the first one it lands on (`landing`). */
+type Entry = { profile: string; host: string; docId: number; landing?: number; found: Draft[]; remember: boolean; phase: "offer" | "busy" | "done"; done?: string; failed?: boolean; timer?: ReturnType<typeof setTimeout>; show(): void };
 
 /**
  * Firefox's address capture goes to the passport instead (design § 9.1): FormAutofillParent's `_onAddressSubmit` is
@@ -135,6 +136,8 @@ export function installFormCapture(o: {
   function bubble(browser: any, found: Draft[], profile: string, host: string, docId: number) {
     // One bubble per tab: a second section (billing after shipping) adds what is new to it, or is dropped.
     const cur = open.get(browser);
+    // shortcut: while an earlier document's bubble is up, a send from another host is dropped and one from the same host
+    // merges into it; upgrade to a bubble per document if people send several address forms in a row.
     if (cur) {
       if (cur.phase === "offer" && cur.profile === profile && cur.host === host) {
         cur.found.push(...found.filter((d) => !twinOf(cur.found.map(entryOf), entryOf(d))));
@@ -146,9 +149,9 @@ export function installFormCapture(o: {
     const win: Window | null | undefined = browser.ownerDocument?.defaultView;
     const w = win && frameOf(win);
     if (!w) return;
-    // The send's own navigation may already be done: the bubble outlives only the one it causes (the bar's persistence 1).
-    const persist = browser.browsingContext?.currentWindowGlobal?.innerWindowId === docId ? 1 : 0;
-    const entry: Entry = { profile, host, docId, found: [...found], remember: false, phase: "offer", persist, show: () => changed(win) };
+    // The send's own navigation may already be done: the document it landed on is the one kept with it.
+    const now = browser.browsingContext?.currentWindowGlobal?.innerWindowId;
+    const entry: Entry = { profile, host, docId, ...(now !== undefined && now !== docId ? { landing: now } : {}), found: [...found], remember: false, phase: "offer", show: () => changed(win) };
     open.set(browser, entry);
     changed(win);
   }
@@ -244,7 +247,11 @@ export function installFormCapture(o: {
         onLocationChange(b: any, wp: any, _req: unknown, _loc: unknown, flags: number) {
           const e = open.get(b);
           if (!e || !wp?.isTopLevel || flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) return;
-          if (e.persist-- <= 0) remove(b, e);
+          // The send's landing document keeps it (the bar's persistence 1); any other document removes it.
+          const id = b.browsingContext?.currentWindowGlobal?.innerWindowId;
+          if (id === e.docId || id === e.landing) return;
+          if (e.landing === undefined && id !== undefined) e.landing = id;
+          else remove(b, e);
         },
       });
       win.addEventListener("resize", () => place(win));
