@@ -109,7 +109,7 @@ Limits:
 
 ## Extension quarantine
 
-Réglages › Confidentialité « Tenir les extensions à l'écart des sites sensibles » (`settings.extensionQuarantine`, on by default; `chrome/store/quarantine.ts`). On: `extensions.quarantinedDomains.enabled` is forced on and the static sensitive hosts (`SENSITIVE_HOSTS` and their `www.`) are merged into `extensions.quarantinedDomains.list`, put back at once if either pref is edited. Off: those hosts leave the list (an entry the user also typed that is one of them goes too), the user's other entries stay, and `enabled` goes back to Firefox's default.
+Réglages › Confidentialité « Extensions hors des sites sensibles » (`settings.extensionQuarantine`, on by default; `chrome/store/quarantine.ts`). On: `extensions.quarantinedDomains.enabled` is forced on and the static sensitive hosts (`SENSITIVE_HOSTS` and their `www.`) are merged into `extensions.quarantinedDomains.list`, put back at once if either pref is edited. Off: those hosts leave the list (an entry the user also typed that is one of them goes too), the user's other entries stay, and `enabled` goes back to Firefox's default.
 
 Agent-written extensions were removed in 0.1.27. At the first launch of that version, the chrome uninstalls every `*@agent.ressac` add-on and clears their `extensions.quarantineIgnoredByUser.*` prefs (`chrome/store/extensions-removal.ts`, once: `ressac.agentExtensionsRemoved`), and the host deletes `<dataDir>/extensions`, `<workspace>/extensions` and the `ressac-amo` keychain items (`host/extensions-removal.ts`, once: `<dataDir>/agent-extensions-removed`).
 
