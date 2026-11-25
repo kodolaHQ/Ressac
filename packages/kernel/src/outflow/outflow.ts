@@ -593,6 +593,12 @@ export class Outflow {
     return undefined;
   }
 
+  /** `word` (lower case, accents dropped) is a whole word of what the user typed in `win`'s conversation. */
+  typedWord(win: string, word: string): boolean {
+    const w = this.wins.get(win);
+    return !!w && ` ${w.typedWords} \n ${words(w.buffer)} `.normalize("NFD").replace(/\p{M}/gu, "").includes(` ${word} `);
+  }
+
   /** A new conversation in the window: what the user typed before is no longer theirs to send; what was read stays. */
   forgetTyped(win: string): void {
     const w = this.wins.get(win);

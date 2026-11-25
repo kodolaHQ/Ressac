@@ -79,7 +79,7 @@ const NAME_HEADER =
   /(?:^|[\n:,;]|\d{1,2}[:h]\d{2}(?:[ \t]?[AaPp]\.?[Mm]\.?)?)[ \t]{0,8}(?:"([\p{L}\p{M}'’., \t-]{1,80})"|'([\p{L}\p{M}’., \t-]{1,80})'|«[ \t\u00a0]?([\p{L}\p{M}'’.,-]{1,40}(?:[ \t]{1,4}[\p{L}\p{M}'’.,-]{1,40}){0,4})[ \t\u00a0]?»|(\p{L}[\p{L}\p{M}'’.-]{0,40}(?:[ \t]{1,4}\p{L}[\p{L}\p{M}'’.-]{0,40}){0,4}))(?:[ \t]{1,4}\([^()<>\n]{0,40}\))?[ \t]{0,4}<[A-Za-z0-9._%+-]{1,64}@([A-Za-z0-9.-]{1,253})/dgu;
 // Words that make a display name an organisation's, accents and case aside. Short on purpose: a person named « Poste »
 // would be shown. shortcut: French and a few English words, add others when the sources show more languages.
-const ORG_WORDS = new Set([
+export const ORG_WORDS = new Set([
   "banque", "bank", "credit", "caisse", "assurance", "assurances", "mutuelle", "impots", "tresor", "urssaf", "mairie",
   "service", "services", "support", "equipe", "team", "societe", "sas", "sarl", "groupe", "agence", "boutique",
   "colis", "poste", "livraison", "noreply", "no-reply", "notifications", "newsletter", "client", "clients",

@@ -183,7 +183,8 @@ it("an address the agent writes with a word of a masked sender name gets the red
   const url = "https://www.cabinet-dr-marceau.test/";
   const opening = call("open_tab", { url, reason: "le site du cabinet" });
   const danger = await waitUi<string>(m, `return doc.querySelector('${ADDRESS} [data-testid="address-request-danger"]')?.textContent`, [], 20_000);
-  expect(danger).toMatch(/Contient un nom masqué, lu dans 127\.0\.0\.1 : \S+••••\S+$/);
+  // The surname's masked display, not « Cabinet »'s (a title alone never raises it).
+  expect(danger).toBe("⚠ Contient un nom masqué, lu dans 127.0.0.1 : M••••u");
   expect(await inUi<string>(m, `return doc.querySelector('${ADDRESS} [data-testid="address-request-url"]').textContent`)).toContain("cabinet-dr-marceau.test");
   await click(m, `${ADDRESS} button`, { text: "Refuser" });
   expect((await opening).text).toBe("Accès refusé par l'utilisateur à cet onglet.");
