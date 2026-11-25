@@ -532,8 +532,8 @@ export class Outflow {
 
   /** A search that went to the engine: kept, once the window read private data, to judge the next ones as a series. */
   sent(win: string, query: string): void {
+    this.wrote(win, query);
     const w = this.wins.get(win);
-    for (const word of w ? shownForms(query) : []) if (w!.sourceWords.has(word)) bounded(w!.sentWords, word, SENT_WORDS_MAX);
     if (!w?.privateRead) return;
     w.sent.push(series(query.slice(0, SENT_LENGTH_MAX)));
     if (w.sent.length > SERIES_MAX) w.sent.shift();
@@ -633,6 +633,12 @@ export class Outflow {
     }
   }
 
+  /** The agent sent `text` out itself (a query, an address it wrote): its source words stay its own, whatever the web shows after. */
+  wrote(win: string, text: string): void {
+    const w = this.wins.get(win);
+    for (const word of w ? shownForms(text) : []) if (w!.sourceWords.has(word)) bounded(w!.sentWords, word, SENT_WORDS_MAX);
+  }
+
   /** The first of `words` (folded) read in the user's sources and never shown on the web nor typed by the user, with where. */
   sourceWord(win: string, words: readonly string[]): { word: string; source: string } | undefined {
     const w = this.wins.get(win);
@@ -662,10 +668,12 @@ export const foldedWords = (s: string) =>
   s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().split(/[^\p{L}]+/u).filter((x) => x.length >= 4);
 
 /** `foldedWords`, plus each two adjacent words joined (« verreries gerland » → verreriesgerland), as a host may write them. */
-const shownForms = (s: string) => {
-  const t = s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().split(/[^\p{L}]+/u).filter(Boolean);
-  return [...t.filter((x) => x.length >= 4), ...t.slice(1).flatMap((x, i) => (x.length >= 2 && t[i]!.length >= 2 ? [t[i]! + x] : []))];
-};
+// Pairs only within a line or field, of two 4+-letter words: « mon » + « compte » across fields is no name.
+const shownForms = (s: string) =>
+  s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().split(/[\r\n\t]+/).flatMap((line) => {
+    const t = line.split(/[^\p{L}]+/u).filter((x) => x.length >= 4);
+    return [...t, ...t.slice(1).map((x, i) => t[i]! + x)];
+  });
 /** Adds `x` to `set` as its newest, dropping the oldest past `max`. */
 const bounded = (set: Set<string>, x: string, max: number) => {
   set.delete(x);

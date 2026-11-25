@@ -1142,6 +1142,8 @@ export function createToolsServer(
     // The fallback: a word of its host the agent read only in the user's sources (an employer, a shop on a statement).
     const host = URL.canParse(url) ? domainToUnicode(new URL(url).hostname) : "";
     const read = outflow?.sourceWord(key, foldedWords(host).filter((w) => !HOST_STOP_WORDS.has(w)));
+    // Sent before its page is read: that page showing the words does not make them the web's.
+    outflow?.wrote(key, host);
     return read ? { danger: l10n("kernel-outflow-danger-source-word", { source: read.source, masked: mask(read.word) }) } : {};
   }
   /** A whole word of a name this conversation masked, written in `out` (an address or a query): the agent may spell a

@@ -547,8 +547,8 @@ test("an address the agent writes with a host word read only in the user's sourc
   const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
   const web: TabInfo = { id: "web", title: "Annuaire", url: "https://annuaire.example/lyon", space: "perso", agentReached: true };
   const pages = {
-    banque: { text: "Banque Ardoise — relevé\nVIR SALAIRE VERRERIES GERLAND\nCB LUMEN MAISON 42,90" },
-    web: { text: "Les fabricants de Lyon : Verreries Gerland, Cristallerie du Rhône" },
+    banque: { text: "Banque Ardoise — relevé\nVIR SALAIRE VERRERIES GERLAND\nCB LUMEN MAISON 42,90\nPRLV CRISTALLERIE RHODANIENNE" },
+    web: { text: "Les fabricants de Lyon : Verreries Gerland, Cristallerie Rhodanienne" },
     mail: { text: "De : Hélène Marceau <secretariat@cabinet-dr-marceau.test>" },
   };
   const bridge = bridgeWith(pages, {}, [user, bank, web]);
@@ -569,9 +569,9 @@ test("an address the agent writes with a host word read only in the user's sourc
     // The masked name keeps its own line.
     await call("read_tab", { id: "mail" }, t);
     expect(await danger("https://www.cabinet-dr-marceau.test/")).toBe("Contient un nom masqué, lu dans mail.example-novacourriel.test : M••••u");
-    // The same words seen on the open web: no line.
+    // Words also seen on the open web, never written by the agent before: no line.
     await call("read_tab", { id: "web" }, t);
-    expect(await danger("https://verreries-gerland.test/")).toBeUndefined();
+    expect(await danger("https://cristallerie-rhodanienne.test/")).toBeUndefined();
   });
 });
 
@@ -602,5 +602,27 @@ test("source words: a search of them does not clear them, joined words and an ac
     // A history line is named as the user's history, not as the site visited.
     await call("search_history", { query: "gratin" }, t);
     expect(await danger("https://bouvreuil-traiteur.test/")).toBe("Adresse construite avec un nom lu dans votre historique : bo••••il");
+  });
+});
+
+test("source words: the agent's own address keeps them after its page shows them; pairs never join across lines", async () => {
+  const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
+  const site: TabInfo = { id: "site", title: "Verreries Gerland", url: "https://www.verreries-gerland.test/", space: "perso", agentReached: true };
+  const pages = { banque: { text: "VIR SALAIRE VERRERIES GERLAND\nAccéder à mon\ncompte" }, site: { text: "Verreries Gerland, verriers à Lyon" } };
+  const bridge = bridgeWith(pages, {}, [user, bank, site]);
+  await serve({ bridge, outflow: new Outflow() }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    await call("read_tab", { id: "banque" }, t);
+    expect(await danger("https://www.verreries-gerland.test/")).toContain("ve••••es");
+    // The page it opened shows the name on the web: the agent wrote it first, the line stays.
+    await call("read_tab", { id: "site" }, t);
+    expect(await danger("https://www.verreries-gerland.test/contact")).toContain("ve••••es");
+    // « mon » and « compte » sit on two lines: no « moncompte ».
+    expect(await danger("https://moncompte.test/")).toBeUndefined();
   });
 });
