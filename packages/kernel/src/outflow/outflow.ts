@@ -3,7 +3,7 @@ import { digitWord, rewrite, spelled } from "./spelled.js";
 import { findSecrets, mask, opaque, plain, urlDecoded, variants, type SecretKind } from "./detect.js";
 
 export interface OutflowHit {
-  kind: SecretKind | "email" | "phone" | "digits" | "token" | "series" | "clicks";
+  kind: SecretKind | "email" | "phone" | "digits" | "token" | "series" | "clicks" | "name";
   masked: string;
   source?: string;
 }
@@ -591,6 +591,12 @@ export class Outflow {
       if (hit) return hit;
     }
     return undefined;
+  }
+
+  /** `word` (lower case, accents dropped) is a whole word of what the user typed in `win`'s conversation. */
+  typedWord(win: string, word: string): boolean {
+    const w = this.wins.get(win);
+    return !!w && ` ${w.typedWords} \n ${words(w.buffer)} `.normalize("NFD").replace(/\p{M}/gu, "").includes(` ${word} `);
   }
 
   /** A new conversation in the window: what the user typed before is no longer theirs to send; what was read stays. */

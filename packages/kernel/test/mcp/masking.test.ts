@@ -8,10 +8,10 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { AccessPolicy, DEV_RIGHTS } from "../../src/access/policy.js";
 import type { TabInfo } from "../../src/mcp/bridge.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
-import { createToolsServer, generateToken, sourceZone, startMcpServer, tabZone } from "../../src/mcp/server.js";
+import { createToolsServer, generateToken, OUTFLOW_PAUSE, sourceZone, startMcpServer, tabZone } from "../../src/mcp/server.js";
 import { Masker } from "../../src/mask/masker.js";
 import { PassportStore } from "../../src/mask/passport.js";
-import { SearchSessions } from "../../src/search/sessions.js";
+import { SearchSessions, type Band } from "../../src/search/sessions.js";
 import { BrowsingNotes } from "../../src/search/notes.js";
 import { createRecaps } from "../../src/recaps/recaps.js";
 import { Outflow } from "../../src/outflow/outflow.js";
@@ -483,4 +483,61 @@ test("a link-heavy read of the user's mail masks the same, byte for byte (pinned
     expect(out[0]).toMatch(/\?to=⟨email-[a-z0-9]{8}⟩@/);
     expect(createHash("sha256").update(all).digest("hex")).toBe("a23d03e628879bf85f46d2bb521bd794d9d05561419af8bc13f399503f0aa09b");
   });
+});
+
+test("an address the agent writes with a whole word of a masked name gets a red line; titles, particles and longer words do not", async () => {
+  const page = [
+    "De : Cabinet du Dr Hélène Marceau <secretariat@cabinet-dr-marceau.fr>",
+    "De : Michel Durand <m.durand@novacourriel.test>",
+    "De : Service Lucie Ferrand <l.ferrand@novacourriel.test>",
+  ].join("\n");
+  const bridge = bridgeWith({ mail: { text: page }, copie: { text: "rien" } });
+  await serve({ bridge }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const read = (await call("read_tab", { id: "mail" }, t)).text;
+    expect(read).not.toMatch(/Marceau|Durand|Ferrand/);
+    expect(labelOf("nom", read)).toBeDefined();
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    // The person's name, not « Cabinet »: the masked display is the surname's.
+    expect(await danger("https://www.cabinet-dr-marceau.fr/")).toBe("Contient un nom masqué, lu dans mail.example-novacourriel.test : M••••u");
+    // Case and accents ignored, whole words of the address.
+    expect(await danger("https://annuaire.example/praticiens/helene_MARCEAU")).toBe("Contient un nom masqué, lu dans mail.example-novacourriel.test : H••••e");
+    // A title alone, particles, a name inside a longer word, an organisation word: no red line.
+    expect(await danger("https://www.cabinet-medical.example/")).toBeUndefined();
+    expect(await danger("https://exemple.fr/du/dr")).toBeUndefined();
+    expect(await danger("https://www.michelin.fr/")).toBeUndefined();
+    expect(await danger("https://www.service-public.fr/")).toBeUndefined();
+    expect(await danger("https://annuaire.example/lucie-ferrand")).toBe("Contient un nom masqué, lu dans mail.example-novacourriel.test : L••••e");
+  });
+});
+
+test("a search query with a whole word of a masked name pauses like a read value; a word the user typed does not", async () => {
+  const page = "De : Cabinet du Dr Hélène Marceau <secretariat@cabinet-dr-marceau.fr>\nObjet : rendez-vous";
+  for (const typed of [false, true]) {
+    const bands: (Band | null)[] = [];
+    const search = new SearchSessions({ show: (_id, band) => bands.push(band) });
+    const outflow = new Outflow();
+    const bridge = bridgeWith({ mail: { text: page } }, { search: { privateWindows: [], failing: [], hanging: [] } });
+    await serve({ bridge, search, outflow, settleMs: 0, emptySpanMs: 0 }, async ({ call, s, masker }) => {
+      masker.open("A", "W1");
+      const t = s.openSession("W1", undefined, "A");
+      expect((await call("read_tab", { id: "mail" }, t)).text).not.toContain("Marceau");
+      if (typed) outflow.typed("W1", "trouve le site du docteur Marceau\r");
+      const pending = call("search_web", { query: "Marceau rendez-vous", goal: "but" }, t);
+      const opened = () => bridge.calls.filter((c) => c.method === "search.open").map((c) => c.args[1]);
+      if (typed) {
+        await pending;
+        expect(opened()).toEqual([{ query: "Marceau rendez-vous" }]);
+        return;
+      }
+      await vi.waitFor(() => expect(bands.at(-1)?.text).toBe(OUTFLOW_PAUSE("fr", { kind: "name", masked: "M••••u", source: "mail.example-novacourriel.test" })));
+      expect(opened()).toEqual([{ query: "" }]);
+      search.continue(search.current("W1")!.tabId);
+      await pending;
+    });
+  }
 });

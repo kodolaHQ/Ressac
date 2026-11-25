@@ -24,6 +24,7 @@ import { NOTES_PREFIX, type BrowsingNotes } from "../search/notes.js";
 import { RECAP_TITLE_MAX, RECAP_UNKNOWN, type Recaps } from "../recaps/recaps.js";
 import { pageState, reducedPage, stateLine } from "./reduce.js";
 import { outflowLabel, type Outflow, type OutflowHit, type ReadPlace } from "../outflow/outflow.js";
+import { mask, urlDecoded } from "../outflow/detect.js";
 import { say } from "../i18n.js";
 import { isSensitive } from "../access/sensitive.js";
 import { labelFilled, labelWritten, maskedRuns, passportHits } from "../mask/mask.js";
@@ -32,7 +33,7 @@ import type { PassportOrigins, PassportRef, PassportStore } from "../mask/passpo
 import { canonicalOf, cleanOrigin, dayFirst, FIELD_LABEL, maskedDisplay, originMatches, PASSPORT_KINDS, PASSPORT_LIMITS, rawOf, valueForKind, type PassportField } from "../mask/passport-fields.js";
 import type { Entry, LabelTable } from "../mask/table.js";
 import { Segments, unwrap } from "../mask/segments.js";
-import { detect, type LabelType, type Zone } from "../mask/detectors.js";
+import { detect, ORG_WORDS, type LabelType, type Zone } from "../mask/detectors.js";
 import { TOOL_KINDS } from "../mask/inventory.js";
 import { NO_WORKSPACE_LOCK, type WorkspaceLockHook } from "../mask/lock.js";
 import { nameAgreement, valueName } from "../mask/names.js";
@@ -138,6 +139,8 @@ export type AgentActivity = { tab: string; label: string };
  */
 export type OpenWorkflow = { widget: string; block: string | null } | { action: string; block: string | null };
 const HISTORY_LIMIT = { default: 20, max: 50 };
+/** Words of a masked name too common in addresses and queries to mean the person: organisation words and titles. */
+const NAME_STOP_WORDS = new Set([...ORG_WORDS, "cabinet", "docteur", "maitre", "madame", "monsieur", "mademoiselle", "professeur", "maison", "famille"]);
 
 const outflowWhat = (locale: string, hit: OutflowHit) => {
   const what = outflowLabel(locale, hit.kind);
@@ -1125,8 +1128,24 @@ export function createToolsServer(
   /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks);
    *  `clicks`: what the link followed spells with the ones before it, judged first. */
   function danger(url: string, clicks?: OutflowHit): { danger?: string } {
-    const hit = clicks ?? checkOutflow(url, true);
+    const hit = clicks ?? checkOutflow(url, true) ?? maskedNameIn(url);
     return hit ? { danger: OUTFLOW_DANGER(locale(), hit) } : {};
+  }
+  /** A whole word of a name this conversation masked, written in `out` (an address or a query): the agent may spell a
+   *  masked name it saw in clear elsewhere (a sender's domain). Case and accents ignored; words under 4 letters (« du »,
+   *  « Dr »), titles and organisation words left out, and so is a word the user typed in this conversation. */
+  function maskedNameIn(out: string): OutflowHit | undefined {
+    const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+    const words = new Set(fold(urlDecoded(blankIssued(out))).split(/[^\p{L}]+/u));
+    for (const e of labels.entries("sources")) {
+      if (e.type !== "nom") continue;
+      const word = e.raw.split(/[^\p{L}\p{M}]+/u).find((w) => {
+        const f = fold(w);
+        return f.length >= 4 && !NAME_STOP_WORDS.has(f) && words.has(f) && !outflow?.typedWord(key, f);
+      });
+      if (word) return { kind: "name", masked: mask(word), ...(e.origins[0] ? { source: siteOf(e.origins[0]) } : {}) };
+    }
+    return undefined;
   }
 
   /**
@@ -1908,7 +1927,7 @@ export function createToolsServer(
           // A search read_pages started without a reason takes this goal.
           if (current && !current.goal) sessions.setGoal(current.tabId, goal);
           // Rule 1 and 2: a query carrying a secret or private data read earlier pauses before it reaches the engine.
-          const hit = checkOutflow(query);
+          const hit = checkOutflow(query) ?? maskedNameIn(query);
           // No handle here: only a lock restricts, and its refusal is the lock's (nothing to retry).
           const open = async (target: { query: string }, reuse?: string): Promise<TabInfo | string> => {
             const r = await guardedLoad("", undefined, extra?.signal, (_u, opts) => search.open(win ?? undefined, target, reuse, opts));
