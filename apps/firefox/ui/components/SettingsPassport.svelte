@@ -485,7 +485,7 @@
         <button class="link appear" data-testid="passport-import-open" out:fade={{ duration: 150 }} onclick={openImport}>{t("settings-passport-import-open")}</button>
       {:else if !importing}
         <span class="muted appear" out:fade={{ duration: 150 }}>{t("settings-passport-import-pick")}</span>
-        {#each importFrom as s (s.id)}<button class="appear" data-testid="passport-import-source-{s.id}" out:fade={{ duration: 150 }} onclick={() => (importing = s.id)}>{s.name}</button>{/each}
+        {#each importFrom as s (s.id)}<button class="appear" data-testid="passport-import-source-{s.id}" out:fade|global={{ duration: 150 }} onclick={() => (importing = s.id)}>{s.name}</button>{/each}
         <button class="link appear" out:fade={{ duration: 150 }} onclick={closeImport}>{t("settings-passport-import-later")}</button>
       {:else}
         <PassportImport source={importing} profile={current ?? undefined} onclose={closeImport} onadded={() => void reloadOpen()} />
