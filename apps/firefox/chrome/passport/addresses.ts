@@ -56,9 +56,10 @@ export async function readAddresses(def: SourceDef, root: string, scratch: strin
     const out: FoundAddress[] = [];
     for (const p of profiles) {
       const source = `${root}/${p.id}/Web Data`;
-      if (!(await IOUtils.exists(source))) continue;
       const copy = `${scratch}/Web Data`;
+      // One locked or corrupt profile is read as nothing: the others still count.
       try {
+        if (!(await IOUtils.exists(source))) continue;
         for (const suffix of ["", "-wal"]) if (await IOUtils.exists(source + suffix)) await IOUtils.copy(source + suffix, copy + suffix);
         for (const suffix of ["", "-wal"]) if (await IOUtils.exists(copy + suffix)) await IOUtils.setPermissions(copy + suffix, 0o600);
         const db = await Sqlite.openConnection({ path: copy, readOnly: true });
@@ -73,8 +74,11 @@ export async function readAddresses(def: SourceDef, root: string, scratch: strin
         } finally {
           await db.close();
         }
+      } catch (e) {
+        console.error("[passport] a profile's addresses were not read:", (e as Error)?.name);
       } finally {
-        for (const suffix of ["", "-wal"]) await IOUtils.remove(copy + suffix, { ignoreAbsent: true }).catch(() => {});
+        // The copy holds the browser's whole form history in clear: gone with every side file SQLite may have made.
+        for (const suffix of ["", "-wal", "-shm", "-journal"]) await IOUtils.remove(copy + suffix, { ignoreAbsent: true }).catch(() => {});
       }
     }
     return out;

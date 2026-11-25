@@ -39,8 +39,10 @@ export function createPassportImporter(o: {
   const access = o.access ?? (async () => "ready" as const);
   const read = o.read ?? readAddresses;
   const store = o.ressacStore ?? firefoxStore;
+  // A quit or crash mid-read may have left a clear copy of a browser's Web Data: never kept. The first read waits for it.
+  const cleared = IOUtils.remove(o.scratch, { recursive: true, ignoreAbsent: true }).catch((e: unknown) => console.error("[passport] old copy not removed:", (e as Error)?.name));
   // The reader copies into one fixed scratch file: one read at a time.
-  let queue: Promise<unknown> = Promise.resolve();
+  let queue: Promise<unknown> = cleared;
   const alone = <T>(job: () => Promise<T>): Promise<T> => {
     const run = queue.then(job, job);
     queue = run.catch(() => {});
@@ -58,8 +60,8 @@ export function createPassportImporter(o: {
   }
 
   return {
-    // Names only: nothing of any browser is read until the person picks one.
-    sources: async (): Promise<PassportImportSource[]> => [...(await detectSources(o.home, exists)).map((d) => ({ id: d.id, name: d.name })), { id: "ressac", name: "Ressac" }],
+    // Names only: nothing of any browser is read until the person picks one. Safari's addresses are not read.
+    sources: async (): Promise<PassportImportSource[]> => [...(await detectSources(o.home, exists)).filter((d) => d.kind !== "safari").map((d) => ({ id: d.id, name: d.name })), { id: "ressac", name: "Ressac" }],
 
     proposals: (source: string): Promise<Proposed> =>
       alone(async () => {

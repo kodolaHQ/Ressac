@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { suggestion } from "../chrome/passport/form-capture";
+import { doneText, suggestion } from "../chrome/passport/form-capture";
 import { parseAddress } from "../chrome/shims/kernel";
 import type { Draft } from "../chrome/passport/import-choice";
 import { typedFields } from "../chrome/passport/typed-fields";
@@ -44,6 +44,23 @@ describe("suggestion", () => {
     expect(parseAddress(text)).toEqual({ street: "14 rue des Tanneurs", postcode: "69001", city: "Lyon" });
     // A street without its town is no address.
     expect(suggestion({ "street-address": "14 rue des Tanneurs" }, new Set(["14 rue des Tanneurs"]), ctx)).toBeNull();
+  });
+});
+
+describe("suggestion validation", () => {
+  it("a value the passport refuses is not on the bar", () => {
+    const d = suggestion({ ...record, tel: "12", email: "pas-un-mail" }, new Set([...all, "12", "pas-un-mail"]), ctx)!;
+    expect(d.map((x) => x.field)).toEqual(["nom", "adresse"]);
+    expect(suggestion({ email: "pas-un-mail" }, new Set(["pas-un-mail"]), ctx)).toBeNull();
+  });
+
+  it("the done notice never hides what was not added", () => {
+    const l = (id: string, a?: Record<string, string | number>) => `${id}${a ? `:${a.n}` : ""}`;
+    expect(doneText({ ok: true, added: 1, variants: 0, full: 0, invalid: 0 }, l)).toBe("settings-passport-import-done:1");
+    expect(doneText({ ok: true, added: 1, variants: 0, full: 0, invalid: 2 }, l)).toBe("settings-passport-import-done:1 settings-passport-import-invalid:2");
+    expect(doneText({ ok: true, added: 0, variants: 0, full: 0, invalid: 1 }, l)).toBe("settings-passport-import-invalid:1");
+    expect(doneText({ ok: true, added: 0, variants: 0, full: 0, invalid: 0 }, l)).toBe("settings-passport-import-nothing");
+    expect(doneText({ ok: false, error: "write" }, l)).toBe("settings-passport-import-error");
   });
 });
 

@@ -24,7 +24,8 @@ describe("propose", () => {
 
   it("a partial address is not proposed", () => {
     const r = propose([line({ city: "Paris" }), line({ street: "12 rue" }), line({ ...camille, street: "12 rue" })]);
-    expect(r.incomplete).toBe(2);
+    // The third keeps its name, but loses its street: incomplete too.
+    expect(r.incomplete).toBe(3);
     expect(r.proposals).toHaveLength(1);
     expect(r.proposals[0]).toMatchObject({ given: "Camille", address: "" });
   });

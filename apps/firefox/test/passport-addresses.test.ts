@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { fromChromiumRows, fromFirefoxJson } from "../chrome/passport/addresses";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fromChromiumRows, fromFirefoxJson, readAddresses } from "../chrome/passport/addresses";
+import { SOURCES } from "../chrome/store/import/sources";
 
 describe("fromChromiumRows", () => {
   const addresses = [
@@ -41,5 +42,36 @@ describe("fromFirefoxJson", () => {
     expect(fromFirefoxJson({})).toEqual([]);
     expect(fromFirefoxJson({ addresses: "x" })).toEqual([]);
     expect(fromFirefoxJson({ addresses: [null, 3] })).toEqual([]);
+  });
+});
+
+describe("readAddresses (Chromium)", () => {
+  afterEach(() => void vi.unstubAllGlobals());
+
+  it("a profile that fails is read as nothing, the others still count; every copy is removed", async () => {
+    const removed: string[] = [];
+    vi.stubGlobal("IOUtils", {
+      readUTF8: async () => JSON.stringify({ profile: { info_cache: { Broken: {}, Default: {} } } }),
+      makeDirectory: async () => {},
+      setPermissions: async () => {},
+      exists: async (path: string) => path.endsWith("Web Data"),
+      copy: async (from: string) => {
+        if (from.includes("/Broken/")) throw Object.assign(new Error("locked"), { name: "NotReadableError" });
+      },
+      remove: async (path: string) => void removed.push(path),
+    });
+    const row = (o: Record<string, unknown>) => ({ getResultByName: (k: string) => o[k] });
+    const db = {
+      execute: async (sql: string) =>
+        sql.includes("sqlite_master") ? [row({})] : sql.includes("FROM addresses") ? [row({ guid: "a", use_count: 1, use_date: 1 })] : sql.includes("FROM address_type_tokens") ? [row({ guid: "a", type: 3, value: "Camille" })] : [],
+      close: async () => {},
+    };
+    vi.stubGlobal("ChromeUtils", { importESModule: () => ({ Sqlite: { openConnection: async () => db } }) });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await readAddresses(SOURCES.find((d) => d.id === "chrome")!, "/root", "/scratch");
+    expect(out.map((a) => a.given)).toEqual(["Camille"]);
+    expect(error).toHaveBeenCalledWith(expect.any(String), "NotReadableError");
+    for (const suffix of ["", "-wal", "-shm", "-journal"]) expect(removed.filter((p) => p === `/scratch/Web Data${suffix}`)).toHaveLength(2);
+    error.mockRestore();
   });
 });

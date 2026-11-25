@@ -1,4 +1,4 @@
-import { canonical, foldWords, splitName, type PassportValue } from "../shims/kernel";
+import { canonical, foldWords, splitName, validateEntry, type PassportValue } from "../shims/kernel";
 import type { FoundAddress } from "./addresses";
 
 export { splitName };
@@ -8,25 +8,36 @@ export type Draft = { field: "nom" | "proche" | "adresse" | "tel" | "email"; val
 
 const t = (s: string) => s.trim();
 
+/** The draft passes the kernel's own check on its own (design § 4.2): what a card or a bar shows is what can be written. */
+export const valid = (d: Draft): boolean => !validateEntry({ id: "", ...d, variants: [], origins: [], how: "import", created: "", updated: "" }, []).problems.length;
+
 export const propose = (found: FoundAddress[]): { proposals: Proposal[]; incomplete: number } => {
   const { proposals, incomplete } = proposeWithMembers(found);
   return { proposals, incomplete };
 };
 
-/** As `propose`, plus for each proposal the indexes in `found` of the records merged into it. */
+/**
+ * As `propose`, plus for each proposal the indexes in `found` of the records merged into it that it keeps whole: a
+ * record that loses a part here (half an address, a value the passport refuses) counts as incomplete and is never
+ * among them, so it is never erased.
+ */
 export function proposeWithMembers(found: FoundAddress[]): { proposals: Proposal[]; incomplete: number; members: number[][] } {
   let incomplete = 0;
   const merged = new Map<string, { p: Omit<Proposal, "key" | "ticked" | "other">; usedAt: number; useCount: number; name: string; at: number[] }>();
   for (const [n, f] of found.entries()) {
     const named = t(f.given) || t(f.family) ? { given: t(f.given), family: t(f.family) } : splitName(f.full);
     const street = t(f.street), rest = [t(f.postcode), t(f.city)].filter(Boolean).join(" ");
-    const address = street && rest ? `${street}\n${rest}` : "";
-    const p = { ...named, address, tel: t(f.tel), email: t(f.email) };
-    if (!p.given && !p.family && !address && !p.tel && !p.email) { incomplete++; continue; }
+    const raw = { ...named, address: street && rest ? `${street}\n${rest}` : "", tel: t(f.tel), email: t(f.email) };
+    const ok = new Set(drafts({ ...raw, key: "", ticked: true, other: false }, "me").filter(valid).map((d) => d.field));
+    const p = { given: ok.has("nom") ? raw.given : "", family: ok.has("nom") ? raw.family : "", address: ok.has("adresse") ? raw.address : "", tel: ok.has("tel") ? raw.tel : "", email: ok.has("email") ? raw.email : "" };
+    const lossy = !street !== !rest || (Object.keys(raw) as (keyof typeof raw)[]).some((k) => raw[k] !== p[k]);
+    const empty = !p.given && !p.family && !p.address && !p.tel && !p.email;
+    if (lossy || empty) incomplete++;
+    if (empty) continue;
     const name = p.given || p.family ? canonical("nom", `${p.given} ${p.family}`) : "";
-    const id = [name, foldWords(address), canonical("tel", p.tel), canonical("email", p.email)].join("|");
+    const id = [name, foldWords(p.address), canonical("tel", p.tel), canonical("email", p.email)].join("|");
     const old = merged.get(id);
-    const at = [...(old?.at ?? []), n];
+    const at = [...(old?.at ?? []), ...(lossy ? [] : [n])];
     if (!old || f.usedAt > old.usedAt) merged.set(id, { p, name, usedAt: f.usedAt, useCount: Math.max(f.useCount, old?.useCount ?? 0), at });
     else old.at = at;
   }

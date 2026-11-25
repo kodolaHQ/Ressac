@@ -65,7 +65,6 @@
     if (result.ok && result.added + result.variants > 0) onadded?.();
   }
   const added = $derived(result?.ok ? result.added + result.variants : 0);
-  const skipped = $derived(result?.ok ? result.full + result.invalid : 0);
   const summary = (p: PassportProposal) => [p.address.replace("\n", ", "), p.tel, p.email].filter(Boolean).join(" · ");
 </script>
 
@@ -118,7 +117,7 @@
       <div role="status" data-testid="passport-import-done" class="appear">
         {#if added}<p>{t("settings-passport-import-done", { n: added })}</p>
         {:else if !result.full && !result.invalid}<p data-testid="passport-import-nothing">{t("settings-passport-import-nothing")}</p>{/if}
-        {#if skipped && result.invalid}<p class="alert" data-testid="passport-import-invalid">{t("settings-passport-import-error")}</p>{/if}
+        {#if result.invalid}<p class="alert" data-testid="passport-import-invalid">{t("settings-passport-import-invalid", { n: result.invalid })}</p>{/if}
         {#if result.full}<p class="alert" data-testid="passport-import-full">{t("settings-passport-import-full", { n: result.full })}</p>{/if}
       </div>
       <div class="row"><span class="grow"></span><button type="button" data-testid="passport-import-close" onclick={() => onclose?.()}>{t("settings-passport-import-close")}</button></div>

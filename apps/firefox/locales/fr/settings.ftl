@@ -345,11 +345,15 @@ settings-passport-import-full = { $n ->
     [one] 1 donnée non ajoutée : le passeport est plein.
    *[other] { $n } données non ajoutées : le passeport est plein.
   }
+settings-passport-import-invalid = { $n ->
+    [one] 1 donnée non ajoutée.
+   *[other] { $n } données non ajoutées.
+  }
 settings-passport-import-error = L'ajout a échoué : rien n'a changé. Réessayez.
 settings-passport-import-cancelled = Ajout annulé : rien n'a changé.
 settings-passport-import-close = Fermer
 settings-passport-import-nothing = Tout était déjà dans votre passeport.
 settings-passport-suggest-label = Proposer d'ajouter vos adresses quand vous remplissez un formulaire
-settings-passport-suggest-help = Quand vous tapez une adresse dans un formulaire, une barre propose de l'ajouter à votre passeport (Touch ID demandé). Rien n'est lu dans la page tant que vous n'avez pas tapé.
+settings-passport-suggest-help = Quand vous tapez une adresse dans un formulaire, une barre propose de l'ajouter à votre passeport (Touch ID demandé). Désactivé, Ressac ne vous propose rien.
 settings-passport-muted-label = Sites où ne plus proposer
 settings-passport-unmute = Retirer { $site }

@@ -1,8 +1,8 @@
 import { cleanOrigin, type PassportEntry } from "../shims/kernel";
 import { format, type Locale } from "../../shared/i18n";
 import { siteOf } from "../../shared/model";
-import { drafts, splitName, type Draft } from "./import-choice";
-import { twinOf, type PassportSettings } from "./settings";
+import { drafts, splitName, valid, type Draft } from "./import-choice";
+import { twinOf, type AddManyResult, type PassportSettings } from "./settings";
 import type { LoadResult } from "./store";
 
 export type SuggestionContext = {
@@ -32,8 +32,16 @@ export function suggestion(record: Record<string, string>, typed: ReadonlySet<st
   // shortcut: a street split over address-line1/2 fields is not offered; upgrade by joining them if such forms matter.
   const street = t("street-address"), rest = [t("postal-code"), t("address-level2")].filter(Boolean).join(" ");
   const all = drafts({ key: "", ...named, address: street && rest ? `${street}\n${rest}` : "", tel: t("tel"), email: t("email"), ticked: true, other: false }, "me");
-  const fresh = all.filter((d) => !ctx.known(d));
+  // Only what the passport accepts: the bar shows exactly what « Ajouter » writes.
+  const fresh = all.filter((d) => valid(d) && !ctx.known(d));
   return fresh.length ? fresh : null;
+}
+
+/** The bar's last word on « Ajouter »: what was added, then what was not; never a success that hides a refusal. */
+export function doneText(r: AddManyResult, l: (id: string, args?: Record<string, string | number>) => string): string {
+  if (!r.ok) return l("settings-passport-import-error");
+  const said = [r.added + r.variants ? l("settings-passport-import-done", { n: r.added + r.variants }) : "", r.full ? l("settings-passport-import-full", { n: r.full }) : "", r.invalid ? l("settings-passport-import-invalid", { n: r.invalid }) : ""].filter(Boolean);
+  return said.length ? said.join(" ") : l("settings-passport-import-nothing");
 }
 
 /** A draft as addMany would write it, for its twin lookup. */
@@ -175,9 +183,12 @@ export function installFormCapture(o: {
             label: l("chrome-passport-suggest-add"),
             callback: () => {
               const origin = remember.checked ? `https://${host}` : null;
-              void o.addMany({ profile, drafts: entry.found, how: "form", from: host, origin, reason: l("settings-passport-touchid-import") }).then((r) => {
-                if (r.ok || r.error !== "cancelled") void box.appendNotification(`ressac-passport-suggest-done-${id}`, { label: !r.ok ? l("settings-passport-import-error") : r.full ? l("settings-passport-import-full", { n: r.full }) : l("settings-passport-import-done", { n: r.added + r.variants }), priority: box.PRIORITY_INFO_MEDIUM }, []);
-              });
+              void o
+                .addMany({ profile, drafts: entry.found, how: "form", from: host, origin, reason: l("settings-passport-touchid-import") })
+                .catch((e): AddManyResult => (console.error("[passport] form add failed:", (e as Error)?.name), { ok: false, error: "write" }))
+                .then((r) => {
+                  if (r.ok || r.error !== "cancelled") void box.appendNotification(`ressac-passport-suggest-done-${id}`, { label: doneText(r, l), priority: box.PRIORITY_INFO_MEDIUM }, []);
+                });
             },
           },
         ],

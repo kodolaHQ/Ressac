@@ -66,7 +66,7 @@
   let suggest = $state<{ on: boolean; muted: string[] } | null>(null);
   void api.settings.passportSuggest().then((r) => (suggest = r));
   /** « Importer depuis… »: the sources offered (null: closed), then the one picked. */
-  let importFrom = $state<{ id: string; name: string; count: number }[] | null>(null);
+  let importFrom = $state<{ id: string; name: string }[] | null>(null);
   let importing = $state<string | null>(null);
   /** After an import: the counts, and the open passport's entries (the import wrote them behind this page). */
   async function reloadOpen() {
@@ -482,11 +482,11 @@
   {#if profile?.state === "ok"}
     <div class="importer" data-testid="passport-importer">
       {#if !importFrom}
-        <button class="link" data-testid="passport-import-open" onclick={openImport}>{t("settings-passport-import-open")}</button>
+        <button class="link appear" data-testid="passport-import-open" out:fade={{ duration: 150 }} onclick={openImport}>{t("settings-passport-import-open")}</button>
       {:else if !importing}
-        <span class="muted" out:fade={{ duration: 150 }}>{t("settings-passport-import-pick")}</span>
-        {#each importFrom as s (s.id)}<button data-testid="passport-import-source-{s.id}" onclick={() => (importing = s.id)}>{s.name}</button>{/each}
-        <button class="link" onclick={closeImport}>{t("settings-passport-import-later")}</button>
+        <span class="muted appear" out:fade={{ duration: 150 }}>{t("settings-passport-import-pick")}</span>
+        {#each importFrom as s (s.id)}<button class="appear" data-testid="passport-import-source-{s.id}" out:fade={{ duration: 150 }} onclick={() => (importing = s.id)}>{s.name}</button>{/each}
+        <button class="link appear" out:fade={{ duration: 150 }} onclick={closeImport}>{t("settings-passport-import-later")}</button>
       {:else}
         <PassportImport source={importing} profile={current ?? undefined} onclose={closeImport} onadded={() => void reloadOpen()} />
       {/if}

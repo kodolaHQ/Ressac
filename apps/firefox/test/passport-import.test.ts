@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPassportImporter } from "../chrome/passport/import";
 import type { FoundAddress } from "../chrome/passport/addresses";
 
@@ -15,7 +15,62 @@ function setup(o: { ok?: boolean; found?: FoundAddress[] } = {}) {
   return { i, addMany, remove, read };
 }
 
+const ioRemove = vi.fn(async (_path: string, _o: unknown) => {});
+beforeEach(() => {
+  ioRemove.mockClear();
+  vi.stubGlobal("IOUtils", { remove: ioRemove });
+});
+
 describe("passport import", () => {
+  it("a copy left by a crash is removed, and the first read waits for it", async () => {
+    let done!: () => void;
+    ioRemove.mockImplementationOnce(() => new Promise<void>((r) => (done = r)));
+    const { i, read } = setup();
+    expect(ioRemove).toHaveBeenCalledWith("/s", { recursive: true, ignoreAbsent: true });
+    const p = i.proposals("chrome");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(read).not.toHaveBeenCalled();
+    done();
+    expect((await p).proposals.length).toBeGreaterThan(0);
+    expect(read).toHaveBeenCalled();
+  });
+
+  it("Safari, which is not read, is not offered", async () => {
+    const { i } = setup();
+    expect((await i.sources()).map((d) => d.id)).not.toContain("safari");
+  });
+
+  it("a name with half an address: counted incomplete, its Firefox record never erased", async () => {
+    const remove = vi.fn(async (_g: string[]) => {});
+    const records = [{ guid: "c1", "given-name": "Camille", "family-name": "Aubrac", "street-address": "12 rue des Tanneurs" }];
+    const addMany = vi.fn(async (_h: any) => ({ ok: true, added: 1, variants: 0, full: 0, invalid: 0 }) as const);
+    const i = createPassportImporter({ home: "/h", scratch: "/s", passport: { addMany }, reason: () => "r", ressacStore: async () => ({ records, remove }) });
+    const r = await i.proposals("ressac");
+    expect(r.incomplete).toBe(1);
+    expect(r.proposals).toEqual([expect.objectContaining({ given: "Camille", family: "Aubrac", address: "" })]);
+    await i.add("default", [{ key: r.proposals[0]!.key, as: "me" }], "ressac", true);
+    expect(addMany).toHaveBeenCalled();
+    expect(remove.mock.calls.flatMap((c) => c[0])).toEqual([]);
+  });
+
+  it("a value the passport refuses is left out and counted incomplete, and its record is kept", async () => {
+    const remove = vi.fn(async (_g: string[]) => {});
+    const records = [
+      { guid: "c1", "given-name": "Camille", "family-name": "Aubrac", "street-address": "14 rue des Tanneurs", "postal-code": "69001", "address-level2": "Lyon", tel: "12" },
+      { guid: "j1", "given-name": "Jean", "family-name": "Martin", email: "jean@example.fr" },
+    ];
+    const addMany = vi.fn(async (_h: any) => ({ ok: true, added: 2, variants: 0, full: 0, invalid: 0 }) as const);
+    const i = createPassportImporter({ home: "/h", scratch: "/s", passport: { addMany }, reason: () => "r", ressacStore: async () => ({ records, remove }) });
+    const r = await i.proposals("ressac");
+    expect(r.incomplete).toBe(1);
+    const c = r.proposals.find((p) => p.given === "Camille")!;
+    expect(c.tel).toBe("");
+    const j = r.proposals.find((p) => p.given === "Jean")!;
+    await i.add("default", [{ key: c.key, as: "me" }, { key: j.key, as: "me" }], "ressac", true);
+    expect(JSON.stringify(addMany.mock.calls[0]![0].drafts)).not.toContain('"12"');
+    expect(remove).toHaveBeenCalledWith(["j1"]);
+  });
+
   it("add sends no values from the page: rows are keys", async () => {
     const { i, addMany } = setup();
     const { proposals } = await i.proposals("chrome");
