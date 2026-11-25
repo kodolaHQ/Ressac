@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Action } from "../shared/api";
 import type { GrantRow } from "../shared/settings";
-import { bundleId, revealable } from "../chrome/store/settings";
+import { bundleId, createSettingsChrome, revealable } from "../chrome/store/settings";
 import { createSettingsApi, settingsPageDocument } from "../ui/settings-api";
 import { createReviewApi } from "../ui/design-api";
 import { createBadgeApi } from "../ui/badge-api";
@@ -19,7 +19,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}, settingsPage =
     },
     notify: vi.fn(),
   } as any;
-  const chrome = { telemetry: vi.fn(), setTelemetry: vi.fn(), setCrashReports: vi.fn(), version: vi.fn(), defaultBrowser: vi.fn(() => true), setDefaultBrowser: vi.fn(), repairScreenSharing: vi.fn(async () => true), reveal: vi.fn(), openNotificationSettings: vi.fn(), openFullDiskAccessSettings: vi.fn(), openFilesAndFoldersSettings: vi.fn(), exportFolder: async () => "/u/Downloads", reset: vi.fn(), checkForUpdate: vi.fn(), restartToUpdate: vi.fn(), updateDownloadUrl: vi.fn(() => "https://updates.example/updates/k/Ressac.dmg") };
+  const chrome = { telemetry: vi.fn(), setTelemetry: vi.fn(), setCrashReports: vi.fn(), version: vi.fn(), defaultBrowser: vi.fn(() => true), setDefaultBrowser: vi.fn(), repairScreenSharing: vi.fn(async () => true), passportSuggest: vi.fn(() => ({ on: true, muted: ["a.fr"] })), setPassportSuggest: vi.fn(), unmutePassportSite: vi.fn(), reveal: vi.fn(), openNotificationSettings: vi.fn(), openFullDiskAccessSettings: vi.fn(), openFilesAndFoldersSettings: vi.fn(), exportFolder: async () => "/u/Downloads", reset: vi.fn(), checkForUpdate: vi.fn(), restartToUpdate: vi.fn(), updateDownloadUrl: vi.fn(() => "https://updates.example/updates/k/Ressac.dmg") };
   const forget = vi.fn(async () => {});
   const sitePermissions = { list: async () => [{ profile: "default", origin: "https://a.fr", permissions: { "media-camera": "allow", notifications: "deny" } as const }], forget };
   const dispatched: Action[] = [];
@@ -294,5 +294,43 @@ describe("settings api", () => {
     const review = createReviewApi({ host: { request: async () => null } as any });
     const badge = createBadgeApi({} as any);
     for (const other of [review, badge]) expect(other).not.toHaveProperty("passport"), expect(other).not.toHaveProperty("passwords");
+  });
+});
+
+describe("passport suggestions", () => {
+  it("the suggest toggle and muted sites read and write their prefs", async () => {
+    const prefs = new Map<string, boolean | string>();
+    vi.stubGlobal("Services", {
+      env: { get: () => "" },
+      prefs: {
+        getBoolPref: (k: string, d: boolean) => (prefs.get(k) as boolean) ?? d,
+        setBoolPref: (k: string, v: boolean) => void prefs.set(k, v),
+        getCharPref: (k: string, d: string) => (prefs.get(k) as string) ?? d,
+        setCharPref: (k: string, v: string) => void prefs.set(k, v),
+      },
+    });
+    try {
+      const chrome = createSettingsChrome("/d", false, { check() {}, restart() {} });
+      expect(chrome.passportSuggest()).toEqual({ on: true, muted: [] });
+      prefs.set("ressac.passport.suggestMuted", "a.fr,b.fr");
+      chrome.setPassportSuggest(false);
+      expect(prefs.get("ressac.passport.suggest")).toBe(false);
+      expect(chrome.passportSuggest()).toEqual({ on: false, muted: ["a.fr", "b.fr"] });
+      chrome.unmutePassportSite("a.fr");
+      expect(prefs.get("ressac.passport.suggestMuted")).toBe("b.fr");
+      chrome.setPassportSuggest("no" as any);
+      expect(prefs.get("ressac.passport.suggest")).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("the API passes them through from the page", async () => {
+    const { api, chrome } = setup();
+    expect(await api.passportSuggest()).toEqual({ on: true, muted: ["a.fr"] });
+    api.setPassportSuggest(false);
+    api.unmutePassportSite("a.fr");
+    expect(chrome.setPassportSuggest).toHaveBeenCalledWith(false);
+    expect(chrome.unmutePassportSite).toHaveBeenCalledWith("a.fr");
   });
 });

@@ -606,6 +606,10 @@ export interface SettingsApi {
   setTelemetry(enabled: boolean): void;
   /** Firefox's crash reports (minidumps, unscrubbed), off by default; they also need the telemetry switch on. */
   setCrashReports(on: boolean): void;
+  /** The form bar of the passport (Réglages › Passeport): the switch and the sites muted with « Ne plus proposer ici ». */
+  passportSuggest(): Promise<{ on: boolean; muted: string[] }>;
+  setPassportSuggest(on: boolean): void;
+  unmutePassportSite(host: string): void;
   version(): Promise<string>;
   /** Whether macOS opens web links with Ressac. */
   defaultBrowser(): Promise<boolean>;

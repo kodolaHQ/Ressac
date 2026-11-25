@@ -14,6 +14,7 @@
   import { t } from "../i18n.svelte";
   import Icon from "./Icon.svelte";
   import PassportImport from "./PassportImport.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
   import { onLeavingPassport, requestedPassport, takeRequestedPassport } from "./settings-section.svelte";
 
   // Styles of groups, rows, pills and buttons come from Settings.svelte. Design § 9.2-9.3, mock-up screen 1.
@@ -61,6 +62,9 @@
   /** The row just saved, lit briefly. */
   let fresh = $state<string | null>(null);
   let busy = false;
+  /** The form bar: its switch and the sites muted with « Ne plus proposer sur ce site » (prefs, not the passport: no Touch ID). */
+  let suggest = $state<{ on: boolean; muted: string[] } | null>(null);
+  void api.settings.passportSuggest().then((r) => (suggest = r));
   /** « Importer depuis… »: the sources offered (null: closed), then the one picked. */
   let importFrom = $state<{ id: string; name: string; count: number }[] | null>(null);
   let importing = $state<string | null>(null);
@@ -489,6 +493,32 @@
     </div>
   {/if}
   <p class="intro">{@render withLabel(around("settings-passport-intro", {}, "⟨adresse-…⟩"))}</p>
+  {#if suggest}
+    <SettingsRow label={t("settings-passport-suggest-label")} id="passport-suggest-switch" help={t("settings-passport-suggest-help")}>
+      <input
+        id="passport-suggest-switch"
+        class="switch"
+        type="checkbox"
+        role="switch"
+        data-testid="passport-suggest-switch"
+        aria-describedby="passport-suggest-switch-help"
+        checked={suggest.on}
+        onchange={(e) => {
+          suggest!.on = e.currentTarget.checked;
+          api.settings.setPassportSuggest(suggest!.on);
+        }}
+      />
+    </SettingsRow>
+    {#if suggest.muted.length}
+      <SettingsRow label={t("settings-passport-muted-label")} testid="passport-muted">
+        <div class="chips">
+          {#each suggest.muted as h (h)}
+            <span class="chip" out:fade={{ duration: 150 }}>{h}<button type="button" data-testid="passport-unmute-{h}" aria-label={t("settings-passport-unmute", { site: h })} onclick={() => { suggest!.muted = suggest!.muted.filter((x) => x !== h); api.settings.unmutePassportSite(h); }}>×</button></span>
+          {/each}
+        </div>
+      </SettingsRow>
+    {/if}
+  {/if}
   {#if notice}<p class="status alert appear" role="status" data-testid="passport-notice" out:fade={{ duration: 150 }}>{t(notice)}</p>{/if}
 
   <div class="stack">

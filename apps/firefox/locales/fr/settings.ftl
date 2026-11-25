@@ -349,3 +349,7 @@ settings-passport-import-error = L'ajout a échoué : rien n'a changé. Réessay
 settings-passport-import-cancelled = Ajout annulé : rien n'a changé.
 settings-passport-import-close = Fermer
 settings-passport-import-nothing = Tout était déjà dans votre passeport.
+settings-passport-suggest-label = Proposer d'ajouter vos adresses quand vous remplissez un formulaire
+settings-passport-suggest-help = Quand vous tapez une adresse dans un formulaire, une barre propose de l'ajouter à votre passeport (Touch ID demandé). Rien n'est lu dans la page tant que vous n'avez pas tapé.
+settings-passport-muted-label = Sites où ne plus proposer
+settings-passport-unmute = Retirer { $site }
