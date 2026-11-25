@@ -194,7 +194,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("dismissUpdate") }),
   /** A start-up notice's card answered: gone from every window (the telemetry one also marks the notice seen, chrome/store). */
   z.object({ type: z.literal("dismissNotice"), id: z.enum(NOTICE_IDS) }),
-  /** A Touch ID refusal worth explaining (a Mac with no login password): its card, once. Chrome only (reauth.ts). */
+  /** A Touch ID refusal worth explaining (a Mac with no login password): its card, once. Not chrome-only: a page may send it too, but the literal id caps it to that one card (reauth.ts sends it). */
   z.object({ type: z.literal("showNotice"), id: z.literal("no-login-password") }),
   z.object({ type: z.literal("markHintSeen"), id: z.enum(HINT_IDS) }),
   z.object({ type: z.literal("setHintsEnabled"), enabled: z.boolean() }),
