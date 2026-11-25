@@ -1,6 +1,7 @@
 /** Anonymous Sentry error reports. Pure: runs in vitest and in the Firefox chrome (no Node or chrome API). */
 
-export type ReportedError = { source: "chrome" | "host"; type: string; message: string; stack?: string };
+/** `tags`: our own values only (counts, kinds), sent unscrubbed. */
+export type ReportedError = { source: "chrome" | "host"; type: string; message: string; stack?: string; tags?: Record<string, string> };
 type Frame = { function: string; filename: string; lineno: number; colno: number };
 
 export function parseDsn(dsn: string): { envelopeUrl: string; minidumpUrl: string } | null {
@@ -77,7 +78,7 @@ export function errorEnvelope(e: ReportedError, o: { release: string; home: stri
     sdk: { name: "ressac", version: o.release, settings: { infer_ip: "never" } },
     // An explicit, unlocatable IP: Sentry keeps it instead of the sender's, so it derives no city.
     user: { ip_address: "0.0.0.0" },
-    tags: { source: e.source },
+    tags: { ...e.tags, source: e.source },
     exception: { values: [{ type: message(e.type, o.home), value: message(e.message, o.home).slice(0, 300), ...(frames.length ? { stacktrace: { frames } } : {}) }] },
   };
   return [{ event_id: o.eventId, sent_at: o.now.toISOString() }, { type: "event" }, event].map((x) => JSON.stringify(x)).join("\n");

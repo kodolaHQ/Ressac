@@ -34,6 +34,9 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
       if (crashReporter.submitReports !== on) crashReporter.submitReports = on;
       // The crashed-tab page's "send report" box starts from this pref.
       Services.prefs.setBoolPref(CRASH_TAB_SEND, on);
+      // Reports left pending (a crash of the whole app, a tab's) go at the next launch, unasked: the user said yes here.
+      Services.prefs.setBoolPref("browser.crashReports.unsubmittedCheck.enabled", on);
+      Services.prefs.setBoolPref("browser.crashReports.unsubmittedCheck.autoSubmit2", on);
     } catch {}
   };
   syncCrashReports();
