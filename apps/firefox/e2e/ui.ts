@@ -12,6 +12,8 @@ const FRAMES = {
   // « Cacher pour l'agent »'s layer over the page and its bubble (chrome/window/hide-layer.ts).
   hide: { id: "ressac-hide-layer", mounted: "#app" },
   hideBubble: { id: "ressac-hide-bubble", mounted: "#app" },
+  // The passport's suggestion after a sent address form (chrome/passport/form-capture.ts).
+  passportSuggest: { id: "ressac-passport-suggest", mounted: "#app" },
 };
 export type Frame = keyof typeof FRAMES;
 

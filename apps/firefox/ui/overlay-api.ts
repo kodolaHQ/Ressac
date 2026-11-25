@@ -1,4 +1,4 @@
-import type { HideApi, MarksApi, OverlayApi } from "../shared/api";
+import type { HideApi, MarksApi, OverlayApi, PassportSuggestApi } from "../shared/api";
 import { local } from "./design-api";
 
 // The chrome outlives this document: a listener into a dead document would throw on every call.
@@ -39,6 +39,18 @@ export function wrapHideApi(raw: HideApi, untilUnload: (unsubscribe: () => void)
     confirm: (choice) => Promise.resolve(raw.confirm(structuredClone(choice))).then(() => {}),
     cancel: () => raw.cancel(),
     undo: () => Promise.resolve(raw.undo()).then(() => {}),
+    onChange: (cb) => untilUnload(raw.onChange(() => cb())),
+  };
+}
+
+/** The API of the passport suggestion's frame (PassportSuggest.svelte), on what chrome/passport/form-capture.ts set on the frame. */
+export function wrapPassportSuggestApi(raw: PassportSuggestApi, untilUnload: (unsubscribe: () => void) => () => void = untilWindowUnload): PassportSuggestApi {
+  return {
+    context: () => structuredClone(raw.context()),
+    remember: (on) => raw.remember(!!on),
+    add: () => raw.add(),
+    no: () => raw.no(),
+    mute: (where) => raw.mute(where === "all" ? "all" : "site"),
     onChange: (cb) => untilUnload(raw.onChange(() => cb())),
   };
 }

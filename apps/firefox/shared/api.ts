@@ -1106,6 +1106,27 @@ export type MarksApi = {
   locale(): string;
   onChange(cb: () => void): () => void;
 };
+/** The passport's suggestion after a typed address form is sent (chrome/passport/form-capture.ts), for the selected tab. */
+export interface PassportSuggestContext {
+  /** Each value with its kind, frozen at the send: exactly what « Ajouter » writes. */
+  values: string[];
+  site: string;
+  remember: boolean;
+  /** busy: Touch ID and the write; done: `done` says what happened, then the bubble fades out. */
+  phase: "offer" | "busy" | "done";
+  done?: string;
+  failed?: boolean;
+  locale: string;
+}
+/** What the suggestion's frame may do: its answers only. `no` declines the document (never offered again). */
+export type PassportSuggestApi = {
+  context(): PassportSuggestContext | null;
+  remember(on: boolean): void;
+  add(): void;
+  no(): void;
+  mute(where: "site" | "all"): void;
+  onChange(cb: () => void): () => void;
+};
 /** Text of a note: bounded at the entry of the main process. */
 export const REMARK_TEXT_MAX = 4000;
 

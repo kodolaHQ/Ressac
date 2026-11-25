@@ -11,12 +11,13 @@ import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { readPassport, type PassportEntry } from "./passport-file";
 import { startServer } from "./server";
-import { click, inUi, waitUi } from "./ui";
+import { click, inUi, pressKeys, waitUi } from "./ui";
 
-// « Remplir le passeport » Task 8: a typed address form, once sent, offers its values to the passport in Ressac's own bar
-// (chrome/passport/form-capture.ts, chrome/agent/typed-actor.ts), never in Firefox's doorhanger or address store.
-// Every « no bar » check waits for Firefox's own submission handling to end (a probe around `_onAddressSubmit`, which
-// Ressac's wrapper awaits through to its bar): the bar is decided by then, no sleep.
+// « Remplir le passeport » Task 8: a typed address form, once sent, offers its values to the passport in Ressac's own
+// bubble over the page (chrome/passport/form-capture.ts, ui/PassportSuggest.svelte, chrome/agent/typed-actor.ts), never
+// in Firefox's doorhanger or address store. Every « no bubble » check waits for Firefox's own submission handling to end
+// (a probe around `_onAddressSubmit`, which Ressac's wrapper awaits through to its decision): the bubble is decided by
+// then, no sleep; and each such test ends with a positive control where it could otherwise pass on a blind check.
 
 const B = "gBrowser.selectedBrowser";
 const PARENT = "resource://autofill/FormAutofillParent.sys.mjs";
@@ -197,53 +198,64 @@ const submitted = (n: number) =>
     throw new Error(`Firefox handed over fewer than ${n} address submission(s): ${(e as Error).message}`);
   });
 
-type Bar = { value: string; text: string; visible: boolean };
-/** The selected tab's notification bars. */
-const bars = () =>
-  m.execute<Bar[]>(
-    `return gBrowser.getNotificationBox(${B}).allNotifications.map((n) => ({
-       value: n.getAttribute("value"),
-       text: ((n.messageText ?? n.shadowRoot?.querySelector(".message"))?.textContent ?? "").replace(/\\s+/g, " ").trim(),
-       visible: n.checkVisibility() && n.getBoundingClientRect().height > 0,
-     }));`,
-  );
-const offers = async () => (await bars()).filter((b) => /^ressac-passport-suggest-\d+$/.test(b.value));
-/** Waits for the one passport bar of the tab; fails if a second shows. */
-async function oneOffer(): Promise<Bar> {
-  await expect.poll(async () => (await offers()).length, { timeout: 20_000 }).toBeGreaterThan(0);
-  const all = await offers();
-  expect(all.map((b) => b.value)).toHaveLength(1);
-  return all[0]!;
-}
-/** Presses a bar's button like a person (a mouse click at its centre), once its clickjacking delay let it take the press. */
-const pressBar = (value: string, label: string) =>
-  waitFor(
+const FRAME = "ressac-passport-suggest";
+const tid = (id: string) => `[data-testid="${id}"]`;
+type Offer = { values: string[]; site: string; remember: boolean; phase: string; done?: string };
+/** The chrome's bubble for the selected tab: decided as Firefox's submission is handled (before the frame draws it). */
+const decided = () => m.execute<Offer | null>(`return document.getElementById("${FRAME}")?.ressacPassportSuggest?.api.context() ?? null;`);
+/**
+ * Waits for the tab's one bubble really on screen: one frame, shown, in the selected page's box, the one under the
+ * pointer at its centre, its bubble drawn with a size; its values as shown. Fails if a second frame or bubble shows.
+ */
+async function oneOffer(): Promise<{ values: string[]; text: string }> {
+  await expect.poll(decided, { timeout: 20_000 }).not.toBeNull();
+  const shown = await waitFor<{ values: string[]; text: string } | null>(
     m,
-    `const n = gBrowser.getNotificationBox(${B}).allNotifications.find((x) => x.getAttribute("value") === ${JSON.stringify(value)});
-     const b = n && [...n.buttonContainer.querySelectorAll("button")].find((x) => x.getAttribute("label") === ${JSON.stringify(label)});
-     if (!b || b.disabled) return false;
-     const r = b.getBoundingClientRect();
-     if (!r.width) return false;
-     for (const type of ["mousedown", "mouseup"]) window.synthesizeMouseEvent(type, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1 });
-     return true;`,
-    (v) => v === true,
+    `const fs = document.querySelectorAll("#${FRAME}");
+     if (fs.length !== 1) throw new Error(fs.length + " suggestion frames");
+     const f = fs[0], d = f.contentDocument;
+     const roots = d?.querySelectorAll('${tid("passport-suggest")}') ?? [];
+     if (roots.length > 1) throw new Error(roots.length + " suggestion bubbles");
+     const root = roots[0], seen = { opacityProperty: true, visibilityProperty: true };
+     if (!root || !f.checkVisibility(seen) || !root.checkVisibility(seen)) return null;
+     const r = f.getBoundingClientRect(), p = ${B}.getBoundingClientRect(), br = root.getBoundingClientRect();
+     if (!r.width || !r.height || !br.width || !br.height) return null;
+     if (r.left < p.left || r.right > p.right || r.top < p.top || r.bottom > p.bottom) return null;
+     if (document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) !== f) return null;
+     const values = [...d.querySelectorAll('${tid("passport-suggest-values")} li')].map((li) => li.textContent.trim());
+     return values.length ? { values, text: values.join(" · ") } : null;`,
+    (v) => v !== null,
+    20_000,
   );
-/** Ticks the bar's « Retenir … » box with one click on it, once it has a size. */
-async function tickRemember(value: string): Promise<void> {
-  const box = `const n = gBrowser.getNotificationBox(${B}).allNotifications.find((x) => x.getAttribute("value") === ${JSON.stringify(value)});
-     const box = n?.shadowRoot?.querySelector('input[type="checkbox"]') ?? n?.querySelector('input[type="checkbox"]');`;
-  await waitFor(
-    m,
-    `${box}
-     const r = box?.getBoundingClientRect();
-     if (!r?.width) return false;
-     for (const type of ["mousedown", "mouseup"]) window.synthesizeMouseEvent(type, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1 });
-     return true;`,
-    (v) => v === true,
-  );
-  await waitFor(m, `${box} return box.checked;`, (v) => v === true);
+  return shown!;
 }
-const doneBar = () => waitFor<Bar[]>(m, `return gBrowser.getNotificationBox(${B}).allNotifications.map((n) => ({ value: n.getAttribute("value"), text: ((n.messageText ?? n.shadowRoot?.querySelector(".message"))?.textContent ?? "").trim() }));`, (v) => v.some((b) => b.value.startsWith("ressac-passport-suggest-done-")), 20_000);
+/** Waits until the selected tab shows no bubble: none decided, and its frame hidden after the exit fade. */
+async function gone(): Promise<void> {
+  await expect.poll(decided, { timeout: 20_000 }).toBeNull();
+  await waitFor(m, `const f = document.getElementById("${FRAME}"); return !f || !f.checkVisibility();`, (v) => v === true, 15_000);
+}
+/** Presses a bubble button like a person (a mouse click at its centre, once it takes the press). */
+const pressBubble = (testid: string) => click(m, tid(testid), { frame: "passportSuggest" });
+/** Ticks the bubble's « Retenir … » box with one click on it. */
+async function tickRemember(): Promise<void> {
+  await pressBubble("passport-suggest-remember");
+  await expect.poll(async () => (await decided())?.remember).toBe(true);
+}
+/** After « Ajouter »: its done text, then the bubble fades out on its own. */
+async function doneThenGone(): Promise<string> {
+  const text = await waitUi<string>(m, `return doc.querySelector('${tid("passport-suggest-done")}')?.textContent?.trim()`, [], 20_000, "passportSuggest");
+  await gone();
+  return text;
+}
+/** Positive control: a typed form sent in a fresh plain https tab does offer (the `forms`-th form focused in this test). */
+async function control(forms: number): Promise<void> {
+  await tab(`${server.url}/twice.html`);
+  await typeForm("a-");
+  await press("#a-send", forms);
+  await submitted(forms);
+  const offer = await oneOffer();
+  for (const v of SHOWN) expect(offer.text).toContain(v);
+}
 
 type Written = PassportEntry & { how?: string; from?: string };
 const passport = async (): Promise<Written[]> => (existsSync(join(profile!, "ressac", "passport", "default.json")) ? ((await readPassport(profile!)) as Written[]) : []);
@@ -266,32 +278,36 @@ describe("passport suggestions from typed forms", () => {
     expect(await m.execute(`return ${B}.browsingContext.currentWindowGlobal.getActor("RessacTyped").sendQuery("typedValues")`)).toEqual([]);
   });
 
-  it("a French form typed by keyboard and sent (POST, navigates): one Ressac bar with each value's kind, no Firefox prompt, nothing in Firefox's store", async () => {
+  it("a French form typed by keyboard and sent (POST, navigates): one Ressac bubble on the page with each value's kind, no Firefox prompt; gone at the next navigation", async () => {
     await start();
     await tab(`${server.url}/francais.html`);
     await typeKeys([["#p", ME.given], ["#n", ME.family], ["#a", ME.street], ["#cp", ME.postcode], ["#v", ME.city], ["#t", ME.tel], ["#e", ME.email]]);
     await press("#send");
     const [keys] = await submitted(1);
     await waitFor(m, `return ${B}.currentURI.spec === ${JSON.stringify(`${server.url}/merci`)} && !${B}.webProgress.isLoadingDocument`, (v) => v === true, 15_000);
-    // The bar outlives the send's navigation (persistence 1) and shows in Ressac's layout.
-    const bar = await oneOffer();
-    expect(bar.visible).toBe(true);
+    // The bubble outlives the send's navigation and is on screen, over the page.
+    const offer = await oneOffer();
     // A single « Adresse » field read as address-line1 offers no address: said here, not passed over.
-    for (const s of SHOWN) expect(bar.text, `Firefox read the form as ${keys!.join(", ")}; the bar says « ${bar.text} »`).toContain(s);
+    for (const s of SHOWN) expect(offer.text, `Firefox read the form as ${keys!.join(", ")}; the bubble says « ${offer.text} »`).toContain(s);
+    // Unticked by default, and the keyboard stays where the user was.
+    expect(await inUi(m, `return doc.querySelector('${tid("passport-suggest-remember")}').checked`, [], "passportSuggest")).toBe(false);
+    expect(await m.execute("return document.activeElement?.id ?? null")).not.toBe(FRAME);
     await noFirefoxPrompt();
-    expect((await offers()).length).toBe(1);
+    // A further navigation of the tab: gone.
+    await m.execute(`${B}.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}) });`, [`${server.url}/twice.html`]);
+    await gone();
   });
 
-  it("« Ajouter »: Touch ID, then the passport holds the values as typed from a form, with no site; the same values sent again: no bar", async () => {
+  it("« Ajouter »: Touch ID, then the passport holds the values as typed from a form, with no site; the same values sent again: no bubble", async () => {
     await start();
     await tab(`${server.url}/twice.html`);
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    const bar = await oneOffer();
-    for (const s of SHOWN) expect(bar.text).toContain(s);
-    await pressBar(bar.value, "Ajouter");
-    await doneBar();
+    const offer = await oneOffer();
+    for (const s of SHOWN) expect(offer.text).toContain(s);
+    await pressBubble("passport-suggest-add");
+    expect(await doneThenGone()).not.toBe("");
     await expect.poll(async () => (await passport()).map((e) => e.field).sort()).toEqual(["adresse", "email", "nom", "tel"]);
     const written = await passport();
     expect(written.every((e) => e.how === "form" && e.from === host && e.origins.length === 0)).toBe(true);
@@ -300,11 +316,10 @@ describe("passport suggestions from typed forms", () => {
     expect(written.find((e) => e.field === "tel")!.value.text!.replace(/\s/g, "")).toBe(PHONE.replace(/\s/g, ""));
     await noFirefoxPrompt();
     // Everything already in the passport: the second form of the same page, the same values, offers nothing.
-    const seen = new Set((await offers()).map((b) => b.value));
     await typeForm("b-");
     await press("#b-send", 2);
     await submitted(2);
-    expect((await offers()).filter((b) => !seen.has(b.value))).toEqual([]);
+    expect(await decided()).toBeNull();
   });
 
   it("« Retenir » ticked: the entries name the site", async () => {
@@ -313,10 +328,10 @@ describe("passport suggestions from typed forms", () => {
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    const bar = await oneOffer();
-    await tickRemember(bar.value);
-    await pressBar(bar.value, "Ajouter");
-    await doneBar();
+    await oneOffer();
+    await tickRemember();
+    await pressBubble("passport-suggest-add");
+    await doneThenGone();
     await expect.poll(async () => (await passport()).length).toBe(4);
     expect((await passport()).map((e) => e.origins)).toEqual([[host], [host], [host], [host]]);
   });
@@ -327,42 +342,87 @@ describe("passport suggestions from typed forms", () => {
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    const bar = await oneOffer();
-    await pressBar(bar.value, "Non");
-    await expect.poll(async () => (await offers()).length).toBe(0);
+    await oneOffer();
+    await pressBubble("passport-suggest-no");
+    await gone();
     await typeForm("b-");
     await press("#b-send", 2);
     await submitted(2);
-    expect(await offers()).toEqual([]);
+    expect(await decided()).toBeNull();
     expect(await passport()).toEqual([]);
   });
 
-  it("« Ne plus proposer sur ce site »: its popup opens on the button, the site is muted, the next send offers nothing", async () => {
+  it("✕ and Escape decline the document like « Non »", async () => {
     await start();
     await tab(`${server.url}/twice.html`);
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    const bar = await oneOffer();
-    await pressBar(bar.value, "Ne plus proposer");
-    const id = `ressac-passport-mute-${bar.value.split("-").at(-1)}`;
-    // Anchored to the button pressed, then its item chosen as a person would (activateItem closes the popup).
-    await waitFor(
-      m,
-      `const p = document.getElementById(${JSON.stringify(id)}), a = p?.anchorNode;
-       return p?.state === "open" && (a?.closest?.("button") ?? a)?.getAttribute?.("label") === "Ne plus proposer";`,
-      (v) => v === true,
-    );
-    await m.execute(`const p = document.getElementById(${JSON.stringify(id)}); p.activateItem([...p.children].find((i) => i.getAttribute("label") === "Ne plus proposer sur ce site"));`);
-    await waitFor(m, 'return Services.prefs.getCharPref("ressac.passport.suggestMuted", "")', (v) => v === host);
-    await expect.poll(async () => (await offers()).length).toBe(0);
+    await oneOffer();
+    // Reached by the keyboard (a button of the bubble focused), Escape answers « Non ».
+    await inUi(m, `doc.querySelector('${tid("passport-suggest-add")}').focus();`, [], "passportSuggest");
+    await waitUi(m, `return doc.activeElement?.dataset.testid === "passport-suggest-add" && doc.hasFocus()`, [], 10_000, "passportSuggest");
+    await pressKeys(m, "Escape");
+    await gone();
     await typeForm("b-");
     await press("#b-send", 2);
     await submitted(2);
-    expect(await offers()).toEqual([]);
+    expect(await decided()).toBeNull();
+    // ✕ on another document's bubble.
+    await control(3);
+    await pressBubble("passport-suggest-close");
+    await gone();
+    expect(await passport()).toEqual([]);
   });
 
-  it("a page script fills the form (execCommand, then requestSubmit): Firefox captures it, no bar", async () => {
+  it("« Ne plus proposer ▾ › Sur ce site »: the site is muted, the next send offers nothing", async () => {
+    await start();
+    await tab(`${server.url}/twice.html`);
+    await typeForm("a-");
+    await press("#a-send");
+    await submitted(1);
+    await oneOffer();
+    await pressBubble("passport-suggest-mute");
+    await pressBubble("passport-suggest-mute-site");
+    await waitFor(m, 'return Services.prefs.getCharPref("ressac.passport.suggestMuted", "")', (v) => v === host);
+    await gone();
+    await typeForm("b-");
+    await press("#b-send", 2);
+    await submitted(2);
+    expect(await decided()).toBeNull();
+    expect(await m.execute('return Services.prefs.getBoolPref("ressac.passport.suggest")')).toBe(true);
+  });
+
+  it("« Ne plus proposer ▾ › Nulle part »: suggestions switched off", async () => {
+    await start();
+    await tab(`${server.url}/twice.html`);
+    await typeForm("a-");
+    await press("#a-send");
+    await submitted(1);
+    await oneOffer();
+    await pressBubble("passport-suggest-mute");
+    await pressBubble("passport-suggest-mute-all");
+    await waitFor(m, 'return Services.prefs.getBoolPref("ressac.passport.suggest")', (v) => v === false);
+    await gone();
+    expect(await m.execute('return Services.prefs.getCharPref("ressac.passport.suggestMuted", "")')).toBe("");
+  });
+
+  it("the bubble belongs to its tab: hidden while another tab is selected, back with its ticked box on its own", async () => {
+    await start();
+    const sent = await tab(`${server.url}/twice.html`);
+    await typeForm("a-");
+    await press("#a-send");
+    await submitted(1);
+    const first = await oneOffer();
+    await tickRemember();
+    await tab(`${server.url}/merci`);
+    await gone();
+    await dispatch(m, { type: "activateTab", id: sent });
+    expect((await oneOffer()).values).toEqual(first.values);
+    expect(await inUi(m, `return doc.querySelector('${tid("passport-suggest-remember")}').checked`, [], "passportSuggest")).toBe(true);
+  });
+
+  it("a page script fills the form (execCommand, then requestSubmit): Firefox captures it, no bubble; typed by the user, it offers", async () => {
     await start();
     await tab(`${server.url}/twice.html`);
     await inPage(
@@ -376,7 +436,12 @@ describe("passport suggestions from typed forms", () => {
     );
     const [keys] = await submitted(1);
     expect(keys).toContain("given-name");
-    expect(await offers()).toEqual([]);
+    expect(await decided()).toBeNull();
+    // Positive control: the same document's other form typed by keyboard.
+    await typeForm("b-");
+    await press("#b-send", 2);
+    await submitted(2);
+    for (const s of SHOWN) expect((await oneOffer()).text).toContain(s);
   });
 
   it("a typed field the page rewrites as it is sent: the page's text is never offered, what was typed is", async () => {
@@ -385,102 +450,112 @@ describe("passport suggestions from typed forms", () => {
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    const bar = await oneOffer();
+    const offer = await oneOffer();
     // Firefox reads the fields before the page's submit handler rewrites them (measured on 161): the typed name stays.
-    expect(bar.text).toContain("Votre nom : Camille Aubrac");
-    expect(bar.text).toContain("Adresse postale : 14 rue des Tanneurs, 69001 Lyon");
-    expect(bar.text).not.toContain("Lucie");
+    expect(offer.text).toContain("Votre nom : Camille Aubrac");
+    expect(offer.text).toContain("Adresse postale : 14 rue des Tanneurs, 69001 Lyon");
+    expect(offer.text).not.toContain("Lucie");
   });
 
   it("execCommand into a field just left by Tab is not offered", async () => {
     await start();
     await tab(`${server.url}/tab.html`);
-    await typeKeys([["#a-given", `${ME.given}`]]);
+    // U+E004: WebDriver's Tab key.
+    await typeKeys([["#a-given", `${ME.given}\uE004`]]);
     // The page's script ran on the Tab: the first name is its text now, focus on the family name. Else the case was not set up.
     await expect.poll(() => inPage<[string, string]>('return [document.getElementById("a-given").value, document.activeElement.id]')).toEqual(["Lucie Piège", "a-family"]);
     const { given: _g, ...rest } = ME;
     await typeKeys(Object.entries(rest).map(([k, text]) => [`#a-${k}`, text]));
     await press("#a-send");
     await submitted(1);
-    const bar = await oneOffer();
-    expect(bar.text).toContain("Adresse postale");
-    expect(bar.text).not.toContain("Piège");
-    expect(bar.text).not.toContain("Votre nom");
+    const offer = await oneOffer();
+    expect(offer.text).toContain("Adresse postale");
+    expect(offer.text).not.toContain("Piège");
+    expect(offer.text).not.toContain("Votre nom");
   });
 
-  it("sent by fetch, the form then removed: still one bar", async () => {
+  it("sent by fetch, the form then removed: still one bubble", async () => {
     await start();
     await tab(`${server.url}/fetch.html`);
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    const bar = await oneOffer();
-    for (const s of SHOWN) expect(bar.text).toContain(s);
+    const offer = await oneOffer();
+    for (const s of SHOWN) expect(offer.text).toContain(s);
   });
 
-  it("shipping and billing in one form: one bar with the new values of both", async () => {
+  it("shipping and billing in one form: one bubble with the new values of both", async () => {
     await start();
     await tab(`${server.url}/sections.html`);
     await typeForm("s-");
     await typeForm("b-", { ...ME, street: "3 place Bellecour", postcode: "69002" });
     await press("#send");
     await submitted(2);
-    const bar = await oneOffer();
-    expect(bar.text).toContain("Adresse postale : 14 rue des Tanneurs, 69001 Lyon");
-    expect(bar.text).toContain("Adresse postale : 3 place Bellecour, 69002 Lyon");
-    expect(bar.text.split("Votre nom").length - 1).toBe(1);
-    expect(bar.text.split("E-mail").length - 1).toBe(1);
+    // Both sections are in by now (each is merged as it is handled).
+    const offer = await oneOffer();
+    expect(offer.text).toContain("Adresse postale : 14 rue des Tanneurs, 69001 Lyon");
+    expect(offer.text).toContain("Adresse postale : 3 place Bellecour, 69002 Lyon");
+    expect(offer.text.split("Votre nom").length - 1).toBe(1);
+    expect(offer.text.split("E-mail").length - 1).toBe(1);
   });
 
-  it("no bar: an agent-reached tab", async () => {
+  it("no bubble: an agent-reached tab", async () => {
     await start();
     await tab(`${server.url}/twice.html`, { agentReached: true });
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    expect(await offers()).toEqual([]);
+    expect(await decided()).toBeNull();
+    await control(2);
   });
 
-  it("no bar: a private space", async () => {
+  it("no bubble: a private space", async () => {
     await start();
     const s = await dispatch(m, { type: "createSpace", name: "Secret", icon: "🔒", private: true, profile: "default", windowId: (await state(m)).windows[0]!.id });
     await tab(`${server.url}/twice.html`, { spaceId: s.spaces.at(-1)!.id });
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    expect(await offers()).toEqual([]);
+    expect(await decided()).toBeNull();
+    // The control in a normal space.
+    await dispatch(m, { type: "activateSpace", windowId: (await state(m)).windows[0]!.id, id: s.spaces[0]!.id });
+    await control(2);
   });
 
-  it("no bar: an http page", async () => {
+  it("no bubble: an http page", async () => {
     await start();
     await tab(`${plain.url}/twice.html`);
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    expect(await offers()).toEqual([]);
+    expect(await decided()).toBeNull();
+    await control(2);
   });
 
-  it("no bar: a muted site", async () => {
+  it("no bubble: a muted site", async () => {
     await start({ prefs: { "ressac.passport.suggestMuted": `other.example,${host}` } });
     await tab(`${server.url}/twice.html`);
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    expect(await offers()).toEqual([]);
+    expect(await decided()).toBeNull();
+    await m.execute('Services.prefs.setCharPref("ressac.passport.suggestMuted", "other.example");');
+    await control(2);
   });
 
-  it("no bar: suggestions switched off", async () => {
+  it("no bubble: suggestions switched off", async () => {
     await start({ prefs: { "ressac.passport.suggest": false } });
     await tab(`${server.url}/twice.html`);
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
-    expect(await offers()).toEqual([]);
+    expect(await decided()).toBeNull();
+    await m.execute('Services.prefs.setBoolPref("ressac.passport.suggest", true);');
+    await control(2);
   });
 
   it("Réglages › Passeport: the switch and the muted sites follow the prefs, and back", async () => {
     await start({ prefs: { "ressac.passport.suggestMuted": "a.example,b.example" } });
-    const tid = (id: string) => `[data-testid="${id}"]`;
     const pref = (js: string) => m.execute(`return ${js}`);
     await click(m, tid("settings-button"));
     await click(m, tid("settings-nav-passport"));
@@ -493,7 +568,7 @@ describe("passport suggestions from typed forms", () => {
     await expect.poll(() => pref('Services.prefs.getBoolPref("ressac.passport.suggest")')).toBe(false);
     await click(m, tid("passport-suggest-switch"));
     await expect.poll(() => pref('Services.prefs.getBoolPref("ressac.passport.suggest")')).toBe(true);
-    // Changed elsewhere (the bar's « Ne plus proposer »): the section shows it when opened again.
+    // Changed elsewhere (the bubble's « Ne plus proposer »): the section shows it when opened again.
     await m.execute('Services.prefs.setBoolPref("ressac.passport.suggest", false); Services.prefs.setCharPref("ressac.passport.suggestMuted", "b.example,c.example");');
     await click(m, tid("settings-nav-privacy"));
     await click(m, tid("settings-nav-passport"));
