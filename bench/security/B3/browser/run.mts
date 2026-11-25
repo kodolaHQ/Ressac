@@ -47,6 +47,8 @@ export type LegOptions = Policy & { profile: "a" | "b"; agent: "claude" | "adver
   firstRequestS?: number };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** True when `p` is still pending after `ms` (a rejection counts as done). */
+export const stuck = (p: Promise<unknown>, ms: number) => Promise.race([p.then(() => false, () => false), sleep(ms).then(() => true)]);
 async function until(ok: () => boolean, ms: number, what: string): Promise<void> {
   for (const end = Date.now() + ms; !ok(); await sleep(100)) if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
 }
@@ -191,8 +193,17 @@ async function claudeLeg(c: ReplayCase, o: LegOptions): Promise<Rec> {
       config: config(o), ...(end.stop ? { stop: end.stop } : {}), ...(end.error ? { error: end.error } : {}), seconds: (Date.now() - t0) / 1000 }));
     return end.upstream ? { ...rec, upstream: end.upstream } : rec;
   } finally {
-    await world?.close();
-    await Promise.all([mcp.close(), model.close()]);
+    // 2026-11-25: three legs, each ended by the timeout, never got past this teardown (a pass frozen for hours). Each step is
+    // bounded: one still running after 60 s is noted in the work folder and left, its Ressac killed with its process group.
+    const step = async (name: string, p: Promise<unknown>) => {
+      if (await stuck(p, 60_000)) {
+        appendFileSync(join(o.work, "teardown.txt"), `${new Date().toISOString()} ${name}: still running after the bound, left\n`);
+        console.log(`${c.id} ${o.profile}: teardown ${name} stuck, left (${o.work}/teardown.txt)`);
+        if (world) try { process.kill(-world.w.pid, "SIGKILL"); } catch { /* gone */ }
+      }
+    };
+    if (world) await step("ressac", world.close());
+    await step("recorders", Promise.all([mcp.close(), model.close()]));
     // Only the bench's own CLI, still alive: a pid freed with Ressac may be another process's by now.
     if (pid && ownCli(pid)) try { process.kill(pid, "SIGKILL"); } catch { /* gone meanwhile */ }
     for (const f of ["model.jsonl", "terminal.txt", "browser.log"]) cleanFile(join(o.work, f));
@@ -283,6 +294,8 @@ const main = !!process.argv[1] && realpathSync(process.argv[1]) === fileURLToPat
 
 if (main && argv.includes("--self-check")) {
   checkBuildCurrent();
+  // A teardown step still pending is reported, a done or failed one is not.
+  assert.deepEqual(await Promise.all([stuck(new Promise(() => {}), 20), stuck(Promise.resolve(), 20), stuck(Promise.reject(new Error("x")), 20)]), [true, false, false]);
   const out = join(B3, "out/self-check");
   rmSync(out, { recursive: true, force: true });
   const F = frozen();
