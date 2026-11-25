@@ -113,6 +113,16 @@ export class Masker {
     return this.locks().some((l) => l.locked());
   }
 
+  /** Every value revealed in a conversation, as first written and canonical, with the origin it was first read on. */
+  revealedValues(): { forms: string[]; first: string | null }[] {
+    return [...this.sessionLocks].flatMap(([s, lock]) =>
+      lock.revealed().flatMap(({ label }) => {
+        const e = this.table(s).resolve(label);
+        return e ? [{ forms: [...new Set([e.raw, e.value])], first: e.origins[0] ?? null }] : [];
+      }),
+    );
+  }
+
   /** How the cards name every revealed value (« votre code »), never the value. */
   revealedNames(): string[] {
     const names = [...this.sessionLocks].flatMap(([s, lock]) => this.namesOf(s, lock));

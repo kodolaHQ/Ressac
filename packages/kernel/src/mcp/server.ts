@@ -758,6 +758,16 @@ export function createToolsServer(
   };
   /** Every lock counts, whatever the token: tokens are readable in the container. */
   const allows = (origin: string | null) => masker.locks().every((l) => l.allows(origin));
+  /**
+   * `url` carries a revealed value (any case and accents, percent-encoded up to three times, `+` for spaces) toward
+   * another origin than the one it was first read on: the user's other sites (a webmail's search, its redirector) would
+   * carry it on, so the lock does not exempt them for it.
+   */
+  const carriesRevealed = (url: string, to: string | null) => {
+    const fold = (x: string) => x.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ");
+    const address = fold(urlDecoded(url.replace(/\+/g, " ")).replace(/\+/g, " "));
+    return masker.revealedValues().some((v) => v.first !== to && v.forms.some((f) => fold(f).length > 0 && address.includes(fold(f))));
+  };
   const lockedLine = () => l10n("kernel-mask-locked-danger", named(masker.revealedNames()));
   /** At the limit of unknown labels, `fill_field` and `reveal_value` answer only this until the conversation ends. */
   const blocked = () => masker.lock(session).unknownLabels >= UNKNOWN_LABELS_MAX;
@@ -797,11 +807,12 @@ export function createToolsServer(
     if (dests !== null) {
       for (const d of dests) {
         const to = originOf(d.real);
+        const locked = !allows(to) || carriesRevealed(d.real, to);
         // The lock first: the card bounds each line, and a handle's host is the page's to make long.
-        const lines: string[] = allows(to) ? [] : [lockedLine()];
+        const lines: string[] = locked ? [lockedLine()] : [];
         // The shown host, not the real one: a value in the host stays masked on the card too.
         if (d.read !== undefined && to !== d.read) lines.push(l10n("kernel-mask-handle-danger", { ...named(issuedNames(d.shown)), from: siteOf(d.read), to: siteOf(d.shown) }));
-        if (lines.length) marked.set(d.real, { shown: d.shown, lines, locked: !allows(to), found: !d.composed });
+        if (lines.length) marked.set(d.real, { shown: d.shown, lines, locked, found: !d.composed });
       }
       return null;
     }
@@ -1148,11 +1159,16 @@ export function createToolsServer(
 
   /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks);
    *  `clicks`: what the link followed spells with the ones before it, judged first. */
-  function danger(url: string, clicks?: OutflowHit): { danger?: string } {
+  async function danger(url: string, clicks?: OutflowHit): Promise<{ danger?: string }> {
     const hit = clicks ?? checkOutflow(url, true) ?? maskedNameIn(url);
     // The fallback: a word of its host the agent read only in the user's sources (an employer, a shop on a statement).
     const host = URL.canParse(url) ? domainToUnicode(new URL(url).hostname) : "";
-    const read = hit ? undefined : outflow?.sourceWord(key, foldedWords(host).filter((w) => !HOST_STOP_WORDS.has(w)));
+    // The user's own sites (every source tab open, read or not) are no leak: their host words, alone or joined, count for none.
+    const own = hit || !outflow ? new Set<string>() : new Set((await bridge.listTabs().catch(() => [])).filter((t) => zoneOf(t) === "sources" && URL.canParse(t.url)).flatMap((t) => {
+      const site = domainToUnicode(new URL(t.url).hostname);
+      return [...foldedWords(site), ...foldedWords(site.replace(/-/g, ""))];
+    }));
+    const read = hit ? undefined : outflow?.sourceWord(key, foldedWords(host).filter((w) => !HOST_STOP_WORDS.has(w) && !own.has(w)));
     // Sent before its page is read, whatever line it got: that page showing the words does not make them the web's.
     outflow?.wrote(key, host);
     if (hit) return { danger: OUTFLOW_DANGER(locale(), hit) };
@@ -1247,7 +1263,7 @@ export function createToolsServer(
     if (free && (await bridge.listTabs()).some((t) => policy.canRead(t) && segments.apply(urlOf(t, t.url, zoneOf(t), originOf(t.url)), labels) === shown)) return null;
     if (url.length > URL_MAX) return TOO_LONG_TEXT;
     if (!bridge.askAddress) return denial(url);
-    const card = withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(shown, clicks) }, url);
+    const card = withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(shown, clicks)) }, url);
     const yes = await askAddressCard(bridge, policy, requests, card, cardKey(url, `address:${url}`), win ?? undefined, () => () => {}, signal);
     if (!yes) return denial(url);
     policy.grantAddress(shown);
@@ -1746,8 +1762,8 @@ export function createToolsServer(
         if (free && !pin) target = free;
         if (!free || clicks || marked.has(url)) {
           if (!bridge.askAddress) return text(denial(url, UNREAD_ADDRESS_TEXT));
-          const yes = await sessions.step(cur.tabId, l10n("kernel-search-address-step"), () =>
-            askAddressCard(bridge, policy, requests, withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(given, clicks) }, url), cardKey(url, `address:${cur.tabId}:${url}`), win ?? undefined, (f) => sessions.onEnd(cur.tabId, f), extra?.signal),
+          const yes = await sessions.step(cur.tabId, l10n("kernel-search-address-step"), async () =>
+            askAddressCard(bridge, policy, requests, withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(given, clicks)) }, url), cardKey(url, `address:${cur.tabId}:${url}`), win ?? undefined, (f) => sessions.onEnd(cur.tabId, f), extra?.signal),
           );
           if (!sessions.owns(cur.tabId)) return text(sessions.takeStop(key, cur.tabId) ? STOP_TEXT : CLOSED_TEXT);
           if (!yes) return text(denial(url));
@@ -1806,8 +1822,8 @@ export function createToolsServer(
         if (!free || clicks || marked.has(url)) {
           // An address the agent composed: the user decides, on a card showing it whole.
           if (!bridge.askAddress) return text(denial(url, UNREAD_ADDRESS_TEXT));
-          const yes = await sessions.step(id, l10n("kernel-search-address-step"), () =>
-            askAddressCard(bridge, policy, requests, withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(asGiven, clicks) }, url), cardKey(url, `address:${id}:${url}`), win ?? undefined, (f) => sessions.onEnd(id, f), extra?.signal),
+          const yes = await sessions.step(id, l10n("kernel-search-address-step"), async () =>
+            askAddressCard(bridge, policy, requests, withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(asGiven, clicks)) }, url), cardKey(url, `address:${id}:${url}`), win ?? undefined, (f) => sessions.onEnd(id, f), extra?.signal),
           );
           if (!sessions.owns(id)) return text(sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
           // The user took the page while the card was up.
@@ -2039,7 +2055,7 @@ export function createToolsServer(
             if (free && !clicks && !marked.has(real)) { ok.push([u, go]); continue; }
             if (!bridge.askAddress) { errors.set(u, `Erreur : ${denial(real, UNREAD_ADDRESS_TEXT)}`); continue; }
             const t = tabId;
-            const ask = () => askAddressCard(bridge, policy, requests, withMask({ url: real, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...danger(u, clicks) }, real), cardKey(real, `address:${t ?? key}:${real}`), win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}), extra?.signal);
+            const ask = async () => askAddressCard(bridge, policy, requests, withMask({ url: real, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(u, clicks)) }, real), cardKey(real, `address:${t ?? key}:${real}`), win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}), extra?.signal);
             const yes = await (t ? sessions.step(t, l10n("kernel-search-address-step"), ask) : ask());
             if (t && !sessions.owns(t)) return ended();
             if (!yes) { errors.set(u, `Erreur : ${denial(real)}`); continue; }

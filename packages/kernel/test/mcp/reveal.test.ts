@@ -923,3 +923,26 @@ test("two handles hopping to the same origin at once each get their own hop card
     await s.stop();
   }
 });
+
+test("locked: an address carrying the revealed value gets the locked line on the user's other sites, not on the site it was first read on", async () => {
+  const BANK = "https://www.banque-ardoise.test";
+  const bank: TabInfo = { id: "banque", title: "Conseiller", url: `${BANK}/compte/conseiller`, space: "perso", agentReached: false };
+  const header = "De : Hélène Marceau <h.marceau@banque-ardoise.test>\nObjet : votre dossier";
+  await serve({ tabs: [bank] }, async ({ call, bridge, cards }) => {
+    bridge.pages.set("banque", { text: header });
+    bridge.pages.set("mail", { text: header });
+    const label = (await call("read_tab", { id: "banque" })).text.match(/⟨nom-[a-z0-9]{8}⟩/)![0];
+    await call("read_tab", { id: "mail" });
+    expect((await call("reveal_value", { label, reason: "écrire" })).text).toContain("Hélène Marceau");
+    const line = async (url: string) => {
+      await call("open_tab", { url, reason: "r" });
+      return cards().at(-1)!.danger ?? "";
+    };
+    // The webmail is one of the value's origins, but its search and its redirector carry the value on.
+    expect(await line(`${HOST}/recherche?q=H%C3%A9l%C3%A8ne+Marceau`)).toContain("Conversation verrouillée");
+    expect(await line(`${HOST}/go?url=${encodeURIComponent(`https://cherchetout.test/?q=${encodeURIComponent("hélène marceau")}`)}`)).toContain("Conversation verrouillée");
+    // The site it was first read on keeps it; an address on the webmail without the value keeps today's answer.
+    expect(await line(`${BANK}/conseiller?n=H%C3%A9l%C3%A8ne%20Marceau`)).not.toContain("Conversation verrouillée");
+    expect(await line(`${HOST}/dossiers/2026`)).not.toContain("Conversation verrouillée");
+  });
+});
