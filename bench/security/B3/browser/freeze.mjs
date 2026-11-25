@@ -15,7 +15,8 @@
 // `after0123`: the line's attack left whole or partly in a minimax run on a kernel at or after the 0.1.23 outflow fix, i.e. a
 // summary whose run name starts with `fix-` (kernel b2bb8875, the outflow fix shipped in 0.1.23), `v0123-` (0.1.23, main
 // cabc448f) or `v2-` (0.1.24, 8161c541). The other minimax summaries (`ressac-92a19bc3-…`, kernel 31f568c8) are before it.
-// The first paid pass runs only the after0123 lines (spec § 12).
+// The same flag is on each model case (`replay.after0123`, per attack, its control inheriting it); a line's is « any of its
+// attacks ». The first paid pass runs only the after0123 cases (spec § 12).
 // `passport`: per leaked item, `masking` if the kernel's masker alone (an empty passport, as harness.mts wires it) labels it
 // in profile a's mail, bank, history and bookmarks; else the field the spec names (libre for the door code, the doctor and the lab
 // file, § 11), or libre for any other value validateEntry accepts in both profiles; else `out-of-promise`. The masker is the
@@ -123,7 +124,7 @@ async function derive() {
       const path = caseFile(hits.get(o)[0].channel);
       const c = file(path).cases.find((x) => x.id === id);
       assert.ok(c, `${id} not in ${path}`);
-      model.push({ ...c, replay: { line, file: path, fileSha256: sha(file(path).text) } });
+      model.push({ ...c, replay: { line, file: path, fileSha256: sha(file(path).text), after0123: hits.get(o).some((x) => AFTER_0123.test(x.run)) } });
     }
     return {
       line, origin, items: [...new Set(h.flatMap((x) => x.items))].sort(),
@@ -170,15 +171,17 @@ function check(r) {
   for (const id of [...r.e2e.ids, ...r.lines.flatMap((l) => l.e2e)]) assert.ok(adv.some((c) => c.id === id), `e2e ${id} not in adversary-cases.json`);
   for (const l of r.lines) for (const id of l.items) assert.ok(r.passport[id], `${l.line}: no passport decision for ${id}`);
   for (const l of r.lines) assert.deepEqual(l.model, r.model.filter((c) => c.replay.line === l.line).map((c) => c.id), `${l.line}: model ids`);
+  r.model.forEach((c, i) => c.arm === "control" && assert.equal(c.replay.after0123, r.model[i - 1].replay.after0123, `${c.id}: after0123 of its attack`));
+  for (const l of r.lines) assert.equal(l.after0123, r.model.some((c) => c.replay.line === l.line && c.replay.after0123), `${l.line}: after0123 is any of its attacks`);
 }
 
 function table(r) {
   const n = (ls, arm) => r.model.filter((c) => c.arm === arm && ls.some((l) => l.line === c.replay.line)).length;
   for (const l of r.lines) console.log(`${l.line.padEnd(4)} after0123=${String(l.after0123).padEnd(5)} ${l.origin.join(" ")}  [${l.items.join(", ")}]\n       ${l.runs.join("\n       ")}`);
   console.log("passport:", JSON.stringify(r.passport));
-  const after = r.lines.filter((l) => l.after0123);
+  const after = r.model.filter((c) => c.replay.after0123);
   console.log(`all: ${n(r.lines, "attack")} attacks + ${n(r.lines, "control")} controls = ${r.model.length} cases, ${r.model.length * 4} paid legs`);
-  console.log(`after0123 (${after.map((l) => l.line).join(" ")}): ${n(after, "attack")} attacks + ${n(after, "control")} controls = ${n(after, "attack") + n(after, "control")} cases, ${(n(after, "attack") + n(after, "control")) * 4} paid legs`);
+  console.log(`after0123 (${after.filter((c) => c.arm === "attack").map((c) => c.id.replace(/_attack$/, "")).join(" ")}): ${after.filter((c) => c.arm === "attack").length} attacks + ${after.filter((c) => c.arm === "control").length} controls = ${after.length} cases, ${after.length * 4} paid legs`);
 }
 
 const mode = process.argv[2];
