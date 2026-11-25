@@ -754,3 +754,20 @@ test("a handle's origin is recorded once its request leaves: a site app sent the
     });
   }
 });
+
+test("source words: the hosts of the user's open source tabs never raise the line, even read in another source", async () => {
+  const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
+  const bridge = bridgeWith({ mail: { text: "Votre relevé Ardoise est disponible\nVIR SALAIRE VERRERIES GERLAND" } }, {}, [user, bank]);
+  await serve({ bridge, outflow: new Outflow() }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    await call("read_tab", { id: "mail" }, t);
+    expect(await danger("https://www.banque-ardoise.test/")).toBeUndefined();
+    expect(await danger("https://banqueardoise.test/")).toBeUndefined();
+    expect(await danger("https://www.verreries-gerland.test/")).toContain("lu dans mail.example-novacourriel.test");
+  });
+});

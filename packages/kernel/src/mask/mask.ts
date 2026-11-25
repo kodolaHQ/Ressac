@@ -82,11 +82,12 @@ function inHost(t: string, start: number, end: number): boolean {
 const capitalInitials = (m: RegExpMatchArray) =>
   Object.entries(m.groups ?? {}).every(([k, v]) => !k.startsWith("i") || v === undefined || /^\p{Lu}/u.test(v));
 
-type Forms = { digits: string[]; literals: string[]; name?: RegExp[] };
+export type Forms = { digits: string[]; literals: string[]; name?: RegExp[] };
 const formsCache = new WeakMap<Entry, Forms>();
 
 /** The forms a known value is searched in: digit strings (any separators), literal strings, or a name pattern. */
-function forms(e: Entry): Forms {
+/** The forms masking finds `e` in: digit forms, literals, and for a name its writings in any order or separator. */
+export function forms(e: Entry): Forms {
   let f = formsCache.get(e);
   if (f) return f;
   const v = e.value;
