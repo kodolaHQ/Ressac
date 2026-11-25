@@ -247,8 +247,8 @@ export interface WindowState {
   frame: FrameBounds | null;
 }
 
-export type Notice = { id: "session-set-aside"; path: string } | { id: "data-set-aside"; backup: string; reason: "format" | "reset" } | { id: "telemetry" };
-export const NOTICE_IDS = ["session-set-aside", "data-set-aside", "telemetry"] as const satisfies readonly Notice["id"][];
+export type Notice = { id: "session-set-aside"; path: string } | { id: "data-set-aside"; backup: string; reason: "format" | "reset" } | { id: "telemetry" } | { id: "no-login-password" };
+export const NOTICE_IDS = ["session-set-aside", "data-set-aside", "telemetry", "no-login-password"] as const satisfies readonly Notice["id"][];
 export type UpdatePhase = "idle" | "checking" | "downloading" | "ready" | "failed" | "unreachable" | "unwritable" | "disabled";
 export interface UpdateShown {
   phase: UpdatePhase;

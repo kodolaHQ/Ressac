@@ -1535,6 +1535,15 @@ test("dismissNotice: removes that notice only; an absent one changes nothing", (
   expect(SchemaAction.safeParse({ type: "dismissNotice", id: "other" }).success).toBe(false);
 });
 
+test("showNotice: adds that notice once", () => {
+  e = { ...e, notices: [] };
+  ag({ type: "showNotice", id: "no-login-password" });
+  expect(e.notices).toEqual([{ id: "no-login-password" }]);
+  const before = e;
+  ag({ type: "showNotice", id: "no-login-password" });
+  expect(e).toBe(before);
+});
+
 test("enableLab is refused while AI is off", () => {
   e = initialState(genId);
   const before = e;

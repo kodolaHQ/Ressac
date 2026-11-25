@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { reauth, reauthAccepted } from "../chrome/agent/reauth";
+import { reauth, reauthAccepted, onNoLoginPassword } from "../chrome/agent/reauth";
 
 const g = globalThis as { Services?: unknown; ChromeUtils?: unknown; __RESSAC_PACKAGED__?: boolean };
 afterEach(() => {
@@ -61,4 +61,16 @@ it("a real success is a yes", () => {
 it("unsupported platform, disabled, a failure or nothing are a no", () => {
   for (const r of [{ authenticated: true, auth_details: "success_unsupported_platform" }, { authenticated: true, auth_details: "success_disabled" }, { authenticated: false, auth_details: "success" }, { authenticated: true }, null, undefined])
     expect(reauthAccepted(r)).toBe(false);
+});
+
+it("no login password tells the store why; a cancel stays silent", async () => {
+  const told = vi.fn();
+  onNoLoginPassword(told);
+  keystore({ result: { authenticated: false, auth_details: "fail" } });
+  expect(await reauth("r")).toBe(false);
+  expect(told).not.toHaveBeenCalled();
+  keystore({ result: { authenticated: true, auth_details: "success_no_password" } });
+  expect(await reauth("r")).toBe(false);
+  expect(told).toHaveBeenCalledTimes(1);
+  onNoLoginPassword(() => {});
 });

@@ -89,6 +89,7 @@ chrome-duration-minutes = { $m } min { $s }
 
 # Start-up notifications and the confirmation before leaving a site.
 chrome-session-set-aside = Ressac is starting with a fresh session. The old one is kept in { $path }
+chrome-no-login-password = This Mac has no login password: Ressac cannot check that it is you. Add one in System Settings › Users & Groups, then try again.
 chrome-data-reset = Ressac is starting fresh. Its old data is kept in { $backup } (Settings › Data). Your projects haven't moved.
 chrome-data-unknown-format = Ressac doesn't recognize the format of its data: it is starting fresh and keeps them in { $backup }. Your projects haven't moved.
 chrome-telemetry-stop = Stop sending

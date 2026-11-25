@@ -5,6 +5,10 @@ import { testEnv } from "../test-env";
  * but a real success is a no: a cancel, an error, another prompt already pending. `RESSAC_TEST_REAUTH` (dev builds only):
  * `pass` stands in for a success, any other value for a failure, so an e2e never waits on the macOS prompt.
  */
+let noPassword: () => void = () => {};
+/** The store's hook: a Mac with no login password is a no that must say why (a cancel stays silent). */
+export const onNoLoginPassword = (fn: () => void): void => void (noPassword = fn);
+
 /** Only a real success: `success_no_password` (a Mac with no login password) would let anyone press « Oui ». */
 export const reauthAccepted = (r: { authenticated?: boolean; auth_details?: string } | null | undefined): boolean =>
   r?.authenticated === true && r.auth_details === "success";
@@ -18,6 +22,7 @@ export async function reauth(reason: string, parent: Window | null = null): Prom
     if (OSKeyStore.isUIBusy) return false;
     // No key generated (false): only the prompt is wanted. A platform without a prompt, or a Mac with no password, reports a success it did not ask.
     const r = await OSKeyStore.ensureLoggedIn(reason, "Ressac", parent, false);
+    if (r?.auth_details === "success_no_password") noPassword();
     return reauthAccepted(r);
   } catch (e) {
     console.error("[ressac] reauth failed:", (e as Error)?.name);

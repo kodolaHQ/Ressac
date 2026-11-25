@@ -16,7 +16,7 @@ import { passwordSettings, type PasswordSettings } from "../passwords/settings";
 import { createAgentView, type AgentView } from "../agent/agent-view";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
-import { reauth } from "../agent/reauth";
+import { reauth, onNoLoginPassword } from "../agent/reauth";
 import { expectAgentLoad, forgetAgentLoad, installAgentLoadGuard, pruneAgentLoads, tabIdOf } from "../agent/load-guard";
 import type { PageReadOptions, ReadPage } from "../shims/kernel";
 import { apps, bindApps, type AgentApps } from "./apps";
@@ -302,6 +302,7 @@ async function start(): Promise<RessacStore> {
   };
   applyMemoryPrefs();
   store.subscribe((s, p) => s.settings.saveMemory !== p.settings.saveMemory && applyMemoryPrefs());
+  onNoLoginPassword(() => store.dispatch({ type: "showNotice", id: "no-login-password" }));
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent(), (reason) => reauth(reason));
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());

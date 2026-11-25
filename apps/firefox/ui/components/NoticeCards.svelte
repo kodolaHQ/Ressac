@@ -7,7 +7,7 @@
   /** The start-up notices (chrome/store/index.ts), in every window until answered; answering removes them everywhere. */
   const notices = $derived(appState.value?.notices ?? []);
   const text = (n: Notice): string =>
-    n.id === "session-set-aside" ? t("chrome-session-set-aside", { path: n.path }) : n.id === "data-set-aside" ? t(n.reason === "reset" ? "chrome-data-reset" : "chrome-data-unknown-format", { backup: n.backup }) : t("agent-telemetry-notice");
+    n.id === "session-set-aside" ? t("chrome-session-set-aside", { path: n.path }) : n.id === "data-set-aside" ? t(n.reason === "reset" ? "chrome-data-reset" : "chrome-data-unknown-format", { backup: n.backup }) : n.id === "no-login-password" ? t("chrome-no-login-password") : t("agent-telemetry-notice");
   const dismiss = (n: Notice) => api.dispatch({ type: "dismissNotice", id: n.id });
 </script>
 
