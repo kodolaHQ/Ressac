@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
@@ -165,8 +165,11 @@ it("before the notice has shown, neither error reports nor crash reports go out;
   expect(await m.execute("return Services.prefs.getBoolPref('browser.tabs.crashReporting.sendReport')")).toBe(false);
   await m.execute(`Services.prefs.setBoolPref("ressac.telemetry.crashReports", true);`);
   expect(await m.execute("return Services.prefs.getBoolPref('browser.tabs.crashReporting.sendReport')")).toBe(true);
+  // Pending reports go at the next launch on their own.
+  expect(await m.execute("return Services.prefs.getBoolPref('browser.crashReports.unsubmittedCheck.autoSubmit2')")).toBe(true);
   await m.execute(`Services.prefs.setBoolPref("ressac.telemetry.enabled", false);`);
   expect(await m.execute("return Services.prefs.getBoolPref('browser.tabs.crashReporting.sendReport')")).toBe(false);
+  expect(await m.execute("return Services.prefs.getBoolPref('browser.crashReports.unsubmittedCheck.autoSubmit2')")).toBe(false);
 });
 
 it("no dsn: no notice, nothing sent", async () => {
@@ -175,4 +178,51 @@ it("no dsn: no notice, nothing sent", async () => {
   await settle();
   expect(await notices()).toBe(0);
   expect(envelopes).toEqual([]);
+});
+
+const RUN_MARK = "ressac-run.json";
+async function launchWithMark(profile: string, env: Record<string, string> = {}): Promise<void> {
+  w = await launchRessac({ profile, env: { RESSAC_SENTRY_DSN: dsn(), ...env } });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitFor(m, "return !!window.ressacWindow", (v) => v === true);
+  await waitFor(m, `return IOUtils.exists(PathUtils.join(PathUtils.profileDir, "${RUN_MARK}"))`, (v) => v === true);
+}
+
+it("abrupt exit: a killed run is reported at the next launch with macOS's jetsam reason; a clean quit is not", async () => {
+  const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
+  const reports = await mkdtemp(path.join(os.tmpdir(), "ressac-diag-"));
+  const env = { RESSAC_TEST_DIAGNOSTIC_DIR: reports };
+  const abrupt = () => envelopes.filter((e) => e.event.exception.values[0].type === "AbruptExit");
+  try {
+    // First launch shows the notice: reports go from the next one. A clean quit leaves no mark.
+    await launchWithMark(profile, env);
+    await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.noticeShown", false)`, (v) => v === true);
+    await w!.close();
+    await launchWithMark(profile, env);
+    await until(() => sessions.length > 0); // the launch's own reports have started: an abrupt exit would be among them
+    // A mark the run has rewritten since launch: the wake below is in it.
+    await m.execute(`Services.obs.notifyObservers(null, "wake_notification");`);
+    await waitFor(m, `return IOUtils.readJSON(PathUtils.join(PathUtils.profileDir, "${RUN_MARK}")).then((j) => !!j.wokeAt)`, (v) => v === true);
+    expect(abrupt()).toEqual([]);
+    await m.execute("Services.prefs.savePrefFile(null);");
+    process.kill(w!.pid, "SIGKILL");
+    await w!.close();
+    // macOS's report of that kill, written after the run started.
+    await writeFile(
+      path.join(reports, "JetsamEvent-2026-11-25-125153.ips"),
+      '{"bug_type":"298"}\n' + JSON.stringify({ date: "2026-11-25 12:51:53.87 +0100", largestProcess: "ressac", processes: [{ name: "ressac", reason: "vm-pageshortage" }] }),
+    );
+    await launchWithMark(profile, env);
+    await until(() => abrupt().length > 0);
+    const e = abrupt()[0]!;
+    expect(e.event.exception.values[0].value).toBe("jetsam vm-pageshortage");
+    expect(e.event.tags).toMatchObject({ source: "chrome", kind: "jetsam", jetsamReason: "vm-pageshortage", largestIsOurs: "true", endKnown: "true" });
+    expect(e.event.tags.tabs).toMatch(/^\d+$/);
+    expect(e.raw).not.toContain(os.homedir());
+  } finally {
+    await w?.close();
+    await rm(profile, { recursive: true, force: true });
+    await rm(reports, { recursive: true, force: true });
+  }
 });
