@@ -20,6 +20,7 @@ kernel-search-hand-lost = Je ne trouve pas mon chemin. À vous : { $reason }
 kernel-outflow-pause = Le surveillant a mis en pause : la recherche contient { $what } ({ $masked })
 kernel-outflow-pause-series = Le surveillant a mis en pause : cette suite de recherches semble envoyer une information par morceaux ({ $masked })
 kernel-outflow-danger = Contient { $what } : { $masked }
+kernel-outflow-danger-source-word = Adresse construite avec un nom lu dans { $source } : { $masked }
 kernel-outflow-refused = Recherche refusée : elle contient { $what }.
 kernel-outflow-refused-sent = Envoi refusé par l'utilisateur : il contient { $what }.
 kernel-outflow-read-in = { $what }, lu dans { $source }

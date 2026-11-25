@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { domainToUnicode } from "node:url";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { z } from "zod";
@@ -23,7 +24,7 @@ import { SeenUrls } from "./seen.js";
 import { NOTES_PREFIX, type BrowsingNotes } from "../search/notes.js";
 import { RECAP_TITLE_MAX, RECAP_UNKNOWN, type Recaps } from "../recaps/recaps.js";
 import { pageState, reducedPage, stateLine } from "./reduce.js";
-import { outflowLabel, type Outflow, type OutflowHit, type ReadPlace } from "../outflow/outflow.js";
+import { foldedWords, outflowLabel, type Outflow, type OutflowHit, type ReadPlace } from "../outflow/outflow.js";
 import { mask, urlDecoded } from "../outflow/detect.js";
 import { say } from "../i18n.js";
 import { isSensitive } from "../access/sensitive.js";
@@ -141,6 +142,10 @@ export type OpenWorkflow = { widget: string; block: string | null } | { action: 
 const HISTORY_LIMIT = { default: 20, max: 50 };
 /** Words of a masked name too common in addresses and queries to mean the person: organisation words and titles. */
 const NAME_STOP_WORDS = new Set([...ORG_WORDS, "cabinet", "docteur", "maitre", "madame", "monsieur", "mademoiselle", "professeur", "maison", "famille"]);
+/** Sources listing many sites (a line's origin is the site visited): a card names the list, not the site. */
+const USER_LISTS = new Set(["history", "bookmarks"]);
+/** Words of an address host too common to come from what the agent read: the web's own words, besides `NAME_STOP_WORDS`. */
+const HOST_STOP_WORDS = new Set([...NAME_STOP_WORDS, "http", "https", "site", "page", "accueil", "home", "info", "infos", "online", "shop", "store", "blog", "mail", "login", "compte", "account", "official", "france", "public", "paris", "group", "client", "espace"]);
 
 const outflowWhat = (locale: string, hit: OutflowHit) => {
   const what = outflowLabel(locale, hit.kind);
@@ -878,7 +883,11 @@ export function createToolsServer(
       }
       // Only what the masker reads (text) or what its tool gates (an image) may leave.
       if (r.content.some((c) => c.type !== "text" && c.type !== "image")) return text("Erreur : contenu refusé (seuls le texte et les images sortent).", true);
-      const content = r.content.map((c) => (c.type === "text" ? { type: "text" as const, text: segments.apply(c.text, labels) } : c));
+      // What the agent was shown, word by word: a host word read only in the user's sources gets a red line (`danger`).
+      const where = l10n(`kernel-outflow-source-${OUTFLOW_SOURCES[name] ?? "tool"}`, { id: String((a[0] as { id?: unknown } | undefined)?.id) });
+      const words = (masked: string, zone: Zone, origin: string | null) =>
+        outflow?.shownWords(key, masked.replace(LABELS, " "), zone === "sources" ? { source: origin && !USER_LISTS.has(OUTFLOW_SOURCES[name] ?? "") ? siteOf(origin) : where, ...(origin ? { host: siteOf(origin) } : {}) } : undefined);
+      const content = r.content.map((c) => (c.type === "text" ? { type: "text" as const, text: segments.apply(c.text, labels, words) } : c));
       return { content, ...(r.isError ? { isError: true } : {}) };
     };
     masker.covered.add(name);
@@ -1129,7 +1138,13 @@ export function createToolsServer(
    *  `clicks`: what the link followed spells with the ones before it, judged first. */
   function danger(url: string, clicks?: OutflowHit): { danger?: string } {
     const hit = clicks ?? checkOutflow(url, true) ?? maskedNameIn(url);
-    return hit ? { danger: OUTFLOW_DANGER(locale(), hit) } : {};
+    // The fallback: a word of its host the agent read only in the user's sources (an employer, a shop on a statement).
+    const host = URL.canParse(url) ? domainToUnicode(new URL(url).hostname) : "";
+    const read = hit ? undefined : outflow?.sourceWord(key, foldedWords(host).filter((w) => !HOST_STOP_WORDS.has(w)));
+    // Sent before its page is read, whatever line it got: that page showing the words does not make them the web's.
+    outflow?.wrote(key, host);
+    if (hit) return { danger: OUTFLOW_DANGER(locale(), hit) };
+    return read ? { danger: l10n("kernel-outflow-danger-source-word", { source: read.source, masked: mask(read.word) }) } : {};
   }
   /** A whole word of a name this conversation masked, written in `out` (an address or a query): the agent may spell a
    *  masked name it saw in clear elsewhere (a sender's domain). Case and accents ignored; words under 4 letters (« du »,

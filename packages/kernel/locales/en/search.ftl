@@ -17,6 +17,7 @@ kernel-search-hand-lost = I can't find my way. Your turn: { $reason }
 kernel-outflow-pause = The watcher paused: the search contains { $what } ({ $masked })
 kernel-outflow-pause-series = The watcher paused: this series of searches seems to send something piece by piece ({ $masked })
 kernel-outflow-danger = Contains { $what }: { $masked }
+kernel-outflow-danger-source-word = Address built with a name read in { $source }: { $masked }
 kernel-outflow-refused = Search refused: it contains { $what }.
 kernel-outflow-refused-sent = Sending refused by the user: it contains { $what }.
 kernel-outflow-read-in = { $what }, from { $source }
