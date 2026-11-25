@@ -96,8 +96,8 @@ export const startedWithin = <T>(start: Promise<T>, otherwise: T, ms = 60_000): 
 
 export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork" | "ensureStarted">;
-  /** Who writes (the account check is cached): reset whenever an account may have changed. */
-  writer: { agent(): Promise<WriterAgent | "workshop-stopped" | null>; reset(): void };
+  /** Who writes and how (the account check is cached): reset whenever an account may have changed. */
+  writer: { via(): Promise<{ agent: WriterAgent; via: "subscription" | "api" | "ollama" } | null>; reset(): void };
   ai: Pick<LocalAi, "state" | "check" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
   docker: DockerRuntime;
   /** The workshop machine (host/machine.ts); `install` also hands the workshop over to it once installed. */
@@ -438,7 +438,11 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       return { ok: true };
     },
     "settings.pullProgress": () => pull,
-    "ai.writer": async () => ({ agent: await o.writer.agent() }),
+    // The CLI path while the workshop is off: say so, as the write would.
+    "ai.writer": async () => {
+      const v = await o.writer.via();
+      return v?.via === "subscription" && (await o.workshop.state()) !== "started" ? { agent: "workshop-stopped" as const } : (v ?? { agent: null });
+    },
     "ai.state": async (): Promise<LocalAiStateShown> => {
       const v = await o.ai.check().catch(() => undefined);
       const decisionError = modelErrors.get(DECISION_MODEL);

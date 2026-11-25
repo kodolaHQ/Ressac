@@ -96,6 +96,7 @@ kernel-writer-limit = Your subscription limit is reached: summaries will resume 
 kernel-writer-images = Images are not supported by writing
 kernel-writer-failed-badge = AI writing failed: see the widget log
 kernel-writer-failed = The AI could not write: { $reason }
+kernel-writer-key-refused = key refused
 
 # Masking: how a card names a masked value without showing it (your sources, then the rest of the web).
 kernel-mask-name-code = your code

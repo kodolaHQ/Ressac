@@ -58,7 +58,7 @@ function setup(over: { state?: string; started?: string; exec?: (argv: string[])
     keychain: { read: vi.fn(async () => null), has: vi.fn(async () => true), write: vi.fn(async (k: string) => void (k.includes(" ") && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}) },
     claudeKeychain: { read: vi.fn(async () => null), has: vi.fn(async () => false), write: vi.fn(async () => {}), remove: vi.fn(async () => {}) },
     forgetKey: vi.fn(),
-    writer: { agent: vi.fn(async () => "claude" as const), reset: vi.fn() },
+    writer: { via: vi.fn(async () => ({ agent: "claude" as const, via: "subscription" as const })), reset: vi.fn() },
     notify: vi.fn(),
   };
   const alive = () => readFileSync(pids, "utf8").trim().split("\n").map((p) => { try { process.kill(Number(p), 0); return true; } catch { return false; } });

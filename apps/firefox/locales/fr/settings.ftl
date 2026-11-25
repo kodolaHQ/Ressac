@@ -72,11 +72,12 @@ settings-ai-model-failed = Téléchargement échoué : { $reason }. Nouvel essai
 settings-ai-search-model = Modèle de recherche
 settings-ai-search-detail = EmbeddingGemma (Google), 334 Mo : retrouve les pages de votre historique pour ⌘T Demander.
 settings-ai-writer = Rédaction
-settings-ai-writer-claude = Claude Haiku, avec votre compte Claude Code
-settings-ai-writer-codex = Codex, avec votre compte ChatGPT
 settings-ai-writer-none = Aucun compte connecté
 settings-ai-writer-workshop-stopped = L'atelier n'est pas démarré
 settings-ai-writer-connect = Connecter un compte
+settings-ai-writer-via-subscription = { $agent } (abonnement)
+settings-ai-writer-via-api = { $agent } (clé d'API)
+settings-ai-writer-via-ollama = { $agent } (Ollama)
 
 settings-pill-installed = installé
 settings-pill-absent = absent

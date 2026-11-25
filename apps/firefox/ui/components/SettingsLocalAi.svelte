@@ -19,10 +19,10 @@
   let pulling = $state<PullProgress | null>(null);
   /** The last download started here that failed, shown under its model's row. */
   let pullError = $state<{ name: string; error: string } | null>(null);
-  let writer = $state<"claude" | "codex" | "workshop-stopped" | null | undefined>(undefined);
+  let writer = $state<Awaited<ReturnType<typeof s.writer>> | undefined>(undefined);
   // Read when Réglages opens: the host re-checks the accounts then.
   $effect(() => {
-    if (aiOn()) void s.writer().then((r) => (writer = r.agent));
+    if (aiOn()) void s.writer().then((r) => (writer = r));
   });
   async function pullModel(name: string) {
     pullError = null;
@@ -96,8 +96,8 @@
       {@render model("decision", DECISION_MODEL, !!v.decision, t("settings-ai-decision-model"), t("settings-ai-decision-detail"), ai.decisionError, ai.state === "error" ? ai.error : null)}
       {@render model("search", SEARCH_MODEL, !!v.embed, t("settings-ai-search-model"), t("settings-ai-search-detail"), ai.searchError, ai.searchServerError)}
       <div class="row" data-testid="ai-writer">
-        <div class="grow"><b>{t("settings-ai-writer")}</b><span class="muted">{writer === undefined ? "" : t(`settings-ai-writer-${writer ?? "none"}`)}</span></div>
-        {#if writer === null}<button data-testid="ai-writer-connect" onclick={() => showSection("agent")}>{t("settings-ai-writer-connect")}</button>{/if}
+        <div class="grow"><b>{t("settings-ai-writer")}</b><span class="muted">{writer === undefined ? "" : writer.agent === "claude" || writer.agent === "codex" ? t(`settings-ai-writer-via-${writer.via}`, { agent: writer.agent === "claude" ? "Claude" : "Codex" }) : t(`settings-ai-writer-${writer.agent ?? "none"}`)}</span></div>
+        {#if writer?.agent === null}<button data-testid="ai-writer-connect" onclick={() => showSection("agent")}>{t("settings-ai-writer-connect")}</button>{/if}
       </div>
     </div>
   {/if}

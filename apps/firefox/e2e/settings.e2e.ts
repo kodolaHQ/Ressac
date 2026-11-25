@@ -339,8 +339,8 @@ describe("Settings page", () => {
 
   it("Rédaction: Claude when signed in, Codex with only Codex, none otherwise", async () => {
     for (const [files, wanted] of [
-      [{ "fake-claude-auth.json": JSON.stringify({ loggedIn: true, email: "ami@example.com" }) }, "Claude Haiku, avec votre compte Claude Code"],
-      [{ "fake-codex-auth": "" }, "Codex, avec votre compte ChatGPT"],
+      [{ "fake-claude-auth.json": JSON.stringify({ loggedIn: true, email: "ami@example.com" }) }, "Claude (abonnement)"],
+      [{ "fake-codex-auth": "" }, "Codex (abonnement)"],
       [{}, "Aucun compte connecté"],
     ] as const) {
       await launch({}, files);

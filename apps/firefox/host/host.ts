@@ -45,7 +45,7 @@ const { createAsk } = await import("./ask.ts");
 const { createPageIndexer, llamaEmbed } = await import("./page-indexer.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
-const { createWriterChoice } = await import("./writer.ts");
+const { createHostWriter, createWriterChoice } = await import("./writer.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
 const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, createWakeGrace, memoryAllows, memoryLevel, smallMac, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
@@ -267,22 +267,31 @@ const broadcastAccess = () => {
 // The local AI: the decision model (d1-2B) runs in the llama-server shipped with Ressac (RESSAC_LLAMA_SERVER, set by
 // chrome/agent/command.ts), as does the search model (⌘T). RESSAC_D1_URL / RESSAC_D1_SHA256 and
 // RESSAC_EMBED_URL / RESSAC_EMBED_SHA256, RESSAC_EMBED_SERVER_URL (a search server already running): dev and tests only.
-// The agent that writes (Claude Haiku or Codex, in the workshop): the default profile's, else the other if signed in.
+// The agent that writes (host/writer.ts): the default profile's, else the other, by its API key, its Ollama or its signed-in CLI.
 const profileAgents = new Map<string, "claude" | "codex">();
 // Best effort (the space may not exist yet): a profile read late leaves the default "claude" until agent.profiles runs.
 const refreshProfileAgents = () => void loadProfiles(paths).then(({ profiles }) => { for (const x of profiles) profileAgents.set(x.id, x.mcpConfig === "codex-toml" ? "codex" : "claude"); }, () => {});
-const writerChoice = createWriterChoice({
-  workshop,
-  preferred: () => profileAgents.get(defaultProfile) ?? (defaultProfile === "codex" ? "codex" : "claude"),
-});
-const ai = new LocalAi({
-  writer: createAgentWriter({
+const preferredWriter = (): "claude" | "codex" => profileAgents.get(defaultProfile) ?? (defaultProfile === "codex" ? "codex" : "claude");
+const writerChoice = createWriterChoice({ workshop, preferred: preferredWriter });
+// Each agent's engine (Réglages › Agent): its API key or its Ollama first, its CLI only on its subscription.
+const engineOf = (a: "claude" | "codex"): ClaudeEngine | CodexEngine => (a === "claude" ? claudeEngine : engine);
+const notOnCli = () => new Set((["claude", "codex"] as const).filter((a) => engineOf(a).kind === "api" || engineOf(a).kind === "ollama"));
+const hostWriter = createHostWriter({
+  preferred: preferredWriter,
+  engine: engineOf,
+  readKey,
+  cli: createAgentWriter({
     exec: (a, x) => workshop.execWrite(a, x),
-    agent: writerChoice.wakeAgent,
+    agent: (exclude) => writerChoice.wakeAgent(new Set([...(exclude ?? []), ...notOnCli()])),
     signedOut: writerChoice.signedOut,
     log: (l) => console.log("[writer]", l),
     locale: () => hostLocale(),
   }),
+  cliUsable: writerChoice.usable,
+  locale: () => hostLocale(),
+});
+const ai = new LocalAi({
+  writer: hostWriter,
   folder: join(dataDir, "local-ai"),
   llamaServer: process.env.RESSAC_LLAMA_SERVER,
   decisionUrl: process.env.RESSAC_D1_URL,
@@ -486,13 +495,12 @@ const forgetKey = (kind: "codex" | "claude") => {
   delete cachedKeys[kind];
   writerChoice.reset();
 };
-const relay = await startRelay({
-  // Only a string is kept: a failed read (Keychain locked) is tried again.
-  readKey: async (kind) => {
-    cachedKeys[kind] ??= (await keys[kind].read()) ?? undefined;
-    return cachedKeys[kind] ?? null;
-  },
-});
+// Only a string is kept: a failed read (Keychain locked) is tried again.
+async function readKey(kind: "codex" | "claude"): Promise<string | null> {
+  cachedKeys[kind] ??= (await keys[kind].read()) ?? undefined;
+  return cachedKeys[kind] ?? null;
+}
+const relay = await startRelay({ readKey });
 
 let stopping: Promise<void> | undefined;
 const stop = () =>
@@ -1320,7 +1328,7 @@ function watchActionsNow() {
 let fakeSwitched = false;
 const settings = createSettingsHandlers({
   workshop,
-  writer: writerChoice,
+  writer: { via: hostWriter.via, reset: writerChoice.reset },
   ai,
   docker,
   machine: {

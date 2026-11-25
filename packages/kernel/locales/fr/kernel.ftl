@@ -96,6 +96,7 @@ kernel-writer-limit = Limite de votre abonnement atteinte : les résumés repren
 kernel-writer-images = Les images ne sont pas prises en charge par la rédaction
 kernel-writer-failed-badge = La rédaction par l'IA a échoué : voir le journal du widget
 kernel-writer-failed = L'IA n'a pas pu rédiger : { $reason }
+kernel-writer-key-refused = clé refusée
 
 # Masquage : comment une carte nomme une valeur masquée sans la montrer (vos sources, puis le reste du web).
 kernel-mask-name-code = votre code

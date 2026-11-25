@@ -172,7 +172,7 @@ export function createSettingsApi(o: {
     machineInstall: () => ask<SettingsResult>("settings.machineInstall", undefined, silent()),
     machineRemove: (force) => ask<SettingsResult>("settings.machineRemove", { force }, silent()),
     machineSwitchNow: () => ask<SettingsResult>("settings.machineSwitchNow", undefined, silent()),
-    writer: () => ask<{ agent: "claude" | "codex" | "workshop-stopped" | null }>("ai.writer", undefined, { agent: null }),
+    writer: () => ask<{ agent: "claude" | "codex" | "workshop-stopped" | null; via?: "subscription" | "api" | "ollama" }>("ai.writer", undefined, { agent: null }),
     pullInBackground: (names) => ask<SettingsResult>("settings.pullInBackground", { names }, silent()),
     ollamaModels: (url) => ask("settings.ollamaModels", { url }, { ok: false as const, error: say("agent-ollama-silent") }),
     async grants() {

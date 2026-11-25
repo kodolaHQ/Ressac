@@ -72,11 +72,12 @@ settings-ai-model-failed = Download failed: { $reason }. Another try at the next
 settings-ai-search-model = Search model
 settings-ai-search-detail = EmbeddingGemma (Google), 334 MB: finds the pages of your history for ⌘T Ask.
 settings-ai-writer = Writing
-settings-ai-writer-claude = Claude Haiku, with your Claude Code account
-settings-ai-writer-codex = Codex, with your ChatGPT account
 settings-ai-writer-none = No account connected
 settings-ai-writer-workshop-stopped = The workshop is not started
 settings-ai-writer-connect = Connect an account
+settings-ai-writer-via-subscription = { $agent } (subscription)
+settings-ai-writer-via-api = { $agent } (API key)
+settings-ai-writer-via-ollama = { $agent } (Ollama)
 
 settings-pill-installed = installed
 settings-pill-absent = missing
