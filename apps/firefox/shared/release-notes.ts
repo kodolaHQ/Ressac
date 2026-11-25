@@ -7,6 +7,17 @@ export type ReleaseVideo = { url: string; title: string; poster?: "passport" };
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[]; video?: ReleaseVideo }[] = [
   {
+    version: "0.1.27",
+    date: "novembre 2026",
+    items: [
+      "Moins de plantages sur les Mac de 8 Go à la sortie de veille : pendant que les pages se rechargent, les mises à jour des widgets et l'indexation des pages attendent 2 minutes, l'atelier inutilisé s'arrête plus tôt, et quand macOS manque de mémoire, Ressac libère plusieurs onglets d'un coup et décharge ses modèles locaux.",
+      "Si Ressac s'arrête brutalement, il le signale au lancement suivant, avec l'envoi des erreurs : seulement la cause donnée par macOS et quelques compteurs (onglets, temps depuis la sortie de veille), jamais vos pages. Avec « Joindre les rapports de plantage » activé, les rapports en attente partent tout seuls.",
+      "L'agent n'écrit plus d'extensions : celles qu'il avait créées sont retirées au premier lancement. Vos propres extensions ne changent pas.",
+      "Nouveau réglage « Extensions hors des sites sensibles » (Réglages › Confidentialité, activé) : vos extensions ne tournent pas sur vos banques, messageries et autres sites sensibles, sauf celles que Mozilla recommande.",
+      "Sécurité : en mode Navigateur, l'agent n'a plus accès qu'aux outils de lecture et d'écriture de fichiers dont il a besoin.",
+    ],
+  },
+  {
     version: "0.1.26",
     date: "novembre 2026",
     items: [

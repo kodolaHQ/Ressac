@@ -1,7 +1,7 @@
 {
   "name": "firefox-ressac",
   "private": true,
-  "version": "0.1.26",
+  "version": "0.1.27",
   "type": "module",
   "scripts": {
     "engine:install": "zsh scripts/env.sh zsh scripts/engine.sh install",
