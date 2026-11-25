@@ -38,7 +38,7 @@ Ressac is Firefox with a new interface on top and an agent beside it. Firefox do
 | `apps/firefox/configs/` | Branding, mozconfig, macOS build settings. |
 | `apps/firefox/chrome/window/` | The window controller: tabs, spaces, keys, site app windows, calls, add-ons toolbar. |
 | `apps/firefox/chrome/store/` | The shared state module (`store.sys.mjs`): session, settings, permissions, downloads, updates, telemetry, import from other browsers. |
-| `apps/firefox/chrome/agent/` | The browser half of the agent: the bridge to the host, page and extension actors, invisible reads and their network guard. |
+| `apps/firefox/chrome/agent/` | The browser half of the agent: the bridge to the host, the page actors, invisible reads and their network guard. |
 | `apps/firefox/ui/` | The Svelte UI: sidebar, command bar, settings, home, agent panel, workflow builder. |
 | `apps/firefox/core/` | Pure logic shared by the UI and the chrome, with no Firefox or DOM access: the state and its actions, tab cycling, history, sites. Easiest place to unit test. |
 | `apps/firefox/shared/` | Types and helpers used on both sides of a boundary (RPC messages, settings schema, release notes, i18n). |

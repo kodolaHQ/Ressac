@@ -39,7 +39,7 @@ Le *ressac*, c'est la vague qui revient vers le rivage. Tu envoies l'agent sur l
 - Il navigue dans son propre onglet, que tu peux regarder ; une vignette montre ce qu'il fait pendant que tu continues.
 - Avant un achat ou un choix, il remplit un **récap en direct** : critères, sources indépendantes, offres, avantages et inconvénients sourcés.
 - Il demande avant d'ouvrir une adresse qu'il a écrite lui-même, et te rend la main quand une page a besoin de toi (connexion, captcha).
-- Il te crée des applis de site, des actions, des extensions et des widgets, et change l'apparence d'une page à la demande (mode design).
+- Il te crée des applis de site, des actions et des widgets, et change l'apparence d'une page à la demande (mode design).
 
 <p align="center"><img src="docs/images/live-recap-fr.gif" alt="L'agent compare les plus grands mascarets du monde et remplit un récap en direct"></p>
 
