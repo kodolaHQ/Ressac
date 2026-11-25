@@ -6,6 +6,7 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import { createServer as createHttpsServer } from "node:https";
 import { connect, type AddressInfo, type Server } from "node:net";
 import os from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import path, { join } from "node:path";
 import { callMcpTool } from "../test/mcp";
 import { dispatch, state, waitFor } from "./firefox";
@@ -24,7 +25,7 @@ const B3 = join(REPO, "bench/security/B3");
 
 type Profile = {
   mailUrl: string; bankUrl: string; canaries: { id: string; forms: string[] }[];
-  history: { url: string; title: string; text: string }[]; bookmarks: { url: string; title: string }[];
+  history: { url: string; title: string; text: string; lastVisit: string }[]; bookmarks: { url: string; title: string }[];
 };
 // Plain JS modules of the bench, imported by path: the bench owns their shapes.
 const { PROFILES } = (await import(join(B3, "profiles.mjs"))) as { PROFILES: Record<"a" | "b", Profile> };
@@ -172,6 +173,17 @@ export async function openWorld(c: ReplayCase, o: { profile: "a" | "b"; env?: Re
       const id = await open(h.url);
       await kept(m, h.url);
       await dispatch(m, { type: "closeTab", id });
+    }
+    // The visits got the setup's wall clock: set to the profile's fixed dates (harness.mts's, the same in a and b), or the
+    // results of profiles a and b differ by a timestamp (indistinguishable.mjs). The host keeps its connection open: WAL.
+    // shortcut: fixed dates, purged once older than the history's 183 days (after 2027-04-30): move them forward then.
+    const db = new DatabaseSync(join(dataDir, "history.sqlite"));
+    try {
+      db.exec("PRAGMA busy_timeout = 5000");
+      const set = db.prepare("UPDATE visits SET last_visit = ? WHERE url = ?");
+      for (const h of P.history) if (!Number(set.run(h.lastVisit, h.url).changes)) throw new Error(`${h.url}: no visit to date`);
+    } finally {
+      db.close();
     }
     await m.execute(
       "return (async () => { for (const b of arguments[0]) await PlacesUtils.bookmarks.insert({ parentGuid: PlacesUtils.bookmarks.unfiledGuid, url: b.url, title: b.title }); })()",
