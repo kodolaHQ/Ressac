@@ -10,6 +10,31 @@ export type Entry = { label: string; type: LabelType; value: string; raw: string
 /** A tab opened from an issued handle: printed as that handle, whatever address it is on now. */
 export type Pin = { handle: string; real: string };
 
+/**
+ * The clear values a pin's handle masks, each with its label, longest first: the handle's labels aligned against its real
+ * address (the literal pieces between them must match). Empty when they do not align.
+ */
+export function pinValues(pin: Pin): { value: string; label: string }[] {
+  const labels = [...pin.handle.matchAll(new RegExp(LABEL_SOURCE, "g"))].map((m) => m[0]);
+  if (!labels.length) return [];
+  const escape = (x: string) => x.replace(/[\\^$.*+?()[\]{}|/-]/g, "\\$&");
+  const shape = pin.handle.split(new RegExp(LABEL_SOURCE.replace("(", "(?:"))).map(escape).join("(.+?)");
+  const m = pin.real.match(new RegExp(`^${shape}$`, "s"));
+  return m ? labels.map((label, i) => ({ value: m[i + 1]!, label })).sort((a, b) => b.value.length - a.value.length) : [];
+}
+
+/** `text` with each value `pinValues` gives, as written or percent-encoded either way, replaced by its label. */
+export function unpinned(text: string, pin: Pin): string {
+  for (const { value, label } of pinValues(pin)) {
+    let decoded = value;
+    try {
+      decoded = decodeURIComponent(value);
+    } catch {}
+    for (const form of new Set([value, decoded, encodeURIComponent(decoded)])) text = text.split(form).join(label);
+  }
+  return text;
+}
+
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 const ID_LENGTH = 8;
 /** A label's shape as `draw` writes it, group 1 its type: the one pattern every reader of labels builds on. */

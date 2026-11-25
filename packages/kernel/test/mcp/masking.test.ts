@@ -646,3 +646,35 @@ test("source words: an address that gets another red line still keeps its host w
     expect(await danger("https://www.verreries-gerland.test/contact")).toContain("ve••••es");
   });
 });
+
+test("a pinned page's title, state and text never give back the value its handle masks: the label stands in", async () => {
+  // A page without <title>: Firefox shows the bare address, the masked value in clear.
+  const bare = PROFILE_URL.replace(/^https:\/\//, "");
+  const encoded = `${HOST}/u/${encodeURIComponent(MAIL)}`;
+  const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: `Profil de ${MAIL} — ${encoded}` } }, { search: { privateWindows: [], failing: [], hanging: [] } });
+  const search = new SearchSessions({ show: () => {} });
+  await serve({ bridge, search, settleMs: 0, emptySpanMs: 0 }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+    const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+    const label = masked.match(/⟨email-[a-z0-9]{8}⟩/)![0];
+    // The agent's own tab, on the web zone, opened from the handle.
+    await call("navigate", { id: "copie", url: masked }, t);
+    bridge.editTab("copie", { title: bare });
+    for (const [name, args] of [["read_tab", { id: "copie" }], ["list_tabs", {}]] as const) {
+      const out = (await call(name, args, t)).text;
+      expect(out, name).not.toContain("camille.exemple");
+      expect(out, name).toContain(`${label}@novacourriel.test`);
+    }
+    // A title holding the value among other words.
+    bridge.editTab("copie", { title: `Profil de ${MAIL} – Novacourriel` });
+    const titled = (await call("read_tab", { id: "copie" }, t)).text;
+    expect(titled).toContain(`Titre : Profil de ${label}@novacourriel.test – Novacourriel`);
+    expect(titled).not.toContain("camille.exemple");
+    // read_pages on the handle: the search tab's title is the real address.
+    const pages = (await call("read_pages", { urls: [masked], reason: "r" }, t)).text;
+    expect(pages).not.toContain("camille.exemple");
+    expect(pages).toContain(label);
+  });
+});
