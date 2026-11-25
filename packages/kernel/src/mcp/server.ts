@@ -28,7 +28,7 @@ import { foldedWords, outflowLabel, type Outflow, type OutflowHit, type ReadPlac
 import { mask, urlDecoded } from "../outflow/detect.js";
 import { say } from "../i18n.js";
 import { isSensitive } from "../access/sensitive.js";
-import { labelFilled, labelWritten, maskedRuns, passportHits } from "../mask/mask.js";
+import { forms as valueForms, labelFilled, labelWritten, maskedRuns, passportHits } from "../mask/mask.js";
 import { Masker } from "../mask/masker.js";
 import type { PassportOrigins, PassportRef, PassportStore } from "../mask/passport.js";
 import { canonicalOf, cleanOrigin, dayFirst, FIELD_LABEL, maskedDisplay, originMatches, PASSPORT_KINDS, PASSPORT_LIMITS, rawOf, valueForKind, type PassportField } from "../mask/passport-fields.js";
@@ -759,14 +759,26 @@ export function createToolsServer(
   /** Every lock counts, whatever the token: tokens are readable in the container. */
   const allows = (origin: string | null) => masker.locks().every((l) => l.allows(origin));
   /**
-   * `url` carries a revealed value (any case and accents, percent-encoded up to three times, `+` for spaces) toward
-   * another origin than the one it was first read on: the user's other sites (a webmail's search, its redirector) would
-   * carry it on, so the lock does not exempt them for it.
+   * `text` (an address, a filled text) carries a revealed value toward another origin than the one it was revealed from:
+   * the user's other sites (a webmail's search, its redirector) would carry it on, so the lock does not exempt them for
+   * it. Any case and accents, percent-encoded up to three times, `+` read as a space and as itself; a number by its
+   * digits only; a name in any of the writings masking knows (surname first, a comma, initials, « . » « _ » « + » between).
    */
-  const carriesRevealed = (url: string, to: string | null) => {
+  const carriesRevealed = (text: string, to: string | null) => {
     const fold = (x: string) => x.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ");
-    const address = fold(urlDecoded(url.replace(/\+/g, " ")).replace(/\+/g, " "));
-    return masker.revealedValues().some((v) => v.first !== to && v.forms.some((f) => fold(f).length > 0 && address.includes(fold(f))));
+    const decoded = urlDecoded(text);
+    const readings = [fold(decoded), fold(decoded.replace(/\+/g, " "))];
+    const spaced = readings.map((r) => r.replace(/[._+]/g, " "));
+    const digits = decoded.replace(/\D/g, "");
+    return masker.revealedValues().some(({ entry, from }) => {
+      if (from !== null && from === to) return false;
+      const f = valueForms(entry);
+      return (
+        [entry.raw, entry.value, ...f.literals].some((l) => fold(l).length > 0 && readings.some((r) => r.includes(fold(l)))) ||
+        f.digits.some((d) => digits.includes(d)) ||
+        (f.name ?? []).some((re) => spaced.some((r) => r.search(re) >= 0))
+      );
+    });
   };
   const lockedLine = () => l10n("kernel-mask-locked-danger", named(masker.revealedNames()));
   /** At the limit of unknown labels, `fill_field` and `reveal_value` answer only this until the conversation ends. */
@@ -1403,7 +1415,7 @@ export function createToolsServer(
         // A session may have opened while the workspace locked.
         if (otherSessions()) return text(l10n("kernel-mask-reveal-shared", { name }));
         // Locked before the value leaves.
-        lock.reveal(label, passportOrigins(entry));
+        lock.reveal(label, passportOrigins(entry), entry.last ?? null);
         return text(`${REVEALED_PREFIX} ${segments.raw(entry.raw)}`);
       };
       const result = run();
@@ -1574,7 +1586,8 @@ export function createToolsServer(
       const acts = choosing ? l10n(o.profile === "agent" ? "kernel-mask-fill-choice-acts-agent" : "kernel-mask-fill-choice-acts") : undefined;
       /** What may go into the page: the labels' entries and every passport entry on offer. */
       const offered = [...new Set(rows.flatMap((r) => r.entries))];
-      const locked = !allows(seal.origin) || actions.some((a) => !allows(a));
+      // A free text carrying a revealed value (« Hélène Marceau » into the webmail's search box) is locked there too.
+      const locked = !allows(seal.origin) || actions.some((a) => !allows(a)) || asked.some((r) => typeof r.value === "string" && carriesRevealed(r.value, seal.origin));
       const elsewhere = [...new Set(asked.flatMap((r, i) => ((r.passport || usedOf(r.value).length) && actions[i] !== seal.origin ? [l10n("kernel-mask-fill-action-danger", { to: actions[i] ?? String(seals[i]!.action) })] : [])))];
       // Rule 2 for a label: a value of the user's sources off every origin it was read on (B3, the « fill » family: a
       // granted plain card gave the attacker's form the code). The user's own tab says it too, without « opened by the

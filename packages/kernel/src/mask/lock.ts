@@ -9,7 +9,7 @@ import { writePrivateJson } from "../design/atomic-write.js";
  * destination allowed for every revealed value: each reveal narrows, none widens another's.
  */
 export class ConversationLock {
-  private readonly entries: { label: string; origins: string[] | null }[] = [];
+  private readonly entries: { label: string; origins: string[] | null; from: string | null }[] = [];
   private born = false;
   /** Unknown labels given to `reveal_value` or `fill_field` in this conversation (one count for both: Task 8 blocks at 3). */
   unknownLabels = 0;
@@ -17,8 +17,9 @@ export class ConversationLock {
   readonly revealing = new Map<string, Promise<void>>();
 
   /** `origins` null (or empty): a value read nowhere, which allows no destination. */
-  reveal(label: string, origins: string[] | null): void {
-    this.entries.push({ label, origins: origins?.length ? [...origins] : null });
+  /** `from`: the origin the revealed label was last read on, the one site an address carrying the value may reach uncarded. */
+  reveal(label: string, origins: string[] | null, from: string | null = null): void {
+    this.entries.push({ label, origins: origins?.length ? [...origins] : null, from });
   }
 
   /** A conversation opened while the workspace is locked (Task 10): locked with nothing revealed, allows nothing. */
@@ -45,6 +46,11 @@ export class ConversationLock {
 
   revealed(): readonly { label: string; origins: string[] | null }[] {
     return this.entries.map((e) => ({ label: e.label, origins: e.origins && [...e.origins] }));
+  }
+
+  /** Each revealed label with the origin it was revealed from (`reveal`'s `from`). */
+  revealedFrom(): readonly { label: string; from: string | null }[] {
+    return this.entries.map((e) => ({ label: e.label, from: e.from }));
   }
 }
 

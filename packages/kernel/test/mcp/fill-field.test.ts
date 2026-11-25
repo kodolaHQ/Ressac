@@ -1166,3 +1166,14 @@ test("a field of the top page's site under a frame of another site: the card nam
     expect(String((of("askFill")[0]![0] as { danger?: string }).danger)).toContain("Ce champ est dans un cadre de cadre.test, intégré à la page de mail.example-novacourriel.test.");
   });
 });
+
+test("locked: free text carrying the revealed value, filled on another of its sites, gets the locked line", async () => {
+  await serve({}, async ({ call, bridge, label, of }) => {
+    // The same code on another of the user's sites, read before the webmail: revealed from the webmail.
+    bridge.editTab("copie", { url: "https://www.banque-ardoise.test/compte", agentReached: false });
+    await call("read_tab", { id: "copie" });
+    await call("reveal_value", { label: await label(), reason: "payer" });
+    await call("fill_field", { id: "copie", field: 0, value: `code ${CODE}` });
+    expect((of("askFill")[0]![0] as { danger?: string }).danger).toContain(LOCKED);
+  });
+});

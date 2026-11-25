@@ -6,7 +6,7 @@ import type { PassportRef, PassportStore } from "./passport.js";
  * `value`: the canonical form, what forms are matched on; `raw`: the value as first written, what goes back out (a reveal,
  * a fill, the user's « Voir »); `passport`: the passport entries it was drawn for, if any.
  */
-export type Entry = { label: string; type: LabelType; value: string; raw: string; zone: Zone; origins: string[]; passport?: PassportRef[] };
+export type Entry = { label: string; type: LabelType; value: string; raw: string; zone: Zone; origins: string[]; passport?: PassportRef[]; last?: string };
 /** A tab opened from an issued handle: printed as that handle, whatever address it is on now. */
 export type Pin = { handle: string; real: string };
 
@@ -106,6 +106,8 @@ export class LabelTable {
       this.zones[zone].push(entry);
     }
     if (origin !== null && !entry.origins.includes(origin)) entry.origins.push(origin);
+    // The latest read that showed it: where a reveal of its label comes from.
+    if (origin !== null) entry.last = origin;
     if (ref && !entry.passport?.some((r) => r.profile === ref.profile && r.id === ref.id)) (entry.passport ??= []).push({ ...ref });
     return entry.label;
   }
