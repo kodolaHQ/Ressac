@@ -1269,23 +1269,20 @@ export function createToolsServer(
    * Runs an agent load with its `allow`. A hop Firefox refused (LoadRefused): under a lock, the locked refusal; else the
    * handle's card on the hop's origin, and granted, the load goes to the hop (its own hops judged again).
    */
+  /** A load from `pin` leaves for `url`: its origin gets the handle's values, shown back there as labels (`relabelAt`). */
+  const sentFrom = (pin: Pin | undefined, url: string) => {
+    const at = originOf(url);
+    if (pin && at) labels.opened(pin.handle, at);
+  };
   async function guardedLoad<T>(url: string, pin: Pin | undefined, signal: AbortSignal | undefined, load: (url: string, o: { allow: string[] | null }) => Promise<T>): Promise<{ ok: T } | { refused: string }> {
     let o = { allow: hopAllow(pin) };
-    // Each origin the load reached got the handle's values: shown back there as labels from now on (`relabelAt`). Only
-    // once the request went: a refused or failed load marks nothing, or a page's guess there would get an answer.
-    const reached = (u: string) => {
-      const at = originOf(u);
-      if (pin && at) labels.opened(pin.handle, at);
-    };
     for (;;) {
+      // The request leaves now, whatever its end (a timeout after it went counts); a refused hop never gets here.
+      sentFrom(pin, url);
       try {
-        const ok = await load(url, o);
-        reached(url);
-        return { ok };
+        return { ok: await load(url, o) };
       } catch (e) {
         if (!(e instanceof LoadRefused)) throw e;
-        // Refused at a hop: the request to `url` went, its server answered with the redirect.
-        reached(url);
         if (masker.locked()) return { refused: l10n("kernel-mask-locked-refused") };
         const to = originOf(e.url);
         if (!to || !(await hopCard(pin, to, signal))) return { refused: HANDLE_REFUSED };
@@ -1842,6 +1839,7 @@ export function createToolsServer(
         // From now on in this conversation the app shows what the agent chose: no longer the user's source.
         agentSites.add(`${policy.conversation}:${id}`);
         labels.pin(id, pin);
+        sentFrom(pin, url);
         const loaded = await working(id, () => bridge.navigate(id, url), l10n("kernel-activity-goes-to", { site: siteOf(url) }));
         if (loaded === "pending") return text(PENDING_SITE_NAVIGATION);
         return text(`Appli de site ${id} → ${shown}`);

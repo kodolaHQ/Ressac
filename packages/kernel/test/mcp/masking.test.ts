@@ -729,3 +729,28 @@ test("a handle's values: relabelled where a granted redirect took them, never wh
     });
   }
 });
+
+test("a handle's origin is recorded once its request leaves: a site app sent there, a load that then fails", async () => {
+  const app: TabInfo = { id: "site:courrier", title: "Courrier", url: `${HOST}/inbox`, space: "", site: "courrier", domain: "mail.example-novacourriel.test" };
+  for (const way of ["site", "failing"] as const) {
+    const history = { results: [{ url: PROFILE_URL, title: PROFILE_URL.replace(/^https:\/\//, ""), lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "", byUser: false }] };
+    const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: "rien" } }, { history, widgetData: true, sites: { courrier: ["mail.example-novacourriel.test"] } }, [user, copy, app]);
+    if (way === "failing") {
+      const navigate = bridge.navigate.bind(bridge);
+      bridge.navigate = async (...a: Parameters<typeof navigate>) => {
+        await navigate(...a);
+        throw new Error("délai dépassé");
+      };
+    }
+    await serve({ bridge }, async ({ call, s, masker }) => {
+      masker.open("A", "W1");
+      const t = s.openSession("W1", undefined, "A");
+      const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+      const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+      await call("navigate", { id: way === "site" ? app.id : "copie", url: masked, reason: "r" }, t);
+      expect(bridge.calls.some((c) => c.method === "navigate" && c.args[1] === PROFILE_URL), way).toBe(true);
+      const rows = (await call("search_history", { query: "profil" }, t)).text;
+      expect(rows, way).not.toContain("camille.exemple");
+    });
+  }
+});
