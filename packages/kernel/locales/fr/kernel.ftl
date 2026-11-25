@@ -33,6 +33,7 @@ kernel-err-timeout = Délai dépassé
 kernel-err-response-too-big = Réponse trop grande
 kernel-err-profile-denied = Le profil de connexion choisi n'est plus utilisable (supprimé ou utilisé par un espace privé) : accord à redonner
 kernel-err-workshop-stopped = Mise à jour impossible : atelier arrêté
+kernel-widget-lab-required = Ce widget a du code écrit par l'agent ou suit le web (veille) : il demande le labo.
 kernel-err-internal-harvest = Mise à jour impossible : erreur interne du navigateur
 kernel-err-no-workflow = Ce widget n'a ni workflow.json ni harvest.mjs
 kernel-err-interrupted = Interrompue : Ressac s'est arrêté

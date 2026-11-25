@@ -80,7 +80,7 @@ export function freeSizes(t: { w: number; h: number }): { w: number; h: number }
   return { w: Math.round((t.w * FREE_WIDTH) / COLUMNS), h: t.h * ROW_PX };
 }
 
-const WidgetStatus = z.enum(["ok", "running", "error", "grant-required", "workshop-stopped"]);
+const WidgetStatus = z.enum(["ok", "running", "error", "grant-required", "workshop-stopped", "lab-required"]);
 
 export const WidgetState = z.object({
   status: WidgetStatus,

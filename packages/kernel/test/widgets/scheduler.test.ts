@@ -217,6 +217,93 @@ test("workshop stopped: status atelier-arrete, data kept", async () => {
   expect(await p.check({ onLaunch: false })).toEqual(["actus"]);
 });
 
+const LAB_REQUIRED_FR = "Ce widget a du code écrit par l'agent ou suit le web (veille) : il demande le labo.";
+
+test("lab off: a tier-3 widget is not harvested and reads lab-required", async () => {
+  const lab = false;
+  const { p, harvest, widgetsFolder, changes, workshop, forward: advance } = await prepare({ options: { lab: () => lab } });
+  const command = vi.spyOn(workshop, "harvestCommand");
+  await writeData(widgetsFolder, "actus", { old: true });
+  await writeWidgetState(widgetsFolder, "actus", { status: "ok", lastUpdate: "2026-10-27T08:00:00.000Z", lastAttempt: "2026-10-27T08:00:00.000Z" });
+  advance(3 * 60 * MIN);
+  expect(await p.check({ onLaunch: true })).toEqual([]);
+  expect(harvest).not.toHaveBeenCalled();
+  expect(command).not.toHaveBeenCalled();
+  expect(await readWidgetState(widgetsFolder, "actus")).toEqual({
+    status: "lab-required",
+    lastUpdate: "2026-10-27T08:00:00.000Z",
+    lastAttempt: "2026-10-27T08:00:00.000Z",
+    error: LAB_REQUIRED_FR,
+    kernelError: true,
+  });
+  expect(kernelError(LAB_REQUIRED_FR)).toBe(true);
+  expect(await readData(widgetsFolder, "actus")).toEqual({ old: true });
+  expect(changes).toHaveBeenCalledTimes(1);
+  // Not rewritten every minute; a manual or agent harvest runs nothing either, nor a builder try.
+  await p.check({ onLaunch: false });
+  expect(changes).toHaveBeenCalledTimes(1);
+  expect((await p.harvestNow("actus", "agent")).status).toBe("lab-required");
+  expect(await p.replay("actus", "x", "recolte")).toEqual({ ok: false, error: LAB_REQUIRED_FR });
+  expect(harvest).not.toHaveBeenCalled();
+});
+
+test("lab off: a tier-2 widget still harvests", async () => {
+  const { p, c, harvests } = await prepare({ options: { lab: () => false } });
+  await writeWidget(c, "flux", declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { public: ["example.org"] } }), {
+    "workflow.json": JSON.stringify({
+      version: 1,
+      blocks: [
+        { id: "flux", type: "source.feed", params: { urls: ["https://example.org/rss"] } },
+        { id: "sortie", type: "output", params: { to: "widget" } },
+      ],
+      links: [{ from: "flux", to: "sortie" }],
+    }),
+  });
+  expect(await p.check({ onLaunch: true })).toEqual(["flux"]);
+  expect(harvests).toEqual(["flux"]);
+});
+
+test("lab back on: it harvests at its next due time", async () => {
+  let lab = false;
+  const { p, harvests, widgetsFolder } = await prepare({ options: { lab: () => lab } });
+  expect(await p.check({ onLaunch: true })).toEqual([]);
+  expect((await readWidgetState(widgetsFolder, "actus")).status).toBe("lab-required");
+  lab = true;
+  expect(await p.check({ onLaunch: false })).toEqual(["actus"]);
+  expect(harvests).toEqual(["actus"]);
+  expect((await readWidgetState(widgetsFolder, "actus")).status).toBe("ok");
+});
+
+test("setLab(false) aborts a tier-3 run in flight: its container goes, the widget reads lab-required, its data is kept", async () => {
+  let lab = true;
+  let release!: () => void;
+  const killed: string[] = [];
+  const { p, widgetsFolder, workshop } = await prepare({
+    options: {
+      lab: () => lab,
+      harvest: async (r: HarvestOptions) => {
+        await new Promise<void>((ok) => (release = ok));
+        // The killed container makes the run fail; the scheduler reads it as cut by the lab.
+        expect(r.interrupted?.()).toBe(true);
+        const state: WidgetState = { status: "error", lastUpdate: null, lastAttempt: START.toISOString(), error: "tué" };
+        await writeWidgetState(r.widgetsFolder, r.id, state);
+        return { state };
+      },
+    },
+  });
+  workshop.deleteHarvest = async (id: string) => void killed.push(id);
+  await writeData(widgetsFolder, "actus", { old: true });
+  const running = p.harvestNow("actus");
+  await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+  lab = false;
+  await p.setLab(false);
+  expect(killed).toEqual(["actus"]);
+  release();
+  expect((await running).status).toBe("lab-required");
+  expect(await readWidgetState(widgetsFolder, "actus")).toMatchObject({ status: "lab-required", kernelError: true, error: LAB_REQUIRED_FR });
+  expect(await readData(widgetsFolder, "actus")).toEqual({ old: true });
+});
+
 test("memory pressure: a scheduled harvest waits, unmarked, for the first calm check; a manual one runs at once", async () => {
   let calm = false;
   const { p, harvests, widgetsFolder, changes } = await prepare({ options: { calm: async () => calm } });

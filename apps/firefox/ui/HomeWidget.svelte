@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ShownWidget } from "../shared/api";
   import type { FreePlacement } from "../../../packages/kernel/src/home/schemas";
+  import { fade } from "svelte/transition";
   import WidgetFrame from "./WidgetFrame.svelte";
   import Icon from "./components/Icon.svelte";
   import { nextRun } from "./components/next";
@@ -92,6 +93,8 @@
         >
       {:else if widget.state.status === "workshop-stopped"}
         <span class="badge failure">{t("home-widget-workshop-stopped")}</span>
+      {:else if widget.state.status === "lab-required"}
+        <span class="badge muted lab" data-testid="lab-required" out:fade={{ duration: 150 }}>{t("home-widget-lab-required")}</span>
       {:else if widget.state.warning}
         <span class="badge failure" data-testid="widget-warning">{widget.state.warning}</span>
       {:else if next}
@@ -165,6 +168,7 @@
   h2 { margin: 0; font: 650 14px/1.2 var(--font-display); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .badge { font-size: 11px; color: var(--home-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .badge.muted { color: var(--home-text-muted); }
+  .badge.lab { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .badge.failure, .unreadable, .warning { color: var(--in-error); }
   .unreadable { margin: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
   .actions { position: relative; margin-left: auto; }

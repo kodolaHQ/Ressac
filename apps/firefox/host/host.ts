@@ -32,7 +32,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync, readFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { passportReady, ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE, WorkspaceLock, tweaksPaused } = await import("../../../packages/kernel/src/index.ts");
+const { passportReady, ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE, WorkspaceLock, tweaksPaused, isTier3Widget } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { labInUse } = await import("./tiers.ts");
 const { History } = await import("../core/history.ts");
@@ -698,7 +698,7 @@ const rpc = createRpc({
     },
     // Once, for a session saved before tiers: does the user already use the lab? The chrome sends its saved mode (no
     // `agent.mode` has come yet). Widget tiers come with Task 6.
-    "lab.decide": async (p: { agentMode?: unknown }) => ({ on: await labInUse(paths, p?.agentMode === "workshop" ? "workshop" : "browser", async () => false) }),
+    "lab.decide": async (p: { agentMode?: unknown }) => ({ on: await labInUse(paths, p?.agentMode === "workshop" ? "workshop" : "browser", isTier3Widget) }),
     // macOS runs short of memory (Firefox's memory-pressure): the local models unload, idle agent sessions sleep, the
     // machine stops unless in use.
     "memory.pressure": () => relieveMemory(),

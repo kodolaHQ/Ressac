@@ -17,7 +17,9 @@ import type { DirectTrace } from "../workflows/run.js";
 import { readRun, type Execution } from "../workflows/executions.js";
 import type { Pacing } from "../workflows/pacing.js";
 import { notificationText, type NotificationWidget } from "./novelties.js";
+import { isTier3Widget } from "./tier.js";
 import {
+  LAB_REQUIRED_ERROR,
   WORKSHOP_STOPPED_ERROR,
   INTERRUPTED_ERROR,
   INTERNAL_HARVEST_ERROR,
@@ -140,6 +142,10 @@ export interface SchedulerOptions {
    * changed since: its harvests and trials are skipped (a failure counts as paused).
    */
   paused?: (w: WidgetRead, folder?: string) => Promise<boolean>;
+  /** Tier 3 (« labo ») is on, read at each run: off, a tier-3 widget (watch, agent code) is not harvested. Absent: on. */
+  lab?: () => boolean;
+  /** The templates folder the starters are compared with (default: the package's). */
+  templates?: string;
 }
 
 /**
@@ -169,6 +175,8 @@ export class WidgetsScheduler {
   private startup: Promise<void> | null = null;
   /** Widgets found en-cours at startup (interrupted) and reset, not yet relaunched. */
   private interrupted = new Set<string>();
+  /** Widgets whose run the lab's switch-off cut (or refused on its staged copy): they end as lab-required. */
+  private labCut = new Set<string>();
 
   constructor(o: SchedulerOptions) {
     // `??` rather than a spread: an option explicitly passed as undefined keeps its default value.
@@ -378,6 +386,10 @@ export class WidgetsScheduler {
         if (!w || !this.isDue(w, o) || this.stopped) return false;
         // Moved to the other lane since the read: the next check will launch it there.
         if (routeOf(w) !== route) return false;
+        if (await this.labRequired(w)) {
+          await this.markLabRequired(w);
+          return false;
+        }
         // Postponed, not failed: still due, it runs at the first check once memory is calm.
         if (this.o.calm && !(await this.o.calm().catch(() => true))) return false;
         if (!(await this.workshopStarted())) {
@@ -514,6 +526,36 @@ export class WidgetsScheduler {
     return state;
   }
 
+  /** Lab off and `w` (its folder, or the staged copy that runs) is tier 3. Unreadable: tier 3. */
+  private async labRequired(w: WidgetRead, folder?: string): Promise<boolean> {
+    if (this.o.lab?.() ?? true) return false;
+    if ("error" in w) return true;
+    return isTier3Widget(folder ?? w.folder, w.id, this.o.templates, w.declaration).catch(() => true);
+  }
+
+  /** Lab off: the widget keeps its data and says it waits for the lab (a single write). */
+  private async markLabRequired(w: WidgetRead): Promise<WidgetState> {
+    const before = await readWidgetState(this.o.widgetsFolder, w.id);
+    if (before.status === "lab-required") return before;
+    const state: WidgetState = { status: "lab-required", lastUpdate: before.lastUpdate, lastAttempt: before.lastAttempt, error: LAB_REQUIRED_ERROR(this.locale()), kernelError: true };
+    await writeWidgetState(this.o.widgetsFolder, w.id, state);
+    this.o.onChange?.();
+    return state;
+  }
+
+  /** The lab went off: the tier-3 runs in flight are killed in their container; each ends as lab-required, its data kept. */
+  async setLab(on: boolean): Promise<void> {
+    if (on) return;
+    const widgets = await this.widgets().catch(() => []);
+    const cut: string[] = [];
+    for (const id of this.runningIds) {
+      const w = widgets.find((x) => x.id === id);
+      if (!w || (await this.labRequired(w))) cut.push(id);
+    }
+    for (const id of cut) this.labCut.add(id);
+    await Promise.all(cut.map((id) => this.o.workshop.deleteHarvest(id).catch(() => {})));
+  }
+
   private harvestOptions(w: WidgetRead, onTrace: (t: DirectTrace) => void, ai: HarvestOptions["ai"]): HarvestOptions {
     return {
       id: w.id,
@@ -529,10 +571,20 @@ export class WidgetsScheduler {
       ...(this.o.localAddresses ? { localAddresses: true } : {}),
       ...(this.o.pacing ? { pacing: this.o.pacing } : {}),
       ...(this.o.searchUrl !== undefined ? { searchUrl: this.o.searchUrl } : {}),
-      interrupted: () => this.stopped,
+      interrupted: () => this.stopped || this.labCut.has(w.id),
       onTrace: onTrace,
       // Checked again on the copy that runs: a shell could swap the files between the first check and the staging.
-      ...(this.o.paused ? { lockedCode: async (staged: string) => ((await this.isPaused(w, staged)) ? say(this.locale(), "kernel-mask-run-paused") : null) } : {}),
+      ...(this.o.paused || this.o.lab
+        ? {
+            lockedCode: async (staged: string) => {
+              if (await this.labRequired(w, staged)) {
+                this.labCut.add(w.id);
+                return LAB_REQUIRED_ERROR(this.locale());
+              }
+              return (await this.isPaused(w, staged)) ? say(this.locale(), "kernel-mask-run-paused") : null;
+            },
+          }
+        : {}),
     };
   }
 
@@ -571,6 +623,15 @@ export class WidgetsScheduler {
   }
 
   private async run(w: WidgetRead, trigger: Execution["trigger"], start: Date): Promise<{ result: WidgetState & { run?: string }; issue: HourOutcome }> {
+    this.labCut.delete(w.id);
+    const r = await this.runOnce(w, trigger, start);
+    // Cut by the lab's switch-off (or refused on its staged copy): it did not fail, it waits for the lab.
+    if (!this.labCut.delete(w.id) || r.result.status === "ok" || this.stopped) return r;
+    const { run } = r.result;
+    return { result: { ...(await this.markLabRequired(w)), ...(run ? { run } : {}) }, issue: "no-effect" };
+  }
+
+  private async runOnce(w: WidgetRead, trigger: Execution["trigger"], start: Date): Promise<{ result: WidgetState & { run?: string }; issue: HourOutcome }> {
     const before = await readWidgetState(this.o.widgetsFolder, w.id);
     if (await this.isPaused(w)) {
       const state: WidgetState = { status: "error", lastUpdate: before.lastUpdate, lastAttempt: start.toISOString(), error: say(this.locale(), "kernel-mask-run-paused"), kernelError: true };
@@ -636,6 +697,7 @@ export class WidgetsScheduler {
         request.started();
         if (!w) throw new Error(`Widget inconnu : ${id}`);
         if (this.stopped) return readWidgetState(this.o.widgetsFolder, id);
+        if (await this.labRequired(w)) return this.markLabRequired(w);
         if (!(await this.workshopStarted())) return this.markWorkshopStopped(w);
         if (this.stopped) return readWidgetState(this.o.widgetsFolder, id);
         return this.harvest(w, trigger);
@@ -659,10 +721,12 @@ export class WidgetsScheduler {
         request.started();
         if (!w) return { ok: false, error: say(this.locale(), "kernel-grant-widget-unknown", { id }) };
         if (this.stopped) return { ok: false, error: INTERRUPTED_ERROR(this.locale()) };
+        if (await this.labRequired(w)) return { ok: false, error: LAB_REQUIRED_ERROR(this.locale()) };
         if (!(await this.workshopStarted())) return { ok: false, error: WORKSHOP_STOPPED_ERROR(this.locale()) };
         if (this.stopped) return { ok: false, error: INTERRUPTED_ERROR(this.locale()) };
         if (await this.isPaused(w)) return { ok: false, error: say(this.locale(), "kernel-mask-run-paused") };
         try {
+          this.labCut.delete(id);
           return await this.follow(
             id,
             "attempt",

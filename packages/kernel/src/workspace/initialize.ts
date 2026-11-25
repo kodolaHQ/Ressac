@@ -128,7 +128,7 @@ async function filesOf(folder: string, prefix = ""): Promise<string[]> {
 }
 
 /** The languages the templates have: one folder each. */
-async function languagesOf(models: string): Promise<string[]> {
+export async function languagesOf(models: string): Promise<string[]> {
   return (await readdir(models, { withFileTypes: true })).filter((e) => e.isDirectory() && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(e.name)).map((e) => e.name);
 }
 
@@ -206,7 +206,7 @@ export const DISPLAYS_SHIPPED: Record<"meteo" | "actus-tech" | "daily-dev", Read
 };
 
 /** The content of an ordinary file (never a symbolic link); null if it is absent or something else. */
-async function ordinaryFile(path: string): Promise<Buffer | null> {
+export async function ordinaryFile(path: string): Promise<Buffer | null> {
   try {
     if (!(await lstat(path)).isFile()) return null;
     return await readFile(path);
@@ -232,6 +232,16 @@ async function updateStartDisplay(c: SpacePaths, models: string, id: keyof typeo
   return true;
 }
 
+/** `name` of starter `id` is a shipped version: a current template of any language, an old one, or a known display. */
+export async function shippedWidgetFile(models: string, langs: string[], id: string, name: string, content: Buffer): Promise<boolean> {
+  const h = hash(content);
+  return (
+    (await currentHashes(models, langs, join("widgets", id, name))).includes(h) ||
+    (OLD_TEMPLATES[`widgets/${id}/${name}`]?.has(h) ?? false) ||
+    (name === "display.html" && (DISPLAYS_SHIPPED[id as keyof typeof DISPLAYS_SHIPPED]?.has(h) ?? false))
+  );
+}
+
 /**
  * Puts a starter widget in `lang` when every template file it still has is a shipped version (any language's current
  * file, or a known `display.html`) and one of them differs from `lang`'s. A widget with an edited or missing file, a
@@ -253,11 +263,7 @@ async function swapWidget(c: SpacePaths, models: string, lang: string, langs: st
     if (!(await lstat(file).catch(() => null))) return [];
     const content = await ordinaryFile(file);
     if (!content) return [];
-    const shipped =
-      (await currentHashes(models, langs, join("widgets", id, name))).includes(hash(content)) ||
-      (OLD_TEMPLATES[`widgets/${id}/${name}`]?.has(hash(content)) ?? false) ||
-      (name === "display.html" && (DISPLAYS_SHIPPED[id as keyof typeof DISPLAYS_SHIPPED]?.has(hash(content)) ?? false));
-    if (!shipped) return [];
+    if (!(await shippedWidgetFile(models, langs, id, name, content))) return [];
     if (target && !content.equals(target)) toWrite.push([source, file]);
   }
   for (const [source, file] of toWrite) await copyFile(source, file);
@@ -302,6 +308,23 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   // Before the caps of the harvest's copy: fr, en.
   "guides/actions.md": new Set(["f2e7637484158ec1c8747311bf6c03c303fcf58f9afcfcf67678c29b0bf9f43b", "24cfeffac0bbeada14f8fa7dae02a89db6a89f41ed9ee360baffb8661bd7aa29"]),
+  // The starters' code and workflows from earlier releases (from git history): an untouched old copy stays a starter (tier 2).
+  "widgets/actus-tech/articles.mjs": new Set(["63188cfa6938f78507d6fdfd71d44ff48ccf6234cb338a424786a46c3e811cef"]),
+  "widgets/actus-tech/workflow.json": new Set([
+    "62f08b9ae9255a495948329b0c2dc95c9d423a7c06c20893f02c366901e6acdf",
+    "ac909f71078727dde23c1505deefd5bd496142caa696e4d74a1cf366341f4919",
+  ]),
+  "widgets/daily-dev/articles.mjs": new Set(["63188cfa6938f78507d6fdfd71d44ff48ccf6234cb338a424786a46c3e811cef"]),
+  "widgets/daily-dev/liens.mjs": new Set([
+    "ce30d0adefed5080bb8c4e409b53b4a5ad863a2aa38b827eedc84599247714f5",
+    "f5312ccc6b4a535346a865924a084d83cc6b95dca0987e351958038903ed2dc0",
+  ]),
+  "widgets/daily-dev/workflow.json": new Set([
+    "414ec899cd08b5ac4f4405b810926ac4c0830d25817a2b0936771d3e0f392596",
+    "bdc7aae5f42bda8c9399f069e91b7476f7c70e1354c4cc9008944825361e41d3",
+  ]),
+  "widgets/meteo/prevision.mjs": new Set(["10924f6f3aac8d100790899032d312d4ab6a72221361c3559a9956d5390c0256"]),
+  "widgets/meteo/ville.mjs": new Set(["0de94927b376f20d4828eabf5b538933612b253a2499d9c16c4073ad2dd90e3d"]),
   // Before it declared `web` (it reads each article's own site): fr, en.
   "widgets/actus-tech/widget.json": new Set([
     "4ff80b95ebfed67f690c6efd116d513e8ecabd5de2762bcba06e4cc52c2bc985",

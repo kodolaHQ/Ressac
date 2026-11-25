@@ -111,13 +111,14 @@ export const WORKSHOP_STOPPED_ERROR = (locale: string) => say(locale, "kernel-er
 export const INTERNAL_HARVEST_ERROR = (locale: string) => say(locale, "kernel-err-internal-harvest");
 export const NO_WORKFLOW_ERROR = (locale: string) => say(locale, "kernel-err-no-workflow");
 export const INTERRUPTED_ERROR = (locale: string) => say(locale, "kernel-err-interrupted");
+export const LAB_REQUIRED_ERROR = (locale: string) => say(locale, "kernel-widget-lab-required");
 
 /**
  * Fixed error messages written by the kernel, in every shipped language (a stored error keeps the language it was
  * written in); any other error text may have been written by the widget.
  */
 const FIXED_ERRORS = new Set([
-  ...["kernel-err-timeout", "kernel-err-response-too-big", "kernel-err-profile-denied", "kernel-err-workshop-stopped", "kernel-err-internal-harvest", "kernel-err-no-workflow", "kernel-err-interrupted", "kernel-err-reads-required-web-only"].flatMap((id) => inEveryLanguage(id)),
+  ...["kernel-err-timeout", "kernel-err-response-too-big", "kernel-err-profile-denied", "kernel-err-workshop-stopped", "kernel-err-internal-harvest", "kernel-err-no-workflow", "kernel-err-interrupted", "kernel-err-reads-required-web-only", "kernel-widget-lab-required"].flatMap((id) => inEveryLanguage(id)),
   // Old message, still in states written before the workflows.
   "Ce widget n'a pas de harvest.mjs",
   ...inEveryLanguage("kernel-err-data-too-big"),

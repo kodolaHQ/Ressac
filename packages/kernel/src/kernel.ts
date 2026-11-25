@@ -649,6 +649,8 @@ export async function createKernel(o: {
     ...(o.searchUrl !== undefined ? { searchUrl: o.searchUrl } : {}),
     ...(o.notify ? { notify: o.notify } : {}),
     ...(o.calm ? { calm: o.calm } : {}),
+    lab: o.lab,
+    ...(templates ? { templates: templates } : {}),
   });
   await scheduler.start();
   const actionSubscribers = new Set<(e: ActionsState) => void>();
@@ -980,8 +982,7 @@ export async function createKernel(o: {
       report();
     },
     async setLab(on) {
-      // Task 6 stops the lab's harvests here too.
-      if (!on) await fileActions.stopRunning();
+      if (!on) await Promise.all([fileActions.stopRunning(), scheduler.setLab(false)]);
     },
     async stop() {
       offLock();

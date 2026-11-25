@@ -237,6 +237,7 @@ home-widget-failed = failed on { $date }: { $error }
 home-widget-unknown-error = unknown error
 home-widget-unknown-date = unknown date
 home-widget-workshop-stopped = update impossible: workshop stopped
+home-widget-lab-required = update paused: this widget needs the lab (Settings › Agent)
 home-widget-next = next: { $next }
 home-widget-options = Widget options
 home-widget-update-now = Update now

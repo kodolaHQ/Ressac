@@ -44,6 +44,7 @@ export * from "./widgets/grants.js";
 export * from "./widgets/reads.js";
 export * from "./widgets/scheduler.js";
 export * from "./widgets/hours.js";
+export { isTier3Widget } from "./widgets/tier.js";
 export { notificationText } from "./widgets/novelties.js";
 export { validationContext } from "./widgets/harvest.js";
 export { localUrl } from "./workflows/access.js";

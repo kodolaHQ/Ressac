@@ -33,6 +33,7 @@ kernel-err-timeout = Timed out
 kernel-err-response-too-big = Response too large
 kernel-err-profile-denied = The chosen sign-in profile can no longer be used (deleted or used by a private space): the grant must be given again
 kernel-err-workshop-stopped = Update impossible: workshop stopped
+kernel-widget-lab-required = This widget has code written by the agent or follows the web (watch): it needs the lab.
 kernel-err-internal-harvest = Update impossible: internal browser error
 kernel-err-no-workflow = This widget has neither workflow.json nor harvest.mjs
 kernel-err-interrupted = Interrupted: Ressac stopped
