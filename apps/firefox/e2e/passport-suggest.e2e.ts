@@ -117,10 +117,13 @@ afterEach(async () => {
   profile = undefined;
 });
 
+// Marionette's recommended prefs switch Firefox's address autofill off (remote/shared/RecommendedPreferences.sys.mjs);
+// a user value wins over them, and a real profile has it on.
+const AUTOFILL = { "extensions.formautofill.addresses.enabled": true };
 /** Launches with the memory cipher and the Touch ID test path; the probe around Firefox's address submission. */
 async function start(o: { prefs?: Record<string, string | boolean> } = {}): Promise<void> {
   profile = await mkdtemp(join(os.tmpdir(), "ressac-firefox-"));
-  w = await launchRessac({ profile, env: { RESSAC_TEST_PASSPORT_CIPHER: "memory", RESSAC_TEST_REAUTH: "pass" }, ...(o.prefs ? { prefs: o.prefs } : {}) });
+  w = await launchRessac({ profile, env: { RESSAC_TEST_PASSPORT_CIPHER: "memory", RESSAC_TEST_REAUTH: "pass" }, prefs: { ...AUTOFILL, ...o.prefs } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -376,15 +379,16 @@ describe("passport suggestions from typed forms", () => {
     expect(await offers()).toEqual([]);
   });
 
-  it("a typed field the page rewrites as it is sent is not offered; the others are", async () => {
+  it("a typed field the page rewrites as it is sent: the page's text is never offered, what was typed is", async () => {
     await start();
     await tab(`${server.url}/reecrit.html`);
     await typeForm("a-");
     await press("#a-send");
     await submitted(1);
     const bar = await oneOffer();
+    // Firefox reads the fields before the page's submit handler rewrites them (measured on 161): the typed name stays.
+    expect(bar.text).toContain("Votre nom : Camille Aubrac");
     expect(bar.text).toContain("Adresse postale : 14 rue des Tanneurs, 69001 Lyon");
-    expect(bar.text).not.toContain("Votre nom");
     expect(bar.text).not.toContain("Lucie");
   });
 

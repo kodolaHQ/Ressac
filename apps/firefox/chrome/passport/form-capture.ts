@@ -28,8 +28,11 @@ export function suggestion(record: Record<string, string>, typed: ReadonlySet<st
     const v = typeof record[k] === "string" ? record[k].trim() : "";
     return v && typed.has(v) ? v : "";
   };
-  // shortcut: a street split over address-line1/2 fields is not offered; upgrade by joining them if such forms matter.
-  const raw = fieldsToProposal({ given: t("given-name"), family: t("family-name"), full: t("name"), street: t("street-address"), postcode: t("postal-code"), city: t("address-level2"), tel: t("tel"), email: t("email") });
+  // Firefox reads a labels-only French form as given-name + name (« Nom ») and address-line1 (« Adresse »).
+  const given = t("given-name"), full = t("name");
+  const family = t("family-name") || (given && full ? (full.startsWith(given) ? full.slice(given.length).trim() : full) : "");
+  const street = t("street-address") || ["address-line1", "address-line2", "address-line3"].map(t).filter(Boolean).join(" ");
+  const raw = fieldsToProposal({ given, family, full, street, postcode: t("postal-code"), city: t("address-level2"), tel: t("tel"), email: t("email") });
   const all = drafts({ key: "", ...raw, ticked: true, other: false }, "me");
   // Only what the passport accepts: the bar shows exactly what « Ajouter » writes.
   const fresh = all.filter((d) => valid(d) && !ctx.known(d));
@@ -127,7 +130,8 @@ export function installFormCapture(o: {
       }
       return;
     }
-    const win = browser.ownerGlobal;
+    // Not ownerGlobal: undefined from the store module (see load-guard.ts tabIdOf).
+    const win = browser.ownerDocument?.defaultView;
     const box = win?.gBrowser?.getNotificationBox?.(browser);
     if (!box) return;
     const doc = win.document;

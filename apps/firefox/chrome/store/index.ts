@@ -682,7 +682,8 @@ async function start(): Promise<RessacStore> {
   // Before any form is sent: Firefox's address prompt becomes Ressac's passport bar.
   installFormCapture({
     about: (browser) => {
-      const id = browser.ownerGlobal?.gBrowser?.getTabForBrowser?.(browser)?.getAttribute("ressac-tab-id");
+      // Not ownerGlobal: undefined from the store module (see load-guard.ts tabIdOf).
+      const id = browser.ownerDocument?.defaultView?.gBrowser?.getTabForBrowser?.(browser)?.getAttribute("ressac-tab-id");
       const tab = id ? store.state.tabs[id] : undefined;
       if (!tab) return null;
       const container = browser.browsingContext?.originAttributes?.userContextId ?? 0;

@@ -142,8 +142,13 @@ describe("passport import of saved addresses", () => {
     // A short window after that answer: no card may show late from it.
     await new Promise((r) => setTimeout(r, 500));
     expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [tid("passport-import")])).toBe(false);
+    // The welcome stays over Réglages until it ends.
+    await dispatch(m, { type: "finishOnboarding" });
+    await waitUi(m, "return !doc.querySelector(arguments[0])", [tid("welcome-layer")]);
     await openSettings();
     await click(m, tid("settings-nav-passport"));
+    await click(m, tid("passport-unlock"));
+    await has("passport-open");
     await click(m, tid("passport-import-open"));
     await click(m, tid("passport-import-source-chrome"));
     await shows("passport-import-none", "Aucune adresse enregistrée dans Google Chrome.");

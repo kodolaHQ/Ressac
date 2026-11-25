@@ -20,6 +20,28 @@ describe("suggestion", () => {
     expect(suggestion({ ...record, email: "piege@example.fr" }, new Set(["camille@example.fr"]), ctx)).toBeNull();
   });
 
+  it("a French form as Firefox reads it (labels only): « Nom » as name, « Adresse » as address-line1, still offered whole", () => {
+    // Measured on Firefox 161 (e2e passport-suggest): Prénom → given-name, Nom → name, one « Adresse » field → address-line1.
+    const fr = { "given-name": "Camille", name: "Aubrac", "address-line1": "14 rue des Tanneurs", "postal-code": "69001", "address-level2": "Lyon", tel: "06 12 34 56 78", email: "camille@example.fr" };
+    expect(suggestion(fr, new Set(Object.values(fr)), ctx)).toEqual([
+      { field: "nom", value: { given: "Camille", family: "Aubrac" } },
+      { field: "adresse", value: { text: "14 rue des Tanneurs\n69001 Lyon" } },
+      { field: "tel", value: { text: "06 12 34 56 78" } },
+      { field: "email", value: { text: "camille@example.fr" } },
+    ]);
+    // A street over two lines is joined; a full name already holding the first name is not doubled.
+    const two = { "given-name": "Camille", name: "Camille Aubrac", "address-line1": "14 rue des Tanneurs", "address-line2": "Bâtiment B", "postal-code": "69001", "address-level2": "Lyon" };
+    expect(suggestion(two, new Set(Object.values(two)), ctx)).toEqual([
+      { field: "nom", value: { given: "Camille", family: "Aubrac" } },
+      { field: "adresse", value: { text: "14 rue des Tanneurs Bâtiment B\n69001 Lyon" } },
+    ]);
+  });
+
+  it("a name with one part not typed (the page rewrote it) is not offered at all, never half", () => {
+    const d = suggestion({ ...record, "given-name": "Lucie" }, new Set(Object.values(record)), ctx);
+    expect(d?.map((x) => x.field)).toEqual(["adresse", "tel", "email"]);
+  });
+
   it("an agent-reached or unknown tab gets nothing", () => {
     expect(suggestion(record, all, { ...ctx, agentReached: true })).toBeNull();
     expect(suggestion(record, all, { ...ctx, agentReached: undefined })).toBeNull();
