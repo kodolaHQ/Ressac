@@ -321,3 +321,30 @@ settings-passwords-error-password = The password cannot be empty.
 settings-passwords-error-duplicate = A password already exists for this username on this site.
 settings-passwords-error-missing = This password no longer exists.
 settings-passwords-error-write = Saving failed: nothing changed. Try again.
+settings-passport-touchid-import = add addresses to your passport
+settings-passport-import-open = Import from…
+settings-passport-import-pick = Import the addresses of:
+settings-passport-import-profile = In the passport: { $profile }
+settings-passport-import-none = No address saved in { $name }.
+settings-passport-import-intro = Tick what you keep: { $name } saved these addresses.
+settings-passport-import-me = Me
+settings-passport-import-other = A relative
+settings-passport-import-as = For this line
+settings-passport-import-incomplete = { $n ->
+    [one] 1 incomplete address ignored
+   *[other] { $n } incomplete addresses ignored
+  }
+settings-passport-import-erase = Erase them from Firefox
+settings-passport-import-later = Later
+settings-passport-import-add = Add
+settings-passport-import-done = { $n ->
+    [one] 1 item added to your passport.
+   *[other] { $n } items added to your passport.
+  } Your name and address will be masked for the agent in your mail and accounts.
+settings-passport-import-full = { $n ->
+    [one] 1 item not added: the passport is full.
+   *[other] { $n } items not added: the passport is full.
+  }
+settings-passport-import-error = The add failed: nothing changed. Try again.
+settings-passport-import-cancelled = Add cancelled: nothing changed.
+settings-passport-import-close = Close

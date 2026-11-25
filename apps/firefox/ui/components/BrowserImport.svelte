@@ -3,6 +3,7 @@
   import type { ImportProgress, ImportSource, ImportSourceId, ImportType } from "../../shared/api";
   import { api } from "../state.svelte";
   import { t } from "../i18n.svelte";
+  import PassportImport from "./PassportImport.svelte";
 
   /**
    * Import from another browser on this Mac: welcome page 2 and Réglages › Données. The run goes on in the host;
@@ -28,6 +29,8 @@
   let accessNote = $state<{ text: string; denied: boolean } | null>(null);
   /** The macOS picker is open: a second click would open another. */
   let granting = $state(false);
+  /** The addresses of the browser just imported, offered for the passport (shown only when it has some). */
+  let passportDone = $state(false);
 
   const source = $derived(sources?.find((s) => s.id === chosen));
   const types = $derived(source?.types.filter((t) => !(t === "passwords" && source.passwordsByCsv)) ?? []);
@@ -83,7 +86,7 @@
   async function start() {
     if (!source) return;
     generation++;
-    [progress, watching] = [null, false];
+    [progress, watching, passportDone] = [null, false, false];
     try {
       const r = await bi.start({ source: source.id, profile, types: types.filter((t) => !unchecked.includes(t)) });
       refusal = r.ok ? null : r.error;
@@ -167,6 +170,7 @@
     {#if refusal}{@render status("import-refusal", "warn", refusal)}{/if}
     {#if watching && progress?.done}{@render status("import-done", "ok", t("home-import-done"))}
     {:else if watching}{@render status("import-started", "ok", t("home-import-started"))}{/if}
+    {#if watching && progress?.done && source && !passportDone}<PassportImport quiet source={source.id} onclose={() => (passportDone = true)} />{/if}
     {#each failures as [type, why] (type)}{@render status(`import-failed-${type}`, "warn", t("home-import-failed", { type: label(type), why }))}{/each}
     {#if diskAccess}
       <div class="row" out:fade={{ duration: 150 }}>

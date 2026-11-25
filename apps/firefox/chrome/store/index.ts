@@ -31,6 +31,8 @@ import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { createAsk, type Ask } from "./ask";
 import { createBrowserImporter } from "./import/importer";
+import { createPassportImporter, type PassportImporter } from "../passport/import";
+import { format } from "../../shared/i18n";
 import type { BrowserImportApi } from "../../shared/api";
 import { searchBookmarks } from "./bookmarks";
 import { registerHomeNotifications } from "./notifications";
@@ -93,6 +95,8 @@ export interface RessacStore extends Store {
   readonly passport: PagePassport;
   /** « Cacher pour l'agent »: the passport's hide and unhide, for the chrome's hide layer only (never in a UI API). */
   readonly hidePassport: Pick<PassportSettings, "hide" | "unhide">;
+  /** « Importer depuis… »: keys and « Moi / Un proche » in, values never (chrome/passport/import.ts); its writes ask Touch ID. */
+  readonly passportImport: PassportImporter;
   /** Réglages › Mots de passe: Firefox's saved logins behind Touch ID, for the settings page only (never the agent). */
   readonly passwords: PasswordSettings;
   /** The « non couverte » tooltip's names and masked displays (chrome/passport/store.ts passportShown). */
@@ -679,6 +683,12 @@ async function start(): Promise<RessacStore> {
     containerFor,
     agent,
     passport: pagePassport(passport),
+    passportImport: createPassportImporter({
+      home: testEnv("RESSAC_TEST_IMPORT_HOME") || Services.dirsvc.get("Home", Ci.nsIFile).path,
+      scratch: PathUtils.join(dataDir, "passport-import-tmp"),
+      passport,
+      reason: () => format(store.state.locale, "settings-passport-touchid-import"),
+    }),
     hidePassport: { hide: (h) => passport.hide(h), unhide: (u) => passport.unhide(u) },
     passportShown: (refs) => passportShown(passportFiles(), refs),
     passwords: passwordSettings(),

@@ -13,6 +13,7 @@
   import { api, appState, currentWindow } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import Icon from "./Icon.svelte";
+  import PassportImport from "./PassportImport.svelte";
   import { onLeavingPassport, requestedPassport, takeRequestedPassport } from "./settings-section.svelte";
 
   // Styles of groups, rows, pills and buttons come from Settings.svelte. Design § 9.2-9.3, mock-up screen 1.
@@ -60,6 +61,11 @@
   /** The row just saved, lit briefly. */
   let fresh = $state<string | null>(null);
   let busy = false;
+  /** « Importer depuis… »: the sources offered (null: closed), then the one picked. */
+  let importFrom = $state<{ id: string; name: string; count: number }[] | null>(null);
+  let importing = $state<string | null>(null);
+  const openImport = () => void api.passportImport.sources().then((l) => (importFrom = l));
+  const closeImport = () => ([importFrom, importing] = [null, null]);
   /** Touch ID is asked: the button waits for its answer (no second prompt). */
   let unlocking = $state(false);
   /** « Supprimer ce passeport » or « Recommencer un passeport vide » after its Touch ID: the confirmation, holding that token. */
@@ -461,6 +467,19 @@
       </select>
     {/if}
   </div>
+  {#if profile?.state === "ok"}
+    <div class="importer" data-testid="passport-importer">
+      {#if !importFrom}
+        <button class="link" data-testid="passport-import-open" onclick={openImport}>{t("settings-passport-import-open")}</button>
+      {:else if !importing}
+        <span class="muted" out:fade={{ duration: 150 }}>{t("settings-passport-import-pick")}</span>
+        {#each importFrom as s (s.id)}<button data-testid="passport-import-source-{s.id}" onclick={() => (importing = s.id)}>{s.name}</button>{/each}
+        <button class="link" onclick={closeImport}>{t("settings-passport-import-later")}</button>
+      {:else}
+        <PassportImport source={importing} profile={current ?? undefined} onclose={closeImport} onadded={() => void loadProfiles()} />
+      {/if}
+    </div>
+  {/if}
   <p class="intro">{@render withLabel(around("settings-passport-intro", {}, "⟨adresse-…⟩"))}</p>
   {#if notice}<p class="status alert appear" role="status" data-testid="passport-notice" out:fade={{ duration: 150 }}>{t(notice)}</p>{/if}
 
@@ -580,6 +599,8 @@
 </section>
 
 <style>
+  .importer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
+  .importer > :global(.card) { flex: 1 1 100%; }
   .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; }
   .head h3 { margin: 0; font: 600 20px/1.2 var(--font-display); letter-spacing: -0.015em; }
   /* Changing profile cross-fades the content: the old and the new body share one grid cell. */

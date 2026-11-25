@@ -379,6 +379,13 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       progress: () => win.store.browserImport.progress().then((r) => structuredClone(r)),
       importPasswordsCsv: () => win.store.browserImport.importPasswordsCsv().then((r) => structuredClone(r)),
     },
+    // « Importer depuis… » (welcome and Réglages › Passeport): names and counts, never a value from the page.
+    passportImport: {
+      sources: () => win.store.passportImport.sources().then((r) => structuredClone(r)),
+      proposals: (source) => win.store.passportImport.proposals(String(source)).then((r) => structuredClone(r)),
+      add: (profile, rows, source, eraseRessac) =>
+        win.store.passportImport.add(String(profile), (Array.isArray(rows) ? rows : []).map((r) => ({ key: String(r?.key), as: r?.as === "proche" ? "proche" : "me" })), String(source), eraseRessac === true).then((r) => structuredClone(r)),
+    },
     // The design mode of this window's tab; its cart column is a chrome frame (chrome/window/design-overlays.ts).
     design: createDesignApi({ win, untilUnload }),
     // « Cacher pour l'agent »: the button only arms the viewfinder; the gesture's frames get their own API (hide-layer.ts).

@@ -1,0 +1,68 @@
+import { describe, expect, it, vi } from "vitest";
+import { createPassportImporter } from "../chrome/passport/import";
+import type { FoundAddress } from "../chrome/passport/addresses";
+
+const line = (o: Partial<FoundAddress>): FoundAddress => ({ given: "", family: "", full: "", street: "", postcode: "", city: "", country: "", tel: "", email: "", usedAt: 0, useCount: 0, ...o });
+const camille = line({ given: "Camille", family: "Aubrac", street: "14 rue des Tanneurs", postcode: "69001", city: "Lyon", tel: "0612345678", usedAt: 2 });
+const jean = line({ given: "Jean", family: "Martin", street: "1 rue Autre", postcode: "13001", city: "Marseille", usedAt: 1 });
+
+function setup(o: { ok?: boolean; found?: FoundAddress[] } = {}) {
+  const addMany = vi.fn(async (_h: any) => (o.ok === false ? ({ ok: false, error: "cancelled" } as const) : ({ ok: true, added: 1, variants: 0, full: 0, invalid: 0 } as const)));
+  const read = vi.fn(async () => o.found ?? [camille, jean]);
+  const remove = vi.fn(async (_guids: string[]) => {});
+  const store = vi.fn(async () => ({ records: [{ guid: "g1", "given-name": "Camille", "family-name": "Aubrac", "street-address": "14 rue des Tanneurs", "postal-code": "69001", "address-level2": "Lyon" }], remove }));
+  const i = createPassportImporter({ home: "/h", scratch: "/s", passport: { addMany }, exists: async () => true, read, ressacStore: store, reason: () => "ajouter des adresses à votre passeport" });
+  return { i, addMany, remove, read };
+}
+
+describe("passport import", () => {
+  it("add sends no values from the page: rows are keys", async () => {
+    const { i, addMany } = setup();
+    const { proposals } = await i.proposals("chrome");
+    const me = proposals.find((p) => p.given === "Camille")!;
+    await i.add("default", [{ key: me.key, as: "me", given: "Evil", value: "x" } as any], "chrome");
+    const h = addMany.mock.calls[0]![0];
+    expect(h).toMatchObject({ profile: "default", how: "import", origin: null, reason: "ajouter des adresses à votre passeport" });
+    expect(JSON.stringify(h.drafts)).toContain("Aubrac");
+    expect(JSON.stringify(h.drafts)).not.toContain("Evil");
+  });
+
+  it("an unknown key is ignored, and nothing is asked when no row is left", async () => {
+    const { i, addMany } = setup();
+    await i.proposals("chrome");
+    const r = await i.add("default", [{ key: "p99", as: "me" }], "chrome");
+    expect(addMany).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ ok: true, added: 0 });
+  });
+
+  it("proche rows write only the name", async () => {
+    const { i, addMany } = setup();
+    const { proposals } = await i.proposals("chrome");
+    const other = proposals.find((p) => p.given === "Jean")!;
+    await i.add("default", [{ key: other.key, as: "proche" }], "chrome");
+    expect(addMany.mock.calls[0]![0].drafts).toEqual([{ field: "proche", value: { given: "Jean", family: "Martin" } }]);
+  });
+
+  it("a source other than the last proposed one is refused", async () => {
+    const { i, addMany } = setup();
+    const { proposals } = await i.proposals("chrome");
+    const r = await i.add("default", [{ key: proposals[0]!.key, as: "me" }], "brave");
+    expect(r.ok).toBe(false);
+    expect(addMany).not.toHaveBeenCalled();
+  });
+
+  it("eraseRessac removes Firefox records only after a successful write", async () => {
+    const bad = setup({ ok: false });
+    let { proposals } = await bad.i.proposals("ressac");
+    await bad.i.add("default", [{ key: proposals[0]!.key, as: "me" }], "ressac", true);
+    expect(bad.remove).not.toHaveBeenCalled();
+    const good = setup();
+    ({ proposals } = await good.i.proposals("ressac"));
+    await good.i.add("default", [{ key: proposals[0]!.key, as: "me" }], "ressac", true);
+    expect(good.remove).toHaveBeenCalledWith(["g1"]);
+    const keep = setup();
+    ({ proposals } = await keep.i.proposals("ressac"));
+    await keep.i.add("default", [{ key: proposals[0]!.key, as: "me" }], "ressac");
+    expect(keep.remove).not.toHaveBeenCalled();
+  });
+});
