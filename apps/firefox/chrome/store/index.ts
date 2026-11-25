@@ -58,6 +58,7 @@ const { TabUnloader } = ChromeUtils.importESModule("moz-src:///browser/component
 // TabUnloader reads browser.tabs.min_inactive_duration_before_unload once, at its import (before memoryPrefs applies):
 // without an explicit floor, its unloads (the memory watcher's included, it calls this same object) read the live pref.
 const PATCHED = Symbol.for("ressac.unloadFloor");
+const CRITICAL_UNLOADS = 3;
 if (!TabUnloader[PATCHED]) {
   TabUnloader[PATCHED] = true;
   for (const name of ["unloadTabAsync", "unloadLeastRecentlyUsedTab"]) {
@@ -629,9 +630,12 @@ async function start(): Promise<RessacStore> {
   // macOS runs short of memory (browser.lowMemoryResponseMask, ressac.js): the host unloads the models and stops an unused machine.
   // Once as it starts: « low-memory-ongoing » repeats every 10 s while it lasts, and would kill a model the user just reloaded.
   Services.obs.addObserver((_s: unknown, _t: string, data: string) => data !== "low-memory-ongoing" && agent.notify("memory.pressure"), "memory-pressure");
-  // Critical macOS pressure while saving memory (the host checks every 10 s): the least recently used eligible tab
-  // unloads now, without the inactivity floor; Firefox's rules and our undiscardable flag still spare the rest.
-  agent.on("memory.critical", () => void TabUnloader.unloadTabAsync(0));
+  // Critical macOS pressure while saving memory (the host checks every 10 s): the 3 least recently used eligible tabs
+  // unload now, without the inactivity floor (jetsam kills within seconds, one tab per check was too slow after a wake);
+  // Firefox's rules and our undiscardable flag still spare the rest.
+  agent.on("memory.critical", async () => {
+    for (let i = 0; i < CRITICAL_UNLOADS && (await TabUnloader.unloadLeastRecentlyUsedTab(0).catch(() => false)); i++);
+  });
   // Registered before any UI listener: the UI reads `access` once it is updated.
   agent.on("access", (e: AccessState) => (access = e));
   agent.on("telemetryError", (e: ReportedError) => telemetry.report({ ...e, source: "host" }));

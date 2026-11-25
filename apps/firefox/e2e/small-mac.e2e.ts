@@ -331,7 +331,7 @@ describe("small Mac, critical memory pressure", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("unloads a background tab inactive under 3 min right away, never the shown tab nor a kept essential", { timeout: 90_000 }, async () => {
+  it("at critical: unloads background tabs inactive under 3 min, three at once, and relieves once; never the shown tab nor a kept essential", { timeout: 90_000 }, async () => {
     // Marionette turns tab unloading off for its sessions: back on, as in use.
     await n.execute(`Services.prefs.setBoolPref("browser.tabs.unloadOnLowMemory", true);`);
     const windowId = (await state(n)).windows[0]!.id;
@@ -345,17 +345,29 @@ describe("small Mac, critical memory pressure", () => {
     await dispatch(n, { type: "addEssential", id: await open("/a.html") });
     await dispatch(n, { type: "setKeepLoaded", favoriteId: (await state(n)).essentials[0]!.id, keep: true });
     const kept = Object.values((await state(n)).tabs).find((o) => o.link?.type === "essential")!.id;
-    const background = await open("/texte.html");
+    // Three background tabs: a critical check unloads up to three at once.
+    const backgrounds = [await open("/texte.html"), await open("/a.html?second"), await open("/a.html?third")];
     const shown = await open("/b.html");
     expect(await xulOf(kept)).toEqual({ discarded: false, selected: false });
+    const relieves = () => {
+      const file = path.join(dir, "workspace", "fake-machine-calls.log");
+      return existsSync(file) ? readFileSync(file, "utf8").split("\n").filter((l) => l === "relieve").length : 0;
+    };
+    const relievedBefore = relieves();
     await writeFile(level(), "4");
     const end = Date.now() + 30_000;
-    while (!(await xulOf(background))?.discarded && Date.now() < end) await new Promise((r) => setTimeout(r, 250));
-    expect(await xulOf(background)).toEqual({ discarded: true, selected: false });
-    // Still critical: further checks find nothing else to unload.
+    const allDiscarded = async () => (await Promise.all(backgrounds.map(xulOf))).every((t) => t?.discarded);
+    while (!(await allDiscarded()) && Date.now() < end) await new Promise((r) => setTimeout(r, 250));
+    for (const id of backgrounds) expect(await xulOf(id)).toEqual({ discarded: true, selected: false });
+    // Entering critical also unloads the models and stops an unused machine.
+    await waitFor(n, "return true", () => relieves() > relievedBefore, 15_000);
+    const relievedOnce = relieves();
+    // Still critical: further checks find nothing else to unload, and relieve no more (a reloaded model stays).
+    // The window starts after the relief, which came with the first critical check.
     await new Promise((r) => setTimeout(r, 11_000));
     expect(await xulOf(shown)).toEqual({ discarded: false, selected: true });
     expect(await xulOf(kept)).toEqual({ discarded: false, selected: false });
+    expect(relieves()).toBe(relievedOnce);
     await writeFile(level(), "1");
   });
 

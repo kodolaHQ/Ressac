@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { zstdCompressSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Runner } from "../../../packages/kernel/src/index.ts";
-import { QUIT_STOP, UPGRADE, VM_IMAGE, createMachine, engineCopy, type MachineStatus } from "../host/machine";
+import { QUIT_STOP, UPGRADE, VM_IMAGE, createMachine, createWakeGrace, engineCopy, type MachineStatus } from "../host/machine";
 
 const TEMPLATE = readFileSync(join(__dirname, "../scripts/vm/lima.yaml"), "utf8");
 const dirs: string[] = [];
@@ -159,6 +159,37 @@ describe("the workshop machine", () => {
     expect(stops(w)).toBe(0);
     busy = false;
     await vi.waitFor(() => expect(stops(w)).toBe(1));
+  });
+
+  it("createWakeGrace: false for graceMs after a jump of the clock (a wake), true otherwise", () => {
+    let t = 1_000_000;
+    const g = createWakeGrace(120_000, () => t);
+    expect(g.ok()).toBe(true);
+    t += 5_000;
+    g.tick();
+    expect(g.ok()).toBe(true);
+    t += 3_600_000; // asleep an hour: the first look after it sees the wake
+    expect(g.ok()).toBe(false);
+    for (let i = 0; i < 23; i++) (t += 5_000), g.tick(); // awake, ticking every 5 s: 115 s since the wake
+    expect(g.ok()).toBe(false);
+    t += 5_000;
+    expect(g.ok()).toBe(true);
+  });
+
+  it("a Mac's sleep counts as idle time: the first poll after a long sleep stops the machine", async () => {
+    const w = world({ instance: { status: "Stopped" } });
+    const m = machine(w, { idleMs: 60_000 });
+    await m.wake("user");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(stops(w)).toBe(0);
+    // Two minutes asleep: the wall clock moved, the poll ticks did not run in between.
+    const real = Date.now.bind(Date);
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => real() + 120_000);
+    try {
+      await vi.waitFor(() => expect(stops(w)).toBe(1));
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("the idle delay is read at each poll: a change applies to a machine already running", async () => {
