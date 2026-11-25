@@ -2,6 +2,7 @@ import { expect, test, vi } from "vitest";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { domainToASCII } from "node:url";
 import { createHash } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -540,4 +541,233 @@ test("a search query with a whole word of a masked name pauses like a read value
       await pending;
     });
   }
+});
+
+test("an address the agent writes with a host word read only in the user's sources gets a red line; a word seen on the web, the source's own host and a masked name do not", async () => {
+  const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
+  const web: TabInfo = { id: "web", title: "Annuaire", url: "https://annuaire.example/lyon", space: "perso", agentReached: true };
+  const pages = {
+    banque: { text: "Banque Ardoise — relevé\nVIR SALAIRE VERRERIES GERLAND\nCB LUMEN MAISON 42,90\nPRLV CRISTALLERIE RHODANIENNE" },
+    web: { text: "Les fabricants de Lyon : Verreries Gerland, Cristallerie Rhodanienne" },
+    mail: { text: "De : Hélène Marceau <secretariat@cabinet-dr-marceau.test>" },
+  };
+  const bridge = bridgeWith(pages, {}, [user, bank, web]);
+  await serve({ bridge, outflow: new Outflow() }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    expect((await call("read_tab", { id: "banque" }, t)).text).toContain("VERRERIES GERLAND");
+    expect(await danger("https://www.verreries-gerland.test/")).toBe("Adresse construite avec un nom lu dans banque-ardoise.test : ve••••es");
+    expect(await danger("https://lumen-maison.test/contact")).toBe("Adresse construite avec un nom lu dans banque-ardoise.test : l••••n");
+    // The source's own site is the user's: opening it is no leak.
+    expect(await danger("https://www.banque-ardoise.test/aide")).toBeUndefined();
+    // A path word is not judged, only the host.
+    expect(await danger("https://exemple.test/verreries")).toBeUndefined();
+    // The masked name keeps its own line.
+    await call("read_tab", { id: "mail" }, t);
+    expect(await danger("https://www.cabinet-dr-marceau.test/")).toBe("Contient un nom masqué, lu dans mail.example-novacourriel.test : M••••u");
+    // Words also seen on the open web, never written by the agent before: no line.
+    await call("read_tab", { id: "web" }, t);
+    expect(await danger("https://cristallerie-rhodanienne.test/")).toBeUndefined();
+  });
+});
+
+test("source words: a search of them does not clear them, joined words and an accented host match, history names its kind", async () => {
+  const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
+  const history = { results: [{ url: "https://www.marmiton.test/recette", title: "Gratin de Lucette Bouvreuil", lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "", byUser: true }] };
+  const bands: (Band | null)[] = [];
+  const search = new SearchSessions({ show: (_id, band) => bands.push(band) });
+  const outflow = new Outflow();
+  const bridge = bridgeWith({ banque: { text: "VIR SALAIRE VERRERIES GERLAND\nCB BOULANGERIE CHÂTEAUNEUF" } }, { search: { privateWindows: [], failing: [], hanging: [] }, history, widgetData: true }, [user, bank]);
+  await serve({ bridge, search, outflow, settleMs: 0, emptySpanMs: 0 }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    await call("read_tab", { id: "banque" }, t);
+    // The agent searches the words itself: the results show them on the web, the address still gets its line.
+    const found = await call("search_web", { query: "verreries gerland", goal: "but" }, t);
+    expect(found.text).toContain("verreries");
+    expect(bands.some((b) => b?.text.includes("pause"))).toBe(false);
+    expect(await danger("https://www.verreries-gerland.test/")).toBe("Adresse construite avec un nom lu dans banque-ardoise.test : ve••••es");
+    // Two words of the source joined in one host label.
+    expect(await danger("https://verreriesgerland.test/")).toBe("Adresse construite avec un nom lu dans banque-ardoise.test : verr••••land");
+    // An accented host, as Firefox gives it (punycode).
+    expect(await danger(`https://${domainToASCII("boulangerie-châteauneuf.test")}/`)).toContain("lu dans banque-ardoise.test");
+    // A history line is named as the user's history, not as the site visited.
+    await call("search_history", { query: "gratin" }, t);
+    expect(await danger("https://bouvreuil-traiteur.test/")).toBe("Adresse construite avec un nom lu dans votre historique : bo••••il");
+  });
+});
+
+test("source words: the agent's own address keeps them after its page shows them; pairs never join across lines", async () => {
+  const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
+  const site: TabInfo = { id: "site", title: "Verreries Gerland", url: "https://www.verreries-gerland.test/", space: "perso", agentReached: true };
+  const pages = { banque: { text: "VIR SALAIRE VERRERIES GERLAND\nAccéder à mon\ncompte" }, site: { text: "Verreries Gerland, verriers à Lyon" } };
+  const bridge = bridgeWith(pages, {}, [user, bank, site]);
+  await serve({ bridge, outflow: new Outflow() }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    await call("read_tab", { id: "banque" }, t);
+    expect(await danger("https://www.verreries-gerland.test/")).toContain("ve••••es");
+    // The page it opened shows the name on the web: the agent wrote it first, the line stays.
+    await call("read_tab", { id: "site" }, t);
+    expect(await danger("https://www.verreries-gerland.test/contact")).toContain("ve••••es");
+    // « mon » and « compte » sit on two lines: no « moncompte ».
+    expect(await danger("https://moncompte.test/")).toBeUndefined();
+  });
+});
+
+test("source words: an address that gets another red line still keeps its host words from its page", async () => {
+  const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
+  const site: TabInfo = { id: "site", title: "Verreries Gerland", url: "https://www.verreries-gerland.test/", space: "perso", agentReached: true };
+  const pages = { banque: { text: "VIR SALAIRE VERRERIES GERLAND REF X7K2Q9TR4M8W" }, site: { text: "Verreries Gerland, verriers à Lyon" } };
+  const bridge = bridgeWith(pages, {}, [user, bank, site]);
+  await serve({ bridge, outflow: new Outflow() }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    await call("read_tab", { id: "banque" }, t);
+    // Another line wins (an identifier read in the statement), and the host words are still the agent's own.
+    expect(await danger("https://www.verreries-gerland.test/?ref=X7K2Q9TR4M8W")).toMatch(/^Contient/);
+    await call("read_tab", { id: "site" }, t);
+    expect(await danger("https://www.verreries-gerland.test/contact")).toContain("ve••••es");
+  });
+});
+
+test("a pinned page's title, state and text never give back the value its handle masks: the label stands in", async () => {
+  // A page without <title>: Firefox shows the bare address, the masked value in clear.
+  const bare = PROFILE_URL.replace(/^https:\/\//, "");
+  const encoded = `${HOST}/u/${encodeURIComponent(MAIL)}`;
+  const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: `Profil de ${MAIL} — ${encoded}` } }, { search: { privateWindows: [], failing: [], hanging: [] } });
+  const search = new SearchSessions({ show: () => {} });
+  await serve({ bridge, search, settleMs: 0, emptySpanMs: 0 }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+    const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+    const label = masked.match(/⟨email-[a-z0-9]{8}⟩/)![0];
+    // The agent's own tab, on the web zone, opened from the handle.
+    await call("navigate", { id: "copie", url: masked }, t);
+    bridge.editTab("copie", { title: bare });
+    for (const [name, args] of [["read_tab", { id: "copie" }], ["list_tabs", {}]] as const) {
+      const out = (await call(name, args, t)).text;
+      expect(out, name).not.toContain("camille.exemple");
+      expect(out, name).toContain(`${label}@novacourriel.test`);
+    }
+    // A title holding the value among other words.
+    bridge.editTab("copie", { title: `Profil de ${MAIL} – Novacourriel` });
+    const titled = (await call("read_tab", { id: "copie" }, t)).text;
+    expect(titled).toContain(`Titre : Profil de ${label}@novacourriel.test – Novacourriel`);
+    expect(titled).not.toContain("camille.exemple");
+    // read_pages on the handle: the search tab's title is the real address.
+    const pages = (await call("read_pages", { urls: [masked], reason: "r" }, t)).text;
+    expect(pages).not.toContain("camille.exemple");
+    expect(pages).toContain(label);
+  });
+});
+
+test("the history of a page opened from a handle gives its value back as the label, in search_history and read_history", async () => {
+  const bare = PROFILE_URL.replace(/^https:\/\//, "");
+  const history = {
+    results: [{ url: PROFILE_URL, title: bare, lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: `Profil de ${MAIL}`, byUser: false }],
+    texts: [{ url: PROFILE_URL, title: bare, date: "2026-11-19T10:00:00.000Z", text: `Profil de ${MAIL}` }],
+  };
+  const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: "rien" } }, { history, widgetData: true });
+  await serve({ bridge }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+    const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+    const label = masked.match(/⟨email-[a-z0-9]{8}⟩/)![0];
+    await call("navigate", { id: "copie", url: masked }, t);
+    for (const [name, args] of [["search_history", { query: "profil" }], ["read_history", { url: PROFILE_URL }]] as const) {
+      const out = (await call(name, args, t)).text;
+      expect(out, name).not.toContain("camille.exemple");
+      expect(out, name).toContain(`${label}@novacourriel.test`);
+    }
+  });
+});
+
+test("a handle's values: relabelled where a granted redirect took them, never where a refused one did not, and in the opened page's links", async () => {
+  const track = `https://evil.test/r?u=${MAIL}`;
+  for (const grant of [true, false]) {
+    const history = { results: [{ url: track, title: `evil.test/r?u=${MAIL}`, lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "", byUser: false }] };
+    const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: "Profil", links: [{ text: "Partager", url: `https://c.test/?q=${MAIL}` }] } }, { history, widgetData: true, address: grant });
+    bridge.redirects.set(PROFILE_URL, track);
+    await serve({ bridge }, async ({ call, s, masker }) => {
+      masker.open("A", "W1");
+      const t = s.openSession("W1", undefined, "A");
+      const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+      const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+      const label = masked.match(/⟨email-[a-z0-9]{8}⟩/)![0];
+      await call("navigate", { id: "copie", url: masked }, t);
+      const rows = (await call("search_history", { query: "evil" }, t)).text;
+      if (grant) {
+        expect(rows).not.toContain("camille.exemple");
+        expect(rows).toContain(label);
+        // The opened page's own links: the page got the value, its link lines show the label.
+        const page = (await call("read_tab", { id: "copie", links: true }, t)).text;
+        expect(page).not.toContain("camille.exemple");
+        expect(page).toContain(`https://c.test/?q=${label}@novacourriel.test`);
+      } else {
+        // Refused: the value never reached evil.test, a guess there gets no answer.
+        expect(rows).toContain(MAIL);
+      }
+    });
+  }
+});
+
+test("a handle's origin is recorded once its request leaves: a site app sent there, a load that then fails", async () => {
+  const app: TabInfo = { id: "site:courrier", title: "Courrier", url: `${HOST}/inbox`, space: "", site: "courrier", domain: "mail.example-novacourriel.test" };
+  for (const way of ["site", "failing"] as const) {
+    const history = { results: [{ url: PROFILE_URL, title: PROFILE_URL.replace(/^https:\/\//, ""), lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "", byUser: false }] };
+    const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: "rien" } }, { history, widgetData: true, sites: { courrier: ["mail.example-novacourriel.test"] } }, [user, copy, app]);
+    if (way === "failing") {
+      const navigate = bridge.navigate.bind(bridge);
+      bridge.navigate = async (...a: Parameters<typeof navigate>) => {
+        await navigate(...a);
+        throw new Error("délai dépassé");
+      };
+    }
+    await serve({ bridge }, async ({ call, s, masker }) => {
+      masker.open("A", "W1");
+      const t = s.openSession("W1", undefined, "A");
+      const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+      const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+      await call("navigate", { id: way === "site" ? app.id : "copie", url: masked, reason: "r" }, t);
+      expect(bridge.calls.some((c) => c.method === "navigate" && c.args[1] === PROFILE_URL), way).toBe(true);
+      const rows = (await call("search_history", { query: "profil" }, t)).text;
+      expect(rows, way).not.toContain("camille.exemple");
+    });
+  }
+});
+
+test("source words: the hosts of the user's open source tabs never raise the line, even read in another source", async () => {
+  const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
+  const bridge = bridgeWith({ mail: { text: "Votre relevé Ardoise est disponible\nVIR SALAIRE VERRERIES GERLAND" } }, {}, [user, bank]);
+  await serve({ bridge, outflow: new Outflow() }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    await call("read_tab", { id: "mail" }, t);
+    expect(await danger("https://www.banque-ardoise.test/")).toBeUndefined();
+    expect(await danger("https://banqueardoise.test/")).toBeUndefined();
+    expect(await danger("https://www.verreries-gerland.test/")).toContain("lu dans mail.example-novacourriel.test");
+  });
 });

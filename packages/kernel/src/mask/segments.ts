@@ -40,7 +40,8 @@ export class Segments {
     return this.tag(value, "verbatim");
   }
 
-  apply(text: string, table: LabelTable): string {
+  /** `shown`, if given, receives each tagged part as masked, with its zone and origin: what the agent was shown of it. */
+  apply(text: string, table: LabelTable, shown?: (masked: string, zone: Zone, origin: string | null) => void): string {
     let out = "";
     let at = 0;
     for (const m of text.matchAll(TAGGED)) {
@@ -50,6 +51,7 @@ export class Segments {
       else {
         const masked = mask(m[2]!, { table, zone: tag?.zone ?? "web", origin: tag ? tag.origin : null });
         tag?.seen?.(masked);
+        if (tag) shown?.(masked, tag.zone, tag.origin);
         out += masked;
       }
       at = m.index + m[0].length;

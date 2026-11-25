@@ -1,7 +1,7 @@
 import type { LabelType } from "./detectors.js";
 import { maskText } from "./mask.js";
 import { valueName } from "./names.js";
-import { LABELS, LabelTable } from "./table.js";
+import { LABELS, LabelTable, type Entry } from "./table.js";
 import { ConversationLock, type WorkspaceLock } from "./lock.js";
 import type { PassportOrigins, PassportRef, PassportStore } from "./passport.js";
 
@@ -111,6 +111,16 @@ export class Masker {
   /** Some lock holds: a conversation's, the main token's or the workspace's. */
   locked(): boolean {
     return this.locks().some((l) => l.locked());
+  }
+
+  /** Every value revealed in a conversation, with the origin it was revealed from (null: none, a passport value). */
+  revealedValues(): { entry: Entry; from: string | null }[] {
+    return [...this.sessionLocks].flatMap(([s, lock]) =>
+      lock.revealedFrom().flatMap(({ label, from }) => {
+        const entry = this.table(s).resolve(label);
+        return entry ? [{ entry, from }] : [];
+      }),
+    );
   }
 
   /** How the cards name every revealed value (« votre code »), never the value. */

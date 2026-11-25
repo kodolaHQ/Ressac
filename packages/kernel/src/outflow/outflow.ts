@@ -74,6 +74,12 @@ interface Win {
   /** Addresses of the links shown to the agent with their piece (`""`: a label that is none), newest last: a link opened
    *  by its address (`open_tab`, `navigate {url}`, `read_pages`) keeps the label it was shown with. */
   labels: Map<string, string>;
+  /** Folded words read in the user's sources → where (`shownWords`), oldest first. */
+  sourceWords: Map<string, string>;
+  /** Folded words the agent was shown on the web, oldest first. */
+  webWords: Set<string>;
+  /** Source words the agent sent out itself (a search): a page showing them afterwards does not make them public. */
+  sentWords: Set<string>;
 }
 
 // Memory follows the indexed pieces: measured 6.6 MB of heap for 45 000 distinct pieces (Node 22, 32-character
@@ -106,6 +112,13 @@ const PAGER_SPAN = 8;
 const LABELS_MAX = 2000;
 // A query is kept up to 500 characters: longer is prose, not a frame around a code.
 const SENT_LENGTH_MAX = 500;
+// Words of 4+ letters shown to the agent, folded, and adjacent pairs joined: read in the user's sources (with where) and
+// seen on the web; the source words the agent sent out itself. 2.2 MB measured per window with both full (12-letter words,
+// Node 22); oldest go first.
+// shortcut: a source word read before 20 000 newer ones is forgotten (no red line); a longer memory needs more heap.
+const SOURCE_WORDS_MAX = 20_000;
+const WEB_WORDS_MAX = 10_000;
+const SENT_WORDS_MAX = 2000;
 const DIGIT_CHUNK = 6;
 const TEXT_CHUNK = 8;
 
@@ -243,6 +256,9 @@ export class Outflow {
         sent: [],
         clicks: new Map(),
         labels: new Map(),
+        sourceWords: new Map(),
+        webWords: new Set(),
+        sentWords: new Set(),
       };
       this.wins.set(id, w);
     }
@@ -516,6 +532,7 @@ export class Outflow {
 
   /** A search that went to the engine: kept, once the window read private data, to judge the next ones as a series. */
   sent(win: string, query: string): void {
+    this.wrote(win, query);
     const w = this.wins.get(win);
     if (!w?.privateRead) return;
     w.sent.push(series(query.slice(0, SENT_LENGTH_MAX)));
@@ -599,6 +616,37 @@ export class Outflow {
     return !!w && ` ${w.typedWords} \n ${words(w.buffer)} `.normalize("NFD").replace(/\p{M}/gu, "").includes(` ${word} `);
   }
 
+  /**
+   * The words of 4 letters or more of a text the agent was shown: from the user's sources (`from.source`: where, as a card
+   * names it; `from.host`: that source's own site, whose words are the user's, never kept) or, without `from`, from the web.
+   */
+  shownWords(win: string, text: string, from?: { source: string; host?: string }): void {
+    const w = this.win(win);
+    const own = new Set(from?.host ? shownForms(from.host) : []);
+    for (const word of new Set(shownForms(text))) {
+      if (!from) bounded(w.webWords, word, WEB_WORDS_MAX);
+      else if (!own.has(word)) {
+        w.sourceWords.delete(word);
+        w.sourceWords.set(word, from.source);
+        if (w.sourceWords.size > SOURCE_WORDS_MAX) w.sourceWords.delete(w.sourceWords.keys().next().value!);
+      }
+    }
+  }
+
+  /** The agent sent `text` out itself (a query, an address it wrote): its source words stay its own, whatever the web shows after. */
+  wrote(win: string, text: string): void {
+    const w = this.wins.get(win);
+    for (const word of w ? shownForms(text) : []) if (w!.sourceWords.has(word)) bounded(w!.sentWords, word, SENT_WORDS_MAX);
+  }
+
+  /** The first of `words` (folded) read in the user's sources and never shown on the web nor typed by the user, with where. */
+  sourceWord(win: string, words: readonly string[]): { word: string; source: string } | undefined {
+    const w = this.wins.get(win);
+    if (!w) return undefined;
+    const word = words.find((x) => w.sourceWords.has(x) && (w.sentWords.has(x) || !w.webWords.has(x)) && !this.typedWord(win, x));
+    return word ? { word, source: w.sourceWords.get(word)! } : undefined;
+  }
+
   /** A new conversation in the window: what the user typed before is no longer theirs to send; what was read stays. */
   forgetTyped(win: string): void {
     const w = this.wins.get(win);
@@ -614,6 +662,24 @@ export class Outflow {
     this.wins.delete(win);
   }
 }
+
+/** The words of 4 letters or more of `s`, lower case, accents dropped: « VERRERIES-Gérland » → verreries, gerland. */
+export const foldedWords = (s: string) =>
+  s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().split(/[^\p{L}]+/u).filter((x) => x.length >= 4);
+
+/** `foldedWords`, plus each two adjacent words joined (« verreries gerland » → verreriesgerland), as a host may write them. */
+// Pairs only within a line or field, of two 4+-letter words: « mon » + « compte » across fields is no name.
+const shownForms = (s: string) =>
+  s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().split(/[\r\n\t]+/).flatMap((line) => {
+    const t = line.split(/[^\p{L}]+/u).filter((x) => x.length >= 4);
+    return [...t, ...t.slice(1).map((x, i) => t[i]! + x)];
+  });
+/** Adds `x` to `set` as its newest, dropping the oldest past `max`. */
+const bounded = (set: Set<string>, x: string, max: number) => {
+  set.delete(x);
+  set.add(x);
+  if (set.size > max) set.delete(set.values().next().value!);
+};
 
 /** `s` as words: lowercased, letters, digits and `@` only, single spaces. */
 const words = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}@]+/gu, " ").trim();

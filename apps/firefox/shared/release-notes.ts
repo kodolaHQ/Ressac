@@ -7,6 +7,16 @@ export type ReleaseVideo = { url: string; title: string; poster?: "passport" };
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[]; video?: ReleaseVideo }[] = [
   {
+    version: "0.1.28",
+    date: "novembre 2026",
+    items: [
+      "Passeport : l'agent ne peut plus glisser un nom que Ressac lui cache dans une adresse ou une recherche (par exemple le nom de votre médecin dans le nom d'un site). Une ligne rouge s'affiche et Ressac vous demande d'abord.",
+      "Passeport : une adresse que l'agent fabrique avec un mot lu seulement dans vos onglets, votre historique ou vos favoris (le nom de votre employeur sur un relevé, par exemple) affiche aussi une ligne rouge avant de partir.",
+      "Passeport : une valeur que Ressac a remplie à la place de l'agent ne lui revient plus en clair par le titre de la page, l'historique, une redirection ou un lien.",
+      "Passeport : après que vous avez montré une valeur à l'agent, elle ne peut partir que vers le site d'où elle vient. L'envoyer vers un autre de vos sites, votre messagerie par exemple, affiche la ligne rouge de la conversation verrouillée.",
+    ],
+  },
+  {
     version: "0.1.27",
     date: "novembre 2026",
     items: [
