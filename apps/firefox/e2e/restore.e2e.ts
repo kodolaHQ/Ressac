@@ -7,7 +7,7 @@ import { dispatch, inWindow, newWindow, state, waitFor, waitReady, waitWindowCou
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { inUi, pressKeys, waitUi } from "./ui";
+import { click, inUi, noticeCount, pressKeys, visibleNotice, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let dataDir: string;
@@ -211,22 +211,20 @@ describe("restore at startup", () => {
     expect((await state(m)).settings.engine).toBe("qwant");
   });
 
-  it("an unreadable session: one notification, with the .corrupt path", async () => {
+  it("an unreadable session: one visible sidebar card, with the .corrupt path; « D'accord » hides it for good", async () => {
     fresh();
     dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
     await writeFile(path.join(dataDir, "session.json"), "{ not json");
     const m = await start();
     const aside = (await readdir(dataDir)).find((n) => n.endsWith(".corrupt"))!;
-    const text = await waitFor<string[]>(
-      m,
-      `return (async () => { const nb = window.gNotificationBox; return [...nb.allNotifications].filter((n) => n.getAttribute("value") === "ressac-session-set-aside").map((n) => n.label?.textContent ?? n.messageText?.textContent ?? n.label ?? ""); })();`,
-      (v) => v.length > 0,
-    );
-    await new Promise((r) => setTimeout(r, 500)); // a duplicate would show up by now
-    const again = await m.execute<number>(`return [...window.gNotificationBox.allNotifications].filter((n) => n.getAttribute("value") === "ressac-session-set-aside").length`);
-    expect(again).toBe(1);
-    expect(text).toHaveLength(1);
-    expect(text[0]).toContain(path.join(dataDir, aside));
-    expect(text[0]).toContain("Ressac repart avec une session neuve");
+    const text = await visibleNotice(m, "session-set-aside");
+    expect(await noticeCount(m, "session-set-aside")).toBe(1);
+    expect(text).toContain(path.join(dataDir, aside));
+    expect(text).toContain("Ressac repart avec une session neuve");
+    // « D'accord » in one window: gone there and in a window opened after.
+    await click(m, '[data-notice="session-set-aside"] [data-testid="notice-ok"]');
+    await waitUi(m, `return !doc.querySelector('[data-notice="session-set-aside"]')`);
+    const other = await newWindow(m);
+    expect(await inWindow(m, other, () => noticeCount(m, "session-set-aside"))).toBe(0);
   });
 });

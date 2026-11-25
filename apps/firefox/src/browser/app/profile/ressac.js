@@ -58,9 +58,9 @@ pref("browser.ml.chat.enabled", false);
 // AMO and many sites look for the Firefox/ token in the user agent: nsHttpHandler appends Firefox/<version> when this is on.
 pref("general.useragent.compatMode.firefox", true);
 
-// Crash and error reports (chrome/store/telemetry.ts): on unless turned off; the first-run notice says so once.
+// Crash and error reports (chrome/store/telemetry.ts): on unless turned off; a sidebar card says so once (sent only once it is answered).
 pref("ressac.telemetry.enabled", true);
-pref("ressac.telemetry.noticeShown", false);
+pref("ressac.telemetry.noticeSeen", false);
 // Firefox's crash reports (minidumps) can hold page data and are not scrubbed: only when the user turns them on.
 pref("ressac.telemetry.crashReports", false);
 

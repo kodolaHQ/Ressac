@@ -247,6 +247,8 @@ export interface WindowState {
   frame: FrameBounds | null;
 }
 
+export type Notice = { id: "session-set-aside"; path: string } | { id: "data-set-aside"; backup: string; reason: "format" | "reset" } | { id: "telemetry" };
+export const NOTICE_IDS = ["session-set-aside", "data-set-aside", "telemetry"] as const satisfies readonly Notice["id"][];
 export type UpdatePhase = "idle" | "checking" | "downloading" | "ready" | "failed" | "unreachable" | "unwritable" | "disabled";
 export interface UpdateShown {
   phase: UpdatePhase;
@@ -320,6 +322,8 @@ export interface BrowserState {
   };
   /** The app update, as Firefox's updater reports it; null until known. Volatile, never saved. */
   update: UpdateShown | null;
+  /** Start-up notices shown as sidebar cards until answered (chrome/store/index.ts). Volatile, never saved. */
+  notices: Notice[];
   /** The language shown, `settings.language` resolved by the chrome against the Mac's languages. Volatile, never saved. */
   locale: string;
   /** The AI-only setup is showing (after enabling AI from Réglages). Volatile, never saved. */

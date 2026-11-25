@@ -10,7 +10,6 @@ import { cutFrameNetwork } from "./frame-network";
 import { setupPopup } from "./popup";
 import { mountSiteMenu } from "./site-menu";
 import { refuseSiteTabs, setupSiteSmallWindow, setupSiteWindow, siteIdOf, siteOfContainer } from "./site-window";
-import { format } from "../../shared/i18n";
 import { installCommandsMenu } from "./commands-menu";
 import type { WindowController } from "./controller";
 
@@ -92,7 +91,7 @@ window.addEventListener(
     const ready: Promise<RessacStore> = ChromeUtils.importESModule(STORE).ready;
     // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.
     void Promise.all([ready, window.delayedStartupPromise]).then(([store]) => {
-      const { windowId, first } = store.windows.claim(window);
+      const { windowId } = store.windows.claim(window);
       let controller: WindowController;
       try {
         controller = window.ressacWindow = createController(window.gBrowser, frame, agentFrame, store, windowId);
@@ -103,43 +102,6 @@ window.addEventListener(
       }
       mountSiteMenu(window, store, windowId);
       installCommandsMenu(window, store, controller);
-      // Once per start, in the first window only: the unreadable session was kept aside.
-      if (first && store.setAside) {
-        void window.gNotificationBox.appendNotification(
-          "ressac-session-set-aside",
-          {
-            label: format(store.state.locale, "chrome-session-set-aside", { path: store.setAside }),
-            priority: window.gNotificationBox.PRIORITY_WARNING_HIGH,
-          },
-          [],
-        );
-      }
-      if (first && store.dataSetAside) {
-        const { backup, reason } = store.dataSetAside;
-        void window.gNotificationBox.appendNotification(
-          "ressac-data-set-aside",
-          {
-            label: format(store.state.locale, reason === "reset" ? "chrome-data-reset" : "chrome-data-unknown-format", { backup }),
-            priority: reason === "reset" ? window.gNotificationBox.PRIORITY_INFO_HIGH : window.gNotificationBox.PRIORITY_WARNING_HIGH,
-          },
-          [],
-        );
-      }
-      // Once ever: error reports go out, and how to turn them off.
-      if (first && store.telemetryActive && !Services.prefs.getBoolPref("ressac.telemetry.noticeShown", false)) {
-        Services.prefs.setBoolPref("ressac.telemetry.noticeShown", true);
-        void window.gNotificationBox.appendNotification(
-          "ressac-telemetry",
-          {
-            label: format(store.state.locale, "agent-telemetry-notice"),
-            priority: window.gNotificationBox.PRIORITY_INFO_HIGH,
-          },
-          [
-            { label: format(store.state.locale, "chrome-telemetry-stop"), callback: () => Services.prefs.setBoolPref("ressac.telemetry.enabled", false) },
-            { label: format(store.state.locale, "chrome-telemetry-ok"), callback: () => {} },
-          ],
-        );
-      }
       // The UI reads window.ressacWindow as it loads. Without the UI's network guard, neither loads.
       if (!sidebarMayLoad || !agentMayLoad) return;
       frame.src = "chrome://browser/content/ressac/sidebar.html";

@@ -1524,3 +1524,13 @@ test("removeEssential on an app essential: its tab joins the list in its contain
   expect(order()).toEqual([o[0]!.id]);
   expect(sitePlacement(e, "whatsapp")).toBe("none");
 });
+
+test("dismissNotice: removes that notice only; an absent one changes nothing", () => {
+  e = { ...e, notices: [{ id: "session-set-aside", path: "/d/session.json.corrupt" }, { id: "telemetry" }] };
+  ag({ type: "dismissNotice", id: "telemetry" });
+  expect(e.notices).toEqual([{ id: "session-set-aside", path: "/d/session.json.corrupt" }]);
+  const before = e;
+  ag({ type: "dismissNotice", id: "data-set-aside" });
+  expect(e).toBe(before);
+  expect(SchemaAction.safeParse({ type: "dismissNotice", id: "other" }).success).toBe(false);
+});
