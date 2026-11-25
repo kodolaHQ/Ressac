@@ -118,6 +118,9 @@ it("a dev-tools request is answered, not hung", { timeout: 90_000 }, async () =>
     const answer = await Promise.race([toolCaller(world)("request_devtools", { id: "tab-mail", rights: ["console"], reason: "Le bouton ne réagit pas." }), until(cards.failed)]);
     expect(answer).toContain("Droits accordés : console");
     expect(world.events.filter((e) => e.t === "card-devtools").map((e) => e.answer)).toEqual(["grant"]);
+    // The mail tab is one of the user's sources: its raw view asks the unlock card (mask-devtools), answered by `card` too.
+    await Promise.race([toolCaller(world)("read_console", { id: "tab-mail" }), until(cards.failed)]);
+    expect(world.events.filter((e) => e.t === "card-devtools-mask").map((e) => e.answer)).toEqual(["grant"]);
     expect(cards.failed()).toBeNull();
   } finally {
     await cards.stop();

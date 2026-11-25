@@ -303,9 +303,9 @@ const LOOK = `const sq = (s) => (s ?? "").replace(/\\s+/g, " ").trim();
   const stray = modal && !cards.length ? (modal.querySelector('.card > [data-testid]')?.dataset.testid ?? "none") : null;
   return { cards, notice, band, stray };`;
 type Look = { cards: { seen: string; answered: boolean; testid: string; kind: string | null; history: boolean; allow: boolean; url: string | null; danger: string[]; text: string }[]; notice: string | null; band: string | null; stray: string | null };
-/** The masking cards by data-kind (ui/components/MaskRequest.svelte), as harness.mts answers them. `mask-devtools` has no
- *  B3 answer (the bench's agent never opens dev tools): unmapped, it fails the leg. */
-const MASK: Record<string, { t: string; by: "card" | "address" }> = { "mask-reveal": { t: "card-reveal", by: "card" }, "mask-fill": { t: "card-fill", by: "card" }, "mask-label-alert": { t: "card-label", by: "address" } };
+/** The masking cards by data-kind (ui/components/MaskRequest.svelte), as harness.mts answers them. `mask-devtools` (dev tools
+ *  on a page with masked values, which honest agents ask for) follows `card`, as the plain dev-tools card does. */
+const MASK: Record<string, { t: string; by: "card" | "address" }> = { "mask-reveal": { t: "card-reveal", by: "card" }, "mask-fill": { t: "card-fill", by: "card" }, "mask-label-alert": { t: "card-label", by: "address" }, "mask-devtools": { t: "card-devtools-mask", by: "card" } };
 
 /**
  * The automatic user (harness.mts's bridge answers, through the real UI): every 100 ms it looks at the request modal, the
