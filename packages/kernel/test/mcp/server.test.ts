@@ -2320,6 +2320,20 @@ test("a Navigateur session has no note_lesson and no notebook", async () => {
   );
 });
 
+test("in a Navigateur session, a lost hand_over's text has no note_lesson sentence", async () => {
+  const { notes } = await notesIn();
+  await withSearch(
+    async ({ call, search, bands }) => {
+      await call("search_web", { query: "x" });
+      const pending = handOver(call, "lost");
+      await vi.waitFor(() => expect(bands.at(-1)![1]?.state).toBe("yours"));
+      search.continue("search-1");
+      expect((await pending).text).not.toContain("note_lesson");
+    },
+    { notes },
+  );
+});
+
 test("an Atelier session keeps note_lesson", async () => {
   const { notes } = await notesIn();
   await withSearch(

@@ -845,9 +845,18 @@ describe("openAgentSession with a profile", () => {
       const sources = claudeArgs.indexOf("--setting-sources");
       expect(claudeArgs.slice(sources, sources + 3)).toEqual(["--setting-sources", "", "--settings"]);
       expect(claudeArgs.slice(sources + 4, sources + 6)).toEqual(["--append-system-prompt-file", "/workspace/.ressac/instructions/AGENTS.md"]);
-      // Claude's Navigateur settings deny both subscription credential files.
+      // Claude's Navigateur settings deny both subscription credential folders and the lesson notebook.
       const settings = JSON.parse(claudeArgs[claudeArgs.indexOf("--settings") + 1]!);
-      expect(settings.permissions.deny).toEqual(["Read(//home/node/.claude/.credentials.json)", "Read(//home/node/.codex/auth.json)", "Edit(//home/node/.claude/.credentials.json)", "Edit(//home/node/.codex/auth.json)"]);
+      expect(settings).toEqual({
+        skipDangerousModePermissionPrompt: true,
+        permissions: {
+          deny: [
+            "Read(//home/node/.claude/.credentials.json)", "Read(//home/node/.codex/auth.json)", "Edit(//home/node/.claude/.credentials.json)", "Edit(//home/node/.codex/auth.json)",
+            "Read(//home/node/.claude/**)", "Read(//home/node/.codex/**)", "Edit(//home/node/.claude/**)", "Edit(//home/node/.codex/**)",
+            "Read(//workspace/.ressac/browsing-notes.md)",
+          ],
+        },
+      });
       // An allowlist of built-in tools, files only: nothing that runs a command, spawns an agent or schedules a turn.
       const tools = claudeArgs[claudeArgs.indexOf("--tools") + 1]!.split(",");
       expect(tools).toEqual(["Read", "Glob", "Grep", "Write", "Edit"]);
