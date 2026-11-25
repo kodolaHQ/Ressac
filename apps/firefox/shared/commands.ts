@@ -2,6 +2,7 @@ import type { Action } from "./api";
 import { format, languageName, LOCALES } from "./i18n";
 import { APPEARANCES, type BrowserState } from "./model";
 import { SEARCH_ENGINES } from "./search";
+import { labOn } from "./tiers";
 import { SHORTCUT_IDS, SHORTCUTS, shortcutLabel, type ShortcutId } from "./shortcuts";
 
 /** Réglages' sections, in its order (ui/components/Settings.svelte). */
@@ -70,3 +71,10 @@ export function browserCommands(state: { locale: string; settings: Settings }): 
     });
   return list;
 }
+
+/** The commands that open a tier-3 feature (the Applications page, design mode). */
+const LAB_COMMANDS = new Set<string>(["apps", "design"]);
+
+/** ⌘T's « Commandes »: every command, without the lab's while it is off (the menu bar keeps its items: fixed ids). */
+export const commandBarCommands = (state: { locale: string; settings: Settings }): BrowserCommand[] =>
+  browserCommands(state).filter((c) => labOn(state.settings) || !LAB_COMMANDS.has(c.id));

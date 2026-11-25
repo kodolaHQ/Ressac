@@ -3,7 +3,7 @@ import type { ActionShown } from "../shared/actions";
 import type { ApplicationShown } from "../shared/api";
 import type { Visit } from "../shared/model";
 import type { ShownSite } from "../shared/sites";
-import { browserCommands, type BrowserCommand } from "../shared/commands";
+import { browserCommands, commandBarCommands, type BrowserCommand } from "../shared/commands";
 import { initialState } from "../core/state/initial-state";
 import { projectSiteApp, siteSiteApp, paramRequest, commandLines, defaultParam, titleBefore, sectionOf, type SiteApp, type SourceTab, type CommandSources } from "../ui/components/command";
 
@@ -183,4 +183,15 @@ test("⌘T finds Réglages › Passeport by its own words (design § 9.1)", () =
   expect(row.label).toBe("Réglages › Passeport");
   for (const w of ["passeport", "identité", "adresse", "réglages"]) expect(row.words).toContain(w);
   expect(browserCommands({ locale: "fr", settings: initialState().settings }).find((c) => c.id === "settings-data")!.words).not.toContain("passeport");
+});
+
+test("commandBarCommands: the apps and design shortcuts only while the effective lab is on", () => {
+  const base = { ...initialState().settings, aiEnabled: true };
+  const ids = (settings: typeof base) => commandBarCommands({ locale: "fr", settings }).map((c) => c.id);
+  expect(ids({ ...base, lab: true })).toEqual(expect.arrayContaining(["apps", "design"]));
+  for (const settings of [{ ...base, lab: false }, { ...base, lab: null }, { ...base, lab: true, aiEnabled: false }]) {
+    expect(ids(settings)).not.toContain("apps");
+    expect(ids(settings)).not.toContain("design");
+    expect(ids(settings)).toContain("settings");
+  }
 });

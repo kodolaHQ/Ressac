@@ -163,7 +163,9 @@ export function createDesign(o: {
   /** The shown language, for the overlays' own texts. */
   locale(): string;
   toFront(f: WindowId): void;
-  /** The effective lab (shared/tiers.ts): off, the mode does not start and the agent panel opens instead (its asleep card with AI off). */
+  /** settings.aiEnabled: off, the mode does not start and the agent panel shows its asleep card instead. */
+  aiOn(): boolean;
+  /** The effective lab (shared/tiers.ts): off with AI on, the mode does not start and says where to turn the lab on. */
   labOn(): boolean;
   /** Opens the window's agent panel, the window in front (design.giveAgent). */
   giveAgent(f: WindowId): void;
@@ -230,6 +232,20 @@ export function createDesign(o: {
   };
   const UNAVAIL = () => format(o.locale(), "chrome-design-unavailable");
   const UNAVAIL_SITE = () => format(o.locale(), "chrome-design-unavailable-site");
+  /** Why nothing happens, in the target's message (top right of its page), as for a tab outside the followed projects. */
+  const message = (t: DesignTarget, v: View, text: string) => {
+    const b = v.browser.getBoundingClientRect();
+    const place = { x: b.x + b.width - MESSAGE_MARGIN - MESSAGE_WIDTH, y: b.y + MESSAGE_MARGIN, width: MESSAGE_WIDTH, height: MESSAGE_HEIGHT };
+    show(targetKey(t), v.win, place, { mode: "message", message: text, project: "", label: "", source: null, destination: null, noDestination: null, warning: null });
+  };
+  /** The lab off: AI off, the agent panel's asleep card; AI on, the lab-off line in the target's message (a site app's bar). */
+  const labOff = (t: DesignTarget) => {
+    if (!o.aiOn()) return void asleep(t.type === "window" ? t.windowId : undefined);
+    const text = format(o.locale(), "settings-lab-off");
+    if (t.type === "site") return o.sites.infoNotice(t.id, text);
+    const v = view(t);
+    if (v) message(t, v, text);
+  };
   const show = (key: string, win: Window, place: { x: number; y: number; width: number; height: number }, shown: Omit<OverlayContext, "locale">) => {
     const ctx: OverlayContext = { ...shown, locale: o.locale() };
     const same = JSON.stringify(contexts.get(key)?.[ctx.mode]) === JSON.stringify(ctx);
@@ -348,7 +364,7 @@ export function createDesign(o: {
     async toggle(t) {
       const key = targetKey(t);
       if (sessions.has(key)) return service.stop(t);
-      if (!o.labOn()) return asleep(t.type === "window" ? t.windowId : undefined);
+      if (!o.labOn()) return labOff(t);
       const site = t.type === "site" ? o.sites.designView(t.id) : null;
       // Unavailable in the site app's window: why, in its bar; nothing injected.
       if (t.type === "site" && !site?.available) return o.sites.infoNotice(t.id, UNAVAIL_SITE());
@@ -365,11 +381,7 @@ export function createDesign(o: {
       }
       if (!r || !wgp || sessions.has(key) || view(t)?.browser !== v.browser || pageOf(v.browser) !== wgp) {
         // A tab outside the followed projects (the host said so): why nothing happens, nothing injected.
-        if (r === null && t.type === "window" && !sessions.has(key) && view(t)?.browser === v.browser) {
-          const b = v.browser.getBoundingClientRect();
-          const place = { x: b.x + b.width - MESSAGE_MARGIN - MESSAGE_WIDTH, y: b.y + MESSAGE_MARGIN, width: MESSAGE_WIDTH, height: MESSAGE_HEIGHT };
-          show(key, v.win, place, { mode: "message", message: UNAVAIL(), project: "", label: "", source: null, destination: null, noDestination: null, warning: null });
-        }
+        if (r === null && t.type === "window" && !sessions.has(key) && view(t)?.browser === v.browser) message(t, v, UNAVAIL());
         return;
       }
       const { browser, win } = v;
@@ -423,7 +435,7 @@ export function createDesign(o: {
       const doc = win.document.documentElement;
       const windowId = (win as any).ressacWindow?.windowId as WindowId | undefined;
       const main = !!windowId && o.windows.get(windowId)?.window === win;
-      if (!o.labOn()) return void asleep(main ? windowId : undefined);
+      if (!o.aiOn()) return void asleep(main ? windowId : undefined);
       const app = o.apps.folderOf(win);
       const choice = chooseDesignTarget({
         app: app,
@@ -432,7 +444,8 @@ export function createDesign(o: {
         otherWindow: !main && !app,
         activeWindow: main ? windowId : undefined,
       });
-      if (choice.type === "site-notice") o.sites.infoNotice(choice.id, UNAVAIL_SITE());
+      // The lab off: toggle says so in the target's message; a site app's notice says the lab first.
+      if (choice.type === "site-notice") o.sites.infoNotice(choice.id, o.labOn() ? UNAVAIL_SITE() : format(o.locale(), "settings-lab-off"));
       else if (choice.type === "target") void service.toggle(choice.target);
     },
 

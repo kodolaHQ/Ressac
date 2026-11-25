@@ -3,6 +3,7 @@
   import { fade } from "svelte/transition";
   import { ARM_MS } from "../../chrome/window/site-banner";
   import { t } from "../i18n.svelte";
+  import { command } from "./command.svelte";
 
   /** Before the lab turns on: what it opens and its known limits. Escape, « Annuler » or the veil turn nothing on. */
   let { accept, close }: { accept: () => void; close: () => void } = $props();
@@ -24,11 +25,15 @@
   });
 
   function keydown(e: KeyboardEvent) {
-    if (e.isComposing) return;
+    // The command bar opened on top keeps the keyboard (Escape, Tab, Enter): the card under it reacts to nothing.
+    if (command.open || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
       close();
-    } else if (e.key === " " && !armed) {
+    } else if (e.key === " " && armed) {
+      // A key up lost (the window left while Space was held) never swallows a later press.
+      spaceEarly = false;
+    } else if (e.key === " ") {
       e.preventDefault();
       spaceEarly = true;
     } else if (e.key === "Enter" && !armed) {
@@ -54,7 +59,7 @@
 <svelte:window onkeydown={keydown} onkeyup={keyup} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="veil" data-armed={armed || undefined} onclick={(e) => e.target === e.currentTarget && close()} out:fade={{ duration: 150 }}>
+<div class="veil" inert={!!command.open} data-armed={armed || undefined} onclick={(e) => e.target === e.currentTarget && close()} out:fade={{ duration: 150 }}>
   <div class="card" bind:this={card} tabindex="-1" role="alertdialog" aria-modal="true" aria-labelledby="lab-card-title" data-testid="lab-card">
     <h2 id="lab-card-title">{t("lab-card-title")}</h2>
     <p>{t("lab-card-intro")}</p>

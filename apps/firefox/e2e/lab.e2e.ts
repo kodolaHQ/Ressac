@@ -10,6 +10,8 @@ import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, pressKeys, waitUi } from "./ui";
+import { openTab } from "./actors";
+import { startServer } from "./server";
 
 // Tier 3 (« labo »): what an old session keeps, and what the host refuses while it is off.
 let w: LaunchedRessac | undefined;
@@ -135,4 +137,55 @@ it("le labo est grisé quand l'IA est éteinte", { timeout: 90_000 }, async () =
   await launch({ lab: false, ai: false });
   await agentSettings();
   expect(await labSwitch()).toEqual({ checked: false, disabled: true });
+});
+
+it("la carte du labo ne prend aucun clic avant d'être armée ; Annuler et le voile n'activent rien", { timeout: 90_000 }, async () => {
+  await launch({ lab: false });
+  await agentSettings();
+  // In one script, in the card's own window: the switch, then « J'ai compris, activer » as soon as the card shows
+  // (a Marionette round trip between the two could outlast ARM_MS). A script click ignores pointer-events: the
+  // handler's own guard is what refuses it.
+  const early = await inUi<boolean>(
+    m,
+    `doc.querySelector(arguments[0]).click();
+     await new Promise((ok) => ui.setTimeout(ok, 0));
+     const accept = doc.querySelector(arguments[1]);
+     if (!accept) return false;
+     accept.click();
+     return true;`,
+    [tid("settings-lab-switch"), tid("lab-card-accept")],
+  );
+  expect(early).toBe(true);
+  // Past ARM_MS, timed in the window that owns the timer: the early click turned nothing on.
+  await inUi(m, "await new Promise((ok) => ui.setTimeout(ok, 600));");
+  expect((await state(m)).settings.lab).toBe(false);
+  await click(m, tid("lab-card-cancel"));
+  await waitUi(m, "return !doc.querySelector(arguments[0])", [tid("lab-card")]);
+  expect((await state(m)).settings.lab).toBe(false);
+  // A click on the veil, outside the card.
+  await click(m, tid("settings-lab-switch"));
+  await waitUi(m, "return !!doc.querySelector(arguments[0])", [tid("lab-card")]);
+  await inUi(m, "const v = doc.querySelector(arguments[0]).parentElement; v.dispatchEvent(new ui.MouseEvent('click', { bubbles: true }));", [tid("lab-card")]);
+  await waitUi(m, "return !doc.querySelector(arguments[0])", [tid("lab-card")]);
+  expect((await state(m)).settings.lab).toBe(false);
+  expect(await actionsAnswer()).toBe("lab-off");
+});
+
+it("⇧⌘D labo éteint : le message dit où l'activer, sans ouvrir le panneau de l'agent", { timeout: 90_000 }, async () => {
+  const server = await startServer();
+  try {
+    await launch({ lab: false });
+    await openTab(m, `${server.url}/page`);
+    await m.execute("gBrowser.selectedBrowser.focus();");
+    await pressKeys(m, "Meta+Shift+d");
+    const message = () =>
+      m.execute<string | null>(
+        `const f = document.getElementById("ressac-design-calque");
+         return f && f.style.display !== "none" ? (f.contentDocument?.querySelector('[data-testid="message-design"]')?.textContent ?? null) : null;`,
+      );
+    await expect.poll(message, { timeout: 10_000 }).toBe("Cette fonction fait partie du labo : Réglages › Agent › Niveau d'usage.");
+    expect((await state(m)).windows[0]!.agentPanelOpen).toBe(false);
+  } finally {
+    await server.close();
+  }
 });

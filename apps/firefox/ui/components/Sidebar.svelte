@@ -18,8 +18,20 @@
   import { t } from "../i18n.svelte";
   import { createSwipe } from "./swipe";
   import { toNextSpace } from "../../core/shortcuts";
+  import { cubicOut } from "svelte/easing";
 
   const key = (id: ShortcutId) => shortcutLabel(id, appState.value?.settings);
+  /**
+   * A tool that comes and goes with the lab: it fades while its room (and the 2 px gap after it) opens or closes along
+   * the row, or the ⋯ column, so the other tools slide instead of jumping. Reduced motion: the fade alone.
+   */
+  const toolSlot = (node: HTMLElement, { duration }: { duration: number }) => {
+    const column = getComputedStyle(node.parentElement!).flexDirection === "column";
+    const size = column ? node.offsetHeight : node.offsetWidth;
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const [dim, edge] = column ? ["height", "margin-bottom"] : ["width", "margin-right"];
+    return { duration, easing: cubicOut, css: (t: number) => `opacity: ${t};${still ? "" : ` ${dim}: ${t * size}px; ${edge}: ${(t - 1) * 2}px; overflow: hidden;`}` };
+  };
 
   let {
     window: win,
@@ -144,6 +156,8 @@
     {#if !aiOn() || labOn()}
     <button
       class="tool"
+      in:toolSlot={{ duration: 300 }}
+      out:toolSlot={{ duration: 150 }}
       style:--i={1}
       data-testid="applications-button"
       aria-label={t("sidebar-tool-apps", { key: key("apps") })}
@@ -153,6 +167,8 @@
     >
     <button
       class="tool"
+      in:toolSlot={{ duration: 300 }}
+      out:toolSlot={{ duration: 150 }}
       style:--i={2}
       data-testid="actions-button"
       aria-label={t("sidebar-tool-actions")}

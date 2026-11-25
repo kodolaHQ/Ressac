@@ -19,7 +19,7 @@
     type SourceTab,
     type CommandSources,
   } from "./command";
-  import { browserCommands } from "../../shared/commands";
+  import { commandBarCommands } from "../../shared/commands";
   import { showSection } from "./Settings.svelte";
   import { walkableTabs } from "../../shared/walkable-tabs";
   import type { ActionShown } from "../../shared/actions";
@@ -103,7 +103,7 @@
   });
 
   // The browser's own features, typed by name: its shortcuts, its settings, Réglages' sections.
-  const commands = $derived(appState.value ? browserCommands(appState.value) : []);
+  const commands = $derived(appState.value ? commandBarCommands(appState.value) : []);
 
   const sources: CommandSources = $derived({ actions, commands, tabs: tabs, siteApps: [...projects, ...sites], history: hist, bookmarks: marks });
 

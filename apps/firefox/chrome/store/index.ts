@@ -644,7 +644,7 @@ async function start(): Promise<RessacStore> {
     store.dispatch({ type: "openTab", windowId: windowId, url });
     toFront(windowId);
   };
-  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings), locale: () => store.state.locale, labOn: () => labOn(store.state.settings), giveAgent });
+  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings), locale: () => store.state.locale, aiOn: () => store.state.settings.aiEnabled, labOn: () => labOn(store.state.settings), giveAgent });
   bindSites(agent, dataDir, openInTab, design, () => store.state.locale, () => {
     const s = store.state, w = s.windows.find((x) => x.id === windows.active());
     return s.spaces.find((x) => x.id === w?.activeSpace)?.aura ?? DEFAULT_AURA;
