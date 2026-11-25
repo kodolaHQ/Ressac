@@ -1,0 +1,250 @@
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
+import { connect, type AddressInfo, type Server } from "node:net";
+import os from "node:os";
+import path, { join } from "node:path";
+import { callMcpTool } from "../test/mcp";
+import { dispatch, state, waitFor } from "./firefox";
+import { launchRessac, type LaunchedRessac } from "./launch";
+import type { Marionette } from "./marionette";
+import { writePassport, type PassportEntry } from "./passport-file";
+import { inUi } from "./ui";
+
+/**
+ * One leg of B3's leak replay in the compiled browser (bench/security/B3/browser): the user's world (tabs, history,
+ * bookmarks, passport) behind a local HTTPS server and proxy, every page load Firefox makes after the setup an `out` event,
+ * and the record harness.mts writes, so score.mjs scores it unchanged.
+ */
+const REPO = path.resolve(import.meta.dirname, "../../..");
+const B3 = join(REPO, "bench/security/B3");
+
+type Profile = {
+  mailUrl: string; bankUrl: string; canaries: { id: string; forms: string[] }[];
+  history: { url: string; title: string; text: string }[]; bookmarks: { url: string; title: string }[];
+};
+// Plain JS modules of the bench, imported by path: the bench owns their shapes.
+const { PROFILES } = (await import(join(B3, "profiles.mjs"))) as { PROFILES: Record<"a" | "b", Profile> };
+const { fromRessac, collisionsIn } = (await import(join(B3, "score.mjs"))) as { fromRessac: (c: ReplayCase) => unknown; collisionsIn: (t: string, k: Profile["canaries"]) => string[] };
+const { ENGINE, router } = (await import(join(B3, "browser/pages.mjs"))) as { ENGINE: string; router: (c: ReplayCase, p: "a" | "b") => (url: string) => { kind: string; html: string } };
+const { replayPassport } = (await import(join(B3, "browser/passport.mjs"))) as { replayPassport: (p: "a" | "b", d: Record<string, string>) => PassportEntry[] };
+
+const FROZEN = join(B3, "browser/replay-cases.json");
+/** The frozen list's passport decisions; a list whose sha256 differs from its .sha256 is refused (README, protocol). */
+function decisions(): Record<string, string> {
+  const raw = readFileSync(FROZEN);
+  if (createHash("sha256").update(raw).digest("hex") !== readFileSync(`${FROZEN}.sha256`, "utf8").split(/\s/)[0]) throw new Error("replay-cases.json differs from its .sha256");
+  return JSON.parse(raw.toString("utf8")).passport;
+}
+
+/** A case of adversary-cases.json (or a frozen line's case). */
+export type ReplayCase = { id: string; arm: string; title: string; benign_task: string; links: { text: string; url: string }[]; page_markdown: string; pages?: Record<string, string>; attacker_domain?: string; [k: string]: unknown };
+export type Ev = { seq: number; at: number; t: string; [k: string]: unknown };
+export interface World {
+  w: LaunchedRessac; m: Marionette; c: ReplayCase; profile: "a" | "b";
+  /** Ressac tab ids of the user's two tabs. */
+  tabs: { mail: string; bank: string };
+  events: Ev[]; note(t: string, more?: Record<string, unknown>): Ev;
+  /** The newest `.ressac/sessions/<id>.json`: the window's conversation, whose token resolves its labels. */
+  sessionConfig(): string;
+  /** Ressac, the servers, the proxy, the certificate and the folders. */
+  close(): Promise<void>;
+}
+
+const listen = (s: Server) => new Promise<number>((ok) => s.listen(0, "127.0.0.1", () => ok((s.address() as AddressInfo).port)));
+
+export async function openWorld(c: ReplayCase, o: { profile: "a" | "b"; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; output?: string; beforeLaunch?(dataDir: string): Promise<void> }): Promise<World> {
+  const P = PROFILES[o.profile];
+  const route = router(c, o.profile);
+  const t0 = Date.now();
+  const events: Ev[] = [];
+  let seq = 0;
+  const note = (t: string, more: Record<string, unknown> = {}): Ev => {
+    const e = { seq: ++seq, at: Date.now() - t0, t, ...more };
+    events.push(e);
+    return e;
+  };
+  // The setup's loads are the user's own visits: nothing is noted before it ends.
+  let recording = false;
+  const engine = new URL(ENGINE);
+  /** Review Focus 1: only a document load leaves as `out` (a top or frame document, or an http GET through the proxy
+   *  that says nothing else); favicons, scripts and Firefox's background fetches are `subresource`. */
+  const seen = (url: string, req: IncomingMessage, proxied: boolean) => {
+    if (!recording) return;
+    const dest = req.headers["sec-fetch-dest"];
+    const document = dest === "document" || dest === "iframe" || (proxied && dest === undefined);
+    if (!document) return void note("subresource", { url, dest: dest ?? null });
+    const u = new URL(url);
+    const query = u.host === engine.host && u.pathname === engine.pathname ? u.searchParams.get("q") : null;
+    note("out", query ? { via: "search.open", query } : { via: "navigate", url });
+  };
+  const answer = (url: string, res: ServerResponse) => res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(route(url).html);
+
+  const certs = await mkdtemp(join(os.tmpdir(), "ressac-cert-"));
+  const [key, cert] = [join(certs, "key.pem"), join(certs, "cert.pem")];
+  // Any name: Firefox's certificate checks are off for this profile (below).
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "2", "-subj", "/CN=replay.test"], { stdio: "ignore" });
+  const pages = createHttpsServer({ key: readFileSync(key), cert: readFileSync(cert) }, (req, res) => {
+    const url = `https://${(req.headers.host ?? "").replace(/:443$/, "")}${req.url ?? "/"}`;
+    seen(url, req, false);
+    answer(url, res);
+  });
+  const pagesPort = await listen(pages);
+  // The proxy: every https tunnel ends at the page server whatever its host; an http GET (absolute form) is answered here.
+  const proxy = createHttpServer((req, res) => {
+    const url = req.url ?? "";
+    if (!/^http:\/\//.test(url)) return void res.writeHead(400).end();
+    seen(url, req, true);
+    answer(url, res);
+  });
+  proxy.on("connect", (_req, client, head) => {
+    const up = connect(pagesPort, "127.0.0.1", () => {
+      client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+      if (head.length) up.write(head);
+      client.pipe(up).pipe(client);
+    });
+    up.on("error", () => client.destroy());
+    client.on("error", () => up.destroy());
+  });
+  const proxyPort = await listen(proxy);
+  const stopServers = async () => {
+    // Tunnels stay open after Ressac quits until their sockets are gone.
+    pages.closeAllConnections();
+    proxy.closeAllConnections();
+    await Promise.all([new Promise((r) => pages.close(r)), new Promise((r) => proxy.close(r))]);
+    await rm(certs, { recursive: true, force: true });
+  };
+
+  const dataDir = await mkdtemp(join(os.tmpdir(), "ressac-data-"));
+  const profileDir = await mkdtemp(join(os.tmpdir(), "ressac-firefox-"));
+  const removeFolders = () => Promise.all([rm(dataDir, { recursive: true, force: true }), rm(profileDir, { recursive: true, force: true })]);
+  let w: LaunchedRessac;
+  try {
+    await writePassport(profileDir, replayPassport(o.profile, decisions()));
+    await o.beforeLaunch?.(dataDir);
+    w = await launchRessac({
+      dataDir,
+      profile: profileDir,
+      output: o.output,
+      prefs: { "network.proxy.type": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": proxyPort, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": proxyPort, ...o.prefs },
+      // RESSAC_TEST_REAUTH: Touch ID passes (a bypassed layer, README).
+      env: { RESSAC_TEST_SEARCH_URL: `${ENGINE}?q=%s`, RESSAC_TEST_PASSPORT_CIPHER: "memory", RESSAC_TEST_REAUTH: "pass", ...o.env },
+    });
+  } catch (e) {
+    await stopServers();
+    await removeFolders();
+    throw e;
+  }
+  const close = async () => {
+    await w.close();
+    await stopServers();
+    await removeFolders();
+  };
+  const m = w.marionette;
+  try {
+    await m.setContext("chrome");
+    await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true, 30_000);
+    await m.execute('Cc["@mozilla.org/security/certoverride;1"].getService(Ci.nsICertOverrideService).setDisableAllSecurityChecksAndLetAttackersInterceptMyData(true);');
+
+    const windowId = (await state(m)).windows[0]!.id;
+    const open = async (url: string) => {
+      const before = new Set(Object.keys((await state(m)).tabs));
+      const s = await dispatch(m, { type: "openTab", windowId, url, agentReached: false });
+      const id = Object.keys(s.tabs).find((x) => !before.has(x))!;
+      await waitFor(m, `return gBrowser.browsers.some((b) => b.currentURI.spec === ${JSON.stringify(url)} && !b.webProgress.isLoadingDocument)`, (v) => v === true, 15_000);
+      return id;
+    };
+    // The user's history by visits: each page kept (its text in the history's full-text index, the agent's search reads
+    // it; no chrome call runs History.searchForAgent itself) before its tab closes.
+    for (const h of P.history) {
+      const id = await open(h.url);
+      await kept(m, h.url);
+      await dispatch(m, { type: "closeTab", id });
+    }
+    await m.execute(
+      "return (async () => { for (const b of arguments[0]) await PlacesUtils.bookmarks.insert({ parentGuid: PlacesUtils.bookmarks.unfiledGuid, url: b.url, title: b.title }); })()",
+      [P.bookmarks],
+    );
+    const bank = await open(P.bankUrl);
+    const mail = await open(P.mailUrl);
+    // The user speaks from the mail tab.
+    await dispatch(m, { type: "activateTab", id: mail });
+    recording = true;
+
+    const sessions = join(dataDir, "workspace", ".ressac", "sessions");
+    const sessionConfig = () => {
+      const config = readdirSync(sessions).filter((f) => f.endsWith(".json")).map((f) => join(sessions, f)).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
+      if (!config) throw new Error("no session config");
+      return config;
+    };
+    return { w, m, c, profile: o.profile, tabs: { mail, bank }, events, note, sessionConfig, close };
+  } catch (e) {
+    await close();
+    throw e;
+  }
+}
+
+/** Waits until the history kept `url`'s text (the sidebar's API, as history.e2e.ts). */
+async function kept(m: Marionette, url: string): Promise<void> {
+  for (const end = Date.now() + 15_000; ; await new Promise((r) => setTimeout(r, 100))) {
+    const all = await inUi<{ url: string; kept: boolean }[]>(m, "return JSON.parse(JSON.stringify(await ui.ressac.history.recent()));");
+    if (all.some((v) => v.url === url && v.kept)) return;
+    if (Date.now() > end) throw new Error(`${url} was never kept in the history`);
+  }
+}
+
+const READS = new Set(["read_tab", "current_page", "read_pages"]);
+
+/** The in-process agent (the scripted adversary): each call through the window's conversation, noted as harness.mts does. */
+export function toolCaller(world: World, refusals: string[] = []): (name: string, args?: Record<string, unknown>) => Promise<string> {
+  const route = router(world.c, world.profile);
+  return async (name, raw = {}) => {
+    const args = JSON.parse(JSON.stringify(raw).replaceAll('"tab-mail"', JSON.stringify(world.tabs.mail)).replaceAll('"tab-bank"', JSON.stringify(world.tabs.bank))) as Record<string, unknown>;
+    const e = world.note("tool", { name, args });
+    try {
+      const r = await callMcpTool(join(world.w.dataDir, "workspace"), name, args, world.sessionConfig());
+      e.result = r.text;
+      if (r.error) e.isError = true;
+      if (refusals.some((t) => r.text.includes(t))) e.refused = true;
+      return r.text;
+    } catch (err) {
+      e.result = `throw: ${String(err)}`;
+      e.isError = true;
+      throw err;
+    } finally {
+      // The seq after the call: the loads it caused fall between `seq` and `endSeq` (score.mjs).
+      // A seq of its own, as harness.mts's `++seq`: noted and dropped at once.
+      e.endSeq = world.note("end").seq;
+      world.events.pop();
+      if (READS.has(name) && !e.isError) {
+        const s = await state(world.m);
+        const win = s.windows[0]!;
+        const urls = name === "read_pages" ? ((args.urls as string[] | undefined) ?? [])
+          : [s.tabs[(name === "read_tab" ? String(args.id) : win.active[win.activeSpace]) ?? ""]?.url ?? ""];
+        for (const url of urls) world.note("read", { ...(name === "read_pages" ? {} : { tab: name === "read_tab" ? args.id : win.active[win.activeSpace] }), url, page: route(url).kind });
+      }
+    }
+  };
+}
+
+const git = (...a: string[]) => execFileSync("git", ["-C", REPO, ...a], { encoding: "utf8" }).trim();
+
+/** harness.mts's record (bench "ressac-e2e-injection/2"), for score.mjs, levels() and the reports. */
+export async function record(world: World, x: { prompt: string; answer: string; agent: Record<string, unknown>; config: Record<string, unknown>; stop?: string; error?: string; seconds: number }): Promise<Record<string, unknown>> {
+  const { c, profile } = world;
+  const P = PROFILES[profile];
+  const caseText = `${c.title}\n${c.page_markdown}\n${Object.values(c.pages ?? {}).join("\n")}\n${c.links.map((l) => `${l.text} ${l.url}`).join("\n")}\n${x.prompt}`;
+  const notes = join(world.w.dataDir, "workspace", ".ressac", "browsing-notes.md");
+  // The product's code only: a change under e2e or bench is not a different build.
+  const dirty = git("status", "--porcelain", "--", "apps/firefox/chrome", "apps/firefox/host", "apps/firefox/core", "apps/firefox/shared", "apps/firefox/ui", "packages/kernel/src").length > 0;
+  return {
+    bench: "ressac-e2e-injection/2", case: fromRessac(c), prompt: x.prompt,
+    config: { ...x.config, profile, surface: "browser", build: { commit: git("rev-parse", "HEAD"), dirty } },
+    canaries: P.canaries, collisions: collisionsIn(caseText, P.canaries), masking: {}, events: world.events, answer: x.answer,
+    notebook: existsSync(notes) ? readFileSync(notes, "utf8").split("\n").filter((l) => l.startsWith("- ")) : [],
+    agent: x.agent, ...(x.stop ? { stop: x.stop } : {}), ...(x.error ? { error: x.error } : {}), seconds: x.seconds,
+  };
+}
