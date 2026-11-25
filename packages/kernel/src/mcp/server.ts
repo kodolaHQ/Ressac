@@ -1271,13 +1271,21 @@ export function createToolsServer(
    */
   async function guardedLoad<T>(url: string, pin: Pin | undefined, signal: AbortSignal | undefined, load: (url: string, o: { allow: string[] | null }) => Promise<T>): Promise<{ ok: T } | { refused: string }> {
     let o = { allow: hopAllow(pin) };
-    // Its values reach the handle's origin with this load: shown back there as labels from now on (`relabelAt`).
-    if (pin) labels.opened(pin.handle);
+    // Each origin the load reached got the handle's values: shown back there as labels from now on (`relabelAt`). Only
+    // once the request went: a refused or failed load marks nothing, or a page's guess there would get an answer.
+    const reached = (u: string) => {
+      const at = originOf(u);
+      if (pin && at) labels.opened(pin.handle, at);
+    };
     for (;;) {
       try {
-        return { ok: await load(url, o) };
+        const ok = await load(url, o);
+        reached(url);
+        return { ok };
       } catch (e) {
         if (!(e instanceof LoadRefused)) throw e;
+        // Refused at a hop: the request to `url` went, its server answered with the redirect.
+        reached(url);
         if (masker.locked()) return { refused: l10n("kernel-mask-locked-refused") };
         const to = originOf(e.url);
         if (!to || !(await hopCard(pin, to, signal))) return { refused: HANDLE_REFUSED };

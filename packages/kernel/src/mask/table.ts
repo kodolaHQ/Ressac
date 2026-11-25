@@ -28,14 +28,17 @@ const SHORT_VALUE = 6;
  * (as an address writes it). An e-mail keeps its `@domain`, as masking writes it.
  */
 export function relabel(text: string, entries: readonly Entry[]): string {
-  const forms = new Map<string, string>();
-  const add = (form: string, to: string) => form && !forms.has(form.toLowerCase()) && forms.set(form.toLowerCase(), to);
+  const forms = new Map<string, { to: string; word: boolean }>();
+  const add = (form: string, to: string, word = form.length < SHORT_VALUE) => form && !forms.has(form.toLowerCase()) && forms.set(form.toLowerCase(), { to, word });
   for (const e of entries)
     for (const v of new Set([e.raw, e.value])) {
       const at = e.type === "email" ? v.lastIndexOf("@") : -1;
       if (at > 0) {
+        const local = v.slice(0, at);
         add(v, `${e.label}${v.slice(at)}`);
         add(encoded(v), `${e.label}%40${v.slice(at + 1)}`);
+        // The local part alone (a page writes « camille.exemple »), long enough not to be a common word, as a whole word.
+        if (local.length >= SHORT_VALUE) for (const f of [local, encoded(local), local.replace(/ /g, "+")]) add(f, e.label, true);
       } else {
         for (const f of [v, encoded(v)]) {
           add(f, e.label);
@@ -44,10 +47,11 @@ export function relabel(text: string, entries: readonly Entry[]): string {
       }
     }
   if (!forms.size) return text;
-  const alternatives = [...forms.keys()]
-    .sort((a, b) => b.length - a.length)
-    .map((f) => (f.length < SHORT_VALUE ? `(?<![\\p{L}\\p{N}])${escaped(f)}(?![\\p{L}\\p{N}])` : escaped(f)));
-  return text.replace(new RegExp(alternatives.join("|"), "giu"), (m) => forms.get(m.toLowerCase()) ?? m);
+  // A whole word: no letter, digit or e-mail character glued to it.
+  const alternatives = [...forms]
+    .sort(([a], [b]) => b.length - a.length)
+    .map(([f, { word }]) => (word ? `(?<![\\p{L}\\p{N}._%+-])${escaped(f)}(?![\\p{L}\\p{N}_%+-]|\\.[\\p{L}\\p{N}])` : escaped(f)));
+  return text.replace(new RegExp(alternatives.join("|"), "giu"), (m) => forms.get(m.toLowerCase())?.to ?? m);
 }
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -74,7 +78,7 @@ export class LabelTable {
   /** Masked address as emitted → the real one and the origin it was read on (spec § 5.3, opaque handles). */
   private readonly handles = new Map<string, { real: string; origin: string }>();
   /** Handles a load was sent to: their values reached their real address's origin. */
-  private readonly sentHandles = new Set<string>();
+  private readonly sentHandles = new Map<string, Set<string>>();
   /** Tabs opened from a handle, until the agent sends them to an address that is not one. */
   private readonly pins = new Map<string, Pin>();
   /** `maskText`'s search index per zone (and web origin), kept until the zone gains an entry; wiped with the table. */
@@ -133,21 +137,22 @@ export class LabelTable {
     return this.resolvable ? this.handles.get(url) : undefined;
   }
 
-  /** A load was sent to the handle `masked`'s real address. */
-  opened(masked: string): void {
-    if (this.handles.has(masked)) this.sentHandles.add(masked);
+  /** A load from the handle `masked` reached `origin` (its real address's, or one a granted redirect led to). */
+  opened(masked: string, origin: string): void {
+    if (!this.handles.has(masked)) return;
+    const at = this.sentHandles.get(masked) ?? this.sentHandles.set(masked, new Set()).get(masked)!;
+    at.add(origin);
   }
 
   /**
-   * The entries behind the labels of every handle opened to `origin`: that origin's server got their values in the
+   * The entries behind the labels of every handle whose load reached `origin`: that origin's server got their values in the
    * address, so its pages showing them back (a bare-address title) tell it nothing when they are masked there. A handle
    * only shown, never opened, counts for nothing: masking a page's guess of it would be an oracle.
    */
   handledOn(origin: string): Entry[] {
     const out = new Set<Entry>();
-    for (const masked of this.sentHandles) {
-      const real = this.handles.get(masked)!.real;
-      if (URL.canParse(real) && new URL(real).origin === origin)
+    for (const [masked, reached] of this.sentHandles) {
+      if (reached.has(origin))
         for (const m of masked.matchAll(LABELS)) {
           const e = this.byLabel.get(m[0]);
           if (e) out.add(e);

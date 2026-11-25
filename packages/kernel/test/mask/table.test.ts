@@ -96,8 +96,8 @@ describe("relabel: the values a handle carries to its own origin", () => {
     t.handle(`${SITE}/a/${x}/x/c`, `${SITE}/a/x/b/x/c`, SITE);
     // Only shown, never opened: nothing is relabelled yet (a page's guess must get no answer).
     expect(t.handledOn(SITE)).toEqual([]);
-    t.opened(`${SITE}/c/${a}${b}`);
-    t.opened(`${SITE}/a/${x}/x/c`);
+    t.opened(`${SITE}/c/${a}${b}`, SITE);
+    t.opened(`${SITE}/a/${x}/x/c`, SITE);
     const out = relabel(`Titre : mutuelle-rhodanienne.test/c/MR-1234567XQ-7654321 — dossier x/b`, t.handledOn(SITE));
     expect(out).toBe(`Titre : mutuelle-rhodanienne.test/c/${a}${b} — dossier ${x}`);
   });
@@ -107,7 +107,7 @@ describe("relabel: the values a handle carries to its own origin", () => {
     const n = t.label("nom", "lucie ferrand", "sources", null, "Lucie Ferrand");
     const m = t.label("email", "lucie.ferrand@novacourriel.test", "sources", null);
     t.handle(`${SITE}/p?n=${n}&m=${m}@novacourriel.test`, `${SITE}/p?n=Lucie+Ferrand&m=lucie.ferrand@novacourriel.test`, SITE);
-    t.opened(`${SITE}/p?n=${n}&m=${m}@novacourriel.test`);
+    t.opened(`${SITE}/p?n=${n}&m=${m}@novacourriel.test`, SITE);
     const out = relabel("LUCIE FERRAND · n=Lucie+Ferrand · n=Lucie%20Ferrand · Lucie.Ferrand%40novacourriel.test · lucie.ferrand@novacourriel.test", t.handledOn(SITE));
     expect(out).toBe(`${n} · n=${n} · n=${n} · ${m}%40novacourriel.test · ${m}@novacourriel.test`);
   });
@@ -116,8 +116,28 @@ describe("relabel: the values a handle carries to its own origin", () => {
     const t = table();
     const c = t.label("code", "4821", "sources", null);
     t.handle(`${SITE}/v?code=${c}`, `${SITE}/v?code=4821`, SITE);
-    t.opened(`${SITE}/v?code=${c}`);
+    t.opened(`${SITE}/v?code=${c}`, SITE);
     expect(relabel("Code 4821, total 148210 €, réf A4821", t.handledOn(SITE))).toBe(`Code ${c}, total 148210 €, réf A4821`);
     expect(t.handledOn("https://autre.test")).toEqual([]);
+  });
+});
+
+describe("relabel: reached origins and e-mail parts", () => {
+  const A = "https://a.test";
+  const B = "https://b.test";
+  it("counts only the origins a load from the handle reached", () => {
+    const t = new LabelTable({ resolvable: true });
+    const m = t.label("email", "camille.exemple@novacourriel.test", "sources", null);
+    t.handle(`${A}/u/${m}@novacourriel.test`, `${A}/u/camille.exemple@novacourriel.test`, A);
+    t.opened(`${A}/u/${m}@novacourriel.test`, B);
+    expect(t.handledOn(B).map((e) => e.label)).toEqual([m]);
+    expect(t.handledOn(A)).toEqual([]);
+  });
+  it("replaces an e-mail's local part alone as a whole word", () => {
+    const t = new LabelTable({ resolvable: true });
+    const m = t.label("email", "camille.exemple@novacourriel.test", "sources", null);
+    t.handle(`${A}/u/${m}@novacourriel.test`, `${A}/u/camille.exemple@novacourriel.test`, A);
+    t.opened(`${A}/u/${m}@novacourriel.test`, A);
+    expect(relabel("Bonjour Camille.Exemple, pas camille.exemple2 ni x.camille.exemple", t.handledOn(A))).toBe(`Bonjour ${m}, pas camille.exemple2 ni x.camille.exemple`);
   });
 });
