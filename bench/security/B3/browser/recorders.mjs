@@ -91,6 +91,10 @@ const sumUsage = (parts) => { const u = {}; for (const p of parts) for (const [k
 /** `seen.agentRequests`: the requests that declared tools and got a 2xx (an agent turn, never a title or a token count);
  *  `seen.firstPrompt`: the first one's last user message. An upstream failure (status >= 400 that is not a rate limit, or a
  *  forward that throws) calls onStop("upstream-<status>"): the pass is broken, never « the model refused ». */
+// Ressac's tools, plus the inert marker Claude Code (2.1.325+) adds to keep deferred tool loading on: no input, never executed.
+export const safeTool = (t) => String(t.name).startsWith("mcp__ressac__")
+  || (t.name === "DeferredToolPlaceholder" && t.defer_loading === true && !Object.keys(t.input_schema?.properties ?? {}).length);
+
 export async function startModelRecorder(o) {
   const seen = { requests: 0, agentRequests: 0, firstPrompt: null };
   const owner = o.owner?.toLowerCase() || null;
@@ -107,7 +111,7 @@ export async function startModelRecorder(o) {
       const tools = Array.isArray(body?.tools) ? body.tools : null;
       if (tools) seen.tools = tools.map((t) => t.name);
       // Before anything leaves the Mac: only Ressac's tools (an allowlist), and never the owner's account e-mail.
-      const why = tools?.some((t) => !String(t.name).startsWith("mcp__ressac__")) ? "unsafe-tools" : owner && raw.toLowerCase().includes(owner) ? "owner-email" : null;
+      const why = tools?.some((t) => !safeTool(t)) ? "unsafe-tools" : owner && raw.toLowerCase().includes(owner) ? "owner-email" : null;
       if (why) {
         res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `bench recorder: ${why}` } }));
         record({ path: req.url, body: body ?? raw, status: 400, text: "", stop_reason: null, stopped: why });
@@ -218,6 +222,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv.includes(
   let r = await ask({ model: "m", stream: true, tools: [ressacTool, { name: "Bash", input_schema: {} }], messages: [] });
   assert.equal(r.status, 400); await r.text();
   assert.deepEqual([stops, upstreamSeen], [["unsafe-tools"], 0], "a built-in tool: refused, nothing forwarded");
+  r = await ask({ model: "m", stream: true, tools: [ressacTool, { name: "DeferredToolPlaceholder", input_schema: { type: "object", properties: { cmd: { type: "string" } } }, defer_loading: true }], messages: [] });
+  assert.equal(r.status, 400); await r.text();
+  assert.deepEqual([stops.at(-1), stops.length, upstreamSeen], ["unsafe-tools", 2, 0], "a placeholder that takes input: refused");
+  assert.ok(safeTool({ name: "DeferredToolPlaceholder", input_schema: { type: "object", properties: {} }, defer_loading: true }), "the inert placeholder passes");
+  assert.ok(!safeTool({ name: "DeferredToolPlaceholder", input_schema: { type: "object", properties: {} } }), "without defer_loading it does not");
   r = await ask({ model: "m", stream: true, tools: [ressacTool], messages: [{ role: "user", content: "mon e-mail : camille.aubrac@exemple.fr" }] });
   assert.equal(r.status, 400); await r.text();
   assert.deepEqual([stops.at(-1), upstreamSeen], ["owner-email", 0], "the owner's e-mail: refused, nothing forwarded");
@@ -238,9 +247,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv.includes(
   assert.deepEqual(turns, ["Voici"], "end_turn on a request with tools: onTurnEnd with its text");
   await (await ask({ model: "claude-x", stream: true, tools: [ressacTool], messages: [{ role: "user", content: "plus tard" }] })).text();
   assert.deepEqual([model.seen.agentRequests, model.seen.firstPrompt], [2, "<rappel>\nle prompt tapé"], "the first agent request's last user message");
-  assert.deepEqual([model.seen.model, model.seen.tools, model.seen.userAgent, model.seen.requests], ["claude-x", ["mcp__ressac__read_tab"], "claude-cli/test", 9]);
+  assert.deepEqual([model.seen.model, model.seen.tools, model.seen.userAgent, model.seen.requests], ["claude-x", ["mcp__ressac__read_tab"], "claude-cli/test", 10]);
   const lines = readFileSync(file, "utf8").trim().split("\n").map((l) => JSON.parse(l));
-  assert.equal(lines.length, 9);
+  assert.equal(lines.length, 10);
   assert.deepEqual(Object.keys(lines.at(-1)), ["at", "path", "body", "status", "text", "stop_reason", "usage"]);
   assert.deepEqual([lines.at(-1).path, lines.at(-1).text, lines.at(-1).stop_reason, lines.at(-1).usage], ["/v1/messages?beta=true", "Voici", "end_turn", { input_tokens: 12, output_tokens: 7 }]);
   await model.close(); await new Promise((d) => up.close(d));
