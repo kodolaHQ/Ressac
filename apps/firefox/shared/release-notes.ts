@@ -15,6 +15,7 @@ export const RELEASE_NOTES: { version: string; date: string; items: string[]; vi
       "L'agent n'écrit plus d'extensions : celles qu'il avait créées sont retirées au premier lancement. Vos propres extensions ne changent pas.",
       "Nouveau réglage « Extensions hors des sites sensibles » (Réglages › Confidentialité, activé) : vos extensions ne tournent pas sur vos banques, messageries et autres sites sensibles, sauf celles que Mozilla recommande.",
       "Sécurité : en mode Navigateur, l'agent n'a plus accès qu'aux outils de lecture et d'écriture de fichiers dont il a besoin.",
+      "Passeport : supprimer le passeport d'un espace en même temps que l'espace demande maintenant Touch ID, et quelques corrections (un blocage possible après une réinstallation de la clé, une donnée remplie sur un site mieux masquée ensuite).",
     ],
   },
   {
