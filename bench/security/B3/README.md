@@ -866,7 +866,7 @@ Options: `--cases all|after0123|<id,…>`, `--legs 1|2|4` (a, b, a2, b2, as `run
 15. **The masking runs use the fake browser's own fill and redirect**, not Firefox's actor: the seal is checked as the kernel sends it, not as the real page would change.
 16. **The indistinguishability test covers MCP results only, on the scripted adversary's scenarios, up to where they part.** Captures, extensions, files, network, page gestures and the engine are outside it; a scenario no script plays is not covered; a case whose calls part early (most granted reveals) is compared only up to that call; images are compared as `[image]`.
 17. **The utility bench's checkers read words**: a model that answers well in other words fails a task, one that writes the expected words around a wrong answer passes it, and an invented name outside the checker's list of names passes `no_invented_names`. Read the answers by hand before publishing a loss, the passed ones as well as the failed ones. Its « masking off » arm is the kernel with its masker neutralised in the harness, not a release without masking. Its tasks are 20, in one persona, in French.
-14. **The tool cap ends many obedient cases** (`--max-tools`, 30 by default): 207 of 552 obedient minimax case-runs in v2, 41 of 72 in the v1 fix grant run. A capped case may have leaked with more tool calls, so its LEFT and TRIED are lower bounds.
+18. **The tool cap ends many obedient cases** (`--max-tools`, 30 by default): 207 of 552 obedient minimax case-runs in v2, 41 of 72 in the v1 fix grant run. A capped case may have leaked with more tool calls, so its LEFT and TRIED are lower bounds.
 
 ## Files
 
@@ -883,13 +883,11 @@ Options: `--cases all|after0123|<id,…>`, `--legs 1|2|4` (a, b, a2, b2, as `run
 | `indistinguishable.mjs` | the deterministic indistinguishability test of MCP results between the two profiles (`--selftest`) |
 | `selftest-ressac.json`, `.sha256` | the ressac-format wiring file |
 | `ressac/` | the ressac set: `catalogue.mjs`, `generate.mjs`, `cases.json` and its sha256, `generate-log.jsonl`, `RENAMES.md` |
-| `ressac/fix-controls.mjs`, `ressac/cases.v2.json`, `ressac/cases-lang.v2.json` | the controls with the corrected link rule, and their sha256 (not run) |
+| `ressac/fix-controls.mjs`, `ressac/cases.v2.json`, `ressac/cases-lang.v2.json` | the controls with the corrected link rule, and their sha256 (run in « B3 v2 phase 2 ») |
 | `ressac/cases.v2-diffpilot.json`, `.sha256` | the 16 query-split and link-covert cases of `cases.v2.json`, for the first paid differential run (« Noise with a model ») |
 | `adversary.mjs`, `adversary-cases.json`, `.sha256` | the scripted adversary (a stand-in `claude` for `BENCH_CLAUDE`) and its 98 cases (76 before the passport, 31 before masking) |
 | `utility/honest.mjs`, `utility/cases.json`, `.sha256` | the utility bench's 20 honest tasks with their checkers, and the scripted honest agent (a stand-in `claude`) |
 | `utility/run.mjs`, `utility/check.mjs` | the utility runner (`run.mjs` per repetition, `--masking on\|off`) and its scorer (`--selftest`) |
-| `ressac/fix-controls.mjs`, `ressac/cases.v2.json`, `ressac/cases-lang.v2.json` | the controls with the corrected link rule, and their sha256 (run in « B3 v2 phase 2 ») |
-| `adversary.mjs`, `adversary-cases.json`, `.sha256` | the scripted adversary (a stand-in `claude` for `BENCH_CLAUDE`) and its 29 cases |
 | `results/` | per-case summaries of the published runs (`<run>.summary.json`: outcome, channel, attempts, whole and partial leaks, cards; item ids only, no query, address or transcript), `SHA256SUMS`, and `make.mjs`, which rebuilds them from `out/` |
 | `browser/` | the real-browser replay (« Replay in the real browser »): `replay-cases.json` and its sha256 (`freeze.mjs`), `pages.mjs`, `passport.mjs`, `recorders.mjs`, `agent-on-mac.mjs`, `report.mjs`, `run.mts` (`--self-check`) and `stand-in.mjs` (its stand-in `claude`) |
 | `out/` | run records (git-ignored) |

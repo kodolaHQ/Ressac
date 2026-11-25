@@ -30,8 +30,10 @@ describe("reportEnding", () => {
     expect(reportEnding("ressac-2026-11-25-1.ips", '{"bug_type":"211"}\n{}', 7, 5)).toBeNull();
     expect(reportEnding("Safari-2026.ips", '{"bug_type":"309"}\n{}', 7, 5)).toBeNull();
   });
-  it("another Ressac's crash is not this run's end", () => {
+  it("another Ressac's crash or hang is not this run's end", () => {
     expect(reportEnding("ressac-2026-11-25-1.ips", '{"bug_type":"309"}\n{"pid":8}', 7, 5)).toBeNull();
+    expect(reportEnding("ressac_2026-11-25-1.hang", "Command: ressac\nPID:             8\n", 7, 5)).toBeNull();
+    expect(reportEnding("ressac_2026-11-25-1.hang", "Command: ressac\nPID:             7\n", 7, 5)).toEqual({ kind: "hang", at: 5 });
   });
 });
 
@@ -47,6 +49,7 @@ describe("abruptExitReport", () => {
   it("no report found: the end is the last mark; asleep if it slept after its last wake", () => {
     const r = abruptExitReport({ ...mark, sleptAt: t0 + 3_590_000 }, null);
     expect(r).toMatchObject({ message: "unknown", tags: { kind: "unknown", phase: "asleep", endKnown: "false" } });
+    expect(r.tags).not.toHaveProperty("sinceWakeSeconds");
   });
   it("its tags reach the envelope, source kept", () => {
     const body = errorEnvelope({ ...abruptExitReport(mark, null), source: "chrome" }, { release: "0.1.27", home: "/Users/m", eventId: "e", now: new Date(t0) });

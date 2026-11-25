@@ -43,12 +43,16 @@ export function jetsamEnding(text: string, pid: number | undefined, fileAt: numb
 const HANG_TYPES = new Set(["288", "409"]);
 
 /**
- * A report of ours in ~/Library/Logs/DiagnosticReports: a crash (.ips bug type 309) or a hang (.hang, .spin, a hang
+ * A report of ours in a DiagnosticReports folder: a crash (.ips bug type 309) or a hang (.hang, .spin, a hang
  * .ips). Anything else (the daily .diag CPU reports) is not an end.
  */
 export function reportEnding(name: string, text: string, pid: number | undefined, at: number): Ending | null {
   if (!name.toLowerCase().startsWith(MAIN)) return null;
-  if (/\.(hang|spin)$/.test(name)) return { kind: "hang", at };
+  // A spindump's text names its process: « PID: 123 ». Another Ressac's (an e2e run, a second profile) is not this run's end.
+  if (/\.(hang|spin)$/.test(name)) {
+    const reportPid = Number(/^PID:\s*(\d+)/m.exec(text)?.[1]);
+    return pid !== undefined && reportPid && reportPid !== pid ? null : { kind: "hang", at };
+  }
   if (!name.endsWith(".ips")) return null;
   try {
     const nl = text.indexOf("\n");
@@ -85,7 +89,8 @@ export function abruptExitReport(mark: RunMark, ending: Ending | null): Reported
     endKnown: String(!!ending),
     phase: asleep ? "asleep" : mark.wokeAt === undefined ? "no wake" : end - mark.wokeAt <= 120_000 ? "≤2 min after wake" : end - mark.wokeAt <= 600_000 ? "≤10 min after wake" : "awake",
   };
-  if (mark.wokeAt !== undefined) tags.sinceWakeSeconds = secs(end - mark.wokeAt);
+  // Asleep at the end: the time since the last wake would only measure the time awake before sleeping again.
+  if (mark.wokeAt !== undefined && !asleep) tags.sinceWakeSeconds = secs(end - mark.wokeAt);
   if (mark.pressureAt !== undefined) tags.sincePressureSeconds = secs(end - mark.pressureAt);
   for (const k of ["tabs", "loadedTabs", "processes"] as const) if (mark[k] !== undefined) tags[k] = String(mark[k]);
   if (ending?.kind === "jetsam") {
