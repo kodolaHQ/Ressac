@@ -8,7 +8,7 @@ import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import { startD1Server, startServer } from "./server";
 import { listen } from "./actions";
-import { inPage, openTab } from "./agent-extensions";
+import { inPage, openTab } from "./actors";
 import type { Marionette } from "./marionette";
 import { click, inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
 

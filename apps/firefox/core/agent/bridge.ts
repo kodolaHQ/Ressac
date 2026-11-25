@@ -1,6 +1,6 @@
 import type { DevRight, PageBlock, PageField, PageLink, TabInfo, TabRead, Zone } from "@ressac/kernel";
 import { CARRIER_TEXT_MAX, FIELDS_MAX } from "../../../../packages/kernel/src/mcp/bridge";
-import { AGENT_PROFILE, privateTab, tabProfile, recapOfUrl, type Decision, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
+import { AGENT_PROFILE, privateTab, tabProfile, recapOfUrl, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
 
 const activeOf = (state: BrowserState, o: Tab): { activeProfile?: string } => {
   if (tabProfile(state, o) !== AGENT_PROFILE) return {};
@@ -96,13 +96,6 @@ export function spacesBecamePrivate(before: BrowserState, after: BrowserState): 
  * in its window, whatever tab is displayed: closing that one does not concern it.
  */
 export function staleQuestion(d: PendingRequest, state: BrowserState): boolean {
-  // An extension's grant card: it drops with its space; the agent's also when the space's profile
-  // becomes private (no agent extension is loaded there). Registry removal and cut-off: ServiceExtensions.
-  if (d.extension) {
-    const space = state.spaces.find((e) => e.id === d.extension!.spaceId);
-    if (!space) return true;
-    if (d.extension.source === "agent" && state.spaces.some((e) => e.profile === space.profile && e.private)) return true;
-  }
   // An app window (`app:<folder>`) or site app window (`site:<id>`) is not a tab: its closing and its
   // navigations are tracked separately.
   const win = d.target !== undefined && (d.target.startsWith(APP_PREFIX) || d.target.startsWith(SITE_PREFIX));
@@ -113,15 +106,6 @@ export function staleQuestion(d: PendingRequest, state: BrowserState): boolean {
   // The rights cover the site the user saw: the tab went elsewhere, the card drops.
   if (tab && (d.permissions.includes("devtools") || d.permissions.includes("read-tab") || d.permissions.includes("mask-devtools")) && originOf(tab.url) !== d.origin) return true;
   return !d.windowId && d.tabId !== null && !state.tabs[d.tabId];
-}
-
-/**
- * The decision kept for a UI answer: a « yes » to a hardened extension card is received only if it
- * carries the « Je comprends » box checked (`confirme`); otherwise it is a refusal, whatever the UI shows.
- */
-export function allowedDecision(d: PendingRequest, decision: Decision, confirmed?: boolean): Decision {
-  if (decision === "allow" && d.extension?.hardened && confirmed !== true) return "deny";
-  return decision;
 }
 
 /** The origin of a URL, or the URL as is if it has none. */

@@ -1,4 +1,5 @@
-import { UNLOCK_REASON_LENGTH } from "../../shared/extensions-messages";
+/** The agent's reason, and each red line, on a card is cut to this length. */
+export const UNLOCK_REASON_LENGTH = 200;
 
 /** The most red lines a kernel card holds: a fill's 12 rows, each foreign, framed and posting elsewhere, plus its lock, outflow and tick lines. */
 export const DANGER_LINES_MAX = 40;

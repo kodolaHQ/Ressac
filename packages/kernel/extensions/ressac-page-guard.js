@@ -1,15 +1,9 @@
-// Ressac: guard of the content scripts of the agent's extensions (passwords, context, network). Task 13 of plan 12.
-//
-// Runs in the extension's isolated world, before its scripts. A content script of the agent (manifest or
-// `scripting.registerContentScripts`) only declares Ressac files: `ressac-page-fixes.js`, this guard,
-// `ressac-scope.js` (the granted scope), then one marker per agent file (`ressac-files/<n>.js`, which calls
-// `__ressacFile(n)`). The guard then asks the background: `chrome.runtime.sendMessage({ ressac: "context",
-// files })`. The background guard asks the main process whether the sender is a tab view (never an invisible
-// read); only then does it inject these files, CSS then JS, into the exact document that asked, through
-// `scripting` (in this same world, after this guard). Nothing of the agent is pasted into a Ressac file: there is
-// no wrapper to close. Consequence: `run_at` becomes "after the answer" (a round trip to the background), and without an
-// answer after 20 tries, the abandonment is written to the console. The guard is set only once per world;
-// `executeScript` also puts it at the head of its files.
+// Ressac: guard of the agent's scripts in a page (passwords, network). Born for the agent's extensions (removed in
+// 0.1.27); it now guards the tweaks of site apps: chrome/agent/site-actor.ts runs it first, alone, in the tweaks'
+// sandbox, then `ressac-scope.js` (the granted scope), then the agent's scripts in the same sandbox.
+// shortcut: the marker relay below (`ressac-files/<n>.js`, `chrome.runtime.sendMessage({ ressac: "context" })`) only
+// served the extensions and is inert in that sandbox (no `chrome.runtime`); delete it with its tests when this file
+// is next reworked.
 //
 // - Passwords: the `value` getter of `HTMLInputElement.prototype` returns "" for an `input[type=password]`, like
 //   `defaultValue`, `getAttribute("value")`, `getAttributeNS(null, "value")` and the field's `value` `Attr` (`value`,
@@ -47,9 +41,8 @@
 // - another frame: the isolated world of an `about:blank` frame created by the script does not have this guard, and its original
 //   prototypes apply to the page's elements.
 //   (Also a same-origin frame the page already has, reached through `frames[i]`: its own `FormData`, `fetch`, `XMLHttpRequest`.)
-// What really protects is the whole: this guard, `webRequest` refused, the closed network of its pages and its background
-// (CSP of the copy), never in a private profile, never in an invisible read (neither the agent's JS nor CSS is
-// injected there).
+// What really protects is the whole: this guard, the site app's grant and its network rules, never in an invisible read
+// (neither the agent's JS nor CSS is injected there).
 //
 // The agent's script then runs in the same world and can modify the base objects: everything the guard
 // uses is captured at load, calls go through `Reflect.apply`, loops are indexed (no `split`, which

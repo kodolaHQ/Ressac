@@ -4,7 +4,7 @@ import { apply, memorySession, withEssentials } from "../../core/state/actions";
 import { keepsLoaded, keptLoaded } from "../../shared/model";
 import { initialState } from "../../core/state/initial-state";
 import { SchemaAction, type Action } from "../../shared/api";
-import { AGENT_PROFILE, FAVICON_MAX, permissionProfiles, siteProfile, sitePlacement, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, hasView, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_SETTINGS, urlAction, urlWorkflow, urlRecap, recapOfUrl, type BrowserState, type Tab } from "../../shared/model";
+import { AGENT_PROFILE, FAVICON_MAX, permissionProfiles, siteProfile, sitePlacement, spaceKey, historyContext, privateTab, profilesInUse, tabProfile, URL_ACTIONS, URL_APPLICATIONS, URL_SETTINGS, urlAction, urlWorkflow, urlRecap, recapOfUrl, type BrowserState, type Tab } from "../../shared/model";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -840,29 +840,6 @@ test("openApps reuses the window's existing tab", () => {
   expect(e.tabs[active(b)!]).toMatchObject({ url: URL_APPLICATIONS, spaceId: b });
 });
 
-test("openExtensions opens or activates the page, like openApps", () => {
-  expect(URL_EXTENSIONS).toBe("ressac://extensions");
-  expect(hasView(URL_EXTENSIONS)).toBe(false);
-  open("https://a.test/");
-  ag({ type: "openExtensions", windowId: F });
-  const pages = () => Object.values(e.tabs).filter((o) => o.url === URL_EXTENSIONS);
-  expect(pages()).toHaveLength(1);
-  const page = pages()[0]!;
-  expect(page).toMatchObject({ title: "Extensions", spaceId: P });
-  expect(active()).toBe(page.id);
-  const before = e;
-  ag({ type: "openExtensions", windowId: F });
-  expect(e).toBe(before);
-  open("https://b.test/");
-  ag({ type: "openExtensions", windowId: F });
-  expect(pages()).toHaveLength(1);
-  expect(active()).toBe(page.id);
-  ag({ type: "createSpace", name: "Boulot", icon: "💼", private: false, profile: "default", windowId: F });
-  ag({ type: "openExtensions", windowId: F });
-  expect(pages()).toHaveLength(2);
-  expect(fen().activeSpace).not.toBe(P);
-});
-
 test("openSettings opens or activates the Réglages page, once for the window", () => {
   expect(URL_SETTINGS).toBe("ressac://settings");
   open("https://a.test/");
@@ -1179,6 +1156,16 @@ test("setVimMode toggles the vim keys", () => {
   expect(e.settings.vimMode).toBe(true);
   const before = e;
   ag({ type: "setVimMode", enabled: true });
+  expect(e).toBe(before);
+});
+
+test("setExtensionQuarantine: on by default, turned off and on", () => {
+  e = initialState(genId);
+  expect(e.settings.extensionQuarantine).toBe(true);
+  ag({ type: "setExtensionQuarantine", enabled: false });
+  expect(e.settings.extensionQuarantine).toBe(false);
+  const before = e;
+  ag({ type: "setExtensionQuarantine", enabled: false });
   expect(e).toBe(before);
 });
 

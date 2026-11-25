@@ -19,8 +19,8 @@ import { expectAgentLoad, forgetAgentLoad, installAgentLoadGuard, pruneAgentLoad
 import type { PageReadOptions, ReadPage } from "../shims/kernel";
 import { apps, bindApps, type AgentApps } from "./apps";
 import { actionImage, releaseComponent, serveComponent } from "./action-media";
-import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
-import { installQuarantine } from "./quarantine";
+import { removeAgentAddons } from "./extensions-removal";
+import { applyQuarantine } from "./quarantine";
 import { createDesign, type DesignService } from "./design";
 import { createOverlays } from "../window/design-overlays";
 import { FRAMES_GROUP, FRAMES_TEST_KEY, framesKindDir, wipeFrames } from "../window/frames-root";
@@ -107,8 +107,6 @@ export interface RessacStore extends Store {
   readonly windows: WindowRegistry;
   /** What sites may do (notifications, position, camera, micro, MIDI, DRM, screen), asked once per profile and origin. */
   readonly sitePermissions: SitePermissions;
-  /** The agent's extensions as Firefox add-ons, installed and switched as the kernel host says. */
-  readonly agentExtensions: AgentExtensions;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
   readonly access: AccessState;
   /** The tab the agent last acted on, and its thumbnails while someone watches. */
@@ -135,8 +133,8 @@ export interface RessacStore extends Store {
 const PAGE_ACTOR = "chrome://browser/content/ressac/page-actor.sys.mjs";
 
 /**
- * An actor's module (`extension-actor`, `site-actor`). Tests only: RESSAC_TEST_EXTENSION_ACTOR names a folder holding
- * both, served by a resource:// substitution (the content sandbox reads it only with
+ * An actor's module (`site-actor`, `design-actor`…). Tests only: RESSAC_TEST_EXTENSION_ACTOR names a folder holding
+ * them, served by a resource:// substitution (the content sandbox reads it only with
  * security.sandbox.content.mac.testing_read_path1 set to that folder: spike S5), so the e2e run without a rebuild of the app.
  */
 function actorModule(name: string): string {
@@ -354,17 +352,6 @@ async function start(): Promise<RessacStore> {
     safeForUntrustedWebProcess: true,
     messageManagerGroups: ["ressac-reading"],
   });
-  const extensionActor = actorModule("extension-actor");
-  // The agent's extension pages: background and popup (webext-browsers), options or pages in a tab (browsers). No
-  // `matches`: the about:blank frames that inherit an agent page's principal must be reached too (the child filters
-  // on the document's principal).
-  ChromeUtils.registerWindowActor("RessacExtension", {
-    parent: { esModuleURI: extensionActor },
-    child: { esModuleURI: extensionActor, events: { DOMWindowCreated: {} } },
-    remoteTypes: ["extension"],
-    messageManagerGroups: ["webext-browsers", "browsers"],
-    allFrames: true,
-  });
   // Site apps: every frame of a tab browser, about:blank and srcdoc ones too (no `matches`); the child asks only in an
   // open app's container, for an http(s), about:blank or about:srcdoc document.
   const siteActor = actorModule("site-actor");
@@ -508,20 +495,6 @@ async function start(): Promise<RessacStore> {
     // The pause pill and the `?` sheet follow the language.
     else if (s.settings.vimMode && s.locale !== p.locale) tellVimPages();
   });
-  // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
-  // What it relays is untrusted there: the parent checks it (agentExtensions.relayConsole).
-  ChromeUtils.registerProcessActor("RessacConsole", {
-    parent: { esModuleURI: extensionActor },
-    child: { esModuleURI: extensionActor, observers: ["content-document-global-created"] },
-    safeForUntrustedWebProcess: true,
-  });
-  for (const p of ChromeUtils.getAllDOMProcesses())
-    if (p.remoteType)
-      try {
-        p.getActor("RessacConsole").sendAsyncMessage("start");
-      } catch (e) {
-        console.error("[extensions] console relay not started:", e);
-      }
   let refreshMirror = () => {};
   const windows = createWindowRegistry({
     store,
@@ -539,8 +512,10 @@ async function start(): Promise<RessacStore> {
   });
   // The agent's access to tabs, as the host last sent it (no access while no host runs).
   let access: AccessState = { agent: "L'agent", tabs: {} };
-  const agentExtensions = createAgentExtensions(store, windows, questions, () => agent, () => access);
-  installQuarantine();
+  applyQuarantine(store.state.settings.extensionQuarantine);
+  store.subscribe((s, p) => s.settings.extensionQuarantine !== p.settings.extensionQuarantine && applyQuarantine(s.settings.extensionQuarantine));
+  // Agent-written extensions are gone (0.1.27): their add-ons go once.
+  void removeAgentAddons().catch((e) => console.error("[ressac] agent add-ons not removed:", e));
   const devtools = createDevTools({
     store,
     windows,
@@ -595,7 +570,6 @@ async function start(): Promise<RessacStore> {
     aiEnabled: () => store.state.settings.aiEnabled,
     handlers: {
       ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites, apps),
-      ...agentExtensions.handlers,
       ...sites.handlers,
       ...apps.handlers,
       "bookmarks.search": ([text, limit]: [string, number]) => searchBookmarks(text, limit),
@@ -616,7 +590,6 @@ async function start(): Promise<RessacStore> {
       notify("settings.saveMemory", { on: store.state.settings.saveMemory });
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
       for (const e of store.state.spaces) if (e.private) notify("history.makePrivate", { spaceId: e.id });
-      agentExtensions.hostStarted();
       // Its sites handlers are up: the host asks which app windows are open (sites.ouvertes).
       notify("sites.ready");
       // A respawned host lost the app essentials' tabs: they are read again.
@@ -700,7 +673,6 @@ async function start(): Promise<RessacStore> {
     downloads,
     questions,
     windows,
-    agentExtensions,
     sitePermissions,
     devtools,
     sites,

@@ -21,7 +21,6 @@ export function maskingStatus(
   lock: Pick<WorkspaceLock, "info">,
   notices: ReadonlyMap<string, string>,
   win: string,
-  extensionReads: boolean,
   passport: Pick<PassportStore, "unreadable">,
 ): MaskingStatus {
   const session = masker?.sessionOf(win) ?? null;
@@ -33,7 +32,6 @@ export function maskingStatus(
     uncovered: cause?.resumed ?? false,
     uncoveredPassport: cause?.passport ?? [],
     notice: (session !== null && notices.get(session)) || null,
-    extensionReads,
     passportUnreadable: [...passport.unreadable()],
   };
 }

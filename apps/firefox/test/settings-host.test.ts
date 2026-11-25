@@ -57,7 +57,6 @@ function setup(over: { state?: string; started?: string; exec?: (argv: string[])
     }),
     keychain: { read: vi.fn(async () => null), has: vi.fn(async () => true), write: vi.fn(async (k: string) => void (k.includes(" ") && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}) },
     claudeKeychain: { read: vi.fn(async () => null), has: vi.fn(async () => false), write: vi.fn(async () => {}), remove: vi.fn(async () => {}) },
-    amoKeychain: { issuer: vi.fn(async (): Promise<string | null> => "user:1:2"), write: vi.fn(async (i: string) => void (i === "bad" && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}) },
     forgetKey: vi.fn(),
     writer: { agent: vi.fn(async () => "claude" as const), reset: vi.fn() },
     notify: vi.fn(),
@@ -281,18 +280,6 @@ describe("settings host", () => {
     expect(o.keychain.remove).toHaveBeenCalled();
     expect(o.forgetKey).toHaveBeenCalledTimes(2);
     expect(o.forgetKey).toHaveBeenLastCalledWith("codex");
-  });
-
-  it("Mozilla account: issuer only, invalid input refused", async () => {
-    const { h, o } = setup();
-    expect(await h["settings.amoAccount"]!({})).toEqual({ saved: true, issuer: "user:1:2" });
-    expect(await h["settings.setAmoAccount"]!({ issuer: "user:1:2", secret: "s" })).toEqual({ ok: true });
-    expect(o.amoKeychain.write).toHaveBeenCalledWith("user:1:2", "s");
-    expect(await h["settings.setAmoAccount"]!({ issuer: "bad", secret: "s" })).toEqual({ ok: false, error: "Clé invalide : x" });
-    expect(await h["settings.setAmoAccount"]!({ issuer: 1, secret: null })).toMatchObject({ ok: false, error: expect.stringContaining("Clé invalide") });
-    expect(await h["settings.deleteAmoAccount"]!({})).toEqual({ ok: true });
-    vi.mocked(o.amoKeychain.issuer).mockResolvedValueOnce(null);
-    expect(await h["settings.amoAccount"]!({})).toEqual({ saved: false, issuer: null });
   });
 
   it("Claude's key: its own keychain, its own cache", async () => {

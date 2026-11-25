@@ -1,4 +1,4 @@
-# Home, first-launch welcome, import, Extensions, Applications, permission cards.
+# Home, first-launch welcome, import, Applications, permission cards.
 
 home-cancel = Annuler
 home-deny = Refuser
@@ -8,7 +8,6 @@ home-delete = Supprimer
 home-quoted = « { $name } »
 home-agent = l'agent
 home-agent-cap = L'agent
-home-by-agent = Écrite par l'agent
 
 ## Welcome
 
@@ -121,18 +120,9 @@ home-request-label-action = Demande d'accès aux résultats d'une action
 home-request-label-site = Demande d'accès à une appli de site
 home-request-label-history = Demande d'accès à votre historique
 home-request-label-widget = Demande d'accès aux données d'un widget
-home-request-label-extension = Activer une extension
-home-request-label-console = Débloquer la console d'une extension
 home-request-label-address = L'agent veut ouvrir une adresse qu'il a écrite lui-même
 home-request-label-address-found = L'agent veut ouvrir un lien qu'il a lu sur une page
 home-request-label = Demande d'autorisation
-home-request-unreadable = Demande d'extension illisible.
-home-request-console-where-profiles = des profils où elle est active
-home-request-console-where-space = de l'espace « { $space } »
-home-request-console-where-spaces = des espaces { $spaces }
-home-request-console = L'agent demande à voir toute la console de « { $name } » pour la corriger. Il verra ce que l'extension écrit dans sa console sur tous les onglets { $where }, y compris ceux que vous ne partagez pas. Jusqu'à ce que vous le coupiez ou qu'il ait fini.
-home-request-console-reason = Raison donnée par { $agent } : « { $reason } »
-home-request-console-unlock = Débloquer
 home-request-address-reason = Sa raison : { $reason }
 home-request-address-danger = ⚠ { $danger }
 home-request-why = Pourquoi on me demande ça ?
@@ -162,70 +152,6 @@ home-devtools-act-sensitive = l'agent peut lire tout ce que contient la page, l'
 home-devtools-allow = Autoriser la sélection
 home-devtools-note = Valable pour cette conversation · tombe si l'onglet change de site
 
-home-ext-update = Mettre à jour
-home-ext-update-end = { " ?" }
-home-ext-activate = Activer
-home-ext-activate-in = dans « { $space } » ?
-home-ext-version = Version { $from } → { $to }
-home-ext-wants = Ce qu'elle veut faire :
-home-ext-all-sites = Sur tous les sites que vous visitez
-home-ext-sites = Sur : { $sites }
-home-ext-sites-more = { $list } et { $count } autres
-home-ext-other-spaces = Elle sera active aussi dans { $names } (même profil).
-home-ext-also-replaces = La nouvelle version remplacera aussi celle de { $names }.
-home-ext-network-none = Elle ne peut rien envoyer vers internet.
-home-ext-network = Elle pourra envoyer des données à : { $sites }.
-home-ext-scripts = Ses scripts tournent dans les pages : ils pourraient faire charger une ressource à la page, et ainsi faire sortir des données. Les champs de mot de passe lui sont masqués, sans garantie absolue.
-home-ext-agent-blind = L'agent ne voit pas ce que cette extension lit sur les onglets que vous ne lui avez pas partagés.
-home-ext-hardened = Elle pourra lire et modifier chaque page de cet espace, comptes connectés compris.
-home-ext-confirm = Je comprends : elle lira toutes les pages de cet espace
-home-ext-enable = Activer
-home-ext-tick-first = Cochez « Je comprends » pour pouvoir l'activer.
-
-## Extensions page
-
-home-extensions-title = Extensions
-home-extensions-cut-all = Désactiver toutes les extensions
-home-extensions-help = Comment ça marche
-home-extensions-step1 = Branchez votre compte Mozilla
-home-extensions-step1-text = { " " }(une fois). Firefox n'installe que des extensions signées par Mozilla.
-home-extensions-connected = Compte branché
-home-extensions-connect = Brancher mon compte Mozilla
-home-extensions-step2 = Demandez à l'agent
-home-extensions-step2-text = { " : " }« écris-moi une extension qui… ». Il l'écrit, la fait signer (comptez quelques minutes), puis vous demande votre accord pour l'installer, avec ses droits et ses sites.
-home-extensions-step3 = Gérez-la ici
-home-extensions-step3-text = { " : " }l'activer par espace, voir ses erreurs, la faire modifier par l'agent, la supprimer.
-home-extensions-help-note = La signature envoie le code de l'extension à Mozilla ; elle n'est pas publiée sur le catalogue public.
-home-extensions-all-cut = Toutes les extensions sont désactivées : aucune n'est chargée, même après un redémarrage.
-home-extensions-empty = Aucune extension. Demandez à l'agent d'en écrire une, ou installez-en depuis addons.mozilla.org.
-home-extensions-disabled-crashes = Désactivée : elle a planté 3 fois en une minute
-home-extensions-disabled-scope = Désactivée : elle demande plus de droits qu'accordé
-home-extensions-console-unlocked = Console débloquée pour l'agent
-home-extensions-pending-update = Mise à jour { $version } en attente de votre accord.
-home-extensions-rights = Droits : { $list }
-home-extensions-sites = Sites : { $list }
-home-extensions-spaces = Espaces : { $list }
-home-extensions-none = aucun
-home-extensions-none-f = aucune
-home-extensions-all-sites = tous les sites
-home-extensions-nowhere = Active nulle part
-home-extensions-space-item = « { $name } » (profil { $profile })
-home-extensions-active-in = Active dans : { $names }
-home-extensions-modified = Modifiée le { $date }
-home-extensions-unsupported = Non pris en charge : { $list }
-home-extensions-errors = Erreurs : { $list }
-home-extensions-label-rights = Droits
-home-extensions-label-sites = Sites
-home-extensions-label-errors = Erreurs
-home-extensions-key = Clé
-home-extensions-review-update = Revoir la mise à jour
-home-extensions-review-grant = Revoir l'accord
-home-extensions-reenable = Réactiver
-home-extensions-cut-unlock = Couper le déblocage
-home-extensions-disable-everywhere = Désactiver partout
-home-extensions-details = Détails
-home-extensions-delete-store = Supprimer « { $name } » ? Elle sera désinstallée de tous les profils.
-home-extensions-delete-agent = Supprimer « { $name } » ? Son accord et sa copie seront effacés ; le dossier de l'agent reste.
 
 ## Applications page
 

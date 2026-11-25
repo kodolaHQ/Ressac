@@ -3,15 +3,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { writeAgentExtension } from "./extensions/fixtures";
 import { cleanupXpis, installAddon, marker, type Fixture } from "./addons";
-import { grant, launchWithAmo, testActor } from "./agent-extensions";
+import { testActor } from "./actors";
 import { state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { ICON } from "./server";
-import { grantSite, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteWindowExpr, startSitesServer, writeSite, type SiteTest } from "./sites";
+import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteWindowExpr, startSitesServer, writeSite, type SiteTest } from "./sites";
 import { inUi, missingApi, agentPanelReady } from "./ui";
 
 // Plan 32 Task 6: Firefox add-ons in a site app's window. Their buttons in the app's bar (the « site » view only), their
@@ -363,34 +362,5 @@ describe("the agent and the app's add-ons", () => {
     const lines = (await callTool(dataDir, "list_tabs")).text.split("\n");
     expect(lines.filter((l) => l.includes("vidola-a.localhost"))).toEqual(["site:vidola · Vidola · vidola-a.localhost · appli de site"]);
     expect(Object.values((await state(m)).tabs).filter((o) => o.url.includes("vidola-a.localhost"))).toEqual([]);
-  });
-
-  it("an agent extension's content script never runs in the app view, nor shows in its bar", async () => {
-    dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
-    profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
-    const host = "http://vidola-a.localhost/*";
-    writeAgentExtension(path.join(dataDir, "workspace"), "cacheur", {
-      "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: [host], css: ["cache.css"] }] },
-      "cache.css": "#banniere { display: none !important; }\n",
-    });
-    grant(dataDir, "cacheur", { permissions: [], hosts: [host], network: [], allSites: false, allSitesScripts: false, scripts: true });
-    writeSite(dataDir, "vidola", { declaration: vidola() });
-    w = await launchWithAmo({ dataDir, profile, env: { RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
-    m = w.marionette;
-    await resolveLocalHosts(m, HOSTS);
-    await waitFor(m, `return (async () => {
-      const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
-      return !!(await AddonManager.getAddonByID("cacheur@agent.ressac"))?.isActive;
-    })();`, (v) => v === true, 30_000);
-    // Witness: in a tab of the space, its sheet hides the banner.
-    await inStore(`store.dispatch({ type: "openTab", windowId: store.state.windows[0].id, url: arguments[0] });`, [url("/pubs?onglet")]);
-    await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (u) => u === url("/pubs?onglet"), 15_000);
-    const inTab = () => inBrowser<string>(m, "gBrowser.selectedBrowser", "return getComputedStyle(document.getElementById('banniere')).display;").catch(() => null);
-    await expect.poll(inTab, { timeout: 15_000 }).toBe("none");
-    // The app view: never.
-    await openAndWait();
-    await new Promise((r) => setTimeout(r, 2000));
-    expect(await view("getComputedStyle(document.getElementById('banniere')).display")).toBe("block");
-    expect(await m.execute(`return ${siteWindowExpr("vidola")}.ressacSiteWindow.addons.buttons().map((b) => b.id);`)).not.toContain("cacheur@agent.ressac");
   });
 });

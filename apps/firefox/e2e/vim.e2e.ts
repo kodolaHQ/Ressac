@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ServerResponse } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { openTab, testActor } from "./agent-extensions";
+import { openTab, testActor } from "./actors";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";

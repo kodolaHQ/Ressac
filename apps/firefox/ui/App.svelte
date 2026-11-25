@@ -10,7 +10,6 @@
   import Applications from "./components/Applications.svelte";
   import CommandBar from "./components/CommandBar.svelte";
   import Sidebar from "./components/Sidebar.svelte";
-  import Extensions from "./components/Extensions.svelte";
   import FrozenBackground from "./components/FrozenBackground.svelte";
   import History from "./components/History.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
@@ -36,7 +35,7 @@
   import { spaceSettings } from "./components/spaceSettings.svelte";
   import { access, aiOn, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
   import AiAsleep from "./components/AiAsleep.svelte";
-  import { BAR_WIDTH, BAR_WIDTH_MAX, BAR_WIDTH_MIN, actionOfUrl, recapOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, URL_RELEASE_NOTES, URL_SETTINGS } from "../shared/model";
+  import { BAR_WIDTH, BAR_WIDTH_MAX, BAR_WIDTH_MIN, actionOfUrl, recapOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_RELEASE_NOTES, URL_SETTINGS } from "../shared/model";
   import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/reveal";
   import type { Panel, TabsPanel as TabPanel } from "../shared/api";
   import type { ApiFirefox } from "./api";
@@ -315,8 +314,6 @@
       <EmptyPage window={winState} />
     {:else if activeTab && (activeTab.crashed || activeTab.error)}
       <PageError tab={activeTab} />
-    {:else if activeTab?.url === URL_EXTENSIONS}
-      <Extensions />
     {:else if activeTab?.url === URL_APPLICATIONS}
       {#if aiOn()}<Applications />{:else}<AiAsleep feature="apps" />{/if}
     {:else if activeTab?.url === URL_SETTINGS}

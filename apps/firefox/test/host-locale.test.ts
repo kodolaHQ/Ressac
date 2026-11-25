@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { NO_KERNEL_MESSAGE } from "../host/actions";
-import { KEYS_ABSENT } from "../host/extensions/amo";
 import { INVALID_KEY } from "../host/keychain";
 import { setHostLocale } from "../host/locale";
 
@@ -11,7 +10,6 @@ describe("host texts follow the shown language", () => {
     setHostLocale("en");
     expect(NO_KERNEL_MESSAGE()).toBe("The actions service is not answering (agent stopped?)");
     expect(INVALID_KEY()).toMatch(/^Invalid key/);
-    expect(KEYS_ABSENT()).toMatch(/^Mozilla account not connected/);
     setHostLocale("xx");
     expect(INVALID_KEY()).toMatch(/^Invalid key/);
   });

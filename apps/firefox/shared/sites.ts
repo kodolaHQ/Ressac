@@ -6,9 +6,6 @@ import type { MemoryEntry, PositionVideo } from "@ressac/kernel";
 /** Height of a site app window's bar, in px: the site view is placed right below it. */
 export const SITE_BAR_HEIGHT = 36;
 
-/** Maximum height, in px, of the bar's « Extensions » menu panel (plan 16): it pushes the site view down by as much. */
-export const EXTENSIONS_PANEL_MAX = 320;
-
 /** At most one read of the reference page per minute and per app. */
 export const TRACKING_INTERVAL_MS = 60_000;
 

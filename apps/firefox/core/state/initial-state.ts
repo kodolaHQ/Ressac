@@ -24,7 +24,7 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
         frame: null,
       },
     ],
-    settings: { engine: "google", customEngine: null, agentProfile: "claude", agentMode: "browser", agentPanelWidth: 420, sidebarWidth: 240, codexEngine: { ...DEFAULT_CODEX_ENGINE }, claudeEngine: { ...DEFAULT_CLAUDE_ENGINE }, onboarded: false, seenVersion: null, hints: { enabled: true, seen: [] }, sidebarSide: "left", shortcuts: {}, vimMode: false, startOnHome: true, auraMotion: true, auraMotionChosen: false, saveMemory: false, saveMemoryChosen: false, appearance: "system", language: "system", aiEnabled: false, agentDomains: [], machineIdleMinutes: 5 },
+    settings: { engine: "google", customEngine: null, agentProfile: "claude", agentMode: "browser", agentPanelWidth: 420, sidebarWidth: 240, codexEngine: { ...DEFAULT_CODEX_ENGINE }, claudeEngine: { ...DEFAULT_CLAUDE_ENGINE }, onboarded: false, seenVersion: null, hints: { enabled: true, seen: [] }, sidebarSide: "left", shortcuts: {}, vimMode: false, extensionQuarantine: true, startOnHome: true, auraMotion: true, auraMotionChosen: false, saveMemory: false, saveMemoryChosen: false, appearance: "system", language: "system", aiEnabled: false, agentDomains: [], machineIdleMinutes: 5 },
     update: null,
     locale: "en",
     aiSetup: false,

@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { initialState } from "../core/state/initial-state";
 import { FIRST_TIME, type FirstTimeId } from "../shared/hints";
 import { listen, tid, writeAction, type TestServer } from "./actions";
-import { openTab } from "./agent-extensions";
+import { openTab } from "./actors";
 import { writeProject } from "./apps";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";

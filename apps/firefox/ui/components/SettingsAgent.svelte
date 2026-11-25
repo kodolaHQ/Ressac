@@ -7,7 +7,6 @@
   import LiftLock from "./LiftLock.svelte";
   import type { QuarantinedFile } from "../../shared/api";
   import SettingsEngine from "./SettingsEngine.svelte";
-  import SettingsMozilla from "./SettingsMozilla.svelte";
   import SettingsRow from "./SettingsRow.svelte";
 
   // Styles come from Settings.svelte.
@@ -210,6 +209,5 @@
         {#if restoreError}<span class="alert appear">{t("settings-error", { error: restoreError })}</span>{/if}
       </div>
     {/if}
-    <SettingsMozilla />
   {/if}
 </section>

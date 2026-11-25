@@ -39,33 +39,6 @@ it("an address card carries the masked danger line, and omits it when absent", (
   expect(b).not.toHaveProperty("danger");
 });
 
-it("an extension card: Activer answers accepte with the card's empreinte; a renforcée one needs confirme", async () => {
-  const store = createStore(initialState());
-  const questions = new Questions(store);
-  const win = store.state.windows[0]!.id;
-  const space = store.state.spaces[0]!;
-  const card = {
-    key: "agent:essai", name: "Essai", source: "agent" as const, version: "1.0.0", rights: [], sites: [], allSites: false, network: [],
-    hardened: false, space: space.name, spaceId: space.id, otherSpaces: [], alsoReplaces: [], update: null, hash: "e".repeat(64),
-  };
-  let answer = questions.askExtension(card, win);
-  expect(questions.pending()).toMatchObject([{ windowId: win, tabId: null, permissions: ["extension"], extension: card }]);
-  questions.answer(questions.pending()[0]!.id, "allow");
-  expect(await answer).toEqual({ accepted: true });
-
-  answer = questions.askExtension({ ...card, hardened: true }, win);
-  questions.answer(questions.pending()[0]!.id, "allow");
-  expect(await answer).toEqual({ accepted: false });
-
-  answer = questions.askExtension({ ...card, hardened: true }, win);
-  questions.answer(questions.pending()[0]!.id, "allow", { confirmed: true });
-  expect(await answer).toEqual({ accepted: true });
-
-  // Its space gone: the card falls, « retirée ».
-  expect(await questions.askExtension({ ...card, spaceId: "gone" }, win)).toEqual({ accepted: false, removed: true });
-  expect(questions.pending()).toEqual([]);
-});
-
 it("a site's question waits without a delay; it falls (`withdrawn`) on its signal or when its tab closes", async () => {
   const store = createStore(initialState());
   const questions = new Questions(store);

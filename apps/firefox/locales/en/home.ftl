@@ -1,4 +1,4 @@
-# Home, first-launch welcome, import, Extensions, Applications, permission cards.
+# Home, first-launch welcome, import, Applications, permission cards.
 
 home-cancel = Cancel
 home-deny = Deny
@@ -8,7 +8,6 @@ home-delete = Delete
 home-quoted = “{ $name }”
 home-agent = the agent
 home-agent-cap = The agent
-home-by-agent = Written by the agent
 
 ## Welcome
 
@@ -121,18 +120,9 @@ home-request-label-action = Request for access to an action's results
 home-request-label-site = Request for access to a site app
 home-request-label-history = Request for access to your history
 home-request-label-widget = Request for access to a widget's data
-home-request-label-extension = Enable an extension
-home-request-label-console = Unlock an extension's console
 home-request-label-address = The agent wants to open an address it wrote itself
 home-request-label-address-found = The agent wants to open a link it read on a page
 home-request-label = Permission request
-home-request-unreadable = Unreadable extension request.
-home-request-console-where-profiles = of the profiles where it is active
-home-request-console-where-space = of the space “{ $space }”
-home-request-console-where-spaces = of the spaces { $spaces }
-home-request-console = The agent asks to see the whole console of “{ $name }” to fix it. It will see what the extension writes to its console on all the tabs { $where }, including those you do not share. Until you cut it off or it is done.
-home-request-console-reason = Reason given by { $agent }: “{ $reason }”
-home-request-console-unlock = Unlock
 home-request-address-reason = Its reason: { $reason }
 home-request-address-danger = ⚠ { $danger }
 home-request-why = Why am I being asked this?
@@ -162,70 +152,6 @@ home-devtools-act-sensitive = the agent can read everything the page holds, send
 home-devtools-allow = Allow the selection
 home-devtools-note = Valid for this conversation · lapses if the tab changes site
 
-home-ext-update = Update
-home-ext-update-end = ?
-home-ext-activate = Enable
-home-ext-activate-in = in “{ $space }”?
-home-ext-version = Version { $from } → { $to }
-home-ext-wants = What it wants to do:
-home-ext-all-sites = On every site you visit
-home-ext-sites = On: { $sites }
-home-ext-sites-more = { $list } and { $count } more
-home-ext-other-spaces = It will also be active in { $names } (same profile).
-home-ext-also-replaces = The new version will also replace the one in { $names }.
-home-ext-network-none = It cannot send anything to the internet.
-home-ext-network = It will be able to send data to: { $sites }.
-home-ext-scripts = Its scripts run inside pages: they could make a page load a resource, and so send data out. Password fields are hidden from it, with no absolute guarantee.
-home-ext-agent-blind = The agent does not see what this extension reads on tabs you have not shared with it.
-home-ext-hardened = It will be able to read and change every page of this space, signed-in accounts included.
-home-ext-confirm = I understand: it will read every page of this space
-home-ext-enable = Enable
-home-ext-tick-first = Tick “I understand” to be able to enable it.
-
-## Extensions page
-
-home-extensions-title = Extensions
-home-extensions-cut-all = Turn off all extensions
-home-extensions-help = How it works
-home-extensions-step1 = Connect your Mozilla account
-home-extensions-step1-text = { " " }(once). Firefox only installs extensions signed by Mozilla.
-home-extensions-connected = Account connected
-home-extensions-connect = Connect my Mozilla account
-home-extensions-step2 = Ask the agent
-home-extensions-step2-text = : “write me an extension that…”. It writes it, has it signed (allow a few minutes), then asks for your approval to install it, with its rights and its sites.
-home-extensions-step3 = Manage it here
-home-extensions-step3-text = : turn it on per space, see its errors, have the agent change it, delete it.
-home-extensions-help-note = Signing sends the extension's code to Mozilla; it is not published to the public catalog.
-home-extensions-all-cut = All extensions are turned off: none is loaded, even after a restart.
-home-extensions-empty = No extensions. Ask the agent to write one, or install one from addons.mozilla.org.
-home-extensions-disabled-crashes = Disabled: it crashed 3 times in a minute
-home-extensions-disabled-scope = Disabled: it asks for more rights than granted
-home-extensions-console-unlocked = Console unlocked for the agent
-home-extensions-pending-update = Update { $version } waiting for your approval.
-home-extensions-rights = Rights: { $list }
-home-extensions-sites = Sites: { $list }
-home-extensions-spaces = Spaces: { $list }
-home-extensions-none = none
-home-extensions-none-f = none
-home-extensions-all-sites = all sites
-home-extensions-nowhere = Active nowhere
-home-extensions-space-item = “{ $name }” (profile { $profile })
-home-extensions-active-in = Active in: { $names }
-home-extensions-modified = Modified on { $date }
-home-extensions-unsupported = Not supported: { $list }
-home-extensions-errors = Errors: { $list }
-home-extensions-label-rights = Rights
-home-extensions-label-sites = Sites
-home-extensions-label-errors = Errors
-home-extensions-key = Key
-home-extensions-review-update = Review the update
-home-extensions-review-grant = Review the approval
-home-extensions-reenable = Re-enable
-home-extensions-cut-unlock = Cut the unlock
-home-extensions-disable-everywhere = Disable everywhere
-home-extensions-details = Details
-home-extensions-delete-store = Delete “{ $name }”? It will be uninstalled from all profiles.
-home-extensions-delete-agent = Delete “{ $name }”? Its approval and its copy will be erased; the agent's folder stays.
 
 ## Applications page
 

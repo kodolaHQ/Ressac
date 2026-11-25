@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { STOP_TIMEOUT_MS } from "../chrome/store/design";
 import { bubbleSlot, rectCapture } from "../chrome/store/design-copies";
 import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
-import { openTab, testActor } from "./agent-extensions";
+import { openTab, testActor } from "./actors";
 import { pageLog, clearLog, startDesignServers, stopActor, trustedMouse } from "./design";
 import { dispatch, pressClosing, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";

@@ -71,10 +71,11 @@ const SchemaSession = z.object({
         enabled: z.boolean().catch(true),
         seen: z.array(z.string()).transform((ids) => ids.filter((id): id is HintId => (HINT_IDS as readonly string[]).includes(id))),
       })
-      // Not « extensions »: a page, not a surface they already use.
-      .catch(() => ({ enabled: true, seen: (Object.keys(FIRST_TIME) as HintId[]).filter((id) => id !== "extensions") })),
+      .catch(() => ({ enabled: true, seen: Object.keys(FIRST_TIME) as HintId[] })),
     sidebarSide: z.enum(["left", "right"]).catch("left"),
     vimMode: z.boolean().catch(false),
+    // A session saved before the setting existed had the quarantine on.
+    extensionQuarantine: z.boolean().catch(true),
     agentDomains: z.array(z.unknown()).transform(cleanAgentDomains).catch([]),
     machineIdleMinutes: MachineIdleSchema.catch(5),
     // A session saved before the setting existed already had AI: it stays on.

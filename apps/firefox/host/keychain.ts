@@ -1,7 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import { KEYCHAIN_DELAY_MS, readAmoKey } from "./extensions/amo";
 import { hostSay } from "./locale.ts";
 
 const run = promisify(execFile);
@@ -10,6 +9,8 @@ export const CODEX_KEY = { service: "ressac-codex-api", account: "default" };
 export const CLAUDE_KEY = { service: "ressac-claude-api", account: "default" };
 /** `security`'s exit code for an item not found. */
 const ABSENT = 44;
+/** How long a `security` call may take (a locked keychain asks for the password). */
+export const KEYCHAIN_DELAY_MS = 10_000;
 export const KEY_PATTERN = /^[A-Za-z0-9._~+/=:-]{1,512}$/;
 export const INVALID_KEY = () => hostSay("host-invalid-key");
 
@@ -74,39 +75,22 @@ export function keychain(o: { service?: string; account?: string; command?: stri
   return self;
 }
 
+/** The Mozilla (AMO) developer account the agent's extensions were signed with, until 0.1.26. */
 export const AMO_SERVICE = "ressac-amo";
-export const ISSUER_PATTERN = /^user:\d+:\d+$/;
 
 /**
- * The Mozilla (AMO) developer account: the JWT issuer is the item's account, the JWT secret its password. Only one item stays under the service.
- * `env.RESSAC_TEST_KEYCHAIN` = a ".amo" file holding "issuer:secret" (tests, e2e).
+ * Deletes every item under AMO_SERVICE (`delete-generic-password` removes one per call: until none is left, 44 = absent).
+ * `env.RESSAC_TEST_KEYCHAIN` = its ".amo" file (tests, e2e).
  */
-export function amoKeychain(o: { command?: string; delayMs?: number; env?: NodeJS.ProcessEnv } = {}) {
-  const env = o.env ?? process.env;
-  const command = o.command ?? "security";
-  const file = env.RESSAC_TEST_KEYCHAIN && `${env.RESSAC_TEST_KEYCHAIN}.amo`;
-  const remove = async () => {
-    if (file) return rm(file, { force: true });
-    // `delete-generic-password` removes one item per call: go on until none is left (44 = absent).
-    for (let i = 0; i < 20; i++) {
-      try {
-        await run(command, ["delete-generic-password", "-s", AMO_SERVICE], { timeout: o.delayMs ?? KEYCHAIN_DELAY_MS });
-      } catch (e) {
-        if ((e as { code?: unknown }).code === ABSENT) break;
-        throw new Error("Suppression au trousseau impossible");
-      }
+export async function removeAmoAccount(o: { command?: string; delayMs?: number; env?: NodeJS.ProcessEnv } = {}): Promise<void> {
+  const file = (o.env ?? process.env).RESSAC_TEST_KEYCHAIN;
+  if (file) return rm(`${file}.amo`, { force: true });
+  for (let i = 0; i < 20; i++) {
+    try {
+      await run(o.command ?? "security", ["delete-generic-password", "-s", AMO_SERVICE], { timeout: o.delayMs ?? KEYCHAIN_DELAY_MS });
+    } catch (e) {
+      if ((e as { code?: unknown }).code === ABSENT) return;
+      throw new Error("Suppression au trousseau impossible");
     }
-  };
-  return {
-    /** The saved issuer (the secret never leaves the keychain), or null. */
-    issuer: async () => (await readAmoKey(env, { command, delay: o.delayMs }))?.emitter ?? null,
-    async write(issuer: string, secret: string) {
-      if (!ISSUER_PATTERN.test(issuer) || !KEY_PATTERN.test(secret)) throw new Error(INVALID_KEY());
-      if (file) return writeFile(file, `${issuer}:${secret}`, { mode: 0o600 });
-      await remove();
-      await keychain({ service: AMO_SERVICE, account: issuer, command, delayMs: o.delayMs, env: {} }).write(secret);
-    },
-    remove,
-  };
+  }
 }
-export type AmoKeychain = ReturnType<typeof amoKeychain>;

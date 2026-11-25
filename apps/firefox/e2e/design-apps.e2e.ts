@@ -5,7 +5,7 @@ import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { reviewUrl } from "../shared/model";
-import { testActor } from "./agent-extensions";
+import { testActor } from "./actors";
 import { agentInput, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchAttempt, rowButton, rowMenu, rowState, writeProject, waitFirstSweep } from "./apps";
 import { startDesignServers, trustedMouse } from "./design";
 import { dispatch, inWindow, state, waitFor, waitReady, windowHandles } from "./firefox";

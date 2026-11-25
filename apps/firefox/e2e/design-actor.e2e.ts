@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cleanCapture } from "../chrome/store/design-copies";
-import { openTab, testActor } from "./agent-extensions";
+import { openTab, testActor } from "./actors";
 import { armActor, askActor, center, clearLog, guardFrame, pageLog, readSource, startDesignServers, stopActor, trustedMouse, unguardFrame } from "./design";
 import { waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";

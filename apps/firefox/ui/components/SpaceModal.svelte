@@ -3,10 +3,8 @@
   import AuraDot from "./AuraDot.svelte";
   import { command } from "./command.svelte";
   import { onMount, untrack } from "svelte";
-  import type { SpaceExtensionLine } from "../../shared/extensions";
   import type { WindowId, TabId } from "../../shared/model";
   import { api, appState } from "../state.svelte";
-  import { warnings } from "./spaceExtensions";
   import FrozenBackground from "./FrozenBackground.svelte";
   import { choiceLosesConnections, profileOptions, PROFILE_TO_CHOOSE } from "./spaceProfiles";
   import { spaceSettings } from "./spaceSettings.svelte";
@@ -57,9 +55,6 @@
   const options = $derived(profileOptions(spaces, appState.value?.profiles ?? [], draft.id, appState.value?.locale ?? "fr"));
   const fresh = $derived(draft.id === null);
   const valid = $derived(draft.name.trim() !== "" && draft.profile !== PROFILE_TO_CHOOSE);
-  // Extensions: the rows seen from the space's saved profile (an existing space only).
-  let lines = $state<SpaceExtensionLine[] | null>(null);
-  let extensionError = $state<string | null>(null);
   const saved = $derived(spaces.find((e) => e.id === draft.id));
   /** The entries of the saved profile's passport, lost with it when the space leaves it (design § 4.4). */
   let passportCount = $state(0);
@@ -76,31 +71,6 @@
   let dropPassport = $state(false);
   /** A drop that failed (nothing changed), or one done for a change the state then refused. */
   let failure = $state<"failed" | "space-kept" | null>(null);
-  const profileChanged = $derived(!!saved && draft.profile !== saved.profile);
-  const linesKey = $derived(saved ? `${saved.id}|${saved.profile}|${saved.private}|${spaces.map((e) => `${e.name}:${e.profile}`).join(",")}` : "");
-  const warned = $derived(
-    lines && !fresh
-      ? warnings({ id: draft.id, private: draft.private, profile: draft.profile }, spaces, lines)
-      : { sharedPrivate: [], agentDisabled: [] },
-  );
-  async function loadLines() {
-    if (draft.id !== null) lines = await api.extensions.forSpace(draft.id);
-  }
-  $effect(() => {
-    void linesKey;
-    void loadLines();
-  });
-  async function toggle(l: SpaceExtensionLine, field: HTMLInputElement) {
-    if (draft.id === null) return;
-    extensionError = null;
-    const r = await api.extensions.toggle(l.key, draft.id, field.checked);
-    if (!r.ok) extensionError = r.error;
-    await loadLines();
-    // The switch takes back what the registry says (card refused, error).
-    const view = lines?.find((x) => x.key === l.key);
-    if (view && field.isConnected) field.checked = view.active;
-  }
-
   // The choice no longer designates any profile (the state changed meanwhile): a new space goes back to « à choisir »,
   // an existing space to the first one offered.
   $effect(() => {
@@ -115,9 +85,7 @@
   onMount(() => {
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     nameField.focus();
-    const endChange = api.extensions.onChange(() => void loadLines());
     return () => {
-      endChange();
       // Focus goes back where it was, if it is still in the interface, when the rest is no longer inert.
       queueMicrotask(() => {
         if (before?.isConnected && before !== document.body) before.focus();
@@ -259,37 +227,6 @@
         {/if}
         {#if failure}<p class="note alert rise" role="alert" data-testid="space-modal-drop-failed" out:fade={{ duration: 120 }}>{t(failure === "failed" ? "sidebar-space-passport-drop-failed" : "sidebar-space-passport-dropped-only")}</p>{/if}
       </div>
-      {#if !fresh}
-        <div class="block" data-testid="space-extensions">
-          <span class="label">{t("sidebar-space-extensions")}</span>
-          {#if profileChanged}
-            <p class="note">{t("sidebar-space-extensions-save-first")}</p>
-          {:else if lines && lines.length === 0}
-            <p class="note">{t("sidebar-space-extensions-none")}</p>
-          {:else if lines}
-            {#each lines as l (l.key)}
-              <div class="extension" data-testid="extension-row" data-key={l.key}>
-                <label class="case">
-                  <input type="checkbox" role="switch" checked={l.active} disabled={l.greyedOut !== null} onchange={(e) => void toggle(l, e.currentTarget)} />
-                  <b>{l.name}</b>
-                  <span class="source">{l.source === "agent" ? t("sidebar-space-extension-agent") : "addons.mozilla.org"}</span>
-                </label>
-                {#if l.active && l.alsoIn.length > 0}<p class="note">{t("sidebar-space-extension-also", { spaces: l.alsoIn.join(", ") })}</p>{/if}
-                {#if l.greyedOut}<p class="note">{l.greyedOut}</p>{/if}
-              </div>
-            {/each}
-          {/if}
-          {#if extensionError}<p class="note alert" role="alert" data-testid="extension-error">{extensionError}</p>{/if}
-          {#if draft.private && warned.sharedPrivate.length > 0}
-            <p class="note" data-testid="private-extensions-warning">
-              {t("sidebar-space-private-shared", { spaces: warned.sharedPrivate.join(", ") })}
-            </p>
-          {/if}
-          {#if warned.agentDisabled.length > 0}
-            <p class="note alert" data-testid="extensions-disabled">{t("sidebar-space-extensions-disabled", { names: warned.agentDisabled.join(", ") })}</p>
-          {/if}
-        </div>
-      {/if}
       <div class="actions">
         <button type="button" disabled={saving} onclick={close}>{t("sidebar-cancel")}</button>
         <button type="submit" class="main" disabled={!valid || saving}>{t(fresh ? "sidebar-create" : "sidebar-save")}</button>
@@ -371,8 +308,6 @@
   .case { display: flex; align-items: center; gap: 6px; }
   .label { font-size: 11.5px; color: var(--text-muted); }
   .note { margin: 0; font-size: 11.5px; color: var(--text-muted); }
-  .extension { display: flex; flex-direction: column; gap: 2px; }
-  .source { font-size: 11px; color: var(--text-muted); }
   .alert { color: var(--text); font-weight: 600; }
   .rise { display: flex; flex-direction: column; gap: 6px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }

@@ -143,7 +143,7 @@ cp $app_dir/dist-host/host.mjs $host/host.mjs
 cp -R $pty/package.json $pty/lib $pty/LICENSE $host/node_modules/node-pty/
 cp -R $pty/prebuilds/darwin-arm64 $host/node_modules/node-pty/prebuilds/
 # Only the files git tracks (their working-tree content): a stray file left in these folders never ships in the signed app.
-(cd $kernel && git ls-files -z -- templates extensions docker | tar --null -T - -cf -) | tar -xf - -C $host/kernel
+(cd $kernel && git ls-files -z -- templates docker | tar --null -T - -cf -) | tar -xf - -C $host/kernel
 [[ -f $host/kernel/docker/workshop.Dockerfile ]] || fail "kernel resources not copied"
 # Only names, versions, licenses: pnpm's JSON also lists this Mac's install paths.
 # firefox-ressac without --prod: its UI and host bundles ship code from its devDependencies.

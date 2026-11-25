@@ -1,12 +1,9 @@
 <script lang="ts">
-  import type { WindowState } from "../shared/model";
-  import { api } from "./state.svelte";
   import { t } from "./i18n.svelte";
   import type { AddonButton, PendingUpdate } from "../chrome/window/addons";
 
   // The add-on buttons of the active window (chrome/window/addons.ts), copied into this document like ui/api.ts does.
-  // `window` only opens the agent's Extensions page: the window announces changes itself (onChange, every tab switch).
-  let { window: win }: { window: WindowState } = $props();
+  // The window announces changes itself (onChange, every tab switch).
   const addons = window.parent.ressacWindow!.addons;
   let buttons = $state<AddonButton[]>(structuredClone(addons.buttons()));
   let updates = $state<PendingUpdate[]>(structuredClone(addons.updates()));
@@ -81,7 +78,6 @@
       {/each}
     </ul>
     <button class="manage" onclick={act(() => addons.manage())}>{t("sidebar-extensions-manage")}</button>
-    <button class="manage" onclick={act(() => api.dispatch({ type: "openExtensions", windowId: win.id }))}>Extensions de l'agent</button>
     <button class="manage" onclick={act(() => addons.findMore())}>Trouver des modules</button>
   </div>
 {/if}

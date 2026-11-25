@@ -2,7 +2,7 @@ import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { CLAUDE_KEY, keychain } from "../host/keychain";
+import { AMO_SERVICE, CLAUDE_KEY, keychain, removeAmoAccount } from "../host/keychain";
 
 let dir: string;
 let log: string;
@@ -106,5 +106,13 @@ describe("keychain", () => {
     expect(await readFile(file, "utf8")).toBe("sk-codex");
     expect(await readFile(`${file}.claude`, "utf8")).toBe("sk-claude");
     expect(await keychain({ command: fake, env, service: CLAUDE_KEY.service }).read()).toBe("sk-claude");
+  });
+
+  it("removeAmoAccount deletes the old Mozilla account item; absent is done, another failure throws", async () => {
+    await writeFile(state, "44\n");
+    await removeAmoAccount({ command: fake, env: {} });
+    expect((await journal()).map((j) => j.argv)).toEqual([["delete-generic-password", "-s", AMO_SERVICE]]);
+    await writeFile(state, "1\n");
+    await expect(removeAmoAccount({ command: fake, env: {} })).rejects.toThrow();
   });
 });

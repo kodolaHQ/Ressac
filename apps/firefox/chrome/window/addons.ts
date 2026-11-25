@@ -14,8 +14,6 @@ const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/E
 const { ExtensionsUI } = ChromeUtils.importESModule("resource:///modules/ExtensionsUI.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
 const ADDONS_LIST = "addons://list/extension";
-// Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
-const AGENT_SUFFIX = "@agent.ressac";
 
 export interface AddonButton {
   id: string;
@@ -36,7 +34,7 @@ export interface PendingUpdate {
   name: string;
 }
 export interface WindowAddons {
-  /** Active, non-hidden extensions, in getActivePolicies order, an agent one only in the spaces where it runs; one without a browser action is never enabled. */
+  /** Active, non-hidden extensions, in getActivePolicies order; one without a browser action is never enabled. */
   buttons(): AddonButton[];
   /** ExtensionsUI.updates. */
   updates(): PendingUpdate[];
@@ -70,15 +68,10 @@ export function createAddons(o: {
     win: o.win,
     gBrowser: o.gBrowser,
     anchors: o.anchors,
-    shown(id) {
-      const space = activeSpace();
-      return !space || o.store.agentExtensions.shownIn(id, space.profile, space.private);
-    },
     page: () => !!o.tabs.displayed(),
     watch: [
-      (notify) => o.store.agentExtensions.onScopes(notify),
       (notify) => {
-        // Another space, or the same one turned private or given another profile.
+        // Another space: its displayed page (or none) enables the buttons or not.
         let lastSpace = "";
         return o.store.subscribe(() => {
           const e = activeSpace();
@@ -93,8 +86,8 @@ export function createAddons(o: {
 }
 
 /**
- * A site app's window (store/sites.ts): the add-ons' buttons for its one tab, the app view. Never an agent extension's
- * (they never run in an app, spec §4.9); enabled in the « site » view on a web page only.
+ * A site app's window (store/sites.ts): the add-ons' buttons for its one tab, the app view; enabled in the « site » view
+ * on a web page only.
  * Its popups open on the app's bar; about:addons opens in a main window (the app window takes no tab).
  */
 export function createSiteAddons(win: Window, view: SiteWindowController): WindowAddons {
@@ -104,7 +97,6 @@ export function createSiteAddons(win: Window, view: SiteWindowController): Windo
     win,
     gBrowser: w.gBrowser,
     anchors: setupAnchors(win, bar),
-    shown: (id) => !id.endsWith(AGENT_SUFFIX),
     page: () => view.state().viewState === "site" && /^https?:/.test(w.gBrowser.selectedBrowser.currentURI?.spec ?? ""),
     watch: [(notify) => view.onState(notify)],
     manage() {
@@ -124,8 +116,6 @@ function addonsCore(o: {
   win: Window;
   gBrowser: any;
   anchors: Anchors;
-  /** Is this add-on listed in this window? */
-  shown(addonId: string): boolean;
   /** Is a web page displayed (the buttons can be enabled)? */
   page(): boolean;
   /** Other sources of change: each subscribes `notify` and returns its unsubscribe, called at unload. */
@@ -172,7 +162,6 @@ function addonsCore(o: {
     const page = o.page();
     const pins = pinned();
     return w.gUnifiedExtensions.getActivePolicies().flatMap((policy: any) => {
-      if (!o.shown(policy.id)) return [];
       const ba = actionOf(policy);
       const { extension } = policy;
       // As Firefox's own panel: an add-on without a button (content scripts only) is listed, greyed.

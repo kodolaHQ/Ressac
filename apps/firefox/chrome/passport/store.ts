@@ -1,6 +1,5 @@
 import { maskedDisplay, validatePassport, PASSPORT_LIMITS, PASSPORT_PROFILE as PROFILE, type PassportEntry } from "../shims/kernel";
 import { passportCipher, type PassportCipher } from "./cipher";
-import { setPassportHosts } from "./hosts";
 
 const FORMAT = "ressac-passport";
 const VERSION = 1;
@@ -30,9 +29,8 @@ export function createPassportFiles(o: { dir: string; cipher: PassportCipher; no
   const counts = new Map<string, number>();
   /** Per profile, at the last good load or save: each entry's field and masked display (never a value), for the tooltips. */
   const shown = new Map<string, Map<string, { field: string; display: string }>>();
-  /** The last good state of a profile's passport: its hosts (agent extensions) and its shown entries. */
+  /** The last good state of a profile's passport: its shown entries. */
   const known = (profile: string, entries: readonly PassportEntry[]) => {
-    setPassportHosts(profile, entries);
     if (entries.length) shown.set(profile, new Map(entries.map((e) => [e.id, { field: e.field, display: maskedDisplay(e) }])));
     else shown.delete(profile);
   };
@@ -69,12 +67,12 @@ export function createPassportFiles(o: { dir: string; cipher: PassportCipher; no
     return children.map((p) => PathUtils.filename(p)).filter((n) => n.endsWith(".json") && PROFILE.test(n.slice(0, -5))).map((n) => n.slice(0, -5));
   }
 
-  /** Through the save queue: a slow load started before a save never sets its older hosts and cache after the save's. */
+  /** Through the save queue: a slow load started before a save never sets its older cache after the save's. */
   const load = (profile: string): Promise<LoadResult> => queued(profile, () => loadNow(profile));
 
   async function loadNow(profile: string): Promise<LoadResult> {
     const unreadable = (revision = ""): LoadResult => {
-      // Its hosts and shown entries stay as last known: a failed read never opens them to the agent's extensions.
+      // Its shown entries stay as last known.
       readOnly.set(profile, "unreadable");
       return { profile, state: "unreadable", entries: [], dropped: 0, revision };
     };

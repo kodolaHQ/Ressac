@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, inWindow, newWindow, state, waitFor, waitReady } from "./firefox";
 import { grantSite, writeSite } from "./sites";
-import { testActor } from "./agent-extensions";
+import { testActor } from "./actors";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";

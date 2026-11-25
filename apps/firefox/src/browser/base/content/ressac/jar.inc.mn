@@ -12,7 +12,6 @@
         content/browser/ressac/agent.js              (content/ressac/agent.js)
         content/browser/ressac/agent.css             (content/ressac/agent.css)
 *       content/browser/ressac/page-actor.sys.mjs    (content/ressac/page-actor.sys.mjs)
-*       content/browser/ressac/extension-actor.sys.mjs (content/ressac/extension-actor.sys.mjs)
 *       content/browser/ressac/site-actor.sys.mjs (content/ressac/site-actor.sys.mjs)
 *       content/browser/ressac/design-actor.sys.mjs (content/ressac/design-actor.sys.mjs)
 *       content/browser/ressac/vim-actor.sys.mjs (content/ressac/vim-actor.sys.mjs)

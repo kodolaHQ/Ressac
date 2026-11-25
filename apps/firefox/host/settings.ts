@@ -2,7 +2,7 @@ import { listOllamaModels } from "./ollama-models.ts";
 import { readGrants, readSiteGrants, type LlamaModel, type LocalAi, type Workshop, type WriterAgent } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
-import { INVALID_KEY, type AmoKeychain, type Keychain } from "./keychain.ts";
+import { INVALID_KEY, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
 import { DECISION_MODEL, SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type MachineShown, type SettingsResult, type PullProgress } from "../shared/settings.ts";
 import type { DockerRuntime } from "./docker-runtime.ts";
@@ -56,9 +56,6 @@ export const SETTINGS_METHODS = [
   "settings.codexKey",
   "settings.codexKeySaved",
   "settings.codexKeyDelete",
-  "settings.amoAccount",
-  "settings.setAmoAccount",
-  "settings.deleteAmoAccount",
   "settings.claudeKey",
   "settings.claudeKeySaved",
   "settings.claudeKeyDelete",
@@ -123,7 +120,6 @@ export interface SettingsOptions {
   deviceCommand(argv: string[]): string[];
   keychain: Keychain;
   claudeKeychain: Keychain;
-  amoKeychain: AmoKeychain;
   /** Called after an agent's compatible API key is written or removed. */
   forgetKey(kind: "codex" | "claude"): void;
   /** A system notification (the end of a background model download). */
@@ -313,27 +309,6 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     }),
     "settings.codexKeySaved": () => o.keychain.has(),
     "settings.codexKeyDelete": () => keyResult("codex", () => o.keychain.remove()),
-    "settings.amoAccount": async () => {
-      const issuer = await o.amoKeychain.issuer();
-      return { saved: issuer !== null, issuer };
-    },
-    "settings.setAmoAccount": async (p: { issuer?: unknown; secret?: unknown }): Promise<SettingsResult> => {
-      try {
-        if (typeof p?.issuer !== "string" || typeof p?.secret !== "string") throw new Error(INVALID_KEY());
-        await o.amoKeychain.write(p.issuer, p.secret);
-        return { ok: true };
-      } catch (e) {
-        return { ok: false, error: failure(e) };
-      }
-    },
-    "settings.deleteAmoAccount": async (): Promise<SettingsResult> => {
-      try {
-        await o.amoKeychain.remove();
-        return { ok: true };
-      } catch (e) {
-        return { ok: false, error: failure(e) };
-      }
-    },
     "settings.claudeKey": (p: { key?: unknown }) => keyResult("claude", async () => {
       if (typeof p?.key !== "string") throw new Error(INVALID_KEY());
       await o.claudeKeychain.write(p.key);

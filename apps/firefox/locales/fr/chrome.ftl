@@ -1,4 +1,4 @@
-# Les textes côté Firefox : bannières, import, fenêtres de site, extensions, menus.
+# Les textes côté Firefox : bannières, import, fenêtres de site, menus.
 
 # Import depuis un autre navigateur (notification de fin, erreurs).
 chrome-import-count-bookmarks = { $count ->
@@ -67,8 +67,6 @@ chrome-perm-open-app = ouvrir un lien dans une autre application
 chrome-perm-read-tab = lire un onglet
 chrome-perm-devtools = utiliser les outils de développement
 chrome-perm-widget-data = voir les données d'un widget
-chrome-perm-extension = activer une extension
-chrome-perm-extension-console = voir toute la console d'une extension
 chrome-perm-agent-address = ouvrir une adresse écrite par l'agent
 chrome-perm-other = une permission inconnue
 chrome-perm-screen-share = partager votre écran
