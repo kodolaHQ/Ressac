@@ -199,7 +199,8 @@ async function claudeLeg(c: ReplayCase, o: LegOptions): Promise<Rec> {
       if (await stuck(p, 60_000)) {
         appendFileSync(join(o.work, "teardown.txt"), `${new Date().toISOString()} ${name}: still running after the bound, left\n`);
         console.log(`${c.id} ${o.profile}: teardown ${name} stuck, left (${o.work}/teardown.txt)`);
-        if (world) try { process.kill(-world.w.pid, "SIGKILL"); } catch { /* gone */ }
+        // Only for Ressac: after its close the group has ended, and its id may be another process's by now.
+        if (name === "ressac" && world) try { process.kill(-world.w.pid, "SIGKILL"); } catch { /* gone */ }
       }
     };
     if (world) await step("ressac", world.close());
