@@ -1,6 +1,6 @@
 import { shortcutLabel } from "../../shared/shortcuts";
 import { DEFAULT_AURA } from "../../shared/aura";
-import { keptLoaded, privateTab, tabProfile, profilesInUse, permissionProfiles, siteProfile, type BrowserState, type Tab, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance } from "../../shared/model";
+import { keptLoaded, privateTab, tabProfile, profilesInUse, permissionProfiles, siteProfile, type BrowserState, type Tab, type Decision, type AccessState, type WindowId, type ProfileId, type Appearance, type Notice } from "../../shared/model";
 import type { ReportedError } from "../../shared/telemetry";
 import type { Action } from "../../shared/api";
 import { checkDataFormat } from "../../core/state/format";
@@ -46,7 +46,7 @@ import { bindSites, relabelSiteWindows, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
 import { installUpdates } from "./updates";
 import { installPreferencesCleanup } from "./preferences-cleanup";
-import { installTelemetry } from "./telemetry";
+import { installTelemetry, NOTICE_SEEN } from "./telemetry";
 import { installAbruptExitWatch } from "./abrupt-exit";
 import { createSettingsChrome, type SettingsChrome } from "./settings";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
@@ -79,8 +79,6 @@ export interface RessacStore extends Store {
   /** Where an unreadable session was set aside at startup, or null. */
   readonly setAside: string | null;
   readonly dataSetAside: { backup: string; reason: "format" | "reset" } | null;
-  /** Error reports go out (a DSN is set): the first window tells it once. */
-  readonly telemetryActive: boolean;
   /** What the settings page asks of the chrome: telemetry, version, Finder, export folder, reset. */
   readonly settings: SettingsChrome;
   /** Bookmarks, history and passwords from another browser on this Mac, through the engine's migrators. */
@@ -220,6 +218,16 @@ const widgetGestures = gestureGuard<string>();
 
 let uiNetState: UiNetworkState;
 
+/** The start-up notices, as sidebar cards: a session or data set aside, and error reports until the user answered. */
+function startupNotices(setAside: string | null, dataSetAside: { backup: string; reason: "format" | "reset" } | null, telemetryActive: boolean): Notice[] {
+  const notices: Notice[] = [];
+  if (setAside) notices.push({ id: "session-set-aside", path: setAside });
+  if (dataSetAside) notices.push({ id: "data-set-aside", ...dataSetAside });
+  // Only while reports are on: a user who turned them off is not told they are sent.
+  if (telemetryActive && Services.prefs.getBoolPref("ressac.telemetry.enabled", false) && !Services.prefs.getBoolPref(NOTICE_SEEN, false)) notices.push({ id: "telemetry" });
+  return notices;
+}
+
 async function start(): Promise<RessacStore> {
   // The UI's network net first, before any await: the windows read its state before they give their frames a src.
   uiNetState = installUiNetwork(testEnv("RESSAC_TEST_UI_NETWORK_FAIL") || null);
@@ -262,7 +270,7 @@ async function start(): Promise<RessacStore> {
     // A test launch skips the welcome: AI on for a fresh profile unless the test asks for it off.
     const aiEnabled = aiOff ? false : skip && !s.settings.onboarded ? true : s.settings.aiEnabled;
     return skip ? { ...s, settings: { ...s.settings, onboarded: true, aiEnabled, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s;
-  }).then((s) => withEssentials(s)).then(async (s) => {
+  }).then((s) => withEssentials({ ...s, notices: startupNotices(setAside, dataSetAside, telemetry.active) })).then(async (s) => {
     // Before the launch's lazy essentials: one allowed to notify (a messaging site) stays loaded. Read from Ressac's own
     // decisions: Firefox's copy is emptied and rebuilt from them just after, and a site app's container may be new.
     const draft = structuredClone(s);
@@ -276,6 +284,10 @@ async function start(): Promise<RessacStore> {
     }
     return memorySession(draft, smallMac, keepLoadedHosts);
   }));
+  // The telemetry card answered (either button, in any window): seen for good, reports may go.
+  store.subscribe((s, p) => p.notices.some((n) => n.id === "telemetry") && !s.notices.some((n) => n.id === "telemetry") && Services.prefs.setBoolPref(NOTICE_SEEN, true));
+  // The switch moved in Réglages while the card shows: that is the answer (the switch's help is the card's text).
+  Services.prefs.addObserver("ressac.telemetry.enabled", () => store.dispatch({ type: "dismissNotice", id: "telemetry" }));
   // Later essentials' tabs, and the notification permission given or taken back: kept loaded or not, live.
   const refreshNotifies = () => notifyChanges(store.state).forEach((a) => store.dispatch(a));
   store.subscribe((s) => Object.values(s.tabs).some((o) => o.link?.type === "essential" && o.notifies === undefined) && queueMicrotask(refreshNotifies));
@@ -705,7 +717,6 @@ async function start(): Promise<RessacStore> {
     dataDir,
     setAside,
     dataSetAside,
-    telemetryActive: telemetry.active,
     settings: createSettingsChrome(dataDir, telemetry.active, updates),
     browserImport,
     bookmarks: { search: searchBookmarks },

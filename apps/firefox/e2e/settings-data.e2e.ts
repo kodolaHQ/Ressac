@@ -3,11 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { dispatch, state, waitFor, waitReady } from "./firefox";
+import { dispatch, inWindow, newWindow, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click, inUi, waitUi } from "./ui";
+import { click, inUi, noticeCount, visibleNotice, waitUi } from "./ui";
 
 // Plan 44 Task 6: the Settings page's Privacy (permissions) and Data sections.
 
@@ -176,12 +176,12 @@ describe("Settings page, permissions and data", () => {
     expect(backups).toHaveLength(1);
     expect(existsSync(join(dirname(dataDir), backups[0]!, "session.json"))).toBe(true);
     expect(existsSync(join(dataDir, "workspace", "projects", "a", "x.txt"))).toBe(true);
-    const notes = await waitFor<string[]>(
-      m,
-      `return [...window.gNotificationBox.allNotifications].filter((n) => n.getAttribute("value") === "ressac-data-set-aside").map((n) => n.label?.textContent ?? n.messageText?.textContent ?? n.label ?? "");`,
-      (v) => v.length > 0,
-    );
-    expect(notes[0]).toContain("Ressac repart à neuf");
+    expect(await visibleNotice(m, "data-set-aside")).toContain("Ressac repart à neuf");
+    // « D'accord » in one window: gone there and in a window opened after.
+    await click(m, '[data-notice="data-set-aside"] [data-testid="notice-ok"]');
+    await waitUi(m, `return !doc.querySelector('[data-notice="data-set-aside"]')`);
+    const other = await newWindow(m);
+    expect(await inWindow(m, other, () => noticeCount(m, "data-set-aside"))).toBe(0);
     expect(Object.values((await state(m)).tabs).some((t) => t.url === old)).toBe(false);
   });
 });

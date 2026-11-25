@@ -3,7 +3,7 @@ import { AURA_IDS } from "./aura";
 import { HINT_IDS } from "./hints";
 import { SHORTCUT_IDS, type ShortcutId } from "./shortcuts";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "./search";
-import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type AccessState, type BrowserState, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
+import { APPEARANCES, LANGUAGE_SETTING, NOTICE_IDS, type Decision, type PendingRequest, type AccessState, type BrowserState, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
 import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile, type InstructionChange, type ChangedFile, type LiftChoice, type QuarantinedFile } from "@ressac/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, MachineIdleSchema, type DockerStatus, type MachineShown, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
@@ -186,6 +186,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("setUpdate"), update: z.object({ phase: z.enum(["idle", "checking", "downloading", "ready", "failed", "unreachable", "unwritable", "disabled"]), version: z.string().nullable(), progress: z.number().min(0).max(100).nullable() }) }),
   /** « Plus tard » on the update card: hidden until another version is ready or the next launch. */
   z.object({ type: z.literal("dismissUpdate") }),
+  /** A start-up notice's card answered: gone from every window (the telemetry one also marks the notice seen, chrome/store). */
+  z.object({ type: z.literal("dismissNotice"), id: z.enum(NOTICE_IDS) }),
   z.object({ type: z.literal("markHintSeen"), id: z.enum(HINT_IDS) }),
   z.object({ type: z.literal("setHintsEnabled"), enabled: z.boolean() }),
   z.object({ type: z.literal("setVimMode"), enabled: z.boolean() }),

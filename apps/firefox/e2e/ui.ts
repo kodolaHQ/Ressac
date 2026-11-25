@@ -62,6 +62,22 @@ export async function waitUi<T = unknown>(m: Marionette, body: string, args: unk
 }
 
 /**
+ * Waits until the sidebar's start-up notice card `id` (ui/components/NoticeCards.svelte) is really on screen (rendered,
+ * a size, inside the sidebar's viewport: 0×0 is what Firefox's hidden notification box gave), and returns its text.
+ */
+export const visibleNotice = (m: Marionette, id: string, ms = 10_000): Promise<string> =>
+  waitUi<string>(
+    m,
+    `const c = doc.querySelector('[data-testid="notice-card"][data-notice="' + arguments[0] + '"]');
+     const r = c?.getBoundingClientRect();
+     return c?.checkVisibility() && r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= ui.innerHeight ? c.textContent : null;`,
+    [id],
+    ms,
+  );
+/** How many notice cards `id` the sidebar shows now (waits for the sidebar to be mounted, not for a card). */
+export const noticeCount = (m: Marionette, id: string): Promise<number> => inUi<number>(m, `return doc.querySelectorAll('[data-testid="notice-card"][data-notice="' + arguments[0] + '"]').length`, [id]);
+
+/**
  * A trusted mouse click (`button` 0) or right click (2: mousedown, contextmenu, mouseup) at the centre of the first element matching
  * `selector` in the UI, and whose text contains `text` if given. Waits for it to appear.
  */

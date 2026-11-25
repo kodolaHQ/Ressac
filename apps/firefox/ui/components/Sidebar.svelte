@@ -12,6 +12,7 @@
   import CallBar from "./CallBar.svelte";
   import SiteBar from "./SiteBar.svelte";
   import UpdateCard from "./UpdateCard.svelte";
+  import NoticeCards from "./NoticeCards.svelte";
   import SpaceSelector from "./SpaceSelector.svelte";
   import { spaceIcon } from "./spaceIcons";
   import { t } from "../i18n.svelte";
@@ -123,6 +124,7 @@
     <TabList window={win} agent />
     </div>
   </div>
+  <NoticeCards />
   <UpdateCard />
   <CallBar window={win} />
   <footer>

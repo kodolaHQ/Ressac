@@ -2,7 +2,8 @@ import { createReporter, launchSession, parseDsn, type ReportedError } from "../
 
 const ENABLED = "ressac.telemetry.enabled";
 const INSTALL_ID = "ressac.telemetry.installId";
-const NOTICE_SHOWN = "ressac.telemetry.noticeShown";
+/** Set when the user answered the sidebar's telemetry card (chrome/store/index.ts). Replaces noticeShown, set before a notice nobody could see. */
+export const NOTICE_SEEN = "ressac.telemetry.noticeSeen";
 /** Firefox's crash reports: minidumps hold memory (page data) and are not scrubbed, so they need their own yes. */
 const CRASH_REPORTS = "ressac.telemetry.crashReports";
 // Our own chrome only: a web page's errors are its own (and would carry its addresses).
@@ -12,13 +13,13 @@ const OURS = "chrome://browser/content/ressac/";
 /**
  * Error reports to Sentry: our chrome's console errors and what the store passes in (the host's).
  * Inactive without a DSN (the build's, or RESSAC_SENTRY_DSN); off while the pref is false, and until the once-ever
- * notice (chrome/window) has shown: nothing leaves before the user could say no, even a first launch's early errors.
+ * notice card has been answered: nothing leaves before the user could say no, even a first launch's early errors.
  */
 export function installTelemetry(): { report(e: ReportedError): void; active: boolean; consented: () => boolean } {
   const dsn = Services.env.get("RESSAC_SENTRY_DSN") || __RESSAC_SENTRY_DSN__;
   const active = parseDsn(dsn) !== null;
   const enabled = () => Services.prefs.getBoolPref(ENABLED, false);
-  const consented = () => enabled() && Services.prefs.getBoolPref(NOTICE_SHOWN, false);
+  const consented = () => enabled() && Services.prefs.getBoolPref(NOTICE_SEEN, false);
   const reporter = createReporter({
     dsn,
     release: __RESSAC_VERSION__,
@@ -45,12 +46,12 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
     // Off wipes the install id whatever turned it off (the setting, the first-run choice).
     if (!enabled()) Services.prefs.clearUserPref(INSTALL_ID);
   });
-  Services.prefs.addObserver(NOTICE_SHOWN, syncCrashReports);
+  Services.prefs.addObserver(NOTICE_SEEN, syncCrashReports);
   Services.prefs.addObserver(CRASH_REPORTS, syncCrashReports);
   launchSession({
     dsn,
     release: __RESSAC_VERSION__,
-    // The notice shows on the first launch: count from the next one, after the user could say no.
+    // Counted from the launch after the notice was answered, once the user could say no.
     enabled: consented,
     post: (url, body) => fetch(url, { method: "POST", body }),
     ids: {

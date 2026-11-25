@@ -29,6 +29,7 @@ const TRANSLATED = [
   "ui/components/CommandBar.svelte",
   "ui/components/CallBar.svelte",
   "ui/components/UpdateCard.svelte",
+  "ui/components/NoticeCards.svelte",
   "ui/components/EmptyPage.svelte",
   "ui/components/Downloads.svelte",
   "ui/components/History.svelte",

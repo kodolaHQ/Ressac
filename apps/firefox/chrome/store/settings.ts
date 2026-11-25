@@ -2,6 +2,7 @@ import { backupDate, RESET_FILE } from "../../core/state/format";
 import { updateDownloadUrl } from "../../core/update";
 import { relaunchAfterQuit } from "./relaunch";
 import { testEnv } from "../test-env";
+import { NOTICE_SEEN } from "./telemetry";
 
 const ENABLED = "ressac.telemetry.enabled";
 const CRASH_REPORTS = "ressac.telemetry.crashReports";
@@ -85,7 +86,11 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean, 
   const shell = () => ChromeUtils.importESModule(SHELL_SERVICE).ShellService;
   return {
     telemetry: () => ({ available: telemetryActive, enabled: Services.prefs.getBoolPref(ENABLED, false), crashReports: Services.prefs.getBoolPref(CRASH_REPORTS, false) }),
-    setTelemetry: (enabled) => Services.prefs.setBoolPref(ENABLED, enabled === true),
+    setTelemetry(enabled) {
+      // On by choice in Réglages, whose switch shows the notice's text: the notice counts as answered (chrome/store/telemetry.ts).
+      if (enabled === true) Services.prefs.setBoolPref(NOTICE_SEEN, true);
+      Services.prefs.setBoolPref(ENABLED, enabled === true);
+    },
     setCrashReports: (on) => Services.prefs.setBoolPref(CRASH_REPORTS, on === true),
     passportSuggest: () => ({ on: Services.prefs.getBoolPref(SUGGEST, true), muted: mutedHosts() }),
     setPassportSuggest: (on) => Services.prefs.setBoolPref(SUGGEST, on === true),

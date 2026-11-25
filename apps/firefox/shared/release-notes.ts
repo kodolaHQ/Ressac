@@ -14,6 +14,7 @@ export const RELEASE_NOTES: { version: string; date: string; items: string[]; vi
       "Passeport : une adresse que l'agent fabrique avec un mot lu seulement dans vos onglets, votre historique ou vos favoris (le nom de votre employeur sur un relevé, par exemple) affiche aussi une ligne rouge avant de partir.",
       "Passeport : une valeur que Ressac a remplie à la place de l'agent ne lui revient plus en clair par le titre de la page, l'historique, une redirection ou un lien.",
       "Passeport : après que vous avez montré une valeur à l'agent, elle ne peut partir que vers le site d'où elle vient. L'envoyer vers un autre de vos sites, votre messagerie par exemple, affiche la ligne rouge de la conversation verrouillée.",
+      "Les messages du démarrage (session ou données mises de côté, envoi des erreurs) n'apparaissaient pas : ils s'affichent maintenant en carte dans la barre latérale. Le message sur l'envoi des erreurs s'affiche une fois pour tout le monde, et rien n'est envoyé tant que vous n'y avez pas répondu.",
     ],
   },
   {

@@ -66,6 +66,8 @@ const logError = (message: string, source = OURS) =>
      Services.console.logMessage(e);`,
     [message, source],
   );
+/** What « D'accord » on the sidebar's telemetry card does (chrome/store/index.ts): reports may go from now. */
+const answer = () => m.execute(`Services.prefs.setBoolPref("ressac.telemetry.noticeSeen", true);`);
 const settle = (ms = 2000) => new Promise((r) => setTimeout(r, ms));
 const events = () => seen.filter((s) => s.type === "event");
 const sessions = () => seen.filter((s) => s.type === "session");
@@ -73,20 +75,20 @@ const sessions = () => seen.filter((s) => s.type === "session");
 it("P11–P14: first launch sends nothing until the notice; then errors; the second launch one session; the switch stops all of it", async () => {
   const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   try {
-    // First launch. The notice is appended with the first window, and `noticeShown` is set at that same moment
-    // (chrome/window/index.ts): "before the notice" is only the start-up itself.
+    // First launch. Since 0.1.28 the notice is a sidebar card, and `noticeSeen` is set only when it is answered
+    // (chrome/store/index.ts): until then nothing leaves, an error raised meanwhile included.
     await launch(profile);
-    await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.noticeShown", false)`, (v) => v === true);
-    const shownAt = Date.now();
     await settle();
-    all.firstLaunchBeforeAnyError = seen.map((s) => ({ type: s.type, path: s.path, msBeforeNotice: shownAt - s.at }));
-    expect(sessions(), "no launch count on the first launch").toEqual([]);
-    expect(seen.filter((s) => s.at < shownAt), "nothing before the notice showed").toEqual([]);
-    // P12: the notice is on screen, nobody answered it: an error now is sent (opt-out). Recorded, not judged.
+    // P12: the card is on screen, nobody answered it: an error now is not sent. Recorded, and judged.
     await logError("Error: bench first-launch error, notice unanswered");
     await settle();
     all.sentWhileNoticeUnanswered = events().length;
     console.log(`[P12] error raised while the notice is still unanswered: ${events().length ? "SENT" : "not sent"}`);
+    all.firstLaunchBeforeAnyError = seen.map((s) => ({ type: s.type, path: s.path }));
+    expect(seen, "nothing before the notice is answered").toEqual([]);
+    // The answer (« D'accord » on the card sets this pref): a launch count from the next launch.
+    await answer();
+    expect(sessions(), "no launch count on the first launch").toEqual([]);
     await w!.close();
     w = undefined;
     seen = [];
@@ -124,7 +126,7 @@ it("P13, P15: every field of a real error event; crash reports are off by defaul
   const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   try {
     await launch(profile);
-    await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.noticeShown", false)`, (v) => v === true);
+    await answer();
     await logError("TypeError: bench plain error");
     await expect.poll(() => events().length, { timeout: 10_000 }).toBe(1);
     const e = events()[0]!.payload;
@@ -161,7 +163,7 @@ it("P2–P4 in the real app: what a scrubbed error still carries (each case repo
   const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   try {
     await launch(profile);
-    await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.noticeShown", false)`, (v) => v === true);
+    await answer();
     const home = await m.execute<string>(`return Services.dirsvc.get("Home", Ci.nsIFile).path`);
     const results: { id: string; leaked: boolean; value: string; predictedRed: boolean }[] = [];
     for (const c of CASES) {
@@ -185,7 +187,7 @@ it("P16: an error from a web page, or from an actor running inside pages, is not
   const profile = await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-"));
   try {
     await launch(profile);
-    await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.noticeShown", false)`, (v) => v === true);
+    await answer();
     await logError("Error: bench web error at https://bank.example/app.js", "https://bank.example/app.js");
     await logError("Error: bench actor error", "chrome://browser/content/ressac/site-actor.sys.mjs");
     await logError("Error: bench look-alike source", "chrome://browser/content/ressac-evil/x.js");

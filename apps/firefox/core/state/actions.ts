@@ -783,6 +783,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.update.dismissed = true;
       return true;
     }
+    case "dismissNotice": {
+      if (!d.notices.some((n) => n.id === a.id)) return false;
+      d.notices = d.notices.filter((n) => n.id !== a.id);
+      return true;
+    }
     case "openReleaseNotes":
       return openInternalPage(d, genId, a.windowId, URL_RELEASE_NOTES, format(d.locale, "chrome-page-release-notes"));
     case "markHintSeen": {
