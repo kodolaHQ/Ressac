@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { reauth } from "../chrome/agent/reauth";
+import { reauth, reauthAccepted } from "../chrome/agent/reauth";
 
 const g = globalThis as { Services?: unknown; ChromeUtils?: unknown; __RESSAC_PACKAGED__?: boolean };
 afterEach(() => {
@@ -48,4 +48,17 @@ it("the e2e seam (dev builds only): pass is a yes, anything else a no, and OSKey
   g.Services = { env: { get: (n: string) => (n === "RESSAC_TEST_REAUTH" ? "fail" : "") } };
   expect(await reauth("r")).toBe(false);
   expect(ensure).not.toHaveBeenCalled();
+});
+
+it("no login password is a no", () => {
+  expect(reauthAccepted({ authenticated: true, auth_details: "success_no_password" })).toBe(false);
+});
+
+it("a real success is a yes", () => {
+  expect(reauthAccepted({ authenticated: true, auth_details: "success" })).toBe(true);
+});
+
+it("unsupported platform, disabled, a failure or nothing are a no", () => {
+  for (const r of [{ authenticated: true, auth_details: "success_unsupported_platform" }, { authenticated: true, auth_details: "success_disabled" }, { authenticated: false, auth_details: "success" }, { authenticated: true }, null, undefined])
+    expect(reauthAccepted(r)).toBe(false);
 });
