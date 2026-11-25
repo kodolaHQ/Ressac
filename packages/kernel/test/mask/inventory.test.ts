@@ -33,7 +33,8 @@ test("every tool of a server with every option is classified, and every classifi
   });
   const c = new Client({ name: "test", version: "0" });
   try {
-    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+    // An Atelier session: the notebook (`note_lesson`) is registered for it only.
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${s.openSession("W1", undefined, undefined, "workshop")}` } } }));
     const names = (await c.listTools()).tools.map((t) => t.name).sort();
     expect(names.filter((n) => !(n in TOOL_KINDS))).toEqual([]);
     expect(Object.keys(TOOL_KINDS).filter((n) => !names.includes(n) && !NOT_YET_REGISTERED.includes(n))).toEqual([]);

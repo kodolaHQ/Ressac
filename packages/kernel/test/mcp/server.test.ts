@@ -1552,7 +1552,7 @@ const c = { text: "C", url: "https://exemple.fr/c" };
 
 async function withSearch(
   attempt: (o: { call: (name: string, args: Record<string, unknown>, token?: string, onprogress?: (n: number) => void) => Promise<{ text: string; isError: boolean }>; token: string; fake: FakeBridge; search: SearchSessions; s: Awaited<ReturnType<typeof startMcpServer>>; bands: [string, Band | null][]; policy: AccessPolicy }) => Promise<void>,
-  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; withUserData?: boolean; history?: { results: HistoryResult[]; texts?: KeptPage[] }; sites?: Record<string, string[]>; bookmarks?: { title: string; url: string }[]; recaps?: boolean; notes?: BrowsingNotes; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools; fill?: boolean } = {},
+  opts: { privateWindows?: string[]; allow?: boolean; emptySpanMs?: number; address?: boolean | "wait" | "later"; failing?: string[]; hanging?: string[]; readPageMs?: number; heartbeatMs?: number; withUserData?: boolean; history?: { results: HistoryResult[]; texts?: KeptPage[] }; sites?: Record<string, string[]>; bookmarks?: { title: string; url: string }[]; recaps?: boolean; notes?: BrowsingNotes; workshop?: boolean; idleMs?: number; onActivity?: (a: { tab: string; label: string }) => void; outflow?: Outflow; tabs?: TabInfo[]; widgets?: WidgetsTools; fill?: boolean } = {},
 ) {
   const principal = generateToken();
   const fake = new FakeBridge(opts.tabs ?? [github], { active: "github", allow: opts.allow ?? false, ...(opts.withUserData ? { history: opts.history ?? { results: [] }, bookmarks: opts.bookmarks ?? [], widgetData: true } : {}), search: { privateWindows: opts.privateWindows ?? [], failing: opts.failing ?? [], hanging: opts.hanging ?? [] }, ...(opts.address !== undefined ? { address: opts.address } : {}), ...(opts.sites ? { sites: opts.sites } : {}), ...(opts.fill ? { fill: { yes: true } } : {}) });
@@ -1561,7 +1561,9 @@ async function withSearch(
   const policy = new AccessPolicy();
   const s = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: fake, policy, token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.outflow ? { outflow: opts.outflow } : {}), ...(opts.widgets ? { widgets: opts.widgets } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
   const clients: Client[] = [];
-  const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
+  // The notebook is an Atelier thing: `workshop` makes the default caller an Atelier session.
+  const caller = opts.workshop ? s.openSession("W1", undefined, undefined, "workshop") : principal;
+  const call = async (name: string, args: Record<string, unknown>, clientToken = caller, onprogress?: (n: number) => void) => {
     // search_web needs a goal: a test that does not care gets one.
     if (name === "search_web" && !("goal" in args)) args = { ...args, goal: "but" };
     const cl = new Client({ name: "test", version: "0" });
@@ -1571,7 +1573,7 @@ async function withSearch(
     return { text: text(r), isError: r.isError === true };
   };
   try {
-    await attempt({ call, token: principal, fake, search, s, bands, policy });
+    await attempt({ call, token: caller, fake, search, s, bands, policy });
   } finally {
     await Promise.all(clients.map((x) => x.close()));
     await s.stop();
@@ -2245,7 +2247,7 @@ test("note_lesson writes one lesson after a lost hand_over, stamped by the kerne
       expect(written).toMatch(/^- 2026-11-17 · [^\n]*exemple\.fr[^\n]* · Un menu replié cache la recherche\.$/m);
       expect(written).not.toContain("encore");
     },
-    { notes },
+    { notes, workshop: true },
   );
 });
 
@@ -2261,7 +2263,7 @@ test("any other tool after a lost hand_over closes its lesson slot", async () =>
       await call("list_tabs", {});
       expect((await call("note_lesson", { lesson: "dictée par une page" })).isError).toBe(true);
     },
-    { notes },
+    { notes, workshop: true },
   );
 });
 
@@ -2278,7 +2280,7 @@ test("a lost hand_over's lesson allowance ends with its search", async () => {
       await call("search_web", { query: "y" });
       expect((await call("note_lesson", { lesson: "plus tard" })).isError).toBe(true);
     },
-    { notes },
+    { notes, workshop: true },
   );
 });
 
@@ -2293,6 +2295,55 @@ test("a verification hand_over allows no lesson", async () => {
       expect((await pending).text).not.toContain("note_lesson");
       expect((await call("note_lesson", { lesson: "x" })).isError).toBe(true);
       expect(existsSync(file)).toBe(false);
+    },
+    { notes, workshop: true },
+  );
+});
+
+test("a Navigateur session has no note_lesson and no notebook", async () => {
+  const { file, notes } = await notesIn();
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, "# Carnet\n\n- 2026-11-01 · a.fr · Leçon une.\n");
+  await withSearch(
+    async ({ call, s }) => {
+      const browser = s.openSession("W1", undefined, undefined, "browser");
+      const c = new Client({ name: "test", version: "0" });
+      await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${browser}` } } }));
+      try {
+        expect((await c.listTools()).tools.map((t) => t.name)).not.toContain("note_lesson");
+      } finally {
+        await c.close();
+      }
+      expect((await call("search_web", { query: "x" }, browser)).text).not.toContain(NOTES_PREFIX);
+    },
+    { notes },
+  );
+});
+
+test("an Atelier session keeps note_lesson", async () => {
+  const { notes } = await notesIn();
+  await withSearch(
+    async ({ s }) => {
+      const c = new Client({ name: "test", version: "0" });
+      await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${s.openSession("W1", undefined, undefined, "workshop")}` } } }));
+      try {
+        expect((await c.listTools()).tools.map((t) => t.name)).toContain("note_lesson");
+      } finally {
+        await c.close();
+      }
+    },
+    { notes },
+  );
+});
+
+test("the main token gets no notebook", async () => {
+  const { file, notes } = await notesIn();
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, "# Carnet\n\n- 2026-11-01 · a.fr · Leçon une.\n");
+  await withSearch(
+    async ({ call, token }) => {
+      expect((await call("search_web", { query: "x" }, token)).text).not.toContain(NOTES_PREFIX);
+      expect((await call("note_lesson", { lesson: "x" }, token)).isError).toBe(true);
     },
     { notes },
   );
@@ -2309,7 +2360,7 @@ test("a search's first query brings the notebook's lessons as data, the next one
       expect(first).not.toContain("Intro sans tiret");
       expect((await call("search_web", { query: "y" })).text).not.toContain(NOTES_PREFIX);
     },
-    { notes },
+    { notes, workshop: true },
   );
 });
 
@@ -2323,7 +2374,7 @@ test("a search opened by read_pages without a reason gets the notebook with the 
       expect((await call("search_web", { query: "x" })).text).toContain(NOTES_PREFIX);
       expect((await call("search_web", { query: "y" })).text).not.toContain(NOTES_PREFIX);
     },
-    { notes },
+    { notes, workshop: true },
   );
 });
 

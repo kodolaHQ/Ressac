@@ -66,7 +66,7 @@ test("under the workspace lock, each store-write tool is refused before its hand
     openWorkflow: () => null, outflow: new Outflow(),
   });
   masker.open("A", "W1");
-  const session = s.openSession("W1", undefined, "A");
+  const session = s.openSession("W1", undefined, "A", "workshop");
   const c = new Client({ name: "test", version: "0" });
   try {
     await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session}` } } }));

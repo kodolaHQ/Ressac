@@ -873,7 +873,7 @@ export async function createKernel(o: {
         const byId = conversation !== undefined && program === "claude" && /^[0-9a-f-]{36}$/.test(conversation);
         const resumed = resume === true && (byId || chosen.resume !== undefined);
         if (win !== undefined) {
-          sessionToken = server.openSession(win, chosen.name, id);
+          sessionToken = server.openSession(win, chosen.name, id, mode);
           // A resume is covered only if its conversation started under masking: a Codex resume never is (no id).
           masker.open(id, win, { uncovered: resumed && !(byId && covered.has(conversation!)) });
         }
@@ -905,9 +905,10 @@ export async function createKernel(o: {
         // Claude's built-in tools are an allowlist (`--tools`, MCP tools untouched): a release that adds a tool that runs commands
         // (Monitor, REPL, PowerShell…) gets none of it. Files only: the agent writes its widgets, actions and site apps, and reads the
         // guides. The denylist stays as a second layer: it wins over `--tools` and is the only one that removes an MCP tool.
+        // The deny rules keep the subscription credentials out of Read/Edit (the agent never needs them; Claude Code reads its own outside the tools).
         const claudeNoShell =
           browser && program === "claude"
-            ? ["--tools", "Read,Glob,Grep,Write,Edit", "--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", ACCEPTED_AGENTS_IN_CONTAINER]
+            ? ["--tools", "Read,Glob,Grep,Write,Edit", "--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true,"permissions":{"deny":["Read(//home/node/.claude/.credentials.json)","Read(//home/node/.codex/auth.json)","Edit(//home/node/.claude/.credentials.json)","Edit(//home/node/.codex/auth.json)"]}}', "--append-system-prompt-file", ACCEPTED_AGENTS_IN_CONTAINER]
             : [];
         // Claude's auto-memory (~/.claude/projects/*/memory) loads as instructions the gate never sees and the agent can write.
         if (browser && program === "claude") env = { ...env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" };

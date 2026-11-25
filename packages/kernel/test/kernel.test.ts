@@ -843,7 +843,11 @@ describe("openAgentSession with a profile", () => {
       expect(browser).toContain("-e CLAUDE_CODE_DISABLE_AUTO_MEMORY");
       const claudeArgs = start.mock.calls[0]![0];
       const sources = claudeArgs.indexOf("--setting-sources");
-      expect(claudeArgs.slice(sources, sources + 6)).toEqual(["--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", "/workspace/.ressac/instructions/AGENTS.md"]);
+      expect(claudeArgs.slice(sources, sources + 3)).toEqual(["--setting-sources", "", "--settings"]);
+      expect(claudeArgs.slice(sources + 4, sources + 6)).toEqual(["--append-system-prompt-file", "/workspace/.ressac/instructions/AGENTS.md"]);
+      // Claude's Navigateur settings deny both subscription credential files.
+      const settings = JSON.parse(claudeArgs[claudeArgs.indexOf("--settings") + 1]!);
+      expect(settings.permissions.deny).toEqual(["Read(//home/node/.claude/.credentials.json)", "Read(//home/node/.codex/auth.json)", "Edit(//home/node/.claude/.credentials.json)", "Edit(//home/node/.codex/auth.json)"]);
       // An allowlist of built-in tools, files only: nothing that runs a command, spawns an agent or schedules a turn.
       const tools = claudeArgs[claudeArgs.indexOf("--tools") + 1]!.split(",");
       expect(tools).toEqual(["Read", "Glob", "Grep", "Write", "Edit"]);

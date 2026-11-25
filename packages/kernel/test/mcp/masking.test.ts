@@ -146,8 +146,11 @@ test("invariant 1: every registered tool is behind the masker, and no result of 
       emptySpanMs: 0,
       readPageMs: 2000,
     },
-    async ({ call, masker, client }) => {
-      const tools = (await (await client()).listTools()).tools;
+    async ({ call: callAs, masker, client, s }) => {
+      // An Atelier session: the notebook (`note_lesson`) is registered for it only.
+      const atelier = s.openSession("W1", undefined, undefined, "workshop");
+      const call: Call = (name, args) => callAs(name, args, atelier);
+      const tools = (await (await client(atelier)).listTools()).tools;
       const names = tools.map((t) => t.name);
       // No tool is exempt from the masker (spec § 9 bis, invariant 1).
       expect([...names].sort()).toEqual([...masker.covered].sort());

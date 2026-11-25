@@ -2770,13 +2770,13 @@ function tokenEqual(received: Buffer, expected: Buffer): boolean {
 }
 
 /** The window (and agent name, if the session has its own) of the presented token: window `null` for the main token, `undefined` if the token is not valid. Each token is compared in constant time. */
-type SessionEntry = { token: Buffer; window: string; agent?: string; session: string | null };
-type Who = { window: string | null; agent?: string; session: string | null };
+type SessionEntry = { token: Buffer; window: string; agent?: string; session: string | null; mode: "browser" | "workshop" };
+type Who = { window: string | null; agent?: string; session: string | null; mode: "browser" | "workshop" };
 
 function tokenWindow(req: IncomingMessage, principal: Buffer, sessions: Map<string, SessionEntry>): Who | undefined {
   const received = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /, ""));
-  let found: Who | undefined = tokenEqual(received, principal) ? { window: null, session: null } : undefined;
-  for (const s of sessions.values()) if (tokenEqual(received, s.token)) found = { window: s.window, ...(s.agent ? { agent: s.agent } : {}), session: s.session };
+  let found: Who | undefined = tokenEqual(received, principal) ? { window: null, session: null, mode: "browser" } : undefined;
+  for (const s of sessions.values()) if (tokenEqual(received, s.token)) found = { window: s.window, ...(s.agent ? { agent: s.agent } : {}), session: s.session, mode: s.mode };
   return found;
 }
 
@@ -2807,7 +2807,7 @@ export async function startMcpServer(o: {
   sites?: SitesTools;
   /** The agent's search sessions; with the bridge's `search`, the `search_web` tool exists. */
   search?: SearchSessions;
-  /** The agent's research notebook; without it, no `note_lesson` and no notebook at a search's start. */
+  /** The agent's research notebook, for Atelier sessions only; without it, no `note_lesson` and no notebook at a search's start. */
   notes?: BrowsingNotes;
   /** Pause between two reads of the search page while its results come (tests: 0). */
   settleMs?: number;
@@ -2831,7 +2831,7 @@ export async function startMcpServer(o: {
   workspaceLock?: WorkspaceLockHook;
   /** The lab is on (read at each list and call): off, LAB_TOOLS are unlisted and refused. */
   lab: () => boolean;
-}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string): string; closeSession(token: string): void; tabZone(session: string | null, tab: Pick<TabInfo, "id" | "url" | "site" | "agentReached">): Zone; stop(): Promise<void> }> {
+}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string, mode?: "browser" | "workshop"): string; closeSession(token: string): void; tabZone(session: string | null, tab: Pick<TabInfo, "id" | "url" | "site" | "agentReached">): Zone; stop(): Promise<void> }> {
   const expected = Buffer.from(o.token);
   // Session tokens: one per window agent. Security note: their config files are readable by the
   // agents in the container; a session token gives nothing more than the main token, otherwise the link to
@@ -2862,7 +2862,7 @@ export async function startMcpServer(o: {
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.lab, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale, who.session, masker, agentSites, o.otherSessions, o.workspaceLock, listedFields);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.lab, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes && who.mode === "workshop" ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale, who.session, masker, agentSites, o.otherSessions, o.workspaceLock, listedFields);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();
@@ -2885,9 +2885,9 @@ export async function startMcpServer(o: {
     port,
     containerUrl: `http://host.docker.internal:${port}/mcp`,
     /** `session`: the conversation's id (`Masker.open`); without it the token masks with the main token's table. */
-    openSession(win, agent, session) {
+    openSession(win, agent, session, mode = "browser") {
       const token = generateToken();
-      sessions.set(token, { token: Buffer.from(token), window: win, ...(agent ? { agent: agent } : {}), session: session ?? null });
+      sessions.set(token, { token: Buffer.from(token), window: win, ...(agent ? { agent: agent } : {}), session: session ?? null, mode });
       return token;
     },
     closeSession(token) {
