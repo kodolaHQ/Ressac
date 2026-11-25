@@ -33,7 +33,7 @@
   import { isAgentRequest } from "./components/modal.svelte";
   import { menu } from "./components/menu.svelte";
   import { spaceSettings } from "./components/spaceSettings.svelte";
-  import { access, aiOn, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
+  import { access, aiOn, api, labOn, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
   import AiAsleep from "./components/AiAsleep.svelte";
   import { BAR_WIDTH, BAR_WIDTH_MAX, BAR_WIDTH_MIN, actionOfUrl, recapOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_RELEASE_NOTES, URL_SETTINGS } from "../shared/model";
   import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/reveal";
@@ -305,6 +305,8 @@
       <button class="resume-welcome" data-testid="welcome-resume" out:fade={{ duration: WELCOME_FADE_MS }} onclick={() => (welcomeStep.aside = false)}>{t("home-welcome-resume")}</button>
     {/if}
   </div>
+  <!-- A tier-3 page while the lab is off: where to turn it on. -->
+  {#snippet labOff()}<p class="crashed lab-off" data-testid="lab-off">{t("settings-lab-off")}</p>{/snippet}
   <main class="content" class:framed={(!pageWeb || !!panel) && !(winState && !activeTab && !panel)} data-testid="content-zone">
     {#if winState && panel === "history"}
       <History window={winState} close={closePanel} />
@@ -315,7 +317,7 @@
     {:else if activeTab && (activeTab.crashed || activeTab.error)}
       <PageError tab={activeTab} />
     {:else if activeTab?.url === URL_APPLICATIONS}
-      {#if aiOn()}<Applications />{:else}<AiAsleep feature="apps" />{/if}
+      {#if !aiOn()}<AiAsleep feature="apps" />{:else if !labOn()}{@render labOff()}{:else}<Applications />{/if}
     {:else if activeTab?.url === URL_SETTINGS}
       <Settings />
     {:else if activeTab?.url === URL_RELEASE_NOTES}
@@ -323,6 +325,8 @@
     {:else if activeTab?.url === URL_ACTIONS}
       {#if !aiOn()}
         <AiAsleep feature="actions" />
+      {:else if !labOn()}
+        {@render labOff()}
       {:else if privateAction}
         <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
@@ -331,6 +335,8 @@
     {:else if builderTarget}
       {#if !aiOn()}
         <AiAsleep feature="workflows" />
+      {:else if !labOn()}
+        {@render labOff()}
       {:else if builderTarget.type === "action" && privateAction}
         <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
@@ -339,6 +345,8 @@
     {:else if pageAction}
       {#if !aiOn()}
         <AiAsleep feature="actions" />
+      {:else if !labOn()}
+        {@render labOff()}
       {:else if privateAction}
         <p class="crashed" data-testid="action-private-space">{t("action-private")}</p>
       {:else}
@@ -351,7 +359,7 @@
         {#key pageRecap}<PageRecap id={pageRecap} />{/key}
       {/if}
     {:else if reviewProject}
-      {#if !aiOn()}<AiAsleep feature="review" />{:else}{#key `${activeTab?.id}:${reviewProject}`}<Review project={reviewProject} tabId={activeTab?.id ?? ""} />{/key}{/if}
+      {#if !aiOn()}<AiAsleep feature="review" />{:else if !labOn()}{@render labOff()}{:else}{#key `${activeTab?.id}:${reviewProject}`}<Review project={reviewProject} tabId={activeTab?.id ?? ""} />{/key}{/if}
     {:else if activeTab && !pageWeb}
       <InternalPage />
     {/if}
@@ -383,7 +391,7 @@
     <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => {}} />
     <FirstTimeNote id="design" />
   </div>
-{:else if aiOn() && !modalOpen && !agentNoteShowing() && activeTab?.url === URL_ACTIONS && !privateAction}
+{:else if labOn() && !modalOpen && !agentNoteShowing() && activeTab?.url === URL_ACTIONS && !privateAction}
   <FirstTimeNote id="actions" veil />
 {/if}
 {#if welcomeLayer && winState}
@@ -477,4 +485,5 @@
   .compact.right .folded-up { transform: translateX(100%); }
   /* The page's error and crash messages. */
   .crashed { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--text); }
+  .lab-off { padding: 0 24px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
 </style>

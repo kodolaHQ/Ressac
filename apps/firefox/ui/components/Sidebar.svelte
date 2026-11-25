@@ -2,7 +2,7 @@
   import type { Panel } from "../../shared/api";
   import { URL_ACTIONS, URL_APPLICATIONS, URL_SETTINGS, workflowUrlTarget, type WindowState } from "../../shared/model";
   import { shortcutLabel, type ShortcutId } from "../../shared/shortcuts";
-  import { api, appState, downloads } from "../state.svelte";
+  import { aiOn, api, appState, downloads, labOn } from "../state.svelte";
   import UrlBar from "./UrlBar.svelte";
   import Essentials from "./Essentials.svelte";
   import Icon from "./Icon.svelte";
@@ -140,6 +140,8 @@
       aria-pressed={!builder && win.agentPanelOpen}
       onclick={() => (builder ? builderAgent?.() : api.dispatch({ type: "toggleAgentPanel", windowId: win.id }))}><Icon name="agent" /></button
     >
+    <!-- Apps and actions are the lab's: with AI on and the lab off, no way in (AI off, they show the asleep card). -->
+    {#if !aiOn() || labOn()}
     <button
       class="tool"
       style:--i={1}
@@ -158,6 +160,7 @@
       aria-pressed={activeTab?.url === URL_ACTIONS}
       onclick={() => api.dispatch({ type: "openActions", windowId: win.id })}><Icon name="actions" /></button
     >
+    {/if}
     <button
       class="tool"
       style:--i={3}

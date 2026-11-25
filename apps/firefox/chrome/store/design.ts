@@ -163,8 +163,8 @@ export function createDesign(o: {
   /** The shown language, for the overlays' own texts. */
   locale(): string;
   toFront(f: WindowId): void;
-  /** settings.aiEnabled: off, the mode does not start and the agent panel shows its asleep card instead. */
-  aiOn(): boolean;
+  /** The effective lab (shared/tiers.ts): off, the mode does not start and the agent panel opens instead (its asleep card with AI off). */
+  labOn(): boolean;
   /** Opens the window's agent panel, the window in front (design.giveAgent). */
   giveAgent(f: WindowId): void;
 }): DesignService {
@@ -348,7 +348,7 @@ export function createDesign(o: {
     async toggle(t) {
       const key = targetKey(t);
       if (sessions.has(key)) return service.stop(t);
-      if (!o.aiOn()) return asleep(t.type === "window" ? t.windowId : undefined);
+      if (!o.labOn()) return asleep(t.type === "window" ? t.windowId : undefined);
       const site = t.type === "site" ? o.sites.designView(t.id) : null;
       // Unavailable in the site app's window: why, in its bar; nothing injected.
       if (t.type === "site" && !site?.available) return o.sites.infoNotice(t.id, UNAVAIL_SITE());
@@ -423,7 +423,7 @@ export function createDesign(o: {
       const doc = win.document.documentElement;
       const windowId = (win as any).ressacWindow?.windowId as WindowId | undefined;
       const main = !!windowId && o.windows.get(windowId)?.window === win;
-      if (!o.aiOn()) return void asleep(main ? windowId : undefined);
+      if (!o.labOn()) return void asleep(main ? windowId : undefined);
       const app = o.apps.folderOf(win);
       const choice = chooseDesignTarget({
         app: app,

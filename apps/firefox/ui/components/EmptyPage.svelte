@@ -2,7 +2,7 @@
   import type { WindowState } from "../../shared/model";
   import { onMount, untrack } from "svelte";
   import { focusEmptyPage } from "./command.svelte";
-  import { aiOn, api, appState } from "../state.svelte";
+  import { api, appState, labOn } from "../state.svelte";
   import Home from "../Home.svelte";
   import TipCard from "./TipCard.svelte";
   import SuggestionsActions from "./ActionSuggestions.svelte";
@@ -20,9 +20,9 @@
     if (focusEmptyPage.n > 0) untrack(() => field?.focus());
   });
 
-  // Actions are not available with AI off nor in a private space (a missing space counts as private): the list is then
+  // Actions are not available with the lab off nor in a private space (a missing space counts as private): the list is then
   // not even requested.
-  const noActions = $derived(!aiOn() || (appState.value?.spaces.find((e) => e.id === win.activeSpace)?.private ?? true));
+  const noActions = $derived(!labOn() || (appState.value?.spaces.find((e) => e.id === win.activeSpace)?.private ?? true));
   let actions = $state.raw<ActionShown[]>([]);
   let last = 0;
   $effect(() => {

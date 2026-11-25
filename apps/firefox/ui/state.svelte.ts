@@ -1,6 +1,7 @@
 import type { ApiRessac } from "../shared/api";
 import { workflowUrlTarget, type PendingRequest, type WindowState, type BrowserState, type TabId, type Tab, type Download } from "../shared/model";
 import { targetKey } from "./builder/target";
+import { labOn as tierLab } from "../shared/tiers";
 import { confirmClose, keepCodesOf } from "./builder/codes.svelte";
 
 // Typed as the shared ApiRessac: ui/api.ts declares window.ressac as its wider ApiFirefox.
@@ -24,6 +25,9 @@ api.onState((e) => {
 // A derived boolean: effects that read it re-run when it changes, not at every state broadcast.
 const aiEnabled = $derived(appState.value?.settings.aiEnabled ?? false);
 export const aiOn = (): boolean => aiEnabled;
+/** The effective lab (shared/tiers.ts): off, every tier-3 entry point is hidden or refused. */
+const lab = $derived(appState.value ? tierLab(appState.value.settings) : false);
+export const labOn = (): boolean => lab;
 
 /** The state of the window showing this interface. */
 export function currentWindow(): WindowState | undefined {

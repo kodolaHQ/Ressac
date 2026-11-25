@@ -1,9 +1,10 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import { validAgentDomain, type AgentAccount, type LoginResult } from "../../shared/settings";
-  import { aiOn, api, appState } from "../state.svelte";
+  import { aiOn, api, appState, labOn } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import AiAsleep from "./AiAsleep.svelte";
+  import LabCard from "./LabCard.svelte";
   import LiftLock from "./LiftLock.svelte";
   import type { QuarantinedFile } from "../../shared/api";
   import SettingsEngine from "./SettingsEngine.svelte";
@@ -92,11 +93,14 @@
     if (!r.ok) restoreError = r.error;
     readLock();
   }
+  /** The lab card, shown before the lab turns on (turning it off asks nothing). */
+  let labCard = $state(false);
   // Claude on Ollama or an API starts without its subscription: no nudge to sign in.
   const claudeSubscription = $derived((appState.value?.settings.claudeEngine.kind ?? "subscription") === "subscription");
 </script>
 
 <section data-testid="settings-agent" aria-label={t("settings-section-agent")}>
+  <h3 class="group-title">{t("settings-tier-group")}</h3>
   <div class="group">
     <SettingsRow label={t("settings-ai-switch")} id="ai-switch" help={t("settings-ai-switch-note")}>
       <input
@@ -110,7 +114,37 @@
         onchange={(e) => api.dispatch({ type: e.currentTarget.checked ? "enableAi" : "disableAi" })}
       />
     </SettingsRow>
+    <!-- Disabled, and unchecked, while AI is off: the lab needs it. -->
+    <SettingsRow label={t("settings-lab-switch")} id="lab-switch" help={t("settings-lab-switch-note")}>
+      <input
+        id="lab-switch"
+        class="switch"
+        type="checkbox"
+        role="switch"
+        data-testid="settings-lab-switch"
+        aria-describedby="lab-switch-help"
+        checked={labOn()}
+        disabled={!aiOn()}
+        onchange={(e) => {
+          if (!e.currentTarget.checked) api.dispatch({ type: "disableLab" });
+          else {
+            // Stays unchecked until « J'ai compris, activer ».
+            e.currentTarget.checked = false;
+            labCard = true;
+          }
+        }}
+      />
+    </SettingsRow>
   </div>
+  {#if labCard}
+    <LabCard
+      accept={() => {
+        labCard = false;
+        api.dispatch({ type: "enableLab" });
+      }}
+      close={() => (labCard = false)}
+    />
+  {/if}
   {#if !aiOn()}
     <AiAsleep feature="settings" />
   {:else if !agents}

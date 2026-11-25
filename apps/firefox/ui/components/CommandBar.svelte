@@ -2,7 +2,7 @@
   import { tick, untrack } from "svelte";
   import { fade } from "svelte/transition";
   import type { WindowState, Tab, TabId, AskHit } from "../../shared/model";
-  import { aiOn, api, appState } from "../state.svelte";
+  import { aiOn, api, appState, labOn } from "../state.svelte";
   import { closeCommand, command, focusEmptyPage } from "./command.svelte";
   import {
     LIMITS,
@@ -47,8 +47,8 @@
     closePanel: () => void;
   } = $props();
 
-  // Actions are not available with AI off nor in a private space (a missing space counts as private), like on the empty page.
-  const noActions = $derived(!aiOn() || (appState.value?.spaces.find((e) => e.id === win.activeSpace)?.private ?? true));
+  // Actions are not available with the lab off nor in a private space (a missing space counts as private), like on the empty page.
+  const noActions = $derived(!labOn() || (appState.value?.spaces.find((e) => e.id === win.activeSpace)?.private ?? true));
   let actions = $state.raw<ActionShown[]>([]);
   let projects = $state.raw<SiteApp[]>([]);
   let sites = $state.raw<SiteApp[]>([]);
@@ -76,15 +76,21 @@
     }
     return follow(() => api.actions.list(), (l) => (actions = l), (r) => api.actions.onChange(r));
   });
-  // The agent's apps need AI: off, their lines are hidden like the actions'.
+  // The agent's apps and the site apps are the lab's: off, their lines are hidden like the actions'.
   $effect(() => {
-    if (!aiOn()) {
+    if (!labOn()) {
       projects = [];
       return;
     }
     return follow(() => api.apps.list(), (l) => (projects = l.apps.map(projectSiteApp).filter((a) => a !== null)), (r) => api.apps.onChange(r));
   });
-  $effect(() => follow(() => api.sites.list(), (l) => (sites = l.map(siteSiteApp)), (r) => api.sites.onChange(r)));
+  $effect(() => {
+    if (!labOn()) {
+      sites = [];
+      return;
+    }
+    return follow(() => api.sites.list(), (l) => (sites = l.map(siteSiteApp)), (r) => api.sites.onChange(r));
+  });
 
   // The tabs the active space shows: same scope as ⌃Tab.
   const tabs = $derived.by<SourceTab[]>(() => {

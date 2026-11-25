@@ -72,6 +72,8 @@ describe("Settings page", () => {
     await launch({}, { "fake-claude-auth.json": JSON.stringify({ loggedIn: true, email: "ami@example.com" }) });
     await openPage();
     await go("agent");
+    // « Niveau d'usage »: the AI switch, then the lab's.
+    expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"settings-agent\"] label.name')].slice(0, 2).map((l) => l.textContent)")).toEqual(["IA", "Labo (expérimental)"]);
     await shows("agent-claude", "Connecté (ami@example.com)");
     expect(await text("agent-claude")).not.toContain("tapez /login");
     await click(m, '[data-testid="agent-claude"] [data-testid="agent-logout"]');

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { fade } from "svelte/transition";
-  import { aiOn, api, appState as browserState } from "../state.svelte";
+  import { aiOn, api, appState as browserState, labOn } from "../state.svelte";
   import AiAsleep from "./AiAsleep.svelte";
   import { t } from "../i18n.svelte";
   import type { AgentAccount } from "../../shared/settings";
@@ -299,7 +299,9 @@
     {#if modeChoice}
       <div class="mode" data-testid="agent-mode" role="radiogroup" aria-label={t("agent-panel-mode")} out:fade={{ duration: 150 }}>
         {#each ["browser", "workshop"] as const as m (m)}
-          <button role="radio" aria-checked={mode === m} data-testid="agent-mode-{m}" title={t(`agent-panel-mode-${m}-title`)} onclick={() => chooseMode(m)}>{t(`agent-panel-mode-${m}`)}</button>
+          <!-- Atelier is tier 3: with the lab off, it says so and takes no press. -->
+          {@const locked = m === "workshop" && !labOn()}
+          <button role="radio" aria-checked={mode === m} data-testid="agent-mode-{m}" disabled={locked} title={t(locked ? "agent-panel-mode-workshop-lab-title" : `agent-panel-mode-${m}-title`)} onclick={() => chooseMode(m)}>{t(locked ? "agent-panel-mode-workshop-lab" : `agent-panel-mode-${m}`)}</button>
         {/each}
       </div>
     {/if}
@@ -409,6 +411,7 @@
   /* Two options in one glass pill, the chosen one lifted (like the Applications filters). */
   .mode { flex: none; display: flex; gap: 2px; padding: 2px; margin-left: auto; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); -moz-window-dragging: no-drag; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .mode button { margin: 0; padding: 4px 10px; border-radius: 8px; background: transparent; color: var(--text-muted); font: 600 12px/1.2 var(--font-ui); transition: transform var(--tap), background var(--tap), color var(--tap); }
+  .mode button:disabled { opacity: 0.5; cursor: default; }
   .mode button[aria-checked="true"] { background: var(--glass); color: var(--text); box-shadow: var(--lift), inset 0 0 0 1px var(--glass-edge); }
   .engine-changed { display: flex; flex-direction: column; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   /* What masking says about this conversation: an error-tinted line set in the glass, on the spring (DESIGN.md). */

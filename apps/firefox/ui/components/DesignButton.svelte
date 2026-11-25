@@ -1,12 +1,13 @@
 <script lang="ts">
   import { shortcutLabel } from "../../shared/shortcuts";
-  import { api, appState } from "../state.svelte";
+  import { api, appState, labOn } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import { design } from "./design.svelte";
   import { openMenu, type MenuEntry } from "./menu.svelte";
 
   const e = $derived(design.state);
-  const unavailable = $derived(!e || e.unavailable !== null);
+  // Design mode is the lab's: off, the button says where to turn it on (the last state read may still be the lab's).
+  const unavailable = $derived(!labOn() || !e || e.unavailable !== null);
 
   function menu(ev: MouseEvent) {
     const entries: MenuEntry[] = [{ label: t("chrome-site-basket"), dispatch: () => (design.basketRequested = true) }];
@@ -23,7 +24,7 @@
     aria-label={t("chrome-site-design")}
     aria-pressed={e?.active ?? false}
     disabled={unavailable}
-    title={unavailable ? (e?.unavailable ?? "") : t("chrome-site-design-title", { shortcut: shortcutLabel("design", appState.value?.settings) })}
+    title={!labOn() ? t("settings-lab-off") : unavailable ? (e?.unavailable ?? "") : t("chrome-site-design-title", { shortcut: shortcutLabel("design", appState.value?.settings) })}
     onclick={() => api.design.toggle()}
     >✎{#if e && e.basket > 0}<span class="counter" data-testid="basket-counter">{e.basket}</span>{/if}</button
   >

@@ -644,7 +644,7 @@ async function start(): Promise<RessacStore> {
     store.dispatch({ type: "openTab", windowId: windowId, url });
     toFront(windowId);
   };
-  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings), locale: () => store.state.locale, aiOn: () => store.state.settings.aiEnabled, giveAgent });
+  const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront, shortcutLabel: () => shortcutLabel("design", store.state.settings), locale: () => store.state.locale, labOn: () => labOn(store.state.settings), giveAgent });
   bindSites(agent, dataDir, openInTab, design, () => store.state.locale, () => {
     const s = store.state, w = s.windows.find((x) => x.id === windows.active());
     return s.spaces.find((x) => x.id === w?.activeSpace)?.aura ?? DEFAULT_AURA;
@@ -654,11 +654,19 @@ async function start(): Promise<RessacStore> {
   store.subscribe((s, p) => {
     if (shortcutLabel("design", s.settings) !== shortcutLabel("design", p.settings) || s.locale !== p.locale) design.refresh();
     if (s.locale !== p.locale) relabelSiteWindows();
-    if (p.settings.aiEnabled && !s.settings.aiEnabled) void design.stopAll();
-    // The effective lab off (AI off included): design mode stops, the site apps' windows close (tier 3).
+    // The effective lab off (AI off included): design mode stops, the site apps' windows and essential tabs close (tier 3).
     if (labOn(p.settings) && !labOn(s.settings)) {
       void design.stopAll();
       for (const id of sites.openIds()) void sites.close(id).catch((e) => console.error(`[sites] ${id} not closed:`, e));
+      // The app essentials' tabs close too: their pages keep the tweaks they loaded with, and the cached ones would apply
+      // again. An essential always has a tab: the fresh one is read again, and the host refuses it the app.
+      // After this broadcast: a dispatch from a listener would run the others on a newer state first
+      // (Promise.then: queueMicrotask callbacks do not run in this realm, see downloads.ts).
+      void Promise.resolve().then(() => {
+        const now = store.state;
+        for (const o of Object.values(now.tabs))
+          if (o.link?.type === "essential" && now.essentials.some((f) => f.id === o.link!.id && f.site)) store.dispatch({ type: "closeTab", id: o.id });
+      });
     }
   });
   bindApps(agent, openInTab, dataDir, { access: () => access, design, locale: () => store.state.locale });

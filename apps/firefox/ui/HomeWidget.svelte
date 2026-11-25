@@ -5,7 +5,7 @@
   import WidgetFrame from "./WidgetFrame.svelte";
   import Icon from "./components/Icon.svelte";
   import { nextRun } from "./components/next";
-  import { appState } from "./state.svelte";
+  import { appState, labOn } from "./state.svelte";
   import { t } from "./i18n.svelte";
   import { freeUnits } from "./free-grid";
 
@@ -109,7 +109,8 @@
         <div class="list" role="menu">
           {#if !("error" in widget)}
             <button role="menuitem" onclick={() => ((menuOpen = false), harvest())}>{t("home-widget-update-now")}</button>
-            {#if widget.hasHarvest}
+            <!-- The workflow builder is the lab's. -->
+            {#if widget.hasHarvest && labOn()}
               <button role="menuitem" onclick={() => ((menuOpen = false), seeWorkflow())}>{t("home-widget-workflow")}</button>
             {/if}
           {/if}

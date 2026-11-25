@@ -114,7 +114,7 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
    * A host request answered in this realm, `empty` in a private space (before and after). When the host does not
    * answer: with `keep`, the last answer to the same request, otherwise `empty`.
    */
-  const ask = async <T>(method: string, params: unknown, empty: () => T, keep = false): Promise<T> => {
+  const ask = async <T>(method: string, params: unknown, empty: (refusal?: string) => T, keep = false): Promise<T> => {
     if (isPrivate()) return empty();
     const key = JSON.stringify([method, params]);
     const seen = accessSeen;
@@ -123,7 +123,12 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
         if (keep) lastRead.set(key, v);
         return structuredClone(v);
       },
-      () => {
+      (e) => {
+        // The lab went off: what the page read before is not kept (the host answers again once it is back on).
+        if ((e as Error)?.message === "lab-off") {
+          lastRead.clear();
+          return empty("lab-off");
+        }
         // An acces handled meanwhile may be the kernel's first, read with this refusal in one go: read again now.
         if (accessSeen !== seen) readAgain();
         else hostDown = true;
@@ -178,7 +183,7 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
     // Read without launching, check private again, open the page, then launch: in two host calls.
     async open(id, input) {
       if (isPrivate()) return privateDenial();
-      const p = await ask<{ ok: true; name: string; launch: boolean } | { ok: false; error: string } | null>("actions.prepare", { id, input: input }, () => null);
+      const p = await ask<{ ok: true; name: string; launch: boolean } | { ok: false; error: string } | null>("actions.prepare", { id, input: input }, (refusal) => (refusal === "lab-off" ? { ok: false, error: say("settings-lab-off") } : null));
       if (isPrivate()) return privateDenial();
       if (!p) return { ok: false, error: noKernel() };
       if (!p.ok) return p;
@@ -187,7 +192,7 @@ export function createActionsApi(o: WindowApiOptions): ActionsFirefox {
       if (p.launch) host.request("actions.launch", { id, input: input }).catch((e) => ((hostDown = true), console.error(`[ressac] action ${id} :`, e)));
       return { ok: true };
     },
-    launch: (id, input) => ask("actions.launch", { id, input: input }, () => ({ status: "invalid" as const, error: isPrivate() ? say("action-private") : noKernel() })),
+    launch: (id, input) => ask("actions.launch", { id, input: input }, (refusal) => ({ status: "invalid" as const, error: isPrivate() ? say("action-private") : refusal === "lab-off" ? say("settings-lab-off") : noKernel() })),
     stop(id) {
       if (!isPrivate()) host.notify("actions.stop", { id });
     },
