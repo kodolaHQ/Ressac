@@ -206,12 +206,13 @@ it("abrupt exit: a killed run is reported at the next launch with macOS's jetsam
     await waitFor(m, `return IOUtils.readJSON(PathUtils.join(PathUtils.profileDir, "${RUN_MARK}")).then((j) => !!j.wokeAt)`, (v) => v === true);
     expect(abrupt()).toEqual([]);
     await m.execute("Services.prefs.savePrefFile(null);");
+    const pid = await m.execute<number>("return Services.appinfo.processID");
     process.kill(w!.pid, "SIGKILL");
     await w!.close();
-    // macOS's report of that kill, written after the run started.
+    // macOS's report of that kill, written after the run started, beside another Ressac's (an e2e run's).
     await writeFile(
       path.join(reports, "JetsamEvent-2026-11-25-125153.ips"),
-      '{"bug_type":"298"}\n' + JSON.stringify({ date: "2026-11-25 12:51:53.87 +0100", largestProcess: "ressac", processes: [{ name: "ressac", reason: "vm-pageshortage" }] }),
+      '{"bug_type":"298"}\n' + JSON.stringify({ date: "2026-11-25 12:51:53.87 +0100", largestProcess: "ressac", processes: [{ name: "ressac", pid: pid + 1, reason: "per-process-limit" }, { name: "ressac", pid, reason: "vm-pageshortage" }] }),
     );
     await launchWithMark(profile, env);
     await until(() => abrupt().length > 0);

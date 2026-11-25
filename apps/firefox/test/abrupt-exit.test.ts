@@ -7,20 +7,31 @@ const jetsam = (processes: object[], largestProcess = "WindowServer") =>
 
 describe("jetsamEnding", () => {
   it("finds our main process among the killed, with its reason and time", () => {
-    const e = jetsamEnding(jetsam([{ name: "plugin-container", reason: "vm-pageshortage" }, { name: "ressac", reason: "vm-pageshortage" }], "ressac"));
+    const e = jetsamEnding(jetsam([{ name: "plugin-container", reason: "vm-pageshortage" }, { name: "ressac", pid: 7, reason: "vm-pageshortage" }], "ressac"), 7, 0);
     expect(e).toEqual({ kind: "jetsam", reason: "vm-pageshortage", at: Date.parse("2026-11-25T12:51:53.87+01:00"), largestIsOurs: true });
   });
-  it("ignores a report where we only ran, or that is not JSON", () => {
-    expect(jetsamEnding(jetsam([{ name: "ressac" }, { name: "stickersd", reason: "per-process-limit" }]))).toBeNull();
-    expect(jetsamEnding("garbage")).toBeNull();
+  it("ignores a report where we only ran, another Ressac's kill, or one that is not JSON", () => {
+    expect(jetsamEnding(jetsam([{ name: "ressac", pid: 7 }, { name: "stickersd", reason: "per-process-limit" }]), 7, 0)).toBeNull();
+    expect(jetsamEnding(jetsam([{ name: "ressac", pid: 8, reason: "vm-pageshortage" }]), 7, 0)).toBeNull();
+    expect(jetsamEnding("garbage", 7, 0)).toBeNull();
+  });
+  it("an unreadable date falls back to the file's", () => {
+    const text = '{"bug_type":"298"}\n' + JSON.stringify({ date: "?", processes: [{ name: "ressac", pid: 7, reason: "highwater" }] });
+    expect(jetsamEnding(text, 7, 42)?.at).toBe(42);
   });
 });
 
 describe("reportEnding", () => {
-  it("tells a crash from a hang, and ignores other apps", () => {
-    expect(reportEnding("ressac-2026-11-25-1.ips", '{"bug_type":"309"}\n{}', 5)).toEqual({ kind: "crash", at: 5 });
-    expect(reportEnding("ressac_2026-11-25-1.hang", "", 5)).toEqual({ kind: "hang", at: 5 });
-    expect(reportEnding("Safari-2026.ips", '{"bug_type":"309"}\n{}', 5)).toBeNull();
+  it("tells a crash from a hang, and ignores other apps and the daily .diag reports", () => {
+    expect(reportEnding("ressac-2026-11-25-1.ips", '{"bug_type":"309"}\n{"pid":7}', 7, 5)).toEqual({ kind: "crash", at: 5 });
+    expect(reportEnding("ressac-2026-11-25-1.ips", '{"bug_type":"288"}\n{}', 7, 5)).toEqual({ kind: "hang", at: 5 });
+    expect(reportEnding("ressac_2026-11-25-1.hang", "", 7, 5)).toEqual({ kind: "hang", at: 5 });
+    expect(reportEnding("ressac_2026-11-25-003511_Mac.diag", "Date/Time: …", 7, 5)).toBeNull();
+    expect(reportEnding("ressac-2026-11-25-1.ips", '{"bug_type":"211"}\n{}', 7, 5)).toBeNull();
+    expect(reportEnding("Safari-2026.ips", '{"bug_type":"309"}\n{}', 7, 5)).toBeNull();
+  });
+  it("another Ressac's crash is not this run's end", () => {
+    expect(reportEnding("ressac-2026-11-25-1.ips", '{"bug_type":"309"}\n{"pid":8}', 7, 5)).toBeNull();
   });
 });
 
