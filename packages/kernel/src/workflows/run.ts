@@ -429,6 +429,8 @@ export async function runWorkflow(
     stopRun({ status: "error", error: ACTION_STOPPED(locale()) });
   };
   ctx.signal?.addEventListener("abort", onSignal, { once: true });
+  // Raised between the first check and the launch (the container did not exist yet to be removed): stopped now.
+  if (ctx.signal?.aborted) onSignal();
 
   process.stdin.on("error", () => {});
   process.stdin.write(startLine);

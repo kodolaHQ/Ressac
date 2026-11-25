@@ -177,6 +177,8 @@ export class WidgetsScheduler {
   private interrupted = new Set<string>();
   /** Widgets whose run the lab's switch-off cut (or refused on its staged copy): they end as lab-required. */
   private labCut = new Set<string>();
+  /** Per widget, the signal of its run in progress: raised, the engine kills it even if its container is not up yet. */
+  private aborts = new Map<string, AbortController>();
 
   constructor(o: SchedulerOptions) {
     // `??` rather than a spread: an option explicitly passed as undefined keeps its default value.
@@ -552,12 +554,19 @@ export class WidgetsScheduler {
       const w = widgets.find((x) => x.id === id);
       if (!w || (await this.labRequired(w))) cut.push(id);
     }
-    for (const id of cut) this.labCut.add(id);
+    for (const id of cut) {
+      this.labCut.add(id);
+      this.aborts.get(id)?.abort();
+    }
     await Promise.all(cut.map((id) => this.o.workshop.deleteHarvest(id).catch(() => {})));
   }
 
   private harvestOptions(w: WidgetRead, onTrace: (t: DirectTrace) => void, ai: HarvestOptions["ai"]): HarvestOptions {
+    // One run per widget at a time (`only`): this run's signal replaces the previous one's.
+    const ctl = new AbortController();
+    this.aborts.set(w.id, ctl);
     return {
+      signal: ctl.signal,
       id: w.id,
       widget: w,
       widgetsFolder: this.o.widgetsFolder,
@@ -624,9 +633,11 @@ export class WidgetsScheduler {
 
   private async run(w: WidgetRead, trigger: Execution["trigger"], start: Date): Promise<{ result: WidgetState & { run?: string }; issue: HourOutcome }> {
     this.labCut.delete(w.id);
-    const r = await this.runOnce(w, trigger, start);
+    const r = await this.runOnce(w, trigger, start).finally(() => this.aborts.delete(w.id));
     // Cut by the lab's switch-off (or refused on its staged copy): it did not fail, it waits for the lab.
     if (!this.labCut.delete(w.id) || r.result.status === "ok" || this.stopped) return r;
+    // A container that `docker run` created after setLab's removal.
+    await this.o.workshop.deleteHarvest(w.id).catch(() => {});
     const { run } = r.result;
     return { result: { ...(await this.markLabRequired(w)), ...(run ? { run } : {}) }, issue: "no-effect" };
   }
@@ -737,6 +748,8 @@ export class WidgetsScheduler {
           // The exception's text may quote what the widget read: only a fixed kernel message is returned.
           console.error(`[ressac] trial of widget ${id}:`, e);
           return { ok: false, error: INTERNAL_HARVEST_ERROR(this.locale()) };
+        } finally {
+          this.aborts.delete(id);
         }
       });
     } finally {

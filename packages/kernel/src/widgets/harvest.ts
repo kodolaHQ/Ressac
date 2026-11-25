@@ -61,6 +61,8 @@ export interface HarvestOptions {
   trigger?: Execution["trigger"];
   /** True when the kernel is stopping: a run that did not finish is then « interrompue », not « échouée ». */
   interrupted?: () => boolean;
+  /** Raised, the run is stopped (container killed) and its later publications are dropped (the lab went off); its memory is kept. */
+  signal?: AbortSignal;
   /** Each accepted trace, live (the builder follows the blocks); must return control right away. */
   onTrace?: (t: DirectTrace) => void;
   /** Pacing of the searches and open reads, shared by all the kernel's runs. */
@@ -382,7 +384,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     return true;
   };
   const onPublish = async (p: Publication) => {
-    if (closedRelays) return;
+    if (closedRelays || o.signal?.aborted) return;
     await writeData(widgetsFolder, id, p.data, loc(o));
     if (await closeIfGrantRemoved()) return;
     const progress = { done: p.done, total: p.total };
@@ -411,6 +413,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       ...grantContext(widgetsFolder, id, declaration, loc(o)),
       ...codeCheck(widgetsFolder, id, declaration, loc(o)),
       ...(o.lockedCode ? { lockedCode: o.lockedCode } : {}),
+      ...(o.signal ? { signal: o.signal } : {}),
       unrestricted: await readsUnrestricted(widgetsFolder, id, declaration),
       trigger: trigger,
       ...(maxDurationMinutes !== undefined ? { maxDurationMinutes: maxDurationMinutes } : {}),
@@ -547,6 +550,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
       ...grantContext(widgetsFolder, id, declaration, loc(o)),
       ...codeCheck(widgetsFolder, id, declaration, loc(o)),
       ...(o.lockedCode ? { lockedCode: o.lockedCode } : {}),
+      ...(o.signal ? { signal: o.signal } : {}),
       unrestricted: await readsUnrestricted(widgetsFolder, id, declaration),
       trigger: "replay",
       replay: { ...replay, resumed: plan.resumed },

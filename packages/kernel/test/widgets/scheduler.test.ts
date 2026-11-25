@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { cp, rm, writeFile } from "node:fs/promises";
 import { PassThrough } from "node:stream";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
@@ -13,6 +13,7 @@ import { kernelError, runHarvest, type ProcessLauncher, type HarvestOptions, typ
 import { writeRun, attemptId, listRuns, type Execution } from "../../src/workflows/executions.js";
 import { writeMemory } from "../../src/workflows/memory.js";
 import { giveGrant, readGrants } from "../../src/widgets/grants.js";
+import { approveReads, codeHash } from "../../src/widgets/reads.js";
 import {
   WORKSHOP_STOPPED_ERROR,
   INTERNAL_HARVEST_ERROR,
@@ -302,6 +303,112 @@ test("setLab(false) aborts a tier-3 run in flight: its container goes, the widge
   expect((await running).status).toBe("lab-required");
   expect(await readWidgetState(widgetsFolder, "actus")).toMatchObject({ status: "lab-required", kernelError: true, error: LAB_REQUIRED_FR });
   expect(await readData(widgetsFolder, "actus")).toEqual({ old: true });
+});
+
+/** A container that never answers on its own: only a kill ends it. */
+function hangingLaunch() {
+  const launched = vi.fn();
+  const killed = vi.fn();
+  const launch: ProcessLauncher = () => {
+    launched();
+    let kill!: () => void;
+    const end = new Promise<number | null>((r) => (kill = () => r(null)));
+    return { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), kill: () => (killed(), kill()), end: end };
+  };
+  return { launch, launched, killed };
+}
+
+test("lab switched off while staging: the staged copy is refused, nothing launches, the widget reads lab-required", async () => {
+  let lab = true;
+  const { p, harvest, widgetsFolder, workshop } = await prepare({ options: { lab: () => lab } });
+  const { launch, launched } = hangingLaunch();
+  harvest.mockImplementation((o) => runHarvest({ ...o, launch }));
+  const command = vi.spyOn(workshop, "harvestCommand");
+  workshop.stageHarvest = async (_p: unknown, d: string) => ((lab = false), d);
+  await writeData(widgetsFolder, "actus", { old: true });
+  await p.harvestNow("actus");
+  expect(command).not.toHaveBeenCalled();
+  expect(launched).not.toHaveBeenCalled();
+  expect(await readWidgetState(widgetsFolder, "actus")).toMatchObject({ status: "lab-required", kernelError: true, error: LAB_REQUIRED_FR });
+  expect(await readData(widgetsFolder, "actus")).toEqual({ old: true });
+});
+
+// The reads approval is tied to the code: a swap in a widget that reads is refused by that check first (grant-required).
+test("lab off: a starter whose staged copy gained edited code is refused before launch", async () => {
+  const { p, c, harvest, widgetsFolder, workshop } = await prepare({ options: { lab: () => false } });
+  await cp(join(import.meta.dirname, "..", "..", "templates", "fr", "widgets", "meteo"), join(c.widgets, "meteo"), { recursive: true });
+  // Its reads approved: the run goes as far as the staged copy.
+  await approveReads(widgetsFolder, "meteo", { public: ["api.open-meteo.com", "geocoding-api.open-meteo.com"], web: false, code: await codeHash(join(c.widgets, "meteo")) });
+  const { launch, launched } = hangingLaunch();
+  harvest.mockImplementation((o) => runHarvest({ ...o, launch }));
+  const command = vi.spyOn(workshop, "harvestCommand");
+  const staged = await tempFolder();
+  workshop.stageHarvest = async (_p: unknown, d: string) => {
+    await cp(d, staged, { recursive: true });
+    await writeFile(join(staged, "ville.mjs"), "export default async () => ({ ville: 'Lyon' }); // swapped");
+    return staged;
+  };
+  await p.harvestNow("meteo");
+  expect(command).not.toHaveBeenCalled();
+  expect(launched).not.toHaveBeenCalled();
+  expect(await readWidgetState(widgetsFolder, "meteo")).toMatchObject({ status: "grant-required", codeChanged: true });
+});
+
+test("lab off: a code block written into the staged workflow is refused before launch (the workflow hash)", async () => {
+  const { p, c, harvest, widgetsFolder, workshop } = await prepare({ options: { lab: () => false } });
+  const workflow = {
+    version: 1,
+    blocks: [
+      { id: "flux", type: "source.feed", params: { urls: ["https://example.org/rss"] } },
+      { id: "sortie", type: "output", params: { to: "widget" } },
+    ],
+    links: [{ from: "flux", to: "sortie" }],
+  };
+  await writeWidget(c, "flux", declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { public: ["example.org"] } }), { "workflow.json": JSON.stringify(workflow) });
+  await approveReads(widgetsFolder, "flux", { public: ["example.org"], web: false, code: await codeHash(join(c.widgets, "flux")) });
+  const { launch, launched } = hangingLaunch();
+  harvest.mockImplementation((o) => runHarvest({ ...o, launch }));
+  const command = vi.spyOn(workshop, "harvestCommand");
+  const staged = await tempFolder();
+  workshop.stageHarvest = async (_p: unknown, d: string) => {
+    await cp(d, staged, { recursive: true });
+    workflow.blocks.splice(1, 0, { id: "calcul", type: "code", params: { source: "calcul.mjs" } } as never);
+    await writeFile(join(staged, "workflow.json"), JSON.stringify(workflow));
+    await writeFile(join(staged, "calcul.mjs"), "export default (x) => x");
+    return staged;
+  };
+  await p.harvestNow("flux");
+  expect(command).not.toHaveBeenCalled();
+  expect(launched).not.toHaveBeenCalled();
+  expect(await readWidgetState(widgetsFolder, "flux")).toMatchObject({ status: "grant-required", codeChanged: true });
+});
+
+test("lab switched off after the staged check, before the container exists: it is killed at launch, nothing published", async () => {
+  let lab = true;
+  let scheduler!: WidgetsScheduler;
+  const { p, harvest, widgetsFolder } = await prepare({
+    options: {
+      lab: () => lab,
+      // The staged check's last step: the lab goes off there, before `docker run` created anything to remove.
+      paused: async (_w, folder) => {
+        if (folder !== undefined && lab) {
+          lab = false;
+          await scheduler.setLab(false);
+        }
+        return false;
+      },
+    },
+  });
+  scheduler = p;
+  const { launch, launched, killed } = hangingLaunch();
+  harvest.mockImplementation((o) => runHarvest({ ...o, launch }));
+  await writeData(widgetsFolder, "actus", { old: true });
+  await p.harvestNow("actus");
+  expect(launched).toHaveBeenCalledTimes(1);
+  expect(killed).toHaveBeenCalled();
+  expect(await readWidgetState(widgetsFolder, "actus")).toMatchObject({ status: "lab-required", kernelError: true });
+  expect(await readData(widgetsFolder, "actus")).toEqual({ old: true });
+  expect((await listRuns(join(widgetsFolder, "actus"))).map((e) => e.status)).toEqual(["interrupted"]);
 });
 
 test("memory pressure: a scheduled harvest waits, unmarked, for the first calm check; a manual one runs at once", async () => {
