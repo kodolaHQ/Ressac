@@ -51,6 +51,11 @@ async function launch(o: { profile?: string; noDsn?: boolean; seen?: boolean } =
   await waitFor(m, "return !!window.ressacWindow", (v) => v === true);
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
 }
+const openPrivacy = async () => {
+  await click(m, '[data-testid="settings-button"]');
+  await click(m, '[data-testid="settings-nav-privacy"]');
+  await waitUi(m, `const s = doc.querySelector('[data-testid="telemetry-switch"]'); return !!s && !s.disabled;`);
+};
 const seen = () => m.execute<boolean>(`return Services.prefs.getBoolPref("${SEEN}", false)`);
 const hostPid = () =>
   waitFor<number | null>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (v) => !!v, 20_000) as Promise<number>;
@@ -137,16 +142,17 @@ it("notice: a visible sidebar card until answered; « Couper l'envoi » turns se
     const text = await visibleNotice(m, "telemetry");
     expect(text).toContain("Ressac envoie à son développeur ses erreurs, sans adresse de page, pour corriger les bugs de la bêta, et à chaque lancement un identifiant d'installation anonyme pour compter les utilisateurs. Les rapports de plantage de Firefox, qui peuvent contenir des morceaux des pages ouvertes, ne partent que si vous les activez dans Réglages › Confidentialité.");
     expect(await seen()).toBe(false);
+    // Réglages open first: its switch follows the card's answer.
+    await openPrivacy();
+    await waitUi(m, `return doc.querySelector('[data-testid="telemetry-switch"]')?.checked === true`);
     await click(m, '[data-notice="telemetry"] [data-testid="notice-telemetry-stop"]');
     await waitFor(m, `return Services.prefs.getBoolPref("${SEEN}", false)`, (v) => v === true);
     expect(await m.execute("return Services.prefs.getBoolPref('ressac.telemetry.enabled')")).toBe(false);
     await waitUi(m, `return !doc.querySelector('[data-notice="telemetry"]')`);
+    await waitUi(m, `const s = doc.querySelector('[data-testid="telemetry-switch"]'); return !!s && !s.disabled && s.checked === false;`);
     await logError("chrome://browser/content/ressac/sidebar.js", "TypeError: after opt-out");
     await settle();
     expect(envelopes.filter((e) => e.raw.includes("after opt-out"))).toEqual([]);
-    await click(m, '[data-testid="settings-button"]');
-    await click(m, '[data-testid="settings-nav-privacy"]');
-    await waitUi(m, `const s = doc.querySelector('[data-testid="telemetry-switch"]'); return !!s && !s.disabled && s.checked === false;`);
     // Same profile again: no card.
     await w!.close();
     await launch({ profile });
@@ -177,6 +183,20 @@ it("notice: « D'accord » in one window hides the card in every window, keeps s
     await w?.close();
     await rm(profile, { recursive: true, force: true });
   }
+});
+
+it("notice: reports already off, no card; turning them on in Réglages counts as the answer", async () => {
+  w = await launchRessac({ env: { RESSAC_SENTRY_DSN: dsn() }, prefs: { "ressac.telemetry.enabled": false } });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitFor(m, "return !!window.ressacWindow", (v) => v === true);
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"sidebar\"]')");
+  // The card would be in the state from the start: the sidebar is mounted.
+  expect(await notices()).toBe(0);
+  await openPrivacy();
+  await click(m, '[data-testid="telemetry-switch"]');
+  await waitFor(m, `return Services.prefs.getBoolPref("ressac.telemetry.enabled", false) && Services.prefs.getBoolPref("${SEEN}", false)`, (v) => v === true);
+  expect(await notices()).toBe(0);
 });
 
 it("before the notice is answered, neither error reports nor crash reports go out; after it, crash reports only once turned on", async () => {

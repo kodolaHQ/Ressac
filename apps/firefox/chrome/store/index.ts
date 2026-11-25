@@ -223,7 +223,8 @@ function startupNotices(setAside: string | null, dataSetAside: { backup: string;
   const notices: Notice[] = [];
   if (setAside) notices.push({ id: "session-set-aside", path: setAside });
   if (dataSetAside) notices.push({ id: "data-set-aside", ...dataSetAside });
-  if (telemetryActive && !Services.prefs.getBoolPref(NOTICE_SEEN, false)) notices.push({ id: "telemetry" });
+  // Only while reports are on: a user who turned them off is not told they are sent.
+  if (telemetryActive && Services.prefs.getBoolPref("ressac.telemetry.enabled", false) && !Services.prefs.getBoolPref(NOTICE_SEEN, false)) notices.push({ id: "telemetry" });
   return notices;
 }
 
@@ -285,6 +286,8 @@ async function start(): Promise<RessacStore> {
   }));
   // The telemetry card answered (either button, in any window): seen for good, reports may go.
   store.subscribe((s, p) => p.notices.some((n) => n.id === "telemetry") && !s.notices.some((n) => n.id === "telemetry") && Services.prefs.setBoolPref(NOTICE_SEEN, true));
+  // The switch moved in Réglages while the card shows: that is the answer (the switch's help is the card's text).
+  Services.prefs.addObserver("ressac.telemetry.enabled", () => store.dispatch({ type: "dismissNotice", id: "telemetry" }));
   // Later essentials' tabs, and the notification permission given or taken back: kept loaded or not, live.
   const refreshNotifies = () => notifyChanges(store.state).forEach((a) => store.dispatch(a));
   store.subscribe((s) => Object.values(s.tabs).some((o) => o.link?.type === "essential" && o.notifies === undefined) && queueMicrotask(refreshNotifies));

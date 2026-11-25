@@ -30,7 +30,8 @@
   let repaired = $state<boolean | null>(null);
   let telemetry = $state<{ available: boolean; enabled: boolean; crashReports: boolean } | null>(null);
   // Copied: an object from the chrome's realm is not made reactive, and the crash switch follows `enabled`.
-  $effect(() => void s.telemetry().then((t) => (telemetry = { ...t })));
+  // Read again when a start-up card is answered: « Couper l'envoi » on the sidebar's card turns the switch off.
+  $effect(() => void (appState.value?.notices, s.telemetry().then((t) => (telemetry = { ...t }))));
 </script>
 
 <section data-testid="settings-privacy" aria-label={t("settings-section-privacy")}>
