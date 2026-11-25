@@ -278,6 +278,8 @@ export function labelFilled(table: LabelTable, e: Entry, origin: string): void {
   let label = table.label(e.type, e.value, "web", origin, e.raw);
   for (const ref of e.passport ?? []) label = table.label(e.type, e.value, "web", origin, e.raw, ref);
   for (const forms of entryForms(table, e)) rememberForms(table, label, e.type, e.value, forms);
+  // A value the page already had gains its passport writings without a new entry: the origin's lookup is rebuilt.
+  table.lookups.delete(JSON.stringify(origin));
 }
 
 /**
@@ -291,6 +293,7 @@ export function labelWritten(table: LabelTable, type: LabelType, written: string
   // The ref makes the lookup search this label by its remembered forms; its value never equals the entry's canonical.
   const label = table.label(type, form, "web", origin, written, ref);
   rememberForms(table, label, type, form, { folded: [{ form, initials: [] }], digits: [] });
+  table.lookups.delete(JSON.stringify(origin));
 }
 
 /**

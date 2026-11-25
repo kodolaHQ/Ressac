@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "vitest";
-import { maskText, sanitize } from "../../src/mask/mask.js";
+import { labelFilled, maskText, sanitize } from "../../src/mask/mask.js";
 import { NAME_IDS, nameAgreement, valueName } from "../../src/mask/names.js";
 import { say, sayAttribute } from "../../src/i18n.js";
 import { KERNEL_SOURCES } from "../../src/i18n/messages.js";
@@ -10,6 +10,14 @@ const SRC = { zone: "sources", origin: "https://mail.example" } as const;
 const L = "⟨[a-z]+-[a-z0-9]{8}⟩";
 
 describe("maskText", () => {
+  it("a value known on one site and filled on another is masked on that other site at its next read", () => {
+    const t = new LabelTable();
+    maskText(`code ${CODE}`, { table: t, zone: "web", origin: "https://b.example" });
+    expect(maskText(`ligne ${CODE}`, { table: t, zone: "web", origin: "https://a.example" })).toBe(`ligne ${CODE}`);
+    labelFilled(t, t.entries("web")[0]!, "https://a.example");
+    expect(maskText(`ligne ${CODE}`, { table: t, zone: "web", origin: "https://a.example" })).toMatch(/^ligne ⟨code-/);
+  });
+
   it("keeps an e-mail's domain", () => {
     const out = maskText("écris à t.exemple@impots.gouv.fr", { table: new LabelTable(), ...SRC });
     expect(out).toMatch(/^écris à ⟨email-[a-z0-9]{8}⟩@impots\.gouv\.fr$/);

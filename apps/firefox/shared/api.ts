@@ -669,8 +669,6 @@ export interface PassportSettingsApi {
   lock(profile: string, purpose?: "open" | "delete" | "move" | "restart"): void;
   /** The Mac slept or its screen locked: every passport is locked again. */
   onLocked(callback: () => void): () => void;
-  /** Deletes this profile's passport (its space goes, design § 4.4); false when the file could not be removed. */
-  drop(profile: string): Promise<boolean>;
   /** « Supprimer ce passeport »: needs the token of an `unlock(profile, "delete")`; false when refused or not removed. */
   removePassport(profile: string, token: string): Promise<boolean>;
   /**

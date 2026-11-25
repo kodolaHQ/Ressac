@@ -8,7 +8,7 @@
   import { t } from "../i18n.svelte";
   import { deletionLosses, losesConnections, PROFILE_TO_CHOOSE } from "./spaceProfiles";
   import { fade } from "svelte/transition";
-  import { spaceSettings } from "./spaceSettings.svelte";
+  import { removePassport, spaceSettings } from "./spaceSettings.svelte";
   import { showSection } from "./settings-section.svelte";
 
   let { window: win }: { window: WindowState } = $props();
@@ -56,8 +56,8 @@
     if (now?.passport && dropPassport) {
       // The passport goes first: a failed drop keeps the space and says so, never a space gone with its passport said gone.
       deleting = true;
-      const ok = await api.settings.passport!.drop(space.profile).finally(() => (deleting = false));
-      if (toDelete?.space.id !== space.id) return;
+      const ok = await removePassport(space.profile).finally(() => (deleting = false));
+      if (toDelete?.space.id !== space.id || ok === null) return;
       if (!ok) return void (failure = "failed");
       toDelete = { ...toDelete, passport: 0 };
       if (!appState.value?.spaces.some((e) => e.id === space.id)) return void (toDelete = null);

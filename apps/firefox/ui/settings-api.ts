@@ -29,7 +29,7 @@ export function createSettingsApi(o: {
   /** The shown language, read at each call. */
   locale(): string;
   /** Only in the document showing the settings page: elsewhere the API has no `passport`. */
-  passport?: Pick<PassportSettings, "passports" | "unlock" | "read" | "save" | "lock" | "onLocked" | "drop" | "removePassport" | "moveTo" | "restart">;
+  passport?: Pick<PassportSettings, "passports" | "unlock" | "read" | "save" | "lock" | "onLocked" | "removePassport" | "moveTo" | "restart">;
   /** Only in the document showing the settings page, like `passport`. */
   passwords?: PasswordSettings;
   /** The spaces, read at each call: they name the passports. */
@@ -61,6 +61,8 @@ export function createSettingsApi(o: {
   /** The tokens this page holds, one per profile and purpose: its « Verrouiller » never locks another window's page. */
   const tokens = new Map<string, string>();
   const key = (profile: string, purpose: string) => `${purpose}\n${profile}`;
+  // As for passwords: the page passes only tokens it was given, never one it found elsewhere.
+  const ours = (token: unknown) => (typeof token === "string" && [...tokens.values()].includes(token) ? token : "");
   const passport = o.passport;
   const passwords = o.passwords;
   /** This page's password tokens: only they reach the chrome, and leaving the section revokes them. */
@@ -113,8 +115,8 @@ export function createSettingsApi(o: {
           tokens.set(key(profile, purpose), r.token);
           return structuredClone(r);
         },
-        read: (profile, token) => passport.read(String(profile), String(token)).then((r) => structuredClone(r)),
-        save: (profile, token, entries, revision) => passport.save(String(profile), String(token), structuredClone(entries), String(revision)).then((r) => structuredClone(r)),
+        read: (profile, token) => passport.read(String(profile), ours(token)).then((r) => structuredClone(r)),
+        save: (profile, token, entries, revision) => passport.save(String(profile), ours(token), structuredClone(entries), String(revision)).then((r) => structuredClone(r)),
         lock(profile, purpose) {
           for (const p of purpose ? [purpose] : (["open", "delete", "move", "restart"] as const)) {
             const token = tokens.get(key(profile, p));
@@ -123,10 +125,9 @@ export function createSettingsApi(o: {
           }
         },
         onLocked: (callback) => o.untilUnload(passport.onLocked(callback)),
-        drop: (profile) => passport.drop(String(profile)),
-        removePassport: (profile, token) => passport.removePassport(String(profile), String(token)),
-        moveTo: (from, to, token) => passport.moveTo(String(from), String(to), String(token)).then((r) => structuredClone(r)),
-        restart: (profile, token) => passport.restart(String(profile), String(token)),
+        removePassport: (profile, token) => passport.removePassport(String(profile), ours(token)),
+        moveTo: (from, to, token) => passport.moveTo(String(from), String(to), ours(token)).then((r) => structuredClone(r)),
+        restart: (profile, token) => passport.restart(String(profile), ours(token)),
       },
     }),
     agents,

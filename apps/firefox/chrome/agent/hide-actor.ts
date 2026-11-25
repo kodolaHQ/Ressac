@@ -123,9 +123,10 @@ function fieldValue(el: Element): string {
  * a textarea's whole box (once per run). `g`: a canvas context reused across the answer.
  * shortcut: letter-spacing, text-transform and right-to-left text are not measured; upgrade if a site's hatch drifts.
  */
-function fieldBox(el: Element, from: number, to: number, g: CanvasRenderingContext2D): Rect | null {
+function fieldBox(el: Element, from: number, to: number, g: CanvasRenderingContext2D | null): Rect | null {
   const box = contentBox(el);
-  if (el.tagName === "TEXTAREA") return box;
+  // No canvas context (a GPU reset, canvas refused): the whole field is hatched, more than the value, never less.
+  if (el.tagName === "TEXTAREA" || !g) return box;
   const cs = styleOf(el), value = (el as HTMLInputElement).value;
   g.font = cs.font;
   const all = g.measureText(value).width;
@@ -294,7 +295,7 @@ export class RessacHideChild extends JSWindowActorChild {
   private rects(slices: unknown): { rects: (Rect & { field?: true })[][]; gone: boolean } {
     if (!Array.isArray(slices)) return { rects: [], gone: false };
     const range = this.document.createRange();
-    let g: CanvasRenderingContext2D | undefined;
+    let g: CanvasRenderingContext2D | null | undefined;
     let gone = false;
     const rects = slices.map((run) =>
       (Array.isArray(run) ? run : []).flatMap((s: any) => {
@@ -302,7 +303,7 @@ export class RessacHideChild extends JSWindowActorChild {
         if (!node?.isConnected) gone = true;
         if (!node?.isConnected || !Number.isInteger(s.from) || !Number.isInteger(s.to)) return [];
         if (node.nodeType === Node.ELEMENT_NODE) {
-          const r = fieldBox(node as Element, s.from, s.to, (g ??= this.document.createElement("canvas").getContext("2d")!));
+          const r = fieldBox(node as Element, s.from, s.to, (g ??= this.document.createElement("canvas").getContext("2d")));
           return r ? [{ ...r, field: true as const }] : [];
         }
         const len = (node as Text).data.length;

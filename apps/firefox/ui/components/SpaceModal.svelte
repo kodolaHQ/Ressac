@@ -7,7 +7,7 @@
   import { api, appState } from "../state.svelte";
   import FrozenBackground from "./FrozenBackground.svelte";
   import { choiceLosesConnections, profileOptions, PROFILE_TO_CHOOSE } from "./spaceProfiles";
-  import { spaceSettings } from "./spaceSettings.svelte";
+  import { removePassport, spaceSettings } from "./spaceSettings.svelte";
   import { fade } from "svelte/transition";
   import { t } from "../i18n.svelte";
   import AuraEmoji from "./AuraEmoji.svelte";
@@ -108,9 +108,9 @@
     // The passport goes first: a failed drop keeps the space as it was and says so.
     if (saved && losesConnections?.passport && dropPassport) {
       saving = true;
-      const ok = await api.settings.passport!.drop(saved.profile).finally(() => (saving = false));
-      // Closed meanwhile (the space deleted from another window): nothing left to save.
-      if (spaceSettings.draft !== draft) return;
+      const ok = await removePassport(saved.profile).finally(() => (saving = false));
+      // Closed meanwhile (the space deleted from another window), or Touch ID refused: nothing done.
+      if (spaceSettings.draft !== draft || ok === null) return;
       if (!ok) return void (failure = "failed");
       passportCount = 0;
       // The reducer's refusals (core/state/actions.ts updateSpace): the space gone, or its chosen profile gone.

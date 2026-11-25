@@ -229,10 +229,13 @@ describe("settings api", () => {
     expect(passport.lock).toHaveBeenCalledWith("t1");
   });
 
-  it("passport drop forwards the profile and the chrome's answer", async () => {
+  it("passport: no drop without Touch ID for a page, and a token this page was not given goes nowhere", async () => {
     const { api, passport } = setup();
-    expect(await api.passport!.drop("work")).toBe(true);
-    expect(passport.drop).toHaveBeenCalledWith("work");
+    expect(api.passport).not.toHaveProperty("drop");
+    await api.passport!.removePassport("work", "found-elsewhere");
+    expect(passport.removePassport).toHaveBeenCalledWith("work", "");
+    await api.passport!.read("work", "found-elsewhere");
+    expect(passport.read).toHaveBeenCalledWith("work", "");
   });
 
   it("passport delete and move: Touch ID with their own reason, then the chrome's answer, token forwarded", async () => {

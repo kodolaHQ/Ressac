@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -351,6 +352,17 @@ describe("passport files", () => {
     shy.available.mockResolvedValue(false);
     await other.ensureKeyBesides("work");
     expect(shy.ensureKey).not.toHaveBeenCalled();
+  });
+
+  it("ensureKeyBesides and a save of a never-loaded profile, overlapping, both end (no lock waits on the other)", async () => {
+    const cipher = fakeCipher({ key: false });
+    const files = createPassportFiles({ dir, cipher });
+    write("other", { format: "ressac-passport", version: 1, profile: "other", cipher: sealed({ version: 1, entries: [entry("a")] }) });
+    const revision = createHash("sha256").update(readFileSync(file("other"), "utf8")).digest("hex");
+    // The restart takes the key lock first; the save holds « other »'s queue, then waits for that lock.
+    const both = Promise.all([files.ensureKeyBesides("work"), files.save("other", [entry("b")], revision)]);
+    const hung = new Promise((r) => setTimeout(() => r("hung"), 2_000));
+    expect(await Promise.race([both.then(() => "done"), hung])).toBe("done");
   });
 
   it("remove deletes the file and its set-aside copies, nobody else's", async () => {
