@@ -18,8 +18,9 @@ const parse = (t) => { try { return JSON.parse(t); } catch { return undefined; }
 /** The JSON messages of an SSE stream (`data:` lines). */
 const sseData = (raw) => raw.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => parse(l.slice(5).trim())).filter(Boolean);
 
-/** Forwards `req` (its body already read) to `url`; streams the answer back to `res` and resolves with its status and text. */
-async function forward(req, body, url, res) {
+/** Forwards `req` (its body already read) to `url`; streams the answer back to `res` and resolves with its status and text
+ *  (`keep` false: no text, for the MCP GET stream that stays open the whole leg). */
+async function forward(req, body, url, res, keep = true) {
   const headers = Object.fromEntries(Object.entries(req.headers).filter(([k]) => !DROP_REQ.has(k)));
   const up = await fetch(url, { method: req.method, headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : body, redirect: "manual" });
   const out = {};
@@ -27,7 +28,7 @@ async function forward(req, body, url, res) {
   res.writeHead(up.status, out);
   let text = "";
   const dec = new TextDecoder();
-  if (up.body) for await (const c of up.body) { text += dec.decode(c, { stream: true }); res.write(c); }
+  if (up.body) for await (const c of up.body) { if (keep) text += dec.decode(c, { stream: true }); res.write(c); }
   res.end();
   return { status: up.status, text: text + dec.decode(), type: up.headers.get("content-type") ?? "" };
 }
@@ -40,13 +41,14 @@ export async function startMcpRecorder(o) {
       if (!target) { res.writeHead(503).end("no MCP target yet"); return; }
       const body = await readBody(req);
       const msg = req.method === "POST" ? parse(body.toString("utf8")) : undefined;
+      // A JSON-RPC batch (an array) is forwarded but not noted: the CLI sends none.
       const call = msg && !Array.isArray(msg) && msg.method === "tools/call" ? msg : undefined;
       let e;
       if (call) {
         e = o.note("tool", { name: call.params?.name, args: call.params?.arguments ?? {} });
         if (++calls > o.maxTools) o.onLimit();
       }
-      const r = await forward(req, body, target, res);
+      const r = await forward(req, body, target, res, !!e);
       if (!e) return;
       // The answer is JSON or an SSE stream (Streamable HTTP); the one with the call's id is its result.
       const answers = r.type.includes("text/event-stream") ? sseData(r.text) : [parse(r.text)].flat().filter(Boolean);

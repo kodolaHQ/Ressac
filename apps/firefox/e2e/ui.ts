@@ -103,7 +103,7 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
 const TIP = `const tip = (window.ressacTestTip ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor));
   tip.beginInputTransactionForTests(window);
   const CODES = { "[": "BracketLeft", "]": "BracketRight", "{": "BracketLeft", "}": "BracketRight", Meta: "MetaLeft", Control: "ControlLeft", Shift: "ShiftLeft", Alt: "AltLeft", " ": "Space", "-": "Minus", ",": "Comma", "/": "Slash", "?": "Slash", "$": "Digit4" };
-  const ev = (key) => new KeyboardEvent("", { key, code: CODES[key] ?? (/^[0-9]$/.test(key) ? "Digit" + key : key.length === 1 ? "Key" + key.toUpperCase() : key) });`;
+  const ev = (key) => new KeyboardEvent("", { key, code: CODES[key] ?? (/^[0-9]$/.test(key) ? "Digit" + key : /^[a-z]$/i.test(key) ? "Key" + key.toUpperCase() : key.length === 1 ? "" : key) });`;
 
 /** Holds a key down in the browser window (trusted, nsITextInputProcessor): "Control", "Meta", "Tab"… */
 export function keyDown(m: Marionette, key: string): Promise<unknown> {
@@ -121,7 +121,8 @@ export async function pressKeys(m: Marionette, combo: string): Promise<void> {
   for (const k of keys.reverse()) await keyUp(m, k);
 }
 
-/** Types `text` key by key where the keyboard is (trusted keys). */
+/** Types `text` key by key where the keyboard is (trusted keys). A character with no key of its own (« é », « « ») goes with
+ *  an empty code: Gecko refuses a made-up one (NS_ERROR_ILLEGAL_VALUE). */
 export async function typeText(m: Marionette, text: string): Promise<void> {
   for (const k of text) await pressKeys(m, k);
 }

@@ -19,6 +19,7 @@ export function rewrite(argv, o) {
   const out = [];
   for (let i = 0; i < a.length; i++) {
     if (a[i] === "--tools") { i++; continue; }
+    if (a[i].startsWith("--tools=")) continue;
     if (a[i] === "--mcp-config") { out.push(a[i], o.mcpCopy); i++; continue; }
     out.push(a[i].startsWith("/workspace/") ? o.root + a[i].slice("/workspace".length) : a[i]);
   }
@@ -42,6 +43,7 @@ if (process.argv.includes("--selftest")) {
   const main = ["claude", "--tools", "Read,Glob,Grep,Write,Edit", "--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--mcp-config", "/workspace/.ressac/sessions/x.json"];
   assert.deepEqual(rewrite(main, o), ["--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--mcp-config", o.mcpCopy, ...tail]);
   assert.equal(rewrite(main, o).filter((x) => x === "--tools").length, 1, "one --tools, the empty one");
+  assert.deepEqual(rewrite(["claude", "--tools=Read,Glob", "--strict-mcp-config"], o), ["--strict-mcp-config", ...tail], "the --tools=<v> form is dropped too");
   console.log("agent-on-mac selftest ok");
   process.exit(0);
 }
@@ -53,12 +55,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (!root || !url) { console.error("agent-on-mac: RESSAC_ROOT and BENCH_MCP_URL are needed"); process.exit(2); }
   const session = argv[argv.indexOf("--mcp-config") + 1];
   if (!argv.includes("--mcp-config") || !session) { console.error("agent-on-mac: no --mcp-config"); process.exit(2); }
+  // Read before any temp folder exists: a bad config throws with nothing to clean.
+  const config = JSON.parse(readFileSync(session.replace(/^\/workspace\//, `${root}/`), "utf8"));
+  config.mcpServers.ressac.url = url;
   const configDir = mkdtempSync("/tmp/ressac-b3-config-");
   // Claude keys the trust dialog by its real working folder (/tmp is /private/tmp on macOS).
   const cwd = realpathSync(mkdtempSync("/tmp/ressac-b3-"));
   const cleanup = () => { rmSync(configDir, { recursive: true, force: true }); rmSync(cwd, { recursive: true, force: true }); };
-  const config = JSON.parse(readFileSync(session.replace(/^\/workspace\//, `${root}/`), "utf8"));
-  config.mcpServers.ressac.url = url;
   const mcpCopy = join(configDir, "mcp.json");
   writeFileSync(mcpCopy, JSON.stringify(config), { mode: 0o600 });
   writeFileSync(join(configDir, ".claude.json"), JSON.stringify({ hasCompletedOnboarding: true, theme: "dark", projects: { [cwd]: { hasTrustDialogAccepted: true } } }));

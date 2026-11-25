@@ -23,7 +23,7 @@ const REPO = (process.env.RESSAC_WORKTREE ?? fileURLToPath(new URL("../../..", i
 /** The record never carries this Mac's paths: the repo and the home folder are replaced. */
 /** The account e-mail of whoever runs the bench (Claude Code's login, ~/.claude.json), read at run time, never written down:
  *  a run whose stream or answer holds it is refused (Claude Code puts it in the model's context when logged in). */
-const OWNER: string | null = (() => { try { return JSON.parse(readFileSync(join(homedir(), ".claude.json"), "utf8")).oauthAccount?.emailAddress || null; } catch { return null; } })();
+export const OWNER: string | null = (() => { try { return JSON.parse(readFileSync(join(homedir(), ".claude.json"), "utf8")).oauthAccount?.emailAddress || null; } catch { return null; } })();
 const ownerIn = (t: string) => !!OWNER && t.toLowerCase().includes(OWNER.toLowerCase());
 export const scrub = (t: string) => {
   const s = t.replaceAll(REPO, "<repo>").replaceAll(homedir(), "~");
