@@ -47,6 +47,8 @@ const routes = {
   // A mail whose sender's display name is masked while its domain, which spells it, stays in clear.
   "/compte/courrier.html": (_req: unknown, res: ServerResponse) =>
     html(res, `<title>Courrier</title><p>De : Cabinet du Dr Hélène Marceau &lt;secretariat@cabinet-dr-marceau.fr&gt;</p><p>Objet : rendez-vous</p>`),
+  // A statement line in clear: the employer is no masked kind.
+  "/compte/virements.html": (_req: unknown, res: ServerResponse) => html(res, `<title>Virements</title><p>VIR SALAIRE VERRERIES GERLAND</p>`),
   "/compte/saute": (_req: unknown, res: ServerResponse) => void res.writeHead(302, { Location: `${other.url}/arrivee.html` }).end(),
   "/compte/aller": (_req: unknown, res: ServerResponse) => void res.writeHead(302, { Location: `${other.url}/arrivee.html` }).end(),
   // An open redirect by script, once loaded and without user activation; 1 s later the page, still there, says so.
@@ -186,6 +188,16 @@ it("an address the agent writes with a word of a masked sender name gets the red
   // The surname's masked display, not « Cabinet »'s (a title alone never raises it).
   expect(danger).toBe("⚠ Contient un nom masqué, lu dans 127.0.0.1 : M••••u");
   expect(await inUi<string>(m, `return doc.querySelector('${ADDRESS} [data-testid="address-request-url"]').textContent`)).toContain("cabinet-dr-marceau.test");
+  await click(m, `${ADDRESS} button`, { text: "Refuser" });
+  expect((await opening).text).toBe("Accès refusé par l'utilisateur à cet onglet.");
+});
+
+it("an address the agent writes with a host word read only in the user's sources gets the red line on its card", async () => {
+  const id = await start(`${server.url}/compte/virements.html`);
+  expect((await call("read_tab", { id })).text).toContain("VERRERIES GERLAND");
+  const opening = call("open_tab", { url: "https://www.verreries-gerland.test/", reason: "le site de l'employeur" });
+  const danger = await waitUi<string>(m, `return doc.querySelector('${ADDRESS} [data-testid="address-request-danger"]')?.textContent`, [], 20_000);
+  expect(danger).toBe("⚠ Adresse construite avec un nom lu dans 127.0.0.1 : ve••••es");
   await click(m, `${ADDRESS} button`, { text: "Refuser" });
   expect((await opening).text).toBe("Accès refusé par l'utilisateur à cet onglet.");
 });

@@ -541,3 +541,35 @@ test("a search query with a whole word of a masked name pauses like a read value
     });
   }
 });
+
+test("an address the agent writes with a host word read only in the user's sources gets a red line; a word seen on the web, the source's own host and a masked name do not", async () => {
+  const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
+  const web: TabInfo = { id: "web", title: "Annuaire", url: "https://annuaire.example/lyon", space: "perso", agentReached: true };
+  const pages = {
+    banque: { text: "Banque Ardoise — relevé\nVIR SALAIRE VERRERIES GERLAND\nCB LUMEN MAISON 42,90" },
+    web: { text: "Les fabricants de Lyon : Verreries Gerland, Cristallerie du Rhône" },
+    mail: { text: "De : Hélène Marceau <secretariat@cabinet-dr-marceau.test>" },
+  };
+  const bridge = bridgeWith(pages, {}, [user, bank, web]);
+  await serve({ bridge, outflow: new Outflow() }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    expect((await call("read_tab", { id: "banque" }, t)).text).toContain("VERRERIES GERLAND");
+    expect(await danger("https://www.verreries-gerland.test/")).toBe("Adresse construite avec un nom lu dans banque-ardoise.test : ve••••es");
+    expect(await danger("https://lumen-maison.test/contact")).toBe("Adresse construite avec un nom lu dans banque-ardoise.test : l••••n");
+    // The source's own site is the user's: opening it is no leak.
+    expect(await danger("https://www.banque-ardoise.test/aide")).toBeUndefined();
+    // A path word is not judged, only the host.
+    expect(await danger("https://exemple.test/verreries")).toBeUndefined();
+    // The masked name keeps its own line.
+    await call("read_tab", { id: "mail" }, t);
+    expect(await danger("https://www.cabinet-dr-marceau.test/")).toBe("Contient un nom masqué, lu dans mail.example-novacourriel.test : M••••u");
+    // The same words seen on the open web: no line.
+    await call("read_tab", { id: "web" }, t);
+    expect(await danger("https://verreries-gerland.test/")).toBeUndefined();
+  });
+});
