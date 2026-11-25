@@ -6,11 +6,14 @@ import { testEnv } from "../test-env";
 const { setInterval } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
 const MARK_EVERY_MS = 5 * 60_000;
 
-/** macOS's reports: JetsamEvent (memory kills) system-wide, crashes and hangs in the user's folder. */
+/**
+ * macOS's reports: JetsamEvent (memory kills) system-wide, crashes and hangs in the user's folder. RESSAC_TEST_DIAGNOSTIC_DIR
+ * (tests) stands for the system folder only: the user's is always built for real (a path bug there once hid every report).
+ */
 function reportDirs(): { system: string; user: string } {
-  const test = testEnv("RESSAC_TEST_DIAGNOSTIC_DIR");
-  if (test) return { system: test, user: test };
-  return { system: "/Library/Logs/DiagnosticReports", user: PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "Library/Logs/DiagnosticReports") };
+  // PathUtils.join takes one name per segment: a « a/b » segment throws.
+  const user = PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "Library", "Logs", "DiagnosticReports");
+  return { system: testEnv("RESSAC_TEST_DIAGNOSTIC_DIR") ?? "/Library/Logs/DiagnosticReports", user };
 }
 
 // A run of days writes many JetsamEvents (~0.5 MB each): the newest few are enough to find the end.
@@ -69,7 +72,7 @@ export function installAbruptExitWatch(o: { report(e: ReportedError): void; cons
     const previous = (await IOUtils.readJSON(file).catch(() => null)) as RunMark | null;
     write();
     // macOS's reports are only read when this one may be sent.
-    if (previous?.started && o.consented()) o.report(abruptExitReport(previous, await findEnding(previous.started, previous.pid)));
+    if (previous?.started && o.consented()) o.report(abruptExitReport(previous, await findEnding(previous.started, previous.pid).catch((e) => (console.warn("[abrupt-exit] reports unread:", e), null))));
   })().catch((e) => console.warn("[abrupt-exit] check failed:", e));
 
   Services.obs.addObserver(() => write({ sleptAt: Date.now() }), "sleep_notification");
