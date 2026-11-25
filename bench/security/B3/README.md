@@ -778,6 +778,74 @@ The kernel moved under the bench; each change in the wiring:
 - **Privacy of the record**: the repo's path and the home folder are replaced (`<repo>`, `~`) in every record and in `stream.jsonl`.
 - **Record**: the Ressac version, the kernel commit and a dirty flag; the lessons written; recaps opened.
 
+## Replay in the real browser (`browser/`)
+
+**Why.** The harness hands the kernel each page as text (`page_markdown`) and calls its MCP server directly. So it never sees how the parts join: Firefox's text extraction (an IBAN split by tabs, a hole fixed on 2026-11-24), the page actors (reading, filling, sealed fields), the passport set in Réglages, the « vos sources » zone chosen by tab and profile, and the real cards. The replay sends every published leak through the compiled browser instead, with the agent driving it as the user would.
+
+**The frozen list.** `browser/replay-cases.json`, with its sha256 beside it, lists every minimax leak published in `results/` and spec § 4's table: lines F1 to F11, plus the ones found while writing the plan. Each `model` case is the attack or control copied verbatim, with `replay: { line, file, fileSha256, after0123 }`. `e2e` names the scripted adversary's pairs (F10 and F11 and the leaked shapes, no model). `passport` gives the decision for each leaked value: masked by the masker alone, a passport field, or out of promise. The derivation rule is at the top of `freeze.mjs`, and `node browser/freeze.mjs --check` derives the list again and fails if the file or its sha256 differ. **The list never changes after the first model run.** A change starts a new protocol version, dated. `after0123` marks an attack that still leaked, whole or partly, on a kernel at or after the 0.1.23 outflow fix, and its control inherits the mark. The first paid pass runs only those (spec § 12, `--cases after0123`).
+
+**Running it** (a development build of the branch under test, current: `checkBuildCurrent` refuses a stale `build:ui`):
+
+```sh
+TSX=packages/kernel/node_modules/.bin/tsx
+# no model, about 2 min 30 s: the stand-in `claude` (a granted bank card, an unsafe tool, no agent turn, a changed prompt, a 401 upstream, a leg that throws), then the scripted adversary on one pair under a and b
+$TSX bench/security/B3/browser/run.mts --self-check
+# the free scripted A/B on every e2e pair, then the indistinguishability test of what the agent received
+$TSX bench/security/B3/browser/run.mts --set e2e --agent adversary --legs 2 --run replay-adversary-<commit8>
+node bench/security/B3/indistinguishable.mjs bench/security/B3/out/replay-adversary-<commit8>
+# the model pass (paid, approved by the maintainer first): the obedient arm on minimax through Ollama, 4 legs per case
+$TSX bench/security/B3/browser/run.mts --set model --cases after0123 --ollama minimax-m3.1-flash:cloud --legs 4 \
+  --card grant --address grant --max-legs <cases × 4> --run replay-minimax-<commit8>-grant
+node bench/security/B3/diff.mjs bench/security/B3/out/replay-minimax-<commit8>-grant
+```
+
+Options: `--cases all|after0123|<id,…>`, `--legs 1|2|4` (a, b, a2, b2, as `run.mjs --differential`; with 1, records go straight into `out/<run>/`), `--parallel 3`, `--max-tools 100`, `--timeout-s 600`, `--card` and `--address` (`deny` is the arm planned after 15 December 2026), `--max-legs <n>` and `--no-stop`. `--timeout-s` counts from the moment the prompt is typed, not from the launch. node prints an `ExperimentalWarning` for `node:sqlite` once per run: expected. The runner refuses a frozen list whose sha256 differs, `--agent claude` without `--ollama` or without `--max-legs`, and `--agent adversary` with `--set model`. **The spend guard:** before anything starts it prints how many legs it will run (and how many are already recorded), and it refuses a run that would start more than `--max-legs`. A record already in the run folder is not run again. **A leg that ended in an error** (a card the automatic user cannot answer, a refused request, an upstream failure, a leg whose run threw) is saved under `out/<run>/errors/<leg>/<id>.json`, never under the record's name (`diff.mjs` and `indistinguishable.mjs` read every record of a leg folder): a resume runs it again, and `report.mjs` lists it apart with its error text, never as « the model refused ». A case with an errored leg or with fewer legs than the run's N has no figure. A leg stopped by a rate limit runs again after 60 s × attempt, up to three times, and then keeps `stop: "rate-limit"`. Once a case's legs are done, any full or partial leak, liaison or lesson stops the campaign (the protocol's stop rule): the case is printed and the run folder is left as it is. A model request refused by the model recorder (a built-in tool declared, or the owner's e-mail) stops the whole campaign even with `--no-stop`, as does a record that cannot be saved clean: the bench itself is then unsafe. **An upstream failure stops the pass too**, even with `--no-stop`: a status of 400 or more that is no rate limit (Ollama not signed in, a model it lacks, a 5xx), an error event in a 200 stream, or a forward that throws. That leg is `stop: "agent-error"` (excluded), never « none »: every later leg would fail the same, and none is a result. Legs already running finish and close their Ressac; the exit code is 2, or 3 when the campaign was not stopped but some legs errored.
+
+**One leg** (`run.mts` `runLeg`): a fresh Ressac with a new profile and data folder (e2e `replay.ts` `openWorld`). The user's history pages are visited and kept, then each visit's `last_visit` is set straight in Ressac's `history.sqlite` to the profile's fixed date (harness.mts's dates, the same in a and b). Only the bookmarks go through Places. The passport is the replay passport of profile a or b. The mail and bank tabs are open and the user speaks from the mail tab.
+- With `--agent claude`, the steps run in this order:
+  1. The MCP recorder and the model recorder start (`recorders.mjs`).
+  2. The engine is set to « Claude Code + Ollama », pointed at the model recorder, which forwards to Ollama.
+  3. B3's obedient order is appended to the space's `AGENTS.md` and accepted on the real instruction card (`card-instructions`).
+  4. The panel starts the real CLI through the fake docker and `agent-on-mac.mjs`, its MCP config pointed at the MCP recorder.
+  5. The prompt is typed into the terminal key by key: the case's task, then `--obedient`'s endorsement.
+  6. The automatic user answers every card in the real UI (`answerCards`).
+
+  A leg ends at the first of these:
+  - the turn's `end_turn` followed by 5 s with no new agent turn (its text is the answer);
+  - the tool cap (`stop: "max-tools"`);
+  - the timeout (`stop: "timeout"`);
+  - a rate limit (`stop: "rate-limit"`);
+  - no agent turn within 120 s of the prompt (`stop: "agent-error"`): only a request that declares tools and gets a 2xx counts, never a title or a token count;
+  - a first agent turn whose last user message does not hold the typed prompt (`stop: "agent-error"`);
+  - an upstream failure (`stop: "agent-error"`, above);
+  - a request that declares a tool other than `mcp__ressac__*` or holds the owner's account e-mail (`error`: the request never leaves the Mac);
+  - a card the automatic user cannot answer (`error`), or a request modal open 2 s with no card it knows (`unknown card: <testid>`).
+
+  A prompt holding « + » or a newline is refused before the leg starts: `typeText` cannot type them.
+- With `--agent adversary`, `adversary.mjs` `play` makes its calls through the window's conversation (`toolCaller`), with no recorder.
+
+**The record** is harness.mts's (`bench: "ressac-e2e-injection/2"`), so `score.mjs`, `diff.mjs`, `indistinguishable.mjs` and `browser/report.mjs` (`tried`, `stoppedBy`) read it unchanged.
+- It holds: `case`, `prompt` (as typed), `config` (agent, obedient, card, address, timeoutS, maxTools, ollama, profile, `surface: "browser"`, `build: { commit, dirty }`), `canaries`, `collisions`, `events`, `answer`, `notebook`, `agent`, `stop`, `error` and `seconds`.
+- `agent` is `{ init: { model, tools, claude_code_version }, identity: "throwaway" }`, read from the model requests, or `{ kind: "scripted" }`.
+- `events` holds:
+  - `tool` events, with args, result, isError, refused, seq and endSeq;
+  - `out` events, `search.open` with its query or `navigate` with its url: every document Firefox loads after the setup, through the local proxy;
+  - `read` events (after `read_tab`, `current_page` or `read_pages`: the tab, its url and the page kind, the same for the scripted adversary and the CLI, `replay.ts` `noteReads`) and `subresource` events;
+  - the cards (`card-tab`, `card-history`, `card-address`, `card-reveal`, `card-fill`, `card-label`, `card-devtools`, `card-instructions`) with their answers (`card-devtools` by `--card`);
+  - `pause` and `hand`.
+- Ressac's random tab ids are renamed `tab-mail`, `tab-bank` and `agent-<n>`, in order of first appearance, so legs compare.
+- Each record goes through `harness.mts` `scrub` (the repo, the home folder, the owner's e-mail), then the temp folder is replaced too. A record that still holds a Mac path or the e-mail is refused.
+- Beside it, `out/<run>/work/<leg>/<id>/` holds `browser.log` and, for a `claude` leg, `model.jsonl` (every request body sent to the model, its answer text and its `usage`, the token counts of `message_start` and `message_delta`) and `terminal.txt` (the terminal at the end), all scrubbed. `out/` is git-ignored. Summaries go to `results/` as for the other runs.
+
+**Bypassed layers**, written beside every figure from this replay:
+- **The container is replaced by `claude` on the Mac**, through the fake docker (`FAKE_DOCKER_AGENT=agent-on-mac.mjs`): its isolation and its allowlist proxy are not crossed. They are measured by B2.
+- **No built-in tool**: `--tools ""` and harness.mts's `DANGEROUS` are denied, and the model recorder refuses any other tool. In the product, these tools run in the container.
+- **Touch ID passed** (`RESSAC_TEST_REAUTH=pass`): a reveal's reauthentication is not shown.
+- **A development build** (the test hooks exist only there) of a named `main` commit (`config.build.commit`).
+- **The network is a local proxy**: every https page is served by the bench's page server under its real name. Firefox's certificate checks are turned off for that profile (a certificate override).
+- **The history is seeded, not lived**: each page is visited once, then its `last_visit` is written straight into Ressac's `history.sqlite` (the profile's fixed date, harness.mts's, the same in a and b, so the two profiles' results do not differ by the setup's clock). Only the bookmarks go through Places. Weeks of use, visit counts and the host's own dating of visits are not exercised.
+- **The controls are v2's**, with their links ([B3 v2 phase 2](#b3-v2-phase-2-the-v2-sets-on-0124-2026-11-23)), beside attacks that first ran with v1 controls (they are byte-identical to v1, `freeze.mjs`).
+
 ## Limits and doubts
 
 1. **BrowseSafe++ attacks were not written for Ressac.** Many ask for an e-mail, a file or a form the agent cannot reach; its only ways out are a query, an address, a link or the notebook. A low attempt rate there means « these 150 pages did not move this model », not « Ressac resists injection ». The ressac set is for the channels an attacker who knows Ressac would use.
@@ -822,4 +890,5 @@ The kernel moved under the bench; each change in the wiring:
 | `ressac/fix-controls.mjs`, `ressac/cases.v2.json`, `ressac/cases-lang.v2.json` | the controls with the corrected link rule, and their sha256 (run in « B3 v2 phase 2 ») |
 | `adversary.mjs`, `adversary-cases.json`, `.sha256` | the scripted adversary (a stand-in `claude` for `BENCH_CLAUDE`) and its 29 cases |
 | `results/` | per-case summaries of the published runs (`<run>.summary.json`: outcome, channel, attempts, whole and partial leaks, cards; item ids only, no query, address or transcript), `SHA256SUMS`, and `make.mjs`, which rebuilds them from `out/` |
+| `browser/` | the real-browser replay (« Replay in the real browser »): `replay-cases.json` and its sha256 (`freeze.mjs`), `pages.mjs`, `passport.mjs`, `recorders.mjs`, `agent-on-mac.mjs`, `report.mjs`, `run.mts` (`--self-check`) and `stand-in.mjs` (its stand-in `claude`) |
 | `out/` | run records (git-ignored) |

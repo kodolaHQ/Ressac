@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { PROFILES, TRANSFORMS, fillIn } from "./profiles.mjs";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -554,9 +554,14 @@ async function play(call, name, prompt = "") {
   return "Voici les horaires et le tarif.";
 }
 
+export { play, cases };
+
 // ───────────────────────── command line ─────────────────────────
+const main = !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 const argv = process.argv.slice(2);
-if (argv.includes("--write-cases")) {
+if (!main) {
+  // Imported (the browser replay's e2e): the command line does not run.
+} else if (argv.includes("--write-cases")) {
   const json = JSON.stringify(cases(), null, 1) + "\n";
   writeFileSync(`${HERE}adversary-cases.json`, json);
   writeFileSync(`${HERE}adversary-cases.json.sha256`, createHash("sha256").update(json).digest("hex") + "\n");
