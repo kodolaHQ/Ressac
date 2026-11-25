@@ -59,6 +59,8 @@ export interface OptionsFileActions {
    * changed since: its runs and trials are skipped (a failure counts as paused).
    */
   paused?: (id: string, folder?: string) => Promise<boolean>;
+  /** False while the lab is off: a launch or a trial ends « interrupted » without running. */
+  enabled?: () => boolean;
 }
 
 /** An agent launch's check of the code it runs (`readActionCode`), on the staged copy: false refuses the run. */
@@ -133,6 +135,11 @@ export class FileActions {
    */
   async stopAll(): Promise<void> {
     this.isStopped = true;
+    await this.stopRunning();
+  }
+
+  /** Stops every run and queued request and deletes their containers, as stopAll, but later launches still run (lab off). */
+  async stopRunning(): Promise<void> {
     const ends = [...this.perAction.values()].map((d) => d.end.catch(() => {}));
     for (const id of [...this.perAction.keys()]) this.stop(id);
     await this.deleteContainers();
@@ -155,7 +162,7 @@ export class FileActions {
       return { already: false, end: existing.end.catch(() => undefined).then(() => this.ask(id, o).end) };
     }
     if (existing) return { already: true, end: existing.end };
-    if (this.isStopped) return { already: false, end: Promise.resolve(this.stopped()) };
+    if (this.isStopped || this.o.enabled?.() === false) return { already: false, end: Promise.resolve(this.stopped()) };
     const d: Request = { id, ...o, ctl: new AbortController(), end: Promise.resolve(this.stopped()), since: this.o.clock().toISOString() };
     // The request leaves the map before its end is returned: a request made after the end starts again.
     d.end = this.unroll(d).finally(() => {

@@ -268,7 +268,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("capture_screen returns the PNG Firefox sent", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, lab: true });
     expect((await callMcpTool(h.root, "capture_screen", { id: "t1" })).image).toBe(png);
   });
 
@@ -534,7 +534,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("open_workflow: the window's selection on its open workflow, forgotten when the window closes", async () => {
     const h = startHost();
-    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, lab: true });
     const sessions = join(h.root, ".ressac", "sessions");
     /** Starts an agent session for w1 and returns its own MCP config (its token names the window). */
     const session = async () => {

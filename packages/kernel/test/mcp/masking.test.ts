@@ -38,7 +38,7 @@ type Call = (name: string, args: Record<string, unknown>, token?: string) => Pro
 async function serve(o: Partial<Parameters<typeof startMcpServer>[0]> & { bridge: FakeBridge }, attempt: (x: { call: Call; token: string; s: Awaited<ReturnType<typeof startMcpServer>>; masker: Masker; client: (t?: string) => Promise<Client> }) => Promise<void>) {
   const token = generateToken();
   const masker = o.masker ?? new Masker();
-  const s = await startMcpServer({ locale: () => "fr", policy: new AccessPolicy(), token, ...o, masker });
+  const s = await startMcpServer({ lab: () => true, locale: () => "fr", policy: new AccessPolicy(), token, ...o, masker });
   const clients: Client[] = [];
   const client = async (t = token) => {
     const c = new Client({ name: "test", version: "0" });

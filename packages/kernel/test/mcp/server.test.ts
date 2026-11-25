@@ -9,13 +9,13 @@ import { tempFolder } from "../helpers/temp.js";
 import { SearchSessions, STOP_TEXT, CLOSED_TEXT, type Band } from "../../src/search/sessions.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { AccessPolicy } from "../../src/access/policy.js";
+import { AccessPolicy, DEV_RIGHTS } from "../../src/access/policy.js";
 import { PRIVATE_TEXT, type HistoryResult, type KeptPage, type TabInfo } from "../../src/mcp/bridge.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Outflow } from "../../src/outflow/outflow.js";
 import { mask } from "../../src/outflow/detect.js";
-import { NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow, LINKS_HEADER, RECAP_UPDATED_PRIVATE, OUTFLOW_PAUSE, OUTFLOW_DANGER } from "../../src/mcp/server.js";
+import { LAB_TOOLS, NO_WORKFLOW_OPEN, HIDDEN_ACTION_RUNS_NOTICE, HIDDEN_RUNS_NOTICE, startMcpServer, PENDING_SITE_NAVIGATION, navigationOutsideSite, SITE_DATA_PREFIX, TWEAK_ERRORS_PREFIX, SITE_UNKNOWN, SITE_DENIED, SITE_MEMORY_MAX_SHOWN, type SitesTools, DENIAL_TEXT, RESERVED_ERROR, RESERVED_ACTION_ERROR, ACTION_DATA_PREFIX, WIDGET_DATA_PREFIX, generateToken, type ActionsTools, type AppsTools, type WidgetsTools, type OpenWorkflow, LINKS_HEADER, RECAP_UPDATED_PRIVATE, OUTFLOW_PAUSE, OUTFLOW_DANGER } from "../../src/mcp/server.js";
 import type { Execution } from "../../src/workflows/executions.js";
 import { ACTION_UNKNOWN, ACTION_WITHOUT_WORKFLOW, RESULT_TOO_BIG, requiredInput, type LaunchResult } from "../../src/actions/run.js";
 import { INTERNAL_ACTION_ERROR } from "../../src/actions/file.js";
@@ -35,7 +35,7 @@ const token = generateToken();
 async function start(allow: boolean) {
   bridge = new FakeBridge([github, gmail], { active: "github", allow: allow });
   policy = new AccessPolicy();
-  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token });
+  server = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: bridge, policy: policy, token: token });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -315,7 +315,7 @@ test("without an active tab → Aucun onglet actif.", async () => {
   await client.close();
   await server.stop();
   bridge = new FakeBridge([], { active: null, allow: true });
-  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: new AccessPolicy(), token: token });
+  server = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: bridge, policy: new AccessPolicy(), token: token });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -394,7 +394,7 @@ async function withApplications(apps: AppsTools, tabs: TabInfo[], appTabDelayMs 
   await server.stop();
   bridge = new FakeBridge(tabs, { active: null, allow: false });
   policy = new AccessPolicy();
-  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, apps, appTabDelayMs: appTabDelayMs });
+  server = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: bridge, policy: policy, token: token, apps, appTabDelayMs: appTabDelayMs });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -524,7 +524,7 @@ async function withWidgets(widgets: WidgetsTools, o: { widgetData?: boolean } = 
   await server.stop();
   bridge = new FakeBridge([], { active: null, allow: false, ...o });
   policy = new AccessPolicy();
-  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, widgets, agent: "Claude" });
+  server = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: bridge, policy: policy, token: token, widgets, agent: "Claude" });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -785,7 +785,7 @@ test("harvest_widget reports the created run, even for a widget that gains its a
 
 test("the server listens on loopback only by default", async () => {
   const listen = vi.spyOn(Server.prototype, "listen");
-  const s = await startMcpServer({ locale: () => "fr", bridge: new FakeBridge([], { active: null, allow: false }), policy: new AccessPolicy(), token: generateToken() });
+  const s = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: new FakeBridge([], { active: null, allow: false }), policy: new AccessPolicy(), token: generateToken() });
   try {
     expect(listen.mock.calls.at(-1)?.[1]).toBe("127.0.0.1");
   } finally {
@@ -801,7 +801,7 @@ async function withWorkflowOpen(
   attempt: (o: { s: Awaited<ReturnType<typeof startMcpServer>>; call: (token: string) => Promise<string> }) => Promise<void>,
 ) {
   const principal = generateToken();
-  const s = await startMcpServer({ locale: () => "fr", bridge: new FakeBridge([], { active: null, allow: false }), policy: new AccessPolicy(), token: principal, openWorkflow: openWorkflow });
+  const s = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: new FakeBridge([], { active: null, allow: false }), policy: new AccessPolicy(), token: principal, openWorkflow: openWorkflow });
   const clients: Client[] = [];
   const invoke = async (clientToken: string) => {
     const c = new Client({ name: "test", version: "0" });
@@ -923,7 +923,7 @@ async function withActions(actions: ActionsTools, o: { widgetData?: boolean } = 
   await server.stop();
   bridge = new FakeBridge([], { active: null, allow: false, ...o });
   policy = new AccessPolicy();
-  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, actions, agent: "Claude" });
+  server = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: bridge, policy: policy, token: token, actions, agent: "Claude" });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -1074,7 +1074,7 @@ async function withSite(o: { widgetData?: boolean; allow?: boolean; window?: Tab
     ...(o.widgetData !== undefined ? { widgetData: o.widgetData } : {}),
   });
   policy = new AccessPolicy();
-  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, agent: "Claude" });
+  server = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: bridge, policy: policy, token: token, agent: "Claude" });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -1352,7 +1352,7 @@ async function withSiteTools(o: { widgetData?: boolean; errors?: { when: string;
     ...(o.widgetData !== undefined ? { widgetData: o.widgetData } : {}),
   });
   policy = new AccessPolicy();
-  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, agent: "Claude", sites: tools });
+  server = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: bridge, policy: policy, token: token, agent: "Claude", sites: tools });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }),
@@ -1521,7 +1521,7 @@ test("list_sites: multi-line name, error and id brought back to one line, length
     ],
     open: async () => false, close: async () => false, memory: async () => null, errors: async () => null,
   };
-  server = await startMcpServer({ locale: () => "fr", bridge: bridge, policy: policy, token: token, sites: tools });
+  server = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: bridge, policy: policy, token: token, sites: tools });
   client = new Client({ name: "test", version: "0" });
   await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
   const t = await invoke("list_sites");
@@ -1559,7 +1559,7 @@ async function withSearch(
   const bands: [string, Band | null][] = [];
   const search = new SearchSessions({ show: (id, band) => bands.push([id, band]), ...(opts.idleMs ? { idleMs: opts.idleMs } : {}) });
   const policy = new AccessPolicy();
-  const s = await startMcpServer({ locale: () => "fr", bridge: fake, policy, token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.outflow ? { outflow: opts.outflow } : {}), ...(opts.widgets ? { widgets: opts.widgets } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
+  const s = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: fake, policy, token: principal, search, settleMs: 0, emptySpanMs: opts.emptySpanMs ?? 0, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}), ...(opts.readPageMs !== undefined ? { readPageMs: opts.readPageMs } : {}), ...(opts.onActivity ? { onActivity: opts.onActivity } : {}), ...(opts.notes ? { notes: opts.notes } : {}), ...(opts.outflow ? { outflow: opts.outflow } : {}), ...(opts.widgets ? { widgets: opts.widgets } : {}), ...(opts.recaps ? { recaps: createRecaps({ folder: await tempFolder() }) } : {}) });
   const clients: Client[] = [];
   const call = async (name: string, args: Record<string, unknown>, clientToken = principal, onprogress?: (n: number) => void) => {
     // search_web needs a goal: a test that does not care gets one.
@@ -1891,7 +1891,7 @@ async function withWaitingCard(attempt: (o: { call: (a: Record<string, unknown>)
   const fake = new FakeBridge([github], { active: "github", allow: false, search: {}, address: answer });
   const policy = new AccessPolicy();
   const search = new SearchSessions({ show: () => {} });
-  const s = await startMcpServer({ locale: () => "fr", bridge: fake, policy, token: principal, search, settleMs: 0, emptySpanMs: 0 });
+  const s = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: fake, policy, token: principal, search, settleMs: 0, emptySpanMs: 0 });
   const clients: Client[] = [];
   const call = async (a: Record<string, unknown>) => {
     const cl = new Client({ name: "test", version: "0" });
@@ -3147,7 +3147,7 @@ describe("recaps", () => {
     bridge = new FakeBridge([github, gmail], { active: "github", allow: true });
     policy = new AccessPolicy();
     const folder = await tempFolder();
-    server = await startMcpServer({ locale: () => "fr", bridge, policy, token, recaps: createRecaps({ folder }) });
+    server = await startMcpServer({ lab: () => true, locale: () => "fr", bridge, policy, token, recaps: createRecaps({ folder }) });
     client = new Client({ name: "test", version: "0" });
     await client.connect(
       new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -3258,7 +3258,7 @@ describe("agent activity", () => {
     seenActivity = [];
     bridge = new FakeBridge([lbc, gmail], { active: "lbc", allow: true, ...(o.devTools ? { devTools: true, grantDev: ["act"] } : {}) });
     policy = new AccessPolicy();
-    server = await startMcpServer({ locale: () => "fr", bridge, policy, token, agent: "Claude", onActivity: (a) => seenActivity.push(a) });
+    server = await startMcpServer({ lab: () => true, locale: () => "fr", bridge, policy, token, agent: "Claude", onActivity: (a) => seenActivity.push(a) });
     client = new Client({ name: "test", version: "0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
   }
@@ -3407,7 +3407,7 @@ describe("the passport readiness gate (design § 5.2)", () => {
     const { PassportStore } = await import("../../src/mask/passport.js");
     const store = new PassportStore({ awaitReady: true });
     const b = new FakeBridge([github], { active: "github", allow: true });
-    const s = await startMcpServer({ locale: () => "fr", bridge: b, policy: new AccessPolicy(), token, masker: new Masker({ passport: store }) });
+    const s = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: b, policy: new AccessPolicy(), token, masker: new Masker({ passport: store }) });
     const c = new Client({ name: "test", version: "0" });
     await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
     const done = async () => (await c.close(), await s.stop());
@@ -3434,7 +3434,7 @@ describe("the passport readiness gate (design § 5.2)", () => {
     const shop: TabInfo = { id: "shop", title: "Commande", url: "https://boutique.example/commande", space: "perso", agentReached: false };
     const b = new FakeBridge([shop], { active: "shop", allow: true });
     b.pages.set("shop", { text: "Livraison pour Camille Aubrac.", links: [] });
-    const s = await startMcpServer({ locale: () => "fr", bridge: b, policy: new AccessPolicy(), token, masker: new Masker({ passport: store }) });
+    const s = await startMcpServer({ lab: () => true, locale: () => "fr", bridge: b, policy: new AccessPolicy(), token, masker: new Masker({ passport: store }) });
     const c = new Client({ name: "test", version: "0" });
     await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
     const call = c.callTool({ name: "read_tab", arguments: { id: "shop" } });
@@ -3462,5 +3462,51 @@ describe("the passport readiness gate (design § 5.2)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the lab", () => {
+  /** A server with every tool option, whose lab follows `on`. */
+  async function withLab(on: { value: boolean }, actions: ActionsTools) {
+    await client.close();
+    await server.stop();
+    const none = <T extends object>() => new Proxy({} as T, { get: () => async () => null });
+    bridge = new FakeBridge([github], { active: "github", allow: true, devTools: true, grantDev: [...DEV_RIGHTS], history: { results: [] }, bookmarks: [], widgetData: true, search: {} });
+    policy = new AccessPolicy();
+    const notesFile = join(await tempFolder(), "carnet.md");
+    await writeFile(notesFile, "# Carnet\n");
+    server = await startMcpServer({
+      lab: () => on.value, locale: () => "fr", bridge, policy, token, agent: "Claude",
+      apps: none(), widgets: none(), actions, sites: none(), recaps: createRecaps({ folder: await tempFolder() }),
+      search: new SearchSessions({ show: () => {} }), notes: new BrowsingNotes(notesFile, async () => "# Carnet\n"), openWorkflow: () => null, outflow: new Outflow(),
+    });
+    client = new Client({ name: "test", version: "0" });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+  }
+
+  test("lab off lists no lab tool", async () => {
+    const lab = { value: true };
+    await withLab(lab, fakeActions().tools);
+    const on = (await client.listTools()).tools.map((t) => t.name);
+    // Every lab tool exists with every option: the list below is not vacuous.
+    expect([...LAB_TOOLS].filter((n) => !on.includes(n))).toEqual([]);
+    lab.value = false;
+    const off = (await client.listTools()).tools.map((t) => t.name);
+    expect(off.filter((n) => LAB_TOOLS.has(n))).toEqual([]);
+    expect(off).toContain("read_tab");
+    expect(off).toContain("hand_over");
+    expect(off).toContain("reveal_value");
+  });
+
+  test("a lab tool listed before the switch is refused after it", async () => {
+    const lab = { value: true };
+    const { tools, launchedList: launched } = fakeActions();
+    await withLab(lab, tools);
+    expect((await client.listTools()).tools.map((t) => t.name)).toContain("launch_action");
+    lab.value = false;
+    const r = await client.callTool({ name: "launch_action", arguments: { id: "veille", input: "x" } });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toBe("Cet outil fait partie du labo, que l'utilisateur a éteint : n'insiste pas, dis-lui ce qu'il faudrait activer.");
+    expect(launched).toEqual([]);
   });
 });

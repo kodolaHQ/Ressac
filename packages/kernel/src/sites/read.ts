@@ -82,8 +82,9 @@ async function readOne(c: SpacePaths, id: string, o: { localAddresses: boolean }
   return { id, folder: folder, declaration: parsed.declaration, hasHome: hasHome };
 }
 
-/** The site apps on disk, sorted by id; a broken app is reported, it does not prevent reading the others. */
-export async function readSites(c: SpacePaths, o: { localAddresses: boolean }): Promise<SiteRead[]> {
+/** The site apps on disk, sorted by id; a broken app is reported, it does not prevent reading the others. None while `lab` is off. */
+export async function readSites(c: SpacePaths, o: { localAddresses: boolean }, lab?: () => boolean): Promise<SiteRead[]> {
+  if (lab?.() === false) return [];
   let ids: string[];
   try {
     // `isDirectory` is false for a symbolic link: a link to a folder is ignored.

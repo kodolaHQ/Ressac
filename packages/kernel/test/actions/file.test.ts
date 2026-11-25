@@ -76,6 +76,26 @@ const waitUntil = async (f: () => boolean, ms = 5000) => {
 };
 
 describe("FileActions", () => {
+  it("lab off: stopRunning stops the running action (it ends interrupted), nothing launches until it is back on", async () => {
+    let on = true;
+    const launched: OptionsAction[] = [];
+    // A run that lasts until it is stopped.
+    const run = (o: OptionsAction) => (launched.push(o), new Promise<LaunchResult>((ok) => o.signal.addEventListener("abort", () => ok({ status: "interrupted", run: `ex-${o.id}` }))));
+    const { f } = await prepare({ run, enabled: () => on });
+    const end = f.launch("a", { input: null, trigger: "manual" }).end;
+    await waitUntil(() => f.direct().running.length === 1);
+    on = false;
+    await f.stopRunning();
+    expect((await end).status).toBe("interrupted");
+    expect((await f.launch("b", { input: null, trigger: "manual" }).end).status).toBe("interrupted");
+    expect(launched.map((o) => o.id)).toEqual(["a"]);
+    on = true;
+    const again = f.launch("b", { input: null, trigger: "manual" }).end;
+    await waitUntil(() => launched.length === 2);
+    await f.stopRunning();
+    await again;
+  });
+
   it("an action that passes the first check gets the lock's check of its staged copy", async () => {
     const r = kept();
     const { f } = await prepare({ run: r.run, paused: async (_id, folder) => folder === "/staged" });

@@ -95,7 +95,7 @@ describe("serveur MCP externe", () => {
     expect(await raw(k.server.port, "/mcp-external", auth(b.token))).toBe(401);
 
     const principal = generateToken();
-    const internal = await startMcpServer({ bridge: new FakeBridge([], { active: null, allow: false }), policy: new AccessPolicy(), token: principal });
+    const internal = await startMcpServer({ lab: () => true, bridge: new FakeBridge([], { active: null, allow: false }), policy: new AccessPolicy(), token: principal });
     toClose.push(() => internal.stop());
     expect(await raw(k.server.port, "/mcp-external", { Authorization: `Bearer ${principal}` })).toBe(401);
     const other = await k.registry.connect("B");

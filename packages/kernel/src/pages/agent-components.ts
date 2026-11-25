@@ -76,8 +76,9 @@ async function readOne(folder: string, name: string): Promise<ComponentDefinitio
   return { name: d.name, description: d.description, properties: d.properties, origin: "agent" };
 }
 
-/** The agent's components, sorted by name; a broken component is reported, it does not prevent reading the others. */
-export async function readAgentComponents(folder: string): Promise<{ valid: ComponentDefinition[]; invalids: { name: string; error: string }[] }> {
+/** The agent's components, sorted by name; a broken component is reported, it does not prevent reading the others. None while `lab` is off. */
+export async function readAgentComponents(folder: string, lab?: () => boolean): Promise<{ valid: ComponentDefinition[]; invalids: { name: string; error: string }[] }> {
+  if (lab?.() === false) return { valid: [], invalids: [] };
   let names: string[];
   try {
     // `isDirectory` is false for a symbolic link: a link to a folder is ignored.

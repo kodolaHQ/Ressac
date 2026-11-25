@@ -33,7 +33,7 @@ async function serve(
   const policy = new AccessPolicy();
   const token = generateToken();
   const masker = new Masker();
-  const s = await startMcpServer({ bridge, policy, token, masker, locale: () => "fr", agent: "Claude", ...(o.widgets ? { widgets: o.widgets } : {}), ...(o.actions ? { actions: o.actions } : {}), ...(o.sites ? { sites: o.sites } : {}) });
+  const s = await startMcpServer({ lab: () => true, bridge, policy, token, masker, locale: () => "fr", agent: "Claude", ...(o.widgets ? { widgets: o.widgets } : {}), ...(o.actions ? { actions: o.actions } : {}), ...(o.sites ? { sites: o.sites } : {}) });
   masker.open("A", "W1");
   const session = s.openSession("W1", undefined, "A");
   const clients: Client[] = [];
@@ -393,7 +393,7 @@ test("a value Ressac filled on an origin makes a page of that origin printing it
   bridge.pages.set("conf", { text: printed, links: [] });
   bridge.pages.set("elsewhere", { text: "Accueil", links: [], documents: [{ origin: "https://boutique.example", text: printed }] });
   const masker = new Masker({ passport: store });
-  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  const s = await startMcpServer({ lab: () => true, bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
   masker.open("A", "W1");
   const session = s.openSession("W1", undefined, "A");
   const c = new Client({ name: "t", version: "0" });
@@ -428,7 +428,7 @@ test("a value filled on one origin does not make another origin's page printing 
   bridge.pages.set("ag", { text: "Votre commande", links: [], fields: [{ handle: "5:0", type: "text", autocomplete: "", label: "Adresse" }] });
   bridge.pages.set("other", { text: "Livraison : 14 rue des Tanneurs, 69005 Lyon.", links: [] });
   const masker = new Masker({ passport: store });
-  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  const s = await startMcpServer({ lab: () => true, bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
   masker.open("A", "W1");
   const session = s.openSession("W1", undefined, "A");
   const c = new Client({ name: "t", version: "0" });
@@ -457,7 +457,7 @@ async function serveCart(o: { devUnlock: boolean }, attempt: (x: { call: (name: 
   bridge.pages.set("cart", { text: "Votre panier : 2 articles.", links: [] });
   bridge.pages.set("news", { text: "Les nouvelles du jour.", links: [] });
   const masker = new Masker({ passport: nameStore() });
-  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr", agent: "Claude" });
+  const s = await startMcpServer({ lab: () => true, bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr", agent: "Claude" });
   masker.open("A", "W1");
   const session = s.openSession("W1", undefined, "A");
   const c = new Client({ name: "t", version: "0" });
@@ -516,7 +516,7 @@ async function movedDuringCard(tool: "read_tab" | "capture_screen", moveTo: stri
   const list = bridge.listTabs.bind(bridge);
   if (always) bridge.listTabs = async () => (bridge.editTab("shop", { url: `https://shop.example/page/${++hops}` }), list());
   const masker = new Masker();
-  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  const s = await startMcpServer({ lab: () => true, bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
   masker.open("A", "W1");
   const session = s.openSession("W1", undefined, "A");
   const c = new Client({ name: "t", version: "0" });

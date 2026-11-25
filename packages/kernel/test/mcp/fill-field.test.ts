@@ -37,7 +37,7 @@ async function serve(o: { bridge?: Partial<Opts>; outflow?: Outflow }, attempt: 
   bridge.pages.set("copie", { text: `Code affiché : ${CODE}`, links: [], fields: FIELDS.map((f) => ({ ...f, handle: `9:${f.handle.slice(2)}` })) });
   const token = generateToken();
   const masker = new Masker();
-  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token, masker, locale: () => "fr", ...(o.outflow ? { outflow: o.outflow } : {}) });
+  const s = await startMcpServer({ lab: () => true, bridge, policy: new AccessPolicy(), token, masker, locale: () => "fr", ...(o.outflow ? { outflow: o.outflow } : {}) });
   masker.open("A", "W1");
   const session = s.openSession("W1", undefined, "A");
   const clients: Client[] = [];
@@ -507,7 +507,7 @@ async function servePassport(o: { tabs?: TabInfo[]; passports?: Record<string, P
   for (const t of tabs) bridge.pages.set(t.id, { text, links: [], fields: P_FIELDS });
   const masker = new Masker({ passport: store });
   const token = generateToken();
-  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token, masker, locale: () => "fr" });
+  const s = await startMcpServer({ lab: () => true, bridge, policy: new AccessPolicy(), token, masker, locale: () => "fr" });
   masker.open("A", "W1");
   const session = o.main ? token : s.openSession("W1", undefined, "A");
   const clients: Client[] = [];

@@ -59,6 +59,7 @@ test("under the workspace lock, each store-write tool is refused before its hand
   notes.allow("W1", ["https://site.test/"]);
   const token = generateToken();
   const s = await startMcpServer({
+    lab: () => true,
     bridge, policy: new AccessPolicy(), token, masker, locale: () => "fr",
     apps: recording(calls), widgets: recording(calls), actions: recording(calls), sites: recording(calls),
     recaps: createRecaps({ folder: recapsFolder }), search: new SearchSessions({ show: () => {} }), notes,

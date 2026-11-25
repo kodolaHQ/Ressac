@@ -45,6 +45,7 @@ async function serve(
   const masker = new Masker({ ...(o.workspace ? { workspace: o.workspace } : {}), ...(o.passport ? { passport: o.passport } : {}) });
   const search = new SearchSessions({ show: () => {} });
   const s = await startMcpServer({
+    lab: () => true,
     bridge, policy: new AccessPolicy(), token, masker, locale: () => "fr", search, settleMs: 0, emptySpanMs: 0,
     ...(o.otherSessions ? { otherSessions: o.otherSessions } : {}),
     ...(o.outflow ? { outflow: o.outflow } : {}),
@@ -899,7 +900,7 @@ test("two handles hopping to the same origin at once each get their own hop card
   bridge.redirects.set(go1, hop);
   bridge.redirects.set(go2, `${hop}2`);
   const masker = new Masker();
-  const s = await startMcpServer({ bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
+  const s = await startMcpServer({ lab: () => true, bridge, policy: new AccessPolicy(), token: generateToken(), masker, locale: () => "fr" });
   masker.open("A", "W1");
   const session = s.openSession("W1", undefined, "A");
   const clients: Client[] = [];

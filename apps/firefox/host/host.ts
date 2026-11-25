@@ -353,6 +353,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
   error = null;
   return createKernel({
     bridge: bridge,
+    lab: () => labOn,
     profileId: profileId,
     locale: () => hostLocale(),
     engine: engineFolder,
@@ -634,7 +635,10 @@ const rpc = createRpc({
       aiOn = p?.on === true;
       return serialAi(applyAi).catch((e) => console.error(`[ressac] AI ${aiOn ? "on" : "off"} failed:`, e));
     },
-    "lab.enabled": (p: { on?: unknown }) => void (labOn = p?.on === true),
+    "lab.enabled": (p: { on?: unknown }) => {
+      labOn = p?.on === true;
+      return kernel?.setLab(labOn).catch((e) => console.error(`[ressac] lab ${labOn ? "on" : "off"} failed:`, e));
+    },
     // Once, for a session saved before tiers: does the user already use the lab? The chrome sends its saved mode (no
     // `agent.mode` has come yet). Widget tiers come with Task 6.
     "lab.decide": async (p: { agentMode?: unknown }) => ({ on: await labInUse(paths, p?.agentMode === "workshop" ? "workshop" : "browser", async () => false) }),

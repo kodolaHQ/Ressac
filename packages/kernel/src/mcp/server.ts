@@ -18,7 +18,7 @@ import { isLocal, type DevRight, type AccessPolicy } from "../access/policy.js";
 import { registerDevTools, type ProfileFiles } from "./devtools.js";
 import { STOP_TEXT, CLOSED_TEXT, URL_MAX, type SearchSessions } from "../search/sessions.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
+import { ListToolsRequestSchema, type ListToolsResult, type ServerNotification, type ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { unwrapLink, rankLinks } from "./links.js";
 import { SeenUrls } from "./seen.js";
 import { NOTES_PREFIX, type BrowsingNotes } from "../search/notes.js";
@@ -205,6 +205,14 @@ const OUTFLOW_SOURCES: Record<string, string> = {
   ),
 };
 const NOT_SHARED_LABEL = "onglet non partagé";
+/** Tier 3's tools (« labo »): left out of the list while the lab is off, and refused if called anyway. */
+export const LAB_TOOLS: ReadonlySet<string> = new Set([
+  "launch_app", "stop_app", "app_log",
+  "list_sites", "open_site", "close_site", "site_memory", "tweak_errors",
+  "open_workflow", "launch_action", "action_runs",
+  "run_js", "request_devtools", "read_console", "read_network", "read_request", "profile_performance", "memory_snapshot", "compare_memory", "reload",
+  "capture_screen",
+]);
 
 /**
  * The masking zone of a tab's text (spec § 5.3): the user's sources only for a page they reached themselves that is
@@ -579,10 +587,25 @@ export function createToolsServer(
   workspaceLock: WorkspaceLockHook = NO_WORKSPACE_LOCK,
   /** Per tab, the field handles of the last read (`fill_field { field }`); a navigation drops them. Outlives a request's server. */
   listedFields = new Map<string, PageField[]>(),
+  /** The lab is on: false leaves LAB_TOOLS out of the list and refuses them. */
+  lab: () => boolean = () => true,
 ): McpServer {
   /** A text the user reads (band, card line, activity), in their language. */
   const l10n = (id: string, args?: Record<string, string | number>) => say(locale(), id, args);
   const server = new McpServer({ name: "ressac", version: "0.1.0" });
+  // Each request gets its own server: a tool listed while the lab was on must still exist at its call, to be refused with
+  // a text (masked below), so the lab's tools are registered and only filtered out of the list.
+  const setHandler = server.server.setRequestHandler.bind(server.server);
+  server.server.setRequestHandler = ((schema: unknown, handler: (...a: unknown[]) => unknown) =>
+    setHandler(
+      schema as never,
+      (schema !== ListToolsRequestSchema
+        ? handler
+        : async (...a: unknown[]) => {
+            const r = (await handler(...a)) as ListToolsResult;
+            return lab() ? r : { ...r, tools: r.tools.filter((t) => !LAB_TOOLS.has(t.name)) };
+          }) as never,
+    )) as typeof server.server.setRequestHandler;
   const key = win ?? MAIN_WINDOW;
   /** Rules 1 and 2. The main token belongs to no window: it is checked against every window's reads. */
   const checkOutflow = (out: string, address = false, except?: { tab: string; origin: string | null }) =>
@@ -900,6 +923,8 @@ export function createToolsServer(
       : run;
     // The single exit (spec § 5.3): results, errors and exceptions all leave masked; an image is gated by its tool.
     const masked = async (...a: unknown[]): Promise<Result> => {
+      // Read at the call: the lab may have gone off since the agent listed the tools.
+      if (LAB_TOOLS.has(name) && !lab()) return text(l10n("kernel-mcp-lab-off"), true);
       let r: Result;
       try {
         // A tool without input schema gets only `extra`.
@@ -2804,6 +2829,8 @@ export async function startMcpServer(o: {
   otherSessions?: () => boolean;
   /** The workspace lock a reveal awaits before giving the value (Task 10); a no-op without it. */
   workspaceLock?: WorkspaceLockHook;
+  /** The lab is on (read at each list and call): off, LAB_TOOLS are unlisted and refused. */
+  lab: () => boolean;
 }): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string): string; closeSession(token: string): void; tabZone(session: string | null, tab: Pick<TabInfo, "id" | "url" | "site" | "agentReached">): Zone; stop(): Promise<void> }> {
   const expected = Buffer.from(o.token);
   // Session tokens: one per window agent. Security note: their config files are readable by the
@@ -2835,7 +2862,7 @@ export async function startMcpServer(o: {
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale, who.session, masker, agentSites, o.otherSessions, o.workspaceLock, listedFields);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale, who.session, masker, agentSites, o.otherSessions, o.workspaceLock, listedFields, o.lab);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

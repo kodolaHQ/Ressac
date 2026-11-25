@@ -32,7 +32,7 @@ let policy: AccessPolicy;
 async function start(hist?: ConstructorParameters<typeof FakeBridge>[1]["history"], card = true) {
   bridge = new FakeBridge([], { active: null, allow: false, widgetData: card, ...(hist ? { history: hist } : {}) });
   policy = new AccessPolicy();
-  server = await startMcpServer({ bridge: bridge, policy: policy, token: token });
+  server = await startMcpServer({ lab: () => true, bridge: bridge, policy: policy, token: token });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -167,7 +167,7 @@ test("a bridge error is a readable tool error", async () => {
 
 test("search_bookmarks asks the bridge with the default and the maximum limit, and lists title and URL", async () => {
   bridge = new FakeBridge([], { active: null, allow: false, widgetData: true, bookmarks: [{ url: "https://a.example/", title: "Exemple A" }] });
-  server = await startMcpServer({ bridge: bridge, policy: new AccessPolicy(), token: token });
+  server = await startMcpServer({ lab: () => true, bridge: bridge, policy: new AccessPolicy(), token: token });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }),

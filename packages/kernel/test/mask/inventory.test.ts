@@ -25,6 +25,7 @@ test("every tool of a server with every option is classified, and every classifi
   const bridge = new FakeBridge([], { active: null, allow: true, devTools: true, grantDev: [...DEV_RIGHTS], history: { results: [] }, bookmarks: [], widgetData: true, search: {} });
   const token = generateToken();
   const s = await startMcpServer({
+    lab: () => true,
     bridge, policy: new AccessPolicy(), token,
     apps: none(), widgets: none(), actions: none(), sites: none(),
     recaps: createRecaps({ folder }), search: new SearchSessions({ show: () => {} }), notes: new BrowsingNotes(notesFile, async () => "# Carnet\n"),

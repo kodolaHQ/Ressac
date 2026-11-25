@@ -40,8 +40,9 @@ async function readOne(c: SpacePaths, id: string): Promise<ReadAction> {
   return { id, folder: folder, declaration: parsed.declaration, hasWorkflow: await exists(join(folder, "workflow.json")) };
 }
 
-/** Actions on disk, sorted by name; a broken action is reported, it does not prevent reading the others. */
-export async function readActions(c: SpacePaths): Promise<ReadAction[]> {
+/** Actions on disk, sorted by name; a broken action is reported, it does not prevent reading the others. None while `lab` is off. */
+export async function readActions(c: SpacePaths, lab?: () => boolean): Promise<ReadAction[]> {
+  if (lab?.() === false) return [];
   let names: string[];
   try {
     // `isDirectory` is false for a symbolic link: a link to a folder is ignored.

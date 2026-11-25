@@ -327,12 +327,16 @@ export interface Kernel {
   approveReads(o: { id: string; public: string[]; web: boolean }): Promise<void>;
   /** Withdraws the grant (or the approved reads) and erases the data read with it: the widget waits for a new grant (`accord-requis`). */
   denyGrant(id: string): Promise<void>;
+  /** The lab was switched (read again from `lab()`): off stops the running file actions. */
+  setLab(on: boolean): Promise<void>;
   stop(): Promise<void>;
 }
 
 /** The single entry point for a browser: it gives its bridge, the kernel does the rest. */
 export async function createKernel(o: {
   bridge: BrowserBridge;
+  /** Tier 3 (« labo ») is on, read at each use: off, the Atelier, the lab's MCP tools and its stores are refused. */
+  lab: () => boolean;
   /** The language shown, read each time a text is written (default English). */
   locale?: () => string;
   root?: string;
@@ -546,6 +550,7 @@ export async function createKernel(o: {
     },
     // The revealing session is one of them: any second one, open or opening, shares the container (a reveal is refused).
     otherSessions: () => openSessions.size + opening > 1,
+    lab: o.lab,
     bridge: o.bridge,
     policy: policy,
     search: search,
@@ -657,6 +662,7 @@ export async function createKernel(o: {
     dispatcher: aiDispatcher,
     ready: workshopReady,
     paused: async (id, folder) => workspaceLock.locked() && codeChanged(`action:${id}`, folder ?? (await readAction(paths, id))?.folder ?? null),
+    enabled: o.lab,
     ...(o.clock ? { clock: o.clock } : {}),
     ...(o.localAddresses ? { localAddresses: true } : {}),
     pacing: DEFAULT_PACING,
@@ -672,7 +678,7 @@ export async function createKernel(o: {
     },
   });
   const actions: KernelActions = {
-    list: () => readActions(paths),
+    list: () => readActions(paths, o.lab),
     launch: (id, l) => fileActions.launch(id, { input: l.input ?? null, trigger: l.trigger ?? "manual", ...(l.check ? { check: l.check } : {}) }),
     stop: (id) => void fileActions.stop(id),
     direct: () => fileActions.direct(),
@@ -693,7 +699,7 @@ export async function createKernel(o: {
       // reading with the account (the most cautious, like the MCP tools and the images). Unreadable grants: same.
       const grants = await readGrants(actionsFolder).catch(() => null);
       const account = "error" in action || action.declaration.sources.account.length > 0 || !grants || Object.hasOwn(grants, id);
-      const catalog = [...BUILTIN_COMPONENTS, ...(await readAgentComponents(paths.components)).valid];
+      const catalog = [...BUILTIN_COMPONENTS, ...(await readAgentComponents(paths.components, o.lab)).valid];
       return {
         run: e.id,
         start: e.start,
@@ -797,6 +803,7 @@ export async function createKernel(o: {
     // Serialized: two quick changes never run two swaps at once (each run reads loc() when it starts, the last one wins).
     relocalize: () => (relocalizing = relocalizing.catch(() => {}).then(() => initSpace(paths, loc(), templates)).then(() => {})),
     async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, conversation, extra, mode = "browser", review, onBuildProgress }) {
+      if (mode === "workshop" && !o.lab()) throw new Error(say(loc(), "kernel-err-lab-off"));
       const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths, templates)).profiles.find((p) => p.id === profileChoice);
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);
       // A custom profile's command is not held to Navigateur's limits, and one may have been planted while `.ressac` was writable.
@@ -969,6 +976,10 @@ export async function createKernel(o: {
         });
       }
       report();
+    },
+    async setLab(on) {
+      // Task 6 stops the lab's harvests here too.
+      if (!on) await fileActions.stopRunning();
     },
     async stop() {
       offLock();
