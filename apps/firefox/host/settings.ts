@@ -97,7 +97,7 @@ export const startedWithin = <T>(start: Promise<T>, otherwise: T, ms = 60_000): 
 export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork" | "ensureStarted">;
   /** Who writes and how (the account check is cached): reset whenever an account may have changed. */
-  writer: { via(): Promise<{ agent: WriterAgent; via: "subscription" | "api" | "ollama" } | null>; reset(): void };
+  writer: { via(): Promise<{ agent: WriterAgent; via: "subscription" | "api" | "ollama" } | "workshop-stopped" | null>; reset(): void };
   ai: Pick<LocalAi, "state" | "check" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
   docker: DockerRuntime;
   /** The workshop machine (host/machine.ts); `install` also hands the workshop over to it once installed. */
@@ -438,10 +438,11 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       return { ok: true };
     },
     "settings.pullProgress": () => pull,
-    // The CLI path while the workshop is off: say so, as the write would.
+    // The CLI path while the workshop is off (a machine that will wake for a write): say so.
     "ai.writer": async () => {
       const v = await o.writer.via();
-      return v?.via === "subscription" && (await o.workshop.state()) !== "started" ? { agent: "workshop-stopped" as const } : (v ?? { agent: null });
+      if (v === "workshop-stopped" || (v?.via === "subscription" && (await o.workshop.state()) !== "started")) return { agent: "workshop-stopped" as const };
+      return v ?? { agent: null };
     },
     "ai.state": async (): Promise<LocalAiStateShown> => {
       const v = await o.ai.check().catch(() => undefined);

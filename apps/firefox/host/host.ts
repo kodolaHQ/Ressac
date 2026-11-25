@@ -271,22 +271,35 @@ const broadcastAccess = () => {
 const profileAgents = new Map<string, "claude" | "codex">();
 // Best effort (the space may not exist yet): a profile read late leaves the default "claude" until agent.profiles runs.
 const refreshProfileAgents = () => void loadProfiles(paths).then(({ profiles }) => { for (const x of profiles) profileAgents.set(x.id, x.mcpConfig === "codex-toml" ? "codex" : "claude"); }, () => {});
+// Codex's and Claude's engines (Settings › Agent) and their API keys: declared before the writer that reads them.
+let engine = DEFAULT_CODEX_ENGINE;
+let claudeEngine = DEFAULT_CLAUDE_ENGINE;
+const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY) };
+const cachedKeys: { codex?: string; claude?: string } = {};
+// Only a string is kept: a failed read (Keychain locked) is tried again.
+async function readKey(kind: "codex" | "claude"): Promise<string | null> {
+  cachedKeys[kind] ??= (await keys[kind].read()) ?? undefined;
+  return cachedKeys[kind] ?? null;
+}
+// The profile of windows that have not chosen their agent. One kernel serves every profile: it starts once.
+let defaultProfile = "claude";
 const preferredWriter = (): "claude" | "codex" => profileAgents.get(defaultProfile) ?? (defaultProfile === "codex" ? "codex" : "claude");
 const writerChoice = createWriterChoice({ workshop, preferred: preferredWriter });
 // Each agent's engine (Réglages › Agent): its API key or its Ollama first, its CLI only on its subscription.
 const engineOf = (a: "claude" | "codex"): ClaudeEngine | CodexEngine => (a === "claude" ? claudeEngine : engine);
-const notOnCli = () => new Set((["claude", "codex"] as const).filter((a) => engineOf(a).kind === "api" || engineOf(a).kind === "ollama"));
 const hostWriter = createHostWriter({
   preferred: preferredWriter,
   engine: engineOf,
   readKey,
-  cli: createAgentWriter({
-    exec: (a, x) => workshop.execWrite(a, x),
-    agent: (exclude) => writerChoice.wakeAgent(new Set([...(exclude ?? []), ...notOnCli()])),
-    signedOut: writerChoice.signedOut,
-    log: (l) => console.log("[writer]", l),
-    locale: () => hostLocale(),
-  }),
+  // The other agent is excluded: the CLI writes as the agent picked, never as one the user put on a key or Ollama.
+  cli: (only) =>
+    createAgentWriter({
+      exec: (a, x) => workshop.execWrite(a, x),
+      agent: (exclude) => writerChoice.wakeAgent(new Set([...(exclude ?? []), only === "claude" ? "codex" : "claude"])),
+      signedOut: writerChoice.signedOut,
+      log: (l) => console.log("[writer]", l),
+      locale: () => hostLocale(),
+    }),
   cliUsable: writerChoice.usable,
   locale: () => hostLocale(),
 });
@@ -476,30 +489,19 @@ const denyWidget = async (w: string) => {
   await deleteData(widgetsFolder, w);
 };
 
-// The profile of windows that have not chosen their agent. One kernel serves every profile: it starts once.
-let defaultProfile = "claude";
 // Settings: « browser » takes the agent's shell away at its next session (the panel relaunches it on a change).
 // `wantedMode` is the chrome's; the Atelier is tier 3, so `agentMode` is browser while the lab is off.
 let wantedMode: "browser" | "workshop" = "browser";
 let agentMode: "browser" | "workshop" = "browser";
 let kernelLaunched = false;
 
-// Codex's and Claude's engines (Settings › Agent) and the relay that adds each one's compatible API key, which stays on the Mac.
-let engine = DEFAULT_CODEX_ENGINE;
-let claudeEngine = DEFAULT_CLAUDE_ENGINE;
+// The relay adds each engine's compatible API key, which stays on the Mac.
 let relocalized = 0;
-const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY) };
-const cachedKeys: { codex?: string; claude?: string } = {};
 // Called after a key is written or removed (Settings › Agent).
 const forgetKey = (kind: "codex" | "claude") => {
   delete cachedKeys[kind];
   writerChoice.reset();
 };
-// Only a string is kept: a failed read (Keychain locked) is tried again.
-async function readKey(kind: "codex" | "claude"): Promise<string | null> {
-  cachedKeys[kind] ??= (await keys[kind].read()) ?? undefined;
-  return cachedKeys[kind] ?? null;
-}
 const relay = await startRelay({ readKey });
 
 let stopping: Promise<void> | undefined;

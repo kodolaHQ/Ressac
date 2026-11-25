@@ -110,7 +110,7 @@ export async function layOut(o: {
           continue;
         }
         // The writer's "no account" / "limit" texts are fixed and safe to show; any other error stays generic.
-        const known = e instanceof Error && ["kernel-writer-none", "kernel-writer-limit"].flatMap((k) => [say("fr", k), say("en", k)]).includes(e.message);
+        const known = e instanceof Error && ["kernel-writer-none", "kernel-writer-limit", "kernel-writer-limit-api"].flatMap((k) => [say("fr", k), say("en", k)]).includes(e.message);
         return { failure: known ? (e as Error).message : FAILURE_REASON };
       }
       const parsed = readJson(response);

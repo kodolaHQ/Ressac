@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createHostWriter, createWriterChoice } from "../host/writer";
+import { createHostWriter, createWriterChoice, type CliState } from "../host/writer";
 import { CODEX_WRITER_MODEL, SYSTEM_PROMPT } from "../../../packages/kernel/src/index.ts";
 import { DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, type ClaudeEngine, type CodexEngine } from "../shared/settings";
 
@@ -91,6 +91,15 @@ describe("writer choice", () => {
     expect(two).toEqual(["claude", "claude"]);
     expect(n).toBe(2);
   });
+  it("usable: signed in or out when started, wakeable only when a write may start the machine, else stopped", async () => {
+    expect(await setup("started", { claude: true }).choice.usable("claude")).toBe("signed-in");
+    expect(await setup("started", { claude: false }).choice.usable("claude")).toBe("signed-out");
+    const m = setup("machine-stopped", { claude: true });
+    expect(await m.choice.usable("claude")).toBe("wakeable");
+    expect(m.calls).toEqual([]);
+    expect(await setup("machine-stopped", {}, "claude", false).choice.usable("claude")).toBe("stopped");
+    expect(await setup("stopped", {}).choice.usable("claude")).toBe("stopped");
+  });
   it("caches 5 minutes, then reset or signedOut check again", async () => {
     const s = setup("started", { claude: true });
     await s.choice.agent();
@@ -113,21 +122,23 @@ const hostWriter = (o: {
   claude?: Partial<ClaudeEngine>;
   codex?: Partial<CodexEngine>;
   keys?: Partial<Record<"claude" | "codex", string>>;
-  signedIn?: Partial<Record<"claude" | "codex", boolean>>;
+  clis?: Partial<Record<"claude" | "codex", CliState>>;
   preferred?: "claude" | "codex";
-  answer?: (url: string) => Response;
+  answer?: (url: string, init: RequestInit) => Response | Promise<Response>;
+  fetchFails?: Error;
 }) => {
   const requests: { url: string; headers: Record<string, string>; body: any }[] = [];
-  const cli = vi.fn(async () => "from the cli");
+  const cli = vi.fn((a: "claude" | "codex") => async () => `from the ${a} cli`);
   const w = createHostWriter({
     preferred: () => o.preferred ?? "claude",
     engine: (a) => (a === "claude" ? { ...DEFAULT_CLAUDE_ENGINE, ...o.claude } : { ...DEFAULT_CODEX_ENGINE, ...o.codex }),
     readKey: async (a) => o.keys?.[a] ?? null,
     cli,
-    cliUsable: async (a) => !!o.signedIn?.[a],
+    cliUsable: async (a) => o.clis?.[a] ?? "signed-out",
     fetch: (async (url: string, init: RequestInit) => {
       requests.push({ url, headers: init.headers as Record<string, string>, body: JSON.parse(init.body as string) });
-      return o.answer?.(url) ?? Response.json({});
+      if (o.fetchFails) throw o.fetchFails;
+      return (await o.answer?.(url, init)) ?? Response.json({});
     }) as typeof fetch,
     locale: () => "fr",
   });
@@ -171,17 +182,23 @@ describe("host writer", () => {
     expect(s.requests[1]!.body.format).toBeUndefined();
   });
   it("no key falls back to the other agent's subscription", async () => {
-    const s = hostWriter({ claude: { kind: "api", apiUrl: "https://api.anthropic.com" }, signedIn: { codex: true } });
-    expect(await s.w({ prompt: "P" })).toBe("from the cli");
+    const s = hostWriter({ claude: { kind: "api", apiUrl: "https://api.anthropic.com" }, clis: { codex: "signed-in" } });
+    expect(await s.w({ prompt: "P" })).toBe("from the codex cli");
     expect(s.requests).toEqual([]);
     expect(await s.w.via()).toEqual({ agent: "codex", via: "subscription" });
     await expect(hostWriter({}).w({ prompt: "P" })).rejects.toThrow("Connectez Claude Code ou Codex");
   });
   it("429 reads as the limit", async () => {
     const s = hostWriter({ claude: { kind: "api", apiUrl: "https://api.anthropic.com" }, keys: { claude: KEY }, answer: () => new Response("", { status: 429 }) });
-    await expect(s.w({ prompt: "P" })).rejects.toThrow("Limite de votre abonnement");
+    await expect(s.w({ prompt: "P" })).rejects.toThrow("Limite d'usage de votre clé d'API");
     const r = hostWriter({ claude: { kind: "api", apiUrl: "https://api.anthropic.com" }, keys: { claude: KEY }, answer: () => new Response("", { status: 401 }) });
     await expect(r.w({ prompt: "P" })).rejects.toThrow("clé refusée");
+    const f = hostWriter({ claude: { kind: "api", apiUrl: "https://api.anthropic.com" }, keys: { claude: KEY }, answer: () => new Response("", { status: 403 }) });
+    await expect(f.w({ prompt: "P" })).rejects.toThrow("clé refusée");
+  });
+  it("429 on a key or Ollama names the API limit, not the subscription", async () => {
+    const s = hostWriter({ claude: { kind: "ollama", ollamaModel: "gemma" }, answer: () => new Response("", { status: 429 }) });
+    await expect(s.w({ prompt: "P" })).rejects.toThrow("clé d'API ou de votre Ollama");
   });
   it("the key is in no error text", async () => {
     const s = hostWriter({ claude: { kind: "api", apiUrl: "https://api.anthropic.com" }, keys: { claude: KEY }, answer: () => new Response(`bad key ${KEY}`, { status: 500 }) });
@@ -189,11 +206,55 @@ describe("host writer", () => {
     expect(e.message).toContain("500");
     expect(e.message).not.toContain(KEY);
     expect(String(e.stack)).not.toContain(KEY);
+    const f = hostWriter({ claude: { kind: "api", apiUrl: "https://api.anthropic.com" }, keys: { claude: KEY }, fetchFails: new Error(`connect refused, header ${KEY}`) });
+    const g = (await f.w({ prompt: "P" }).catch((x: unknown) => x)) as Error;
+    expect(g.message).toContain("connect refused");
+    expect(g.message).not.toContain(KEY);
+  });
+  it("a CLI of unknown sign-in yields to the other agent's key, and is taken when nothing else works", async () => {
+    const s = hostWriter({ clis: { claude: "wakeable" }, codex: { kind: "api", apiUrl: "https://api.openai.com/v1" }, keys: { codex: KEY } });
+    expect(await s.w.via()).toEqual({ agent: "codex", via: "api" });
+    const t = hostWriter({ clis: { claude: "stopped", codex: "wakeable" } });
+    expect(await t.w.via()).toEqual({ agent: "codex", via: "subscription" });
+    expect(await t.w({ prompt: "P" })).toBe("from the codex cli");
+  });
+  it("a workshop that cannot start, with no key, says so", async () => {
+    const s = hostWriter({ clis: { claude: "stopped", codex: "stopped" } });
+    expect(await s.w.via()).toBe("workshop-stopped");
+    await expect(s.w({ prompt: "P" })).rejects.toThrow("L'atelier de l'agent n'est pas démarré");
+  });
+  it("an unparsable Ollama address is not configured", async () => {
+    const s = hostWriter({ claude: { kind: "ollama", ollamaUrl: "pas une adresse", ollamaModel: "gemma" } });
+    expect(await s.w.via()).toBeNull();
+    await expect(s.w({ prompt: "P" })).rejects.toThrow("Connectez Claude Code ou Codex");
+  });
+  it("a timeout or a stop during the body read is not swallowed; a non-JSON body is a failure", async () => {
+    const slowBody = (_u: string, init: RequestInit) =>
+      ({ ok: true, status: 200, json: () => new Promise((_, no) => init.signal!.addEventListener("abort", () => no(init.signal!.reason))) }) as unknown as Response;
+    const timeout = new AbortController();
+    const spy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
+    try {
+      const s = hostWriter({ claude: { kind: "ollama", ollamaModel: "gemma" }, answer: slowBody });
+      const p = s.w({ prompt: "P" });
+      await vi.waitFor(() => expect(s.requests).toHaveLength(1));
+      timeout.abort(new DOMException("timed out", "TimeoutError"));
+      await expect(p).rejects.toThrow("L'IA n'a pas pu rédiger : timed out");
+    } finally {
+      spy.mockRestore();
+    }
+    const ctl = new AbortController();
+    const c = hostWriter({ claude: { kind: "ollama", ollamaModel: "gemma" }, answer: slowBody });
+    const q = c.w({ prompt: "P", signal: ctl.signal });
+    await vi.waitFor(() => expect(c.requests).toHaveLength(1));
+    ctl.abort(new Error("stopped by the caller"));
+    await expect(q).rejects.toThrow("stopped by the caller");
+    const n = hostWriter({ claude: { kind: "ollama", ollamaModel: "gemma" }, answer: () => new Response("pas du json") });
+    await expect(n.w({ prompt: "P" })).rejects.toThrow("L'IA n'a pas pu rédiger");
   });
   it("via() names the path", async () => {
     expect(await hostWriter({ claude: { kind: "api", apiUrl: "https://api.anthropic.com" }, keys: { claude: KEY } }).w.via()).toEqual({ agent: "claude", via: "api" });
     expect(await hostWriter({ preferred: "codex", codex: { kind: "ollama", ollamaModel: "gemma" } }).w.via()).toEqual({ agent: "codex", via: "ollama" });
-    expect(await hostWriter({ signedIn: { claude: true } }).w.via()).toEqual({ agent: "claude", via: "subscription" });
+    expect(await hostWriter({ clis: { claude: "signed-in" } }).w.via()).toEqual({ agent: "claude", via: "subscription" });
     expect(await hostWriter({}).w.via()).toBeNull();
   });
   it("honours the caller's signal", async () => {
@@ -202,8 +263,8 @@ describe("host writer", () => {
       preferred: () => "claude",
       engine: () => ({ ...DEFAULT_CLAUDE_ENGINE, kind: "api", apiUrl: "https://api.anthropic.com" }),
       readKey: async () => KEY,
-      cli: async () => "",
-      cliUsable: async () => false,
+      cli: () => async () => "",
+      cliUsable: async () => "signed-out",
       fetch: ((_u: string, init: RequestInit) => new Promise((_, no) => (init.signal!.aborted ? no(init.signal!.reason) : init.signal!.addEventListener("abort", () => no(init.signal!.reason))))) as typeof fetch,
       locale: () => "fr",
     });

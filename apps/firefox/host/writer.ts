@@ -38,48 +38,70 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
       if ((await o.workshop.state()) === "machine-stopped" && (await o.workshop.harvestReady())) await startedWithin(o.workshop.ensureStarted(), null); // still stopped: agent says so
       return choice.agent(exclude);
     },
-    /** For the host writer: unknown while the workshop is not started, so the CLI path decides (it wakes the machine or says it is stopped). */
-    usable: async (a: WriterAgent) => (await o.workshop.state()) !== "started" || signedIn(a),
+    /** For the host writer, without starting anything: signed in, unknown but the machine can wake for a write, or why not. */
+    async usable(a: WriterAgent): Promise<CliState> {
+      const s = await o.workshop.state();
+      if (s === "started") return (await signedIn(a)) ? "signed-in" : "signed-out";
+      return s === "machine-stopped" && (await o.workshop.harvestReady()) ? "wakeable" : "stopped";
+    },
     reset: () => cache.clear(),
     signedOut: (a: WriterAgent) => void cache.delete(a),
   };
   return choice;
 }
 
+/** A CLI's state for the writer: `wakeable` = sign-in unknown, the machine can start for a write; `stopped` = it cannot. */
+export type CliState = "signed-in" | "signed-out" | "wakeable" | "stopped";
 type Via = "subscription" | "api" | "ollama";
-const host = (url: string) => new URL(url).hostname;
+type Path = { agent: WriterAgent; via: Via; e: ClaudeEngine | CodexEngine; key?: string };
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+};
 
 /**
- * The writer with the agents' engines (Réglages › Agent): for the preferred agent, then the other, its API key, its
- * Ollama, or its signed-in CLI (`cli`). The key goes in a header only, and is cut out of any answer quoted in an error.
+ * The writer with the agents' engines (Réglages › Agent): first a path known to work on either agent (its API key,
+ * its Ollama, its signed-in CLI), the preferred agent first; then a CLI whose machine can wake. The key goes in a
+ * header only, and is cut out of any answer quoted in an error.
  */
 export function createHostWriter(o: {
   preferred(): WriterAgent;
   engine(a: WriterAgent): ClaudeEngine | CodexEngine;
   readKey(a: WriterAgent): Promise<string | null>;
-  cli: Writer;
-  cliUsable(a: WriterAgent): Promise<boolean>;
+  /** The subscription CLI writing as this agent only. */
+  cli(a: WriterAgent): Writer;
+  cliUsable(a: WriterAgent): Promise<CliState>;
   fetch?: typeof fetch;
   locale(): string;
-}): Writer & { via(): Promise<{ agent: WriterAgent; via: Via } | null> } {
+}): Writer & { via(): Promise<{ agent: WriterAgent; via: Via } | "workshop-stopped" | null> } {
   const t = (id: string, args?: Record<string, string>) => new Error(say(o.locale(), id, args));
-  const pick = async (): Promise<{ agent: WriterAgent; via: Via; e: ClaudeEngine | CodexEngine; key?: string } | null> => {
+  const pick = async (): Promise<Path | "workshop-stopped" | null> => {
     const first = o.preferred();
-    for (const agent of [first, first === "claude" ? "codex" : "claude"] as const) {
+    const agents = [first, first === "claude" ? "codex" : "claude"] as const;
+    const clis = new Map<WriterAgent, CliState>();
+    for (const agent of agents) {
       const e = o.engine(agent);
       if (e.kind === "api") {
         // Off Anthropic's and OpenAI's own hosts, the user's model is needed.
-        const known = !apiUrlProblem(e.apiUrl) && (e.apiModel || host(e.apiUrl) === (agent === "claude" ? "api.anthropic.com" : "api.openai.com"));
+        const known = !apiUrlProblem(e.apiUrl) && (e.apiModel || hostOf(e.apiUrl) === (agent === "claude" ? "api.anthropic.com" : "api.openai.com"));
         const key = known ? await o.readKey(agent) : null;
         if (key) return { agent, via: "api", e, key };
       } else if (e.kind === "ollama") {
-        if (e.ollamaUrl && e.ollamaModel) return { agent, via: "ollama", e };
-      } else if (await o.cliUsable(agent)) return { agent, via: "subscription", e };
+        if (hostOf(e.ollamaUrl) && e.ollamaModel) return { agent, via: "ollama", e };
+      } else {
+        const s = await o.cliUsable(agent);
+        if (s === "signed-in") return { agent, via: "subscription", e };
+        clis.set(agent, s);
+      }
     }
-    return null;
+    for (const agent of agents) if (clis.get(agent) === "wakeable") return { agent, via: "subscription", e: o.engine(agent) };
+    return [...clis.values()].includes("stopped") ? "workshop-stopped" : null;
   };
 
-  const call = async (p: { agent: WriterAgent; via: Via; e: ClaudeEngine | CodexEngine; key?: string }, prompt: string, json: boolean, caller?: AbortSignal): Promise<unknown> => {
+  const call = async (p: Path, prompt: string, json: boolean, caller?: AbortSignal): Promise<unknown> => {
     const { agent, via, e, key = "" } = p;
     const system = writerSystemPrompt(json);
     const trim = (u: string) => u.replace(/\/$/, "");
@@ -87,27 +109,27 @@ export function createHostWriter(o: {
       via === "ollama"
         ? [`${trim(withoutV1(macSideUrl(e.ollamaUrl)))}/api/chat`, {}, { model: e.ollamaModel, stream: false, keep_alive: "1m", messages: [{ role: "system", content: system }, { role: "user", content: prompt }], ...(json ? { format: "json" } : {}) }]
         : agent === "claude"
-          ? [`${trim(withoutV1(e.apiUrl))}/v1/messages`, { "x-api-key": key, "anthropic-version": "2023-06-01" }, { model: host(e.apiUrl) === "api.anthropic.com" ? "claude-haiku-4-5" : e.apiModel, max_tokens: 4096, system, messages: [{ role: "user", content: prompt }] }]
-          : [`${trim(e.apiUrl)}/responses`, { authorization: `Bearer ${key}` }, { model: host(e.apiUrl) === "api.openai.com" ? CODEX_WRITER_MODEL : e.apiModel, instructions: system, input: prompt }];
+          ? [`${trim(withoutV1(e.apiUrl))}/v1/messages`, { "x-api-key": key, "anthropic-version": "2023-06-01" }, { model: hostOf(e.apiUrl) === "api.anthropic.com" ? "claude-haiku-4-5" : e.apiModel, max_tokens: 4096, system, messages: [{ role: "user", content: prompt }] }]
+          : [`${trim(e.apiUrl)}/responses`, { authorization: `Bearer ${key}` }, { model: hostOf(e.apiUrl) === "api.openai.com" ? CODEX_WRITER_MODEL : e.apiModel, instructions: system, input: prompt }];
     const signal = AbortSignal.any([...(caller ? [caller] : []), AbortSignal.timeout(WRITER_TIMEOUT_MS)]);
     // Only the status and a key-free tail of the answer are quoted.
     const failed = (reason: string) => t("kernel-writer-failed", { reason: (key ? reason.split(key).join("…") : reason).trim().slice(-300) });
-    let res: Response;
+    let status = 0;
+    let raw = "";
+    let out: { content?: { text?: string }[]; output_text?: string; output?: { content?: { text?: string }[] }[]; message?: { content?: string } } = {};
     try {
-      res = await (o.fetch ?? fetch)(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body), signal });
+      const res = await (o.fetch ?? fetch)(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body), signal });
+      status = res.status;
+      if (res.ok) out = await res.json();
+      else raw = await res.text();
     } catch (err) {
+      // A caller's stop stays a stop; a timeout, a network error or an unreadable body reads as a failure.
       if (caller?.aborted) throw caller.reason ?? err;
       throw failed(err instanceof Error ? err.message : String(err));
     }
-    if (res.status === 401 || res.status === 403) throw failed(say(o.locale(), "kernel-writer-key-refused"));
-    if (res.status === 429) throw t("kernel-writer-limit");
-    if (!res.ok) throw failed(`HTTP ${res.status} ${await res.text().catch(() => "")}`);
-    const out = (await res.json().catch(() => ({}))) as {
-      content?: { text?: string }[];
-      output_text?: string;
-      output?: { content?: { text?: string }[] }[];
-      message?: { content?: string };
-    };
+    if (status === 401 || status === 403) throw failed(say(o.locale(), "kernel-writer-key-refused"));
+    if (status === 429) throw t("kernel-writer-limit-api");
+    if (status < 200 || status >= 300) throw failed(`HTTP ${status} ${raw}`);
     const texts = (xs?: { text?: string }[]) => (xs ?? []).map((x) => x.text ?? "").join("");
     const text = (via === "ollama" ? (out.message?.content ?? "") : agent === "claude" ? texts(out.content) : (out.output_text ?? (out.output ?? []).map((x) => texts(x.content)).join(""))).trim();
     return json ? parseWriterJson(text) : text;
@@ -116,8 +138,14 @@ export function createHostWriter(o: {
   const writer = async (r: Parameters<Writer>[0]) => {
     if (r.images?.length) throw t("kernel-writer-images");
     const p = await pick();
+    if (p === "workshop-stopped") throw t("kernel-writer-workshop-stopped");
     if (!p) throw t("kernel-writer-none");
-    return p.via === "subscription" ? o.cli(r) : call(p, r.prompt, !!r.json, r.signal);
+    return p.via === "subscription" ? o.cli(p.agent)(r) : call(p, r.prompt, !!r.json, r.signal);
   };
-  return Object.assign(writer, { via: async () => { const p = await pick(); return p && { agent: p.agent, via: p.via }; } });
+  return Object.assign(writer, {
+    via: async () => {
+      const p = await pick();
+      return p && typeof p === "object" ? { agent: p.agent, via: p.via } : p;
+    },
+  });
 }

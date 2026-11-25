@@ -92,7 +92,7 @@ const loc = (o: Pick<HarvestOptions, "locale">) => o.locale?.() ?? "en";
  * Matched by comparing the item log lines to the localized texts, so only our own fixed text is ever returned.
  */
 export function writerWarning(run: Execution, locale: string): string | undefined {
-  const texts = ["kernel-writer-none", "kernel-writer-limit"].flatMap((k) => [say("fr", k), say("en", k)].map((m) => [m, say(locale, k)]));
+  const texts = ["kernel-writer-none", "kernel-writer-limit", "kernel-writer-limit-api"].flatMap((k) => [say("fr", k), say("en", k)].map((m) => [m, say(locale, k)]));
   // The failed text carries the CLI's own words: only a fixed badge is shown, the log keeps the detail.
   const failed = ["fr", "en"].map((l) => say(l, "kernel-writer-failed", { reason: "@@" }).split("@@")[0]!);
   for (const b of run.blocks) for (const line of b.log) {
