@@ -96,6 +96,8 @@ it("the panel runs the real CLI with the session's MCP config", async () => {
     // This window's conversation, resumed by this id.
     "--session-id",
     expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+    "--tools",
+    "Read,Glob,Grep,Write,Edit",
     "--disallowedTools",
     "Bash,mcp__ressac__launch_app",
     "--strict-mcp-config",
@@ -134,7 +136,7 @@ it("« Atelier » relaunches the agent with its shell, the choice is saved, anot
   await waitUi(m, "return doc.querySelector('[data-testid=\"agent-mode-workshop\"]').getAttribute('aria-checked') === 'true'", [], 10_000, "agent");
   // The relaunch resumes the conversation, now with the shell.
   await expect.poll(args, { timeout: 20_000 }).toContain(`"--resume","${id}"`);
-  expect(args()).not.toMatch(/Bash|launch_app|strict-mcp-config/);
+  expect(args()).not.toMatch(/--tools|Bash|launch_app|strict-mcp-config/);
   expect((await state(m)).settings.agentMode).toBe("workshop");
   // The other window's agent still runs in browser mode: its panel offers the relaunch.
   await inWindow(m, second, () => waitUi(m, "return !!doc.querySelector('[data-testid=\"agent-engine-changed\"]')", [], 10_000, "agent"));
