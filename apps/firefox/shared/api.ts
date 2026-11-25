@@ -508,7 +508,6 @@ export interface ApiRessac {
   review: ReviewApi;
   settings: SettingsApi;
   browserImport: BrowserImportApi;
-  passportImport: PassportImportApi;
   bookmarks: {
     /** Places bookmarks matching the text in title or URL (http(s) only). */
     search(text: string, limit?: number): Promise<{ url: string; title: string }[]>;
@@ -523,8 +522,10 @@ export interface ImportProgress { source: ImportSourceId; done: boolean; counts:
 /** Import from another browser on this Mac: one run at a time, in the background; a notification tells the end. */
 /** « Importer depuis… » the saved addresses of another browser: the page picks by key, the values stay in the chrome. */
 export interface PassportImportApi {
-  sources(): Promise<{ id: string; name: string; count: number }[]>;
-  proposals(source: string): Promise<{ proposals: PassportProposal[]; incomplete: number }>;
+  /** The detected browsers and « ressac », by name only: nothing is read. */
+  sources(): Promise<{ id: string; name: string }[]>;
+  /** Reads that one source. `access: "ask"`: macOS wants the folder consent first (browserImport.grantAccess), nothing was read. */
+  proposals(source: string): Promise<{ proposals: PassportProposal[]; incomplete: number; name: string; access: "ready" | "ask" }>;
   /** One Touch ID. `eraseRessac`: also removes the source « ressac »'s records from Firefox's store, after a good write. */
   add(profile: string, rows: { key: string; as: "me" | "proche" }[], source: string, eraseRessac?: boolean): Promise<PassportImportResult>;
 }
@@ -630,6 +631,8 @@ export interface SettingsApi {
   passport?: PassportSettingsApi;
   /** Réglages › Mots de passe: only in the document showing ressac://settings, like `passport`. */
   passwords?: PasswordsSettingsApi;
+  /** « Importer depuis… »: only in the document showing the settings page and the welcome, like `passport`. */
+  passportImport?: PassportImportApi;
 }
 
 /** A saved login as Réglages › Mots de passe lists it: never its password. `host`: the origin itself when not http(s). */

@@ -61,7 +61,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}, settingsPage =
     { id: "s4", name: "Clients", profile: "work", private: false },
   ];
   const api = createSettingsApi({
-    ...(settingsPage ? { passport, passwords } : {}),
+    ...(settingsPage ? { passport, passwords, passportImport: { sources: async () => [], proposals: async () => ({ proposals: [], incomplete: 0, name: "", access: "ready" as const }), add: async () => ({ ok: true as const, added: 0, variants: 0, full: 0, invalid: 0 }) } } : {}),
     spaces: () => spaces as any,
     host,
     chrome,
@@ -286,6 +286,8 @@ describe("settings api", () => {
     expect(setup({}, false).api).not.toHaveProperty("passport");
     expect(setup().api).toHaveProperty("passwords");
     expect(setup({}, false).api).not.toHaveProperty("passwords");
+    expect(setup({}, false).api).not.toHaveProperty("passportImport");
+    expect(setup().api).toHaveProperty("passportImport");
     expect(settingsPageDocument({ pathname: "/content/ressac/sidebar.html", search: "" })).toBe(true);
     for (const url of [{ pathname: "/content/ressac/agent.html", search: "" }, { pathname: "/content/ressac/sidebar.html", search: "?agentview" }, { pathname: "/content/ressac/sidebar.html", search: "?badge=x" }])
       expect(settingsPageDocument(url)).toBe(false);

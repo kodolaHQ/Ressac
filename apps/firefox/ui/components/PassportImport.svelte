@@ -12,34 +12,50 @@
    */
   let { source, profile: wanted, quiet = false, onclose, onadded }: { source: string; profile?: string; quiet?: boolean; onclose?: () => void; onadded?: () => void } = $props();
 
-  const pi = api.passportImport;
+  const pi = api.settings.passportImport!;
   let name = $state("");
   let lines = $state<(PassportProposal & { on: boolean; as: "me" | "proche" })[] | null>(null);
   let incomplete = $state(0);
   let erase = $state(false);
   let busy = $state(false);
   let result = $state<PassportImportResult | null>(null);
-  let chosen = $state<string | null>(wanted ?? null);
+  let chosen = $state<string | null>(null);
+  /** macOS wants the person's consent for this browser's folder before it is read. */
+  let ask = $state(false);
+  let denied = $state<string | null>(null);
+  // A new profile asked from outside (Réglages changed section) wins over an earlier pick.
+  $effect(() => void (wanted, (chosen = null)));
 
   /** The spaces' login profiles, named as Réglages names their passports (private spaces have none). */
   const profiles = $derived.by(() => {
     const spaces = appState.value?.spaces ?? [];
     return [...new Set(spaces.filter((s) => !s.private).map((s) => s.profile))].map((id) => ({ id, name: passportName(spaces, id, t("settings-passport-no-space")) }));
   });
-  const target = $derived(chosen && profiles.some((p) => p.id === chosen) ? chosen : (profiles[0]?.id ?? null));
+  const target = $derived.by(() => [chosen, wanted].find((id) => id && profiles.some((p) => p.id === id)) ?? profiles[0]?.id ?? null);
   const ticked = $derived(lines?.filter((l) => l.on) ?? []);
 
-  $effect(() => {
-    const id = source;
-    void pi.sources().then((all) => (name = all.find((s) => s.id === id)?.name ?? id));
+  function load(id: string) {
     void pi.proposals(id).then((r) => {
       if (id !== source) return;
-      lines = r.proposals.map((p) => ({ ...p, on: p.ticked, as: "proche" }));
+      [name, ask] = [r.name, r.access === "ask"];
+      lines = ask ? null : r.proposals.map((p) => ({ ...p, on: p.ticked, as: "proche" }));
       incomplete = r.incomplete;
       erase = false;
       result = null;
     }, () => (lines = []));
+  }
+  $effect(() => {
+    const id = source;
+    [lines, ask, denied] = [null, false, null];
+    load(id);
   });
+  async function grant() {
+    const id = source;
+    const r = await api.browserImport.grantAccess(id as never);
+    if (id !== source) return;
+    if (r.ok) [ask, denied] = [false, null], load(id);
+    else denied = r.error;
+  }
 
   async function add() {
     if (!target || busy || !ticked.length) return;
@@ -49,10 +65,17 @@
     if (result.ok && result.added + result.variants > 0) onadded?.();
   }
   const added = $derived(result?.ok ? result.added + result.variants : 0);
+  const skipped = $derived(result?.ok ? result.full + result.invalid : 0);
   const summary = (p: PassportProposal) => [p.address.replace("\n", ", "), p.tel, p.email].filter(Boolean).join(" · ");
 </script>
 
-{#if lines && !(quiet && !lines.length && !incomplete)}
+{#if ask}
+  <div class="card appear" data-testid="passport-import-access" out:fade={{ duration: 150 }}>
+    <p>{t("home-import-access", { name })}</p>
+    <div class="row"><button type="button" data-testid="passport-import-grant" onclick={() => void grant()}>{t("home-import-access-grant")}</button></div>
+    {#if denied}<p class="alert" role="status">{denied}</p>{/if}
+  </div>
+{:else if lines && !(quiet && !lines.length)}
   <div class="card appear" data-testid="passport-import" out:fade={{ duration: 150 }}>
     {#if !lines.length}
       <p data-testid="passport-import-none">{t("settings-passport-import-none", { name })}</p>
@@ -81,7 +104,7 @@
       {#if result}<p class="alert" role="status" data-testid="passport-import-error" out:fade={{ duration: 150 }}>{t(result.error === "cancelled" ? "settings-passport-import-cancelled" : "settings-passport-import-error")}</p>{/if}
       <div class="row">
         {#if profiles.length > 1}
-          <label class="muted">{t("settings-passport-import-profile", { profile: "" })}
+          <label class="muted">{t("settings-passport-import-profile")}
             <select data-testid="passport-import-profile" value={target} onchange={(e) => (chosen = e.currentTarget.value)}>
               {#each profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
             </select>
@@ -93,7 +116,9 @@
       </div>
     {:else}
       <div role="status" data-testid="passport-import-done" class="appear">
-        {#if added}<p>{t("settings-passport-import-done", { n: added })}</p>{/if}
+        {#if added}<p>{t("settings-passport-import-done", { n: added })}</p>
+        {:else if !result.full && !result.invalid}<p data-testid="passport-import-nothing">{t("settings-passport-import-nothing")}</p>{/if}
+        {#if skipped && result.invalid}<p class="alert" data-testid="passport-import-invalid">{t("settings-passport-import-error")}</p>{/if}
         {#if result.full}<p class="alert" data-testid="passport-import-full">{t("settings-passport-import-full", { n: result.full })}</p>{/if}
       </div>
       <div class="row"><span class="grow"></span><button type="button" data-testid="passport-import-close" onclick={() => onclose?.()}>{t("settings-passport-import-close")}</button></div>

@@ -33,7 +33,7 @@ import { createAsk, type Ask } from "./ask";
 import { createBrowserImporter } from "./import/importer";
 import { createPassportImporter, type PassportImporter } from "../passport/import";
 import { format } from "../../shared/i18n";
-import type { BrowserImportApi } from "../../shared/api";
+import type { BrowserImportApi, ImportSourceId } from "../../shared/api";
 import { searchBookmarks } from "./bookmarks";
 import { registerHomeNotifications } from "./notifications";
 import { containerFor, existingContainer, isAppContainer, isSiteContainer, removeContainer } from "./containers";
@@ -666,6 +666,7 @@ async function start(): Promise<RessacStore> {
   AsyncShutdown.profileBeforeChange.addBlocker("Ressac: stop the agent host", () => agent.stop());
   // The process's one passport instance: Réglages' pages and « Cacher pour l'agent » share its tokens and writes.
   const passport = passportSettings((method, params) => agent.request(method, params));
+  const browserImport = createBrowserImporter(dataDir, agent, store);
   return {
     get state() {
       return store.state;
@@ -677,7 +678,7 @@ async function start(): Promise<RessacStore> {
     dataSetAside,
     telemetryActive: telemetry.active,
     settings: createSettingsChrome(dataDir, telemetry.active, updates),
-    browserImport: createBrowserImporter(dataDir, agent, store),
+    browserImport,
     bookmarks: { search: searchBookmarks },
     flush,
     containerFor,
@@ -687,6 +688,7 @@ async function start(): Promise<RessacStore> {
       home: testEnv("RESSAC_TEST_IMPORT_HOME") || Services.dirsvc.get("Home", Ci.nsIFile).path,
       scratch: PathUtils.join(dataDir, "passport-import-tmp"),
       passport,
+      access: (id) => browserImport.access(id as ImportSourceId),
       reason: () => format(store.state.locale, "settings-passport-touchid-import"),
     }),
     hidePassport: { hide: (h) => passport.hide(h), unhide: (u) => passport.unhide(u) },

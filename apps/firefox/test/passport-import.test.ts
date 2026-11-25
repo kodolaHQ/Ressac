@@ -64,6 +64,32 @@ describe("passport import", () => {
     expect(addMany.mock.calls[0]![0].from).toBe("ressac");
   });
 
+  it("full or invalid drafts, or a proche row: nothing is erased", async () => {
+    const run = async (result: any, as: "me" | "proche") => {
+      const remove = vi.fn(async (_g: string[]) => {});
+      const records = [{ guid: "a1", "given-name": "Camille", "family-name": "Aubrac", "street-address": "14 rue des Tanneurs", "postal-code": "69001", "address-level2": "Lyon" }];
+      const i = createPassportImporter({ home: "/h", scratch: "/s", passport: { addMany: async () => result }, reason: () => "r", ressacStore: async () => ({ records, remove }) });
+      const { proposals } = await i.proposals("ressac");
+      await i.add("default", [{ key: proposals[0]!.key, as }], "ressac", true);
+      return remove;
+    };
+    expect(await run({ ok: true, added: 1, variants: 0, full: 1, invalid: 0 }, "me")).not.toHaveBeenCalled();
+    expect(await run({ ok: true, added: 1, variants: 0, full: 0, invalid: 1 }, "me")).not.toHaveBeenCalled();
+    expect(await run({ ok: true, added: 1, variants: 0, full: 0, invalid: 0 }, "proche")).not.toHaveBeenCalled();
+    expect(await run({ ok: true, added: 1, variants: 0, full: 0, invalid: 0 }, "me")).toHaveBeenCalled();
+  });
+
+  it("sources names the browsers without reading any; a source asking for access is not read", async () => {
+    const read = vi.fn(async () => [camille]);
+    const i = createPassportImporter({ home: "/h", scratch: "/s", passport: { addMany: vi.fn() as any }, reason: () => "r", exists: async () => true, read, access: async () => "ask" });
+    const list = await i.sources();
+    expect(list.at(-1)).toEqual({ id: "ressac", name: "Ressac" });
+    expect(list.find((d) => d.id === "chrome")).toEqual({ id: "chrome", name: "Google Chrome" });
+    expect(read).not.toHaveBeenCalled();
+    expect(await i.proposals("chrome")).toMatchObject({ proposals: [], access: "ask", name: "Google Chrome" });
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it("eraseRessac removes Firefox records only after a successful write", async () => {
     const bad = setup({ ok: false });
     let { proposals } = await bad.i.proposals("ressac");

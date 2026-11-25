@@ -364,7 +364,7 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       switchAgent,
       dataDir: win.store.dataDir,
       locale: () => win.store.state.locale,
-      ...(o.settingsPage ? { passport: win.store.passport, passwords: win.store.passwords } : {}),
+      ...(o.settingsPage ? { passport: win.store.passport, passwords: win.store.passwords, passportImport: win.store.passportImport } : {}),
       spaces: () => win.store.state.spaces,
       untilUnload,
     }),
@@ -378,13 +378,6 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       start: (o) => win.store.browserImport.start(structuredClone(o)).then((r) => structuredClone(r)),
       progress: () => win.store.browserImport.progress().then((r) => structuredClone(r)),
       importPasswordsCsv: () => win.store.browserImport.importPasswordsCsv().then((r) => structuredClone(r)),
-    },
-    // « Importer depuis… » (welcome and Réglages › Passeport): names and counts, never a value from the page.
-    passportImport: {
-      sources: () => win.store.passportImport.sources().then((r) => structuredClone(r)),
-      proposals: (source) => win.store.passportImport.proposals(String(source)).then((r) => structuredClone(r)),
-      add: (profile, rows, source, eraseRessac) =>
-        win.store.passportImport.add(String(profile), (Array.isArray(rows) ? rows : []).map((r) => ({ key: String(r?.key), as: r?.as === "proche" ? "proche" : "me" })), String(source), eraseRessac === true).then((r) => structuredClone(r)),
     },
     // The design mode of this window's tab; its cart column is a chrome frame (chrome/window/design-overlays.ts).
     design: createDesignApi({ win, untilUnload }),

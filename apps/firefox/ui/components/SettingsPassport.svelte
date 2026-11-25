@@ -64,7 +64,15 @@
   /** « Importer depuis… »: the sources offered (null: closed), then the one picked. */
   let importFrom = $state<{ id: string; name: string; count: number }[] | null>(null);
   let importing = $state<string | null>(null);
-  const openImport = () => void api.passportImport.sources().then((l) => (importFrom = l));
+  /** After an import: the counts, and the open passport's entries (the import wrote them behind this page). */
+  async function reloadOpen() {
+    await loadProfiles();
+    const id = current;
+    if (!id || !open) return;
+    const r = await p.read(id, open.token);
+    if (r && id === current && open) open = { ...open, ...r };
+  }
+  const openImport = () => void api.settings.passportImport!.sources().then((l) => (importFrom = l));
   const closeImport = () => ([importFrom, importing] = [null, null]);
   /** Touch ID is asked: the button waits for its answer (no second prompt). */
   let unlocking = $state(false);
@@ -476,7 +484,7 @@
         {#each importFrom as s (s.id)}<button data-testid="passport-import-source-{s.id}" onclick={() => (importing = s.id)}>{s.name}</button>{/each}
         <button class="link" onclick={closeImport}>{t("settings-passport-import-later")}</button>
       {:else}
-        <PassportImport source={importing} profile={current ?? undefined} onclose={closeImport} onadded={() => void loadProfiles()} />
+        <PassportImport source={importing} profile={current ?? undefined} onclose={closeImport} onadded={() => void reloadOpen()} />
       {/if}
     </div>
   {/if}
