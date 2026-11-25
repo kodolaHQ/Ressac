@@ -44,6 +44,9 @@ const routes = {
       `<title>Relevé</title><p>Tél : ${PHONE}</p>` +
         `<a href="/compte/saute">Saute</a> <a href="/compte/aller?u=${EMAIL}">Aller</a> <a href="/compte/envoie.html?x=1">Envoie</a> <a href="/compte/rebond.html">Rebond</a>`,
     ),
+  // A mail whose sender's display name is masked while its domain, which spells it, stays in clear.
+  "/compte/courrier.html": (_req: unknown, res: ServerResponse) =>
+    html(res, `<title>Courrier</title><p>De : Cabinet du Dr Hélène Marceau &lt;secretariat@cabinet-dr-marceau.fr&gt;</p><p>Objet : rendez-vous</p>`),
   "/compte/saute": (_req: unknown, res: ServerResponse) => void res.writeHead(302, { Location: `${other.url}/arrivee.html` }).end(),
   "/compte/aller": (_req: unknown, res: ServerResponse) => void res.writeHead(302, { Location: `${other.url}/arrivee.html` }).end(),
   // An open redirect by script, once loaded and without user activation; 1 s later the page, still there, says so.
@@ -86,14 +89,14 @@ const loaded = (url: string) =>
   waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec === ${JSON.stringify(url)} && !t.linkedBrowser.webProgress.isLoadingDocument)`, (v) => v === true, 15_000);
 
 /** Launches with the Touch ID seam, the user's sensitive tab open, then the agent's session started on it. */
-async function start(): Promise<string> {
+async function start(page = RELEVE()): Promise<string> {
   w = await launchRessac({ env: { RESSAC_TEST_REAUTH: "pass", RESSAC_TEST_PUBLIC_ADDRESSES: "127.0.0.1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
   const before = new Set(Object.keys((await state(m)).tabs));
-  const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: RELEVE(), agentReached: false });
-  await loaded(RELEVE());
+  const s = await dispatch(m, { type: "openTab", windowId: (await state(m)).windows[0]!.id, url: page, agentReached: false });
+  await loaded(page);
   const id = Object.keys(s.tabs).find((x) => !before.has(x))!;
   await startAgentSession(m);
   return id;
@@ -169,6 +172,21 @@ it("without a lock, a handle opened on its own origin whose server redirects els
   const tabs = Object.values((await state(m)).tabs).map((t) => t.url);
   expect(tabs.some((u) => u.startsWith(other.url))).toBe(false);
   expect(tabs.filter((u) => u.includes("/compte/aller"))).toEqual([]);
+});
+
+it("an address the agent writes with a word of a masked sender name gets the red line on its card", async () => {
+  const id = await start(`${server.url}/compte/courrier.html`);
+  const read = (await call("read_tab", { id })).text;
+  expect(read).not.toContain("Marceau");
+  expect(read).toContain("cabinet-dr-marceau.fr");
+  // Not local (a local address opens free): the card is asked before any load, and refused, nothing goes out.
+  const url = "https://www.cabinet-dr-marceau.test/";
+  const opening = call("open_tab", { url, reason: "le site du cabinet" });
+  const danger = await waitUi<string>(m, `return doc.querySelector('${ADDRESS} [data-testid="address-request-danger"]')?.textContent`, [], 20_000);
+  expect(danger).toMatch(/Contient un nom masqué, lu dans 127\.0\.0\.1 : \S+••••\S+$/);
+  expect(await inUi<string>(m, `return doc.querySelector('${ADDRESS} [data-testid="address-request-url"]').textContent`)).toContain("cabinet-dr-marceau.test");
+  await click(m, `${ADDRESS} button`, { text: "Refuser" });
+  expect((await opening).text).toBe("Accès refusé par l'utilisateur à cet onglet.");
 });
 
 it("under the lock, a script's redirect without user activation after a granted link (an open redirect) is cancelled: the page stays, nothing reaches B", async () => {

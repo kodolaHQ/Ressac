@@ -36,6 +36,7 @@ kernel-outflow-kind-digits = un numéro
 kernel-outflow-kind-token = un identifiant
 kernel-outflow-kind-series = une suite de recherches qui envoie une information par morceaux
 kernel-outflow-kind-clicks = une suite de liens suivis qui envoie une information par morceaux
+kernel-outflow-kind-name = un nom masqué
 kernel-outflow-source-history = votre historique
 kernel-outflow-source-bookmarks = vos favoris
 kernel-outflow-source-sites = vos applis de site

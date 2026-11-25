@@ -484,3 +484,25 @@ test("a link-heavy read of the user's mail masks the same, byte for byte (pinned
     expect(createHash("sha256").update(all).digest("hex")).toBe("a23d03e628879bf85f46d2bb521bd794d9d05561419af8bc13f399503f0aa09b");
   });
 });
+
+test("an address the agent writes with a word of a masked name gets a red line; particles and other addresses do not", async () => {
+  const page = "De : Cabinet du Dr Hélène Marceau <secretariat@cabinet-dr-marceau.fr>\nObjet : rendez-vous";
+  const bridge = bridgeWith({ mail: { text: page }, copie: { text: "rien" } });
+  await serve({ bridge }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const read = (await call("read_tab", { id: "mail" }, t)).text;
+    expect(read).not.toContain("Hélène Marceau");
+    expect(labelOf("nom", read)).toBeDefined();
+    const cards = () => bridge.calls.filter((c) => c.method === "askAddress").map((c) => c.args[0] as { url: string; danger?: string });
+    await call("open_tab", { url: "https://www.cabinet-dr-marceau.fr/", reason: "r" }, t);
+    // Case, accents and separators ignored: « MARCEAU », « helene ».
+    await call("open_tab", { url: "https://annuaire.example/praticiens/helene_MARCEAU", reason: "r" }, t);
+    // Particles (du, Dr) are under 4 letters: no red line.
+    await call("open_tab", { url: "https://exemple.fr/du/dr", reason: "r" }, t);
+    const [doctor, directory, particles] = cards();
+    expect(doctor!.danger).toMatch(/^Contient un nom masqué, lu dans mail\.example-novacourriel\.test : \S+••••\S+$/);
+    expect(directory!.danger).toContain("un nom masqué");
+    expect(particles!.danger).toBeUndefined();
+  });
+});

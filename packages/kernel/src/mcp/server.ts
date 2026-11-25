@@ -24,6 +24,7 @@ import { NOTES_PREFIX, type BrowsingNotes } from "../search/notes.js";
 import { RECAP_TITLE_MAX, RECAP_UNKNOWN, type Recaps } from "../recaps/recaps.js";
 import { pageState, reducedPage, stateLine } from "./reduce.js";
 import { outflowLabel, type Outflow, type OutflowHit, type ReadPlace } from "../outflow/outflow.js";
+import { mask, urlDecoded } from "../outflow/detect.js";
 import { say } from "../i18n.js";
 import { isSensitive } from "../access/sensitive.js";
 import { labelFilled, labelWritten, maskedRuns, passportHits } from "../mask/mask.js";
@@ -1125,8 +1126,20 @@ export function createToolsServer(
   /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks);
    *  `clicks`: what the link followed spells with the ones before it, judged first. */
   function danger(url: string, clicks?: OutflowHit): { danger?: string } {
-    const hit = clicks ?? checkOutflow(url, true);
+    const hit = clicks ?? checkOutflow(url, true) ?? maskedNameIn(url);
     return hit ? { danger: OUTFLOW_DANGER(locale(), hit) } : {};
+  }
+  /** A word (4+ letters: particles like « du », « Dr » are left out) of a name this conversation masked, written in
+   *  `url`: the agent may spell a masked name it saw in clear elsewhere (a sender's domain). Case, accents and separators ignored. */
+  function maskedNameIn(url: string): OutflowHit | undefined {
+    const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const address = fold(urlDecoded(blankIssued(url)));
+    for (const e of labels.entries("sources")) {
+      if (e.type !== "nom") continue;
+      const word = e.raw.split(/[^\p{L}]+/u).find((w) => w.length >= 4 && address.includes(fold(w)));
+      if (word) return { kind: "name", masked: mask(word), ...(e.origins[0] ? { source: siteOf(e.origins[0]) } : {}) };
+    }
+    return undefined;
   }
 
   /**

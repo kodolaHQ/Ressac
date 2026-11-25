@@ -3,7 +3,7 @@ import { digitWord, rewrite, spelled } from "./spelled.js";
 import { findSecrets, mask, opaque, plain, urlDecoded, variants, type SecretKind } from "./detect.js";
 
 export interface OutflowHit {
-  kind: SecretKind | "email" | "phone" | "digits" | "token" | "series" | "clicks";
+  kind: SecretKind | "email" | "phone" | "digits" | "token" | "series" | "clicks" | "name";
   masked: string;
   source?: string;
 }
