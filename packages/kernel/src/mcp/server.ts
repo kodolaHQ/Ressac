@@ -1138,12 +1138,12 @@ export function createToolsServer(
    *  `clicks`: what the link followed spells with the ones before it, judged first. */
   function danger(url: string, clicks?: OutflowHit): { danger?: string } {
     const hit = clicks ?? checkOutflow(url, true) ?? maskedNameIn(url);
-    if (hit) return { danger: OUTFLOW_DANGER(locale(), hit) };
     // The fallback: a word of its host the agent read only in the user's sources (an employer, a shop on a statement).
     const host = URL.canParse(url) ? domainToUnicode(new URL(url).hostname) : "";
-    const read = outflow?.sourceWord(key, foldedWords(host).filter((w) => !HOST_STOP_WORDS.has(w)));
-    // Sent before its page is read: that page showing the words does not make them the web's.
+    const read = hit ? undefined : outflow?.sourceWord(key, foldedWords(host).filter((w) => !HOST_STOP_WORDS.has(w)));
+    // Sent before its page is read, whatever line it got: that page showing the words does not make them the web's.
     outflow?.wrote(key, host);
+    if (hit) return { danger: OUTFLOW_DANGER(locale(), hit) };
     return read ? { danger: l10n("kernel-outflow-danger-source-word", { source: read.source, masked: mask(read.word) }) } : {};
   }
   /** A whole word of a name this conversation masked, written in `out` (an address or a query): the agent may spell a

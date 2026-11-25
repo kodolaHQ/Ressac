@@ -626,3 +626,23 @@ test("source words: the agent's own address keeps them after its page shows them
     expect(await danger("https://moncompte.test/")).toBeUndefined();
   });
 });
+
+test("source words: an address that gets another red line still keeps its host words from its page", async () => {
+  const bank: TabInfo = { id: "banque", title: "Relevé", url: "https://www.banque-ardoise.test/compte/releve", space: "perso", agentReached: false };
+  const site: TabInfo = { id: "site", title: "Verreries Gerland", url: "https://www.verreries-gerland.test/", space: "perso", agentReached: true };
+  const pages = { banque: { text: "VIR SALAIRE VERRERIES GERLAND REF X7K2Q9TR4M8W" }, site: { text: "Verreries Gerland, verriers à Lyon" } };
+  const bridge = bridgeWith(pages, {}, [user, bank, site]);
+  await serve({ bridge, outflow: new Outflow() }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const danger = async (url: string) => {
+      await call("open_tab", { url, reason: "r" }, t);
+      return (bridge.calls.filter((c) => c.method === "askAddress").at(-1)!.args[0] as { url: string; danger?: string }).danger;
+    };
+    await call("read_tab", { id: "banque" }, t);
+    // Another line wins (an identifier read in the statement), and the host words are still the agent's own.
+    expect(await danger("https://www.verreries-gerland.test/?ref=X7K2Q9TR4M8W")).toMatch(/^Contient/);
+    await call("read_tab", { id: "site" }, t);
+    expect(await danger("https://www.verreries-gerland.test/contact")).toContain("ve••••es");
+  });
+});
