@@ -147,6 +147,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("the host starts the external MCP without the kernel", async () => {
     const h = startHost();
+    h.rpc.notify("lab.enabled", { on: true });
     let e: { server: { state: string; port?: number } } | undefined;
     const end = Date.now() + 10_000;
     while (Date.now() < end) {
@@ -157,6 +158,50 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(e?.server.state).toBe("ready");
     expect(e?.server.port).toBeGreaterThan(0);
     expect(existsSync(join(h.root, ".ressac", "mcp.json"))).toBe(false);
+  });
+
+  it("tier-3 RPCs answer lab-off", async () => {
+    const h = startHost();
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, lab: false });
+    await expect(h.rpc.request("workflow.read", { target: { type: "action", id: "rappel" } })).rejects.toThrow("lab-off");
+    await expect(h.rpc.request("actions.list")).rejects.toThrow("lab-off");
+    await expect(h.rpc.request("sites.list")).rejects.toThrow("lab-off");
+    await expect(h.rpc.request("external.list")).rejects.toThrow("lab-off");
+    await expect(h.rpc.request("apps.act", { folder: "essai", action: "launch", window: "f1" })).rejects.toThrow("lab-off");
+    // Tier 2 still answers, and the chrome's shutdown paths are not refused.
+    expect(await h.rpc.request("home.read")).not.toBeNull();
+    await h.rpc.request("sites.closed", { id: "x" });
+  });
+
+  it("lab.enabled reaches the kernel: a running action stops when the lab goes off", async () => {
+    const { writeRunnableAction } = await import("../e2e/actions");
+    const h = startHost();
+    // A code block that never answers: the run lasts until it is stopped.
+    await writeRunnableAction(h.dataDir, "attente", { name: "Attente", code: "export default () => new Promise(() => {});" });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, lab: true });
+    const running = async () => (await h.rpc.request<{ running: unknown[] }>("actions.live")).running.length;
+    const launched = h.rpc.request<{ status: string }>("actions.launch", { id: "attente", input: null });
+    await expect.poll(running, { timeout: 20_000 }).toBe(1);
+    h.rpc.notify("lab.enabled", { on: false });
+    expect((await launched).status).toBe("interrupted");
+  });
+
+  it("the Atelier follows the lab: an open Atelier session is relaunched in Navigateur, workshop while off stays Navigateur", async () => {
+    const h = startHost();
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, lab: true });
+    h.rpc.notify("agent.mode", { mode: "workshop" });
+    const ready = () => h.data().split("fake agent ready>").length;
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
+    await until(() => ready() > 1);
+    const before = ready();
+    h.rpc.notify("lab.enabled", { on: false });
+    await until(() => ready() > before);
+    // Workshop asked while the lab is off (an old AI-off session saved in Atelier): the kernel would refuse it, Navigateur opens.
+    h.rpc.notify("agent.mode", { mode: "workshop" });
+    const again = ready();
+    await h.rpc.request("agent.start", { window: "f2", size: { cols: 80, rows: 24 } });
+    await until(() => ready() > again);
+    expect(JSON.stringify(h.states)).not.toContain("labo");
   });
 
   it("AI off: start runs no docker and makes no kernel; ai.enabled turns it on, then off", async () => {
@@ -556,6 +601,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("workflow.* answer a bad input with the UI's shapes", async () => {
     const h = startHost();
+    h.rpc.notify("lab.enabled", { on: true });
     const target = { type: "widget", id: "veille" };
     const bad = { type: "widget", id: "../x" };
     const failure = { ok: false, error: "Argument invalide" };
@@ -796,8 +842,9 @@ createServer((req, res) => {
         ...handlers,
       },
     });
-    // The apps need AI on (apps.act is refused while off).
+    // The apps need AI and the lab on (apps.act is refused while either is off).
     h.rpc.notify("ai.enabled", { on: true });
+    h.rpc.notify("lab.enabled", { on: true });
     return { h, chrome };
   };
   const list = (h: Host) => h.rpc.request<List>("apps.list");
@@ -888,7 +935,7 @@ createServer((req, res) => {
   it("deboguer pre-fills the window's agent and opens its panel", async () => {
     const given: unknown[] = [];
     const { h } = startApps({}, { "design.giveAgent": (p: unknown) => void given.push(p) });
-    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, lab: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     act(h, "debug");
@@ -899,7 +946,7 @@ createServer((req, res) => {
 
   it("the host stops the apps and the sessions on stdin close", async () => {
     const { h, chrome } = startApps();
-    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, lab: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     await launched(h, chrome);
@@ -914,7 +961,7 @@ createServer((req, res) => {
 
   it("a slow apps stop at quit does not hold back the sessions' stop", async () => {
     const { h, chrome } = startApps({ FAKE_DOCKER_SLOW_APP_STOP: "4" });
-    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, lab: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     await launched(h, chrome);
@@ -927,7 +974,7 @@ createServer((req, res) => {
 
   it("a failed apps stop at quit still stops the sessions", async () => {
     const { h } = startApps({ RESSAC_TEST_APPS_STOP_FAILS: "1" });
-    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, lab: true });
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("fake agent ready>"));
     const before = stops(h).length;
@@ -935,6 +982,20 @@ createServer((req, res) => {
     expect(await h.exited).toBe(0);
     expect(stops(h).slice(before)).toContain("cat /tmp/ressac-session-");
     expect(h.stderr()).toContain("simulated apps stop");
+  });
+
+  it("lab off stops the apps and the external MCP", async () => {
+    const { h, chrome } = startApps();
+    await launched(h, chrome);
+    let port = 0;
+    await expect.poll(async () => (port = (await h.rpc.request<{ server: { state: string; port?: number } }>("external.list")).server.port ?? 0), { timeout: 10_000 }).toBeGreaterThan(0);
+    const reaches = () => fetch(`http://127.0.0.1:${port}/`).then(() => true, () => false);
+    expect(await reaches()).toBe(true);
+    const before = stops(h);
+    h.rpc.notify("lab.enabled", { on: false });
+    await until(() => stops(h).slice(before.length).includes("RESSAC_APP=essai"));
+    await expect.poll(reaches, { timeout: 10_000 }).toBe(false);
+    await expect(h.rpc.request("apps.act", { folder: "essai", action: "launch", window: "f1" })).rejects.toThrow("lab-off");
   });
 
   it("appPortRange, the app tab and SchemaActionApplication", async () => {

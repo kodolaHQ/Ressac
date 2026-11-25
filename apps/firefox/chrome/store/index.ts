@@ -43,6 +43,7 @@ import { installCallPlayer } from "./call-player";
 import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, fileOf, parse as parseDecisions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { bindSites, relabelSiteWindows, sites, type SiteApps } from "./sites";
+import { labOn } from "../../shared/tiers";
 import { createStore, type Store } from "./store";
 import { installUpdates } from "./updates";
 import { installPreferencesCleanup } from "./preferences-cleanup";
@@ -654,6 +655,11 @@ async function start(): Promise<RessacStore> {
     if (shortcutLabel("design", s.settings) !== shortcutLabel("design", p.settings) || s.locale !== p.locale) design.refresh();
     if (s.locale !== p.locale) relabelSiteWindows();
     if (p.settings.aiEnabled && !s.settings.aiEnabled) void design.stopAll();
+    // The effective lab off (AI off included): design mode stops, the site apps' windows close (tier 3).
+    if (labOn(p.settings) && !labOn(s.settings)) {
+      void design.stopAll();
+      for (const id of sites.openIds()) void sites.close(id).catch((e) => console.error(`[sites] ${id} not closed:`, e));
+    }
   });
   bindApps(agent, openInTab, dataDir, { access: () => access, design, locale: () => store.state.locale });
   const history = createHistory(store, agent);

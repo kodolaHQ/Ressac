@@ -21,7 +21,7 @@ type Ext = { server: { state: string; port?: number; reason?: string }; projects
 type App = { folder: string; name: string; type: "app" | "poc" | "no-manifest"; createdAt: string; state: "stopped" | "running"; port?: number };
 const app = (folder: string, type: App["type"] = "app"): App => ({ folder: folder, name: folder, type, createdAt: "2026-11-07T00:00:00.000Z", state: "stopped" });
 
-function prepare(o: { port?: number; window?: string | null; sites?: { id: string; name: string }[]; siteApps?: App[] } = {}) {
+function prepare(o: { port?: number; window?: string | null; sites?: { id: string; name: string }[]; siteApps?: App[]; lab?: false } = {}) {
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "ressac-design-")));
   // Tried again: an external project's first review snapshot (git, in the background) may still be writing there.
   cleanup.push(async () => void (await until(() => { try { rmSync(dataDir, { recursive: true, force: true }); return true; } catch { return false; } }, (done) => done)));
@@ -42,6 +42,7 @@ function prepare(o: { port?: number; window?: string | null; sites?: { id: strin
   const broadcast = vi.fn();
   const design = createDesignHost({ dataDir, paths: paths, port: o.port ?? 0, home: homeDir, sites, siteApps: apps, prefill: prefill, chrome, notify: notify, broadcast });
   cleanup.push(() => design.stop());
+  if (o.lab !== false) void design.setLab(true);
   return { dataDir, paths: paths, home: homeDir, design, prefill: prefill, notify: notify, chrome, sites, siteApps: apps, diffuser: broadcast, calls };
 }
 
@@ -197,6 +198,23 @@ describe("design host", { timeout: 20_000 }, () => {
     expect(text).toMatch(/\/workspace\/\.ressac\/remarks\/site-tuning\/[^/]+\/batch\.json\] /);
     expect(text).not.toMatch(/[\r\n]/);
     expect(s.chrome.giveAgent).toHaveBeenCalledWith("f7");
+  });
+
+  it("the external MCP listens only while the lab is on", async () => {
+    const s = prepare({ lab: false });
+    // Nothing started it: off, and « Brancher » is refused.
+    expect((await list(s.design)).server.state).toBe("off");
+    expect(() => s.design.handlers["external.connect"]!({ name: "x" })).toThrow();
+    await s.design.setLab(true);
+    const { server } = await ready(s.design);
+    expect(server.state).toBe("ready");
+    const reaches = () => fetch(`http://127.0.0.1:${server.port}/`).then(() => true, () => false);
+    expect(await reaches()).toBe(true);
+    await s.design.setLab(false);
+    expect(await reaches()).toBe(false);
+    expect((await list(s.design)).server.state).toBe("off");
+    await s.design.setLab(true);
+    expect((await ready(s.design)).server.state).toBe("ready");
   });
 
   it("a start that fails otherwise than a held port (bad port): off, with the reason", async () => {

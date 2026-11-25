@@ -335,6 +335,18 @@ const aiOnly =
     if (!aiOn) throw new Error("ai-off");
     return f(p);
   };
+/** Wraps a tier-3 handler: refused while the effective lab is off, whatever the UI shows. */
+const labOnly =
+  <P, R>(f: (p: P) => R) =>
+  (p: P): R => {
+    if (!labOn) throw new Error("lab-off");
+    return f(p);
+  };
+// Every workflow.*, actions.*, design mode and sites.* handler but the chrome's shutdown paths (a window closing notes its frame).
+const LAB_FREE = new Set(["sites.ready", "sites.closed", "sites.tabDetached", "sites.note"]);
+const labRpc = (k: string) => !LAB_FREE.has(k) && (/^(workflow|actions|sites)\./.test(k) || (DESIGN_METHODS as readonly string[]).includes(k));
+const gateLab = <H extends Record<string, (p: never) => unknown>>(h: H): H =>
+  Object.fromEntries(Object.entries(h).map(([k, f]) => [k, labRpc(k) ? labOnly(f) : f])) as H;
 // `start` and `ai.enabled` run one after the other (the RPC runs each message in its own microtask): a quick off → on
 // must not see on's wake undone by off's stops still in flight. An off waits for a kernel launch in flight, then stops it.
 let aiSwitch: Promise<unknown> = Promise.resolve();
@@ -456,6 +468,8 @@ const denyWidget = async (w: string) => {
 // The profile of windows that have not chosen their agent. One kernel serves every profile: it starts once.
 let defaultProfile = "claude";
 // Settings: « browser » takes the agent's shell away at its next session (the panel relaunches it on a change).
+// `wantedMode` is the chrome's; the Atelier is tier 3, so `agentMode` is browser while the lab is off.
+let wantedMode: "browser" | "workshop" = "browser";
 let agentMode: "browser" | "workshop" = "browser";
 let kernelLaunched = false;
 
@@ -554,6 +568,35 @@ const applyAi = async () => {
   await ready;
 };
 
+/** The mode the sessions open in: the chrome's, browser while the lab is off. */
+const applyMode = () => {
+  const was = agentMode;
+  agentMode = labOn && wantedMode === "workshop" ? "workshop" : "browser";
+  // To Navigateur: no session (custom profiles too) keeps its shell, and no running app keeps running agent-written code.
+  // AI off: applyAi stops the sessions instead.
+  if (was === "workshop" && agentMode === "browser") {
+    void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
+    return aiOn ? sessions.relaunchActive() : undefined;
+  }
+  sessions.engineChanged("claude");
+  sessions.engineChanged("codex");
+};
+/** Brings the lab's parts to `labOn`: the kernel's gate, the external MCP, the actions watch and the agent's mode. */
+const applyLab = async () => {
+  const on = labOn;
+  if (on) watchActionsNow();
+  else {
+    const s = actionsStop;
+    actionsStop = undefined;
+    void s?.().catch(() => {});
+  }
+  await Promise.all([
+    design.setLab(on),
+    applyMode(),
+    kernel?.setLab(on).catch((e) => console.error(`[ressac] lab ${on ? "on" : "off"} failed:`, e)),
+  ]);
+};
+
 /** Ressac's own text for a window's agent, as it goes to it: masked with its session's table (nothing to mask without a kernel). */
 const maskForAgent = (win: string, text: string) => kernel?.masker.maskTyped(win, text).text ?? text;
 const sessions = new SessionsAgent({
@@ -617,7 +660,8 @@ function relieveMemory(): void {
 
 const rpc = createRpc({
   send: (line) => void writeStdout(line + "\n"),
-  handlers: {
+  // Tier-3 handlers refused while the lab is off (labRpc).
+  handlers: gateLab({
     // Sets the default profile and AI's state; with AI on the kernel starts once (its sessions stay).
     start: (p: StartParams) => {
       defaultProfile = p.agentProfile;
@@ -625,6 +669,7 @@ const rpc = createRpc({
       if (typeof p.locale === "string") setHostLocale(p.locale);
       aiOn = p.aiEnabled === true;
       labOn = p.lab === true;
+      void applyLab().catch((e) => console.error("[ressac] lab at start failed:", e));
       return serialAi(async () => {
         await applyAi();
         return aiOn ? start() : null;
@@ -637,7 +682,9 @@ const rpc = createRpc({
     },
     "lab.enabled": (p: { on?: unknown }) => {
       labOn = p?.on === true;
-      return kernel?.setLab(labOn).catch((e) => console.error(`[ressac] lab ${labOn ? "on" : "off"} failed:`, e));
+      // Off: no agent app keeps running agent-written code (site app windows: the chrome closes them).
+      if (!labOn) void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
+      return applyLab();
     },
     // Once, for a session saved before tiers: does the user already use the lab? The chrome sends its saved mode (no
     // `agent.mode` has come yet). Widget tiers come with Task 6.
@@ -660,15 +707,8 @@ const rpc = createRpc({
     },
     "agent.current": (p: { window: string }) => sessions.profileOf(p.window),
     "agent.mode": (p: { mode: unknown }) => {
-      const was = agentMode;
-      agentMode = p?.mode === "workshop" ? "workshop" : "browser";
-      // To Navigateur: no session (custom profiles too) keeps its shell, and no running app keeps running agent-written code.
-      if (was === "workshop" && agentMode === "browser") {
-        void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
-        return sessions.relaunchActive();
-      }
-      sessions.engineChanged("claude");
-      sessions.engineChanged("codex");
+      wantedMode = p?.mode === "workshop" ? "workshop" : "browser";
+      return applyMode();
     },
     "agent.codexEngine": (p: { engine: unknown }) => {
       const r = CodexEngineSchema.safeParse(p?.engine);
@@ -1114,7 +1154,7 @@ const rpc = createRpc({
       : {}),
     // The agent's applications (host/applications.ts): `apps` is made after the RPC, below.
     ...Object.fromEntries(["apps.list", "apps.windowClosed", "apps.navigation", "apps.note"].map((k) => [k, (p: unknown) => apps.handlers[k]!(p)])),
-    "apps.act": aiOnly((p: unknown) => apps.handlers["apps.act"]!(p)),
+    "apps.act": aiOnly(labOnly((p: unknown) => apps.handlers["apps.act"]!(p))),
     // Design mode's host side (host/design.ts): `design` is made after `sites`, below.
     // The settings page (host/settings.ts): `settings` is made after `sites` and `actions`, below.
     ...Object.fromEntries(SETTINGS_METHODS.map((k) => [k, AI_SETTINGS.has(k) ? aiOnly((p: unknown) => settings[k]!(p)) : (p: unknown) => settings[k]!(p)])),
@@ -1126,7 +1166,7 @@ const rpc = createRpc({
           "debug.outflowCheck": (p: { window: string; text: string }) => kernel?.outflow.check(p.window, p.text) ?? null,
         }
       : {}),
-  },
+  }),
 });
 // Errors go to Firefox, which reports them (chrome/store/telemetry.ts), on top of the stderr log.
 const reportError = (e: unknown) => {
@@ -1257,11 +1297,15 @@ const design = createDesignHost({
 // Actions: the kernel and disk half; the chrome keeps the window state (private spaces, tabs, pace of links).
 const actions = createActionsHost({ paths: paths, actionsFolder: actionsFolder, kernel: () => kernel, onChange: () => rpc.notify("actions.change") });
 // The actions and components folders, watched outside the kernel: the page lists even without it.
+// While the lab is on (applyLab).
 let actionsStop: (() => Promise<void>) | undefined;
-try {
-  actionsStop = watchActions(paths, () => rpc.notify("actions.change"));
-} catch (e) {
-  console.error("[ressac] the actions watch did not start:", e);
+function watchActionsNow() {
+  if (actionsStop) return;
+  try {
+    actionsStop = watchActions(paths, () => rpc.notify("actions.change"));
+  } catch (e) {
+    console.error("[ressac] the actions watch did not start:", e);
+  }
 }
 let fakeSwitched = false;
 const settings = createSettingsHandlers({

@@ -56,6 +56,8 @@ export interface DesignHost {
   siteDeleted(id: string): void;
   /** A deleted agent app: the same, for `app-<folder>`. */
   appDeleted(folder: string): void;
+  /** The lab on or off: the external MCP server starts or stops (resolved once it did). */
+  setLab(on: boolean): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -130,32 +132,46 @@ export function createDesignHost(o: {
   const purge = setInterval(() => void remarks.purge().catch(() => undefined), 24 * 60 * 60 * 1000);
   purge.unref();
   remarks.onChange(o.broadcast);
-  const started = ExternalRegistry.open(folders.private)
-    .then((r) => {
-      registry = r;
-      r.onChange(o.broadcast);
-      // Never another port when this one is held.
-      return startExternals({
-        registry: r,
-        remarks: remarks,
-        folders: folders,
-        port: o.port,
-        ranges: containerRanges(process.env.RESSAC_APP_PORTS),
-        // Stricter than the space root: nothing under the profile folder can be declared.
-        spaceRoot: o.dataDir,
-        home: o.home ?? homedir(),
-        notify: o.notify,
-        ...(o.refuse ? { refuse: o.refuse } : {}),
-      }).then((service) => {
-        externals = service;
+  const opened = ExternalRegistry.open(folders.private).then((r) => {
+    registry = r;
+    r.onChange(o.broadcast);
+    return r;
+  });
+  // Its failure shows through setLab's start (failure, below).
+  opened.catch(() => {});
+  // The external MCP server listens only while the lab is on: each switch waits for the one before.
+  let switching: Promise<void> = Promise.resolve();
+  const setLab = (on: boolean): Promise<void> =>
+    (switching = switching.then(async () => {
+      if (!on) {
+        const e = externals;
+        externals = null;
+        if (e) await e.stop().catch((err) => console.error("[design] external MCP not stopped:", err));
         o.broadcast();
-      });
-    })
-    .catch((e) => {
-      console.error("[design] projets externes indisponibles :", e);
-      failure = failureReason(e);
+        return;
+      }
+      if (externals) return;
+      try {
+        // Never another port when this one is held.
+        externals = await startExternals({
+          registry: await opened,
+          remarks: remarks,
+          folders: folders,
+          port: o.port,
+          ranges: containerRanges(process.env.RESSAC_APP_PORTS),
+          // Stricter than the space root: nothing under the profile folder can be declared.
+          spaceRoot: o.dataDir,
+          home: o.home ?? homedir(),
+          notify: o.notify,
+          ...(o.refuse ? { refuse: o.refuse } : {}),
+        });
+        failure = null;
+      } catch (e) {
+        console.error("[design] projets externes indisponibles :", e);
+        failure = failureReason(e);
+      }
       o.broadcast();
-    });
+    }));
 
   // The design service's project logic: applis() is the running apps with a port.
   const running = async () => (await o.siteApps()).flatMap((a) => (a.state === "running" && a.port !== undefined ? [{ folder: a.folder, name: a.name, port: a.port }] : []));
@@ -301,12 +317,12 @@ export function createDesignHost(o: {
     appsChanged: takeOverSoon,
     siteDeleted: (id) => projectDeleted(`site-${id}`),
     appDeleted: (folder) => projectDeleted(`app-${folder}`),
+    setLab,
     stop: async () => {
       clearInterval(purge);
       clearTimeout(takeOverTimer);
-      // A server still starting would otherwise outlive the host.
-      await started;
-      await externals?.stop();
+      // After a start in flight: a server still starting would otherwise outlive the host.
+      await setLab(false);
     },
   };
 }

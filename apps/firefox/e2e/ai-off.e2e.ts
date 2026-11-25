@@ -119,7 +119,8 @@ it("off: shortcuts show the asleep card and start nothing", async () => {
   await pressKeys(m, "Meta+Shift+d");
   await panelShown(true);
   await shown(tid("ai-asleep-agent"), "agent");
-  expect(await m.execute(`return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return (await d.state({ type: "window", windowId: window.ressacWindow.windowId })).active; })();`)).toBe(false);
+  // AI off turns the lab off: the host refuses design mode (its start reads design.tracking too), so none started.
+  expect(await m.execute(`return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; return d.state({ type: "window", windowId: window.ressacWindow.windowId }).then((s) => s.active, (e) => e.message); })();`)).toBe("lab-off");
   expect(dockerCalls()).toEqual([]);
 });
 
