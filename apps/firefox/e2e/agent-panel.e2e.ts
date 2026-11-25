@@ -115,7 +115,7 @@ it("the panel runs the real CLI with the session's MCP config", async () => {
   ]);
 });
 
-it("« Atelier » relaunches the agent with its shell, the choice is saved, another window offers « Relancer »", async () => {
+it("« Atelier » relaunches the agent with its shell, the choice is saved, another window's agent is relaunched in Atelier too", async () => {
   await launch();
   await homeAgent();
   const args = () => read(join(w!.dataDir, "workspace", "fake-agent-args.json"));
@@ -131,16 +131,24 @@ it("« Atelier » relaunches the agent with its shell, the choice is saved, anot
     await terminalShows("fake agent ready>");
   });
   expect(args()).toContain("Bash");
+  // Every session docker started, in order; both windows relaunch at once, so the last args file may be either's.
+  const sessions = () => read(join(w!.dataDir, "workspace", "fake-docker-all.log")).split("\n").filter((l) => l.includes("ressac-session"));
+  const before = sessions().length;
   await m.command("WebDriver:SwitchToWindow", { handle: first, focus: true });
   await click(m, '[data-testid="agent-mode-workshop"]', { frame: "agent" });
   await waitUi(m, "return doc.querySelector('[data-testid=\"agent-mode-workshop\"]').getAttribute('aria-checked') === 'true'", [], 10_000, "agent");
   // The relaunch resumes the conversation, now with the shell.
-  await expect.poll(args, { timeout: 20_000 }).toContain(`"--resume","${id}"`);
-  expect(args()).not.toMatch(/--tools|Bash|launch_app|strict-mcp-config/);
+  await expect.poll(() => sessions().slice(before).find((l) => l.includes(`--resume ${id}`)) ?? "", { timeout: 20_000 }).toContain("--resume");
+  expect(sessions().slice(before).find((l) => l.includes(`--resume ${id}`))).not.toMatch(/--tools|Bash|launch_app|strict-mcp-config/);
   expect((await state(m)).settings.agentMode).toBe("workshop");
-  // The other window's agent still runs in browser mode: its panel offers the relaunch.
-  await inWindow(m, second, () => waitUi(m, "return !!doc.querySelector('[data-testid=\"agent-engine-changed\"]')", [], 10_000, "agent"));
-  await waitUi(m, "return !doc.querySelector('[data-testid=\"agent-engine-changed\"]')", [], 10_000, "agent");
+  // The container is recreated with Atelier's mounts: the other window's agent cannot stay in the removed one, it is relaunched in Atelier.
+  await expect.poll(() => sessions().slice(before).filter((l) => !l.includes(`--resume ${id}`)).length, { timeout: 20_000 }).toBeGreaterThanOrEqual(1);
+  expect(sessions().slice(before).some((l) => l.includes("Bash,mcp__ressac__launch_app"))).toBe(false);
+  expect(read(join(w!.dataDir, "workspace", "fake-docker-shape"))).toBe("1-workshop");
+  await inWindow(m, second, async () => {
+    await terminalShows("fake agent ready>");
+    expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"agent-engine-changed\"]')", [], "agent")).toBe(false);
+  });
 });
 
 it("« Navigateur » relaunches the Atelier session of another window in Navigateur too", async () => {

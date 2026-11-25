@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { validFolder } from "../applications/manifest.js";
 import { CONTAINER_PATH, KERNEL_ROOT, type SpacePaths } from "../paths.js";
@@ -100,6 +100,11 @@ export const WORKSHOP_MEMORY = 2.5 * 2 ** 30;
 export const DEFAULT_DOCKER_FOLDER = join(KERNEL_ROOT, "docker");
 const dockerfile = (folder: string) => join(folder, "workshop.Dockerfile");
 const HASH_LABEL = "ressac.dockerfile";
+/** The container's mounts by mode (not in the image: a change recreates only the container). Bump on a mount change. */
+const SHAPE_LABEL = "ressac.shape";
+const CONTAINER_SHAPE_VERSION = 1;
+/** Tier-3 code folders: read-only in Navigateur. */
+const TIER3_FOLDERS = ["actions", "sites", "components"] as const;
 
 /** Hash of the Dockerfile: the image and the container carry it as a label, to know whether they are up to date. */
 export function dockerfileHash(dockerFolder = DEFAULT_DOCKER_FOLDER): string {
@@ -257,6 +262,7 @@ export class Workshop {
   private readonly dockerFolder: string;
   private readonly locale: () => string;
   private readonly network: (() => AgentNetwork) | undefined;
+  private readonly browserMode: () => boolean;
   private securing: Promise<void> | null = null;
   private applying = "";
   /** The rules are known to be in place since the container's last start. */
@@ -271,8 +277,10 @@ export class Workshop {
   private readonly listeners = new Set<(p: BuildProgress) => void>();
 
   /** `docker` / `findDocker`: shorthands for a Docker engine. */
-  constructor(o: { paths: SpacePaths; run?: Runner; engine?: () => ContainerEngine; docker?: string | null; findDocker?: () => string | null; dockerFolder?: string; locale?: () => string; network?: () => AgentNetwork }) {
+  constructor(o: { paths: SpacePaths; run?: Runner; engine?: () => ContainerEngine; docker?: string | null; findDocker?: () => string | null; dockerFolder?: string; locale?: () => string; network?: () => AgentNetwork; browserMode?: () => boolean }) {
     this.network = o.network;
+    // Absent: Navigateur (fail closed).
+    this.browserMode = o.browserMode ?? (() => true);
     this.locale = o.locale ?? (() => "en");
     this.dockerFolder = o.dockerFolder ?? DEFAULT_DOCKER_FOLDER;
     this.paths = o.paths;
@@ -349,13 +357,26 @@ export class Workshop {
     return e.kind === "machine" && (s === "machine-stopped" || s === "stopped" || s === "absent") && (await e.harvestable?.().catch(() => false)) !== false;
   }
 
-  /** Is the existing container mounted on the right root and built from the current Dockerfile? */
+  private shape(): string {
+    return `${CONTAINER_SHAPE_VERSION}-${this.browserMode() ? "browser" : "workshop"}`;
+  }
+
+  /** Is the existing container mounted on the right root, with the mode's mounts, and built from the current Dockerfile? */
   private async containerUpToDate(hash: string): Promise<boolean> {
-    const format = `{{range .Mounts}}{{if eq .Destination "${CONTAINER_PATH}"}}{{.Source}}{{end}}{{end}}|{{index .Config.Labels "${HASH_LABEL}"}}|{{.HostConfig.Memory}}`;
+    const format = `{{range .Mounts}}{{if eq .Destination "${CONTAINER_PATH}"}}{{.Source}}{{end}}{{end}}|{{index .Config.Labels "${HASH_LABEL}"}}|{{.HostConfig.Memory}}|{{index .Config.Labels "${SHAPE_LABEL}"}}`;
     const r = await this.launch(["inspect", "-f", format, containerName()], PROBE_DELAY_MS);
-    const [source = "", label = "", memory = ""] = r.stdout.trim().split("|");
+    const [source = "", label = "", memory = "", shape = ""] = r.stdout.trim().split("|");
+    // Under the lock the shape waits for the lift: the reveal stamp lives in the container (the kernel refuses the sessions meanwhile).
+    const shapeOk = shape === this.shape() || this.network?.().locked === true;
     // A cap that no longer fits (the machine resized) recreates only the container: the image and the volumes stay.
-    return r.code === 0 && normalize(source) === normalize(this.paths.root) && label === hash && Number(memory) === this.memory();
+    return r.code === 0 && normalize(source) === normalize(this.paths.root) && label === hash && Number(memory) === this.memory() && shapeOk;
+  }
+
+  /** The existing container was made for the other mode (false when there is none). */
+  async shapeChanged(): Promise<boolean> {
+    if (!this.docker) return false;
+    const r = await this.launch(["inspect", "-f", `{{index .Config.Labels "${SHAPE_LABEL}"}}`, containerName()], PROBE_DELAY_MS);
+    return r.code === 0 && r.stdout.trim() !== this.shape();
   }
 
   /**
@@ -654,6 +675,13 @@ export class Workshop {
     // again since initSpace, and an app launch or Réglages › Redémarrer starts the container without initSpace.
     await realInternal(this.paths);
     await mkdir(this.paths.logs, { recursive: true });
+    const shape = this.shape();
+    const browser = shape.endsWith("-browser");
+    // A link would mount its target read-only while the agent writes it through the workspace: refused (fail closed).
+    for (const f of TIER3_FOLDERS) {
+      await mkdir(this.paths[f], { recursive: true });
+      if (!(await lstat(this.paths[f])).isDirectory()) throw new Error(say(this.locale(), "kernel-container-start-failed", { name: containerName(), error: `${this.paths[f]} is not a folder` }));
+    }
     const run = await this.launch([
       "run", "-d",
       "--name", containerName(),
@@ -665,6 +693,9 @@ export class Workshop {
       "-v", `${this.paths.internal}:${CONTAINER_PATH}/.ressac:ro`,
       "-v", `${this.paths.logs}:${CONTAINER_PATH}/.ressac/logs`,
       "-v", `${VOLUME_HOME}:/home/node`,
+      // Navigateur: the agent cannot write tier-3 code (actions, site apps, components); a mount point cannot be renamed away.
+      ...(browser ? TIER3_FOLDERS.flatMap((f) => ["-v", `${this.paths[f]}:${CONTAINER_PATH}/${f}:ro`]) : []),
+      "--label", `${SHAPE_LABEL}=${shape}`,
       "-p", `127.0.0.1:${ports}:${ports}`,
       // AGENTS.md tells the agent to keep its hand-run servers in this range.
       "-e", `RESSAC_PORTS=${ports}`,

@@ -164,7 +164,7 @@ test("at launch, once the container is ready, the agents of a previous app are s
   // Up-to-date container: the mount probe returns the expected root and hash.
   const { dockerfileHash } = await import("../src/container/workshop.js");
   const runUpToDate: typeof run = (c, args, o) =>
-    args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}|2684354560\n`, stderr: "" }) : run(c, args, o);
+    args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}|2684354560|1-browser\n`, stderr: "" }) : run(c, args, o);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
   kernel = await createKernel({ lab: () => true, maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
   await kernel.openAgentSession({ cols: 80, rows: 24, mode: "workshop" }).then((s) => s.stop(), () => {});
@@ -385,7 +385,7 @@ async function instructionScript(root: string, args: string[], input: string) {
 
 /** The commands the last createReady's workshop ran. */
 let runs: { args: string[] }[] = [];
-async function createReady(locale: () => string = () => "fr", o: { lab?: () => boolean; instructionsFail?: boolean; writeFail?: boolean; bridge?: FakeBridge; onLock?: () => Promise<void> } = {}) {
+async function createReady(locale: () => string = () => "fr", o: { lab?: () => boolean; instructionsFail?: boolean; writeFail?: boolean; bridge?: FakeBridge; onLock?: () => Promise<void>; shape?: string } = {}) {
   const root = await tempFolder();
   const { run, calls } = fakeRunner([
     [/ info$/, { code: 0 }],
@@ -400,8 +400,10 @@ async function createReady(locale: () => string = () => "fr", o: { lab?: () => b
         : { code: 0, stdout: await instructionScript(root, args, opts!.input!), stderr: "" }
       : args.includes("{{.State.Running}}")
         ? run(c, args, opts)
-        : args[0] === "inspect"
-          ? { code: 0, stdout: `${root}|${dockerfileHash()}|2684354560\n`, stderr: "" }
+        : args.includes('{{index .Config.Labels "ressac.shape"}}')
+          ? { code: 0, stdout: `${o.shape ?? "1-browser"}\n`, stderr: "" }
+          : args[0] === "inspect"
+          ? { code: 0, stdout: `${root}|${dockerfileHash()}|2684354560|${o.shape ?? "1-browser"}\n`, stderr: "" }
           : run(c, args, opts);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
   kernel = await createKernel({ lab: o.lab ?? (() => true), maskingFolder: `${root}-masking`, locale: locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: o.bridge ?? new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop, ...(o.onLock ? { onLock: o.onLock } : {}) });
@@ -488,6 +490,12 @@ test("the lift is refused while a conversation is open; once it ended, the lock 
   expect(await n.masking.quarantine.list()).toEqual([]);
   (await n.openAgentSession({ cols: 80, rows: 24, window: "F2" })).stop();
   expect(n.masker.locks().some((l) => l.locked())).toBe(false);
+});
+
+test("under the lock a shape change refuses the session", async () => {
+  const n = await createReady(() => "fr", { shape: "1-workshop" });
+  await n.workspaceLock.lock({ names: ["votre code"] });
+  await expect(n.openAgentSession({ cols: 80, rows: 24, window: "F1" })).rejects.toThrow("Le mode a changé pendant le verrou : levez d'abord le verrou pour ouvrir une conversation.");
 });
 
 test("while a lift runs, the same lift shares it and another choice is refused", async () => {

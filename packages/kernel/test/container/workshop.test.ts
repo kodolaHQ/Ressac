@@ -92,7 +92,7 @@ test("ensureStarted on absent: build if the image is missing then run with the r
 test("ensureStarted on arrete → docker start", async () => {
   let started = false;
   const { run: runCall, calls } = fakeRunner([
-    [/ inspect -f .*Mounts/, { code: 0, stdout: `${paths.root}|${dockerfileHash()}|2684354560\n` }],
+    [/ inspect -f .*Mounts/, { code: 0, stdout: `${paths.root}|${dockerfileHash()}|2684354560|1-browser\n` }],
     [/ inspect -f/, () => ({ code: 0, stdout: started ? "true\n" : "false\n" })],
     [/ start /, () => ((started = true), { code: 0 })],
   ]);
@@ -137,13 +137,13 @@ test("defaultRunner adds ~/.docker/bin to the PATH (credential helpers)", () => 
 });
 
 // Existing container created on another folder or with an old Dockerfile → recreated.
-function fakeDocker(o: { source: string; containerHash: string; imageHash: string; running?: string; memory?: number }) {
+function fakeDocker(o: { source: string; containerHash: string; imageHash: string; running?: string; memory?: number; shape?: string }) {
   let recreated = false;
   const f = fakeRunner([
     [/ info$/, { code: 0 }],
     [/ image inspect /, { code: 0, stdout: `${o.imageHash}\n` }],
     [/ inspect -f \{\{\.State\.Running\}\}/, () => ({ code: 0, stdout: recreated ? "true\n" : (o.running ?? "true\n") })],
-    [/ inspect -f .*Mounts/, () => ({ code: 0, stdout: recreated ? "" : `${o.source}|${o.containerHash}|${o.memory ?? 2684354560}\n` })],
+    [/ inspect -f .*Mounts/, () => ({ code: 0, stdout: recreated ? "" : `${o.source}|${o.containerHash}|${o.memory ?? 2684354560}|${o.shape ?? "1-browser"}\n` })],
     [/ rm -f ressac-workshop/, () => ((recreated = true), { code: 0 })],
   ]);
   return f;
@@ -172,6 +172,50 @@ test("docker run never mounts a .ressac linked again after initSpace (a process 
   await new Workshop({ paths: c, docker: "docker", run: runCall }).ensureStarted();
   expect(internalAtRun).toBe(true);
   expect(readdirSync(outside)).toEqual([]);
+});
+
+test("browser shape mounts the three tier-3 folders read-only", async () => {
+  const { run: runCall, calls } = fakeRunner([[/ image inspect /, { code: 0 }], [/ inspect -f/, { code: 1 }]]);
+  await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted();
+  const run = calls.find((a) => a.args[0] === "run")!.args;
+  expect(run.join(" ")).toContain("--label ressac.shape=1-browser");
+  for (const f of ["actions", "sites", "components"]) expect(run.join(" ")).toContain(`-v ${ROOT}/${f}:/workspace/${f}:ro`);
+});
+
+test("workshop shape has no such mount", async () => {
+  const { run: runCall, calls } = fakeRunner([[/ image inspect /, { code: 0 }], [/ inspect -f/, { code: 1 }]]);
+  await new Workshop({ paths: paths, docker: "docker", run: runCall, browserMode: () => false }).ensureStarted();
+  const run = calls.find((a) => a.args[0] === "run")!.args.join(" ");
+  expect(run).toContain("--label ressac.shape=1-workshop");
+  expect(run).not.toMatch(/\/(actions|sites|components):ro/);
+});
+
+test("a shape change recreates the container without building the image", async () => {
+  const e = dockerfileHash();
+  const { run: runCall, calls } = fakeDocker({ source: paths.root, containerHash: e, imageHash: e, shape: "1-workshop" });
+  await new Workshop({ paths: paths, docker: "docker", run: runCall }).ensureStarted();
+  expect(calls.some((a) => a.args.join(" ") === "rm -f ressac-workshop")).toBe(true);
+  expect(calls.some((a) => a.args[0] === "run")).toBe(true);
+  expect(calls.some((a) => a.args[0] === "build")).toBe(false);
+});
+
+test("under the lock the shape is kept: a recreate would lose the reveal stamp", async () => {
+  const e = dockerfileHash();
+  const { run: runCall, calls } = fakeDocker({ source: paths.root, containerHash: e, imageHash: e, shape: "1-workshop" });
+  const w = new Workshop({ paths: paths, docker: "docker", run: runCall, network: () => ({ ports: [], domains: [], locked: true }) });
+  vi.spyOn(w, "secureNetwork").mockResolvedValue();
+  await w.ensureStarted();
+  expect(calls.some((a) => a.args[0] === "rm")).toBe(false);
+  expect(await w.shapeChanged()).toBe(true);
+});
+
+test("a linked actions folder refuses the start", async () => {
+  const root = mkdtempSync(join(tmpdir(), "ressac-linked-actions-"));
+  const c = spacePaths(root);
+  symlinkSync(mkdtempSync(join(tmpdir(), "ressac-outside-")), c.actions);
+  const { run: runCall, calls } = fakeRunner([[/ image inspect /, { code: 0 }], [/ inspect -f/, { code: 1 }]]);
+  await expect(new Workshop({ paths: c, docker: "docker", run: runCall }).ensureStarted()).rejects.toThrow(c.actions);
+  expect(calls.some((a) => a.args[0] === "run")).toBe(false);
 });
 
 test("existing container mounted on another folder → removed then recreated", async () => {
@@ -480,7 +524,7 @@ test("a failed docker run removes the half-created container, so the next start 
 });
 
 describe("restart, rebuild, exec", () => {
-  const upToDate = `${paths.root}|${dockerfileHash()}|2684354560\n`;
+  const upToDate = `${paths.root}|${dockerfileHash()}|2684354560|1-browser\n`;
 
   test("restart stops then starts", async () => {
     let started = false;
@@ -636,7 +680,7 @@ describe("the container from before the rename to Ressac", () => {
     const { run: off, calls: offCalls } = fakeRunner([[/ info/, { code: 1, stderr: "Cannot connect" }]]);
     expect(await new Workshop({ paths: paths, docker: "docker", run: off }).ensureStarted()).toBe("docker-absent");
     expect(offCalls.some((c) => c.args[0] === "rm")).toBe(false);
-    const { run: on, calls } = fakeRunner([[/ inspect -f \{\{\.State/, { code: 0, stdout: "true\n" }], [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}|2684354560\n` }]]);
+    const { run: on, calls } = fakeRunner([[/ inspect -f \{\{\.State/, { code: 0, stdout: "true\n" }], [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}|2684354560|1-browser\n` }]]);
     expect(await new Workshop({ paths: paths, docker: "docker", run: on }).ensureStarted()).toBe("started");
     expect(calls.some((c) => c.args[0] === "rm")).toBe(false);
   });
@@ -791,7 +835,7 @@ describe("agent network", () => {
     let started = false;
     const stopped = fakeRunner([
       [/ inspect -f \{\{\.State/, () => ({ code: 0, stdout: started ? "true\n" : "false\n" })],
-      [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}|2684354560\n` }],
+      [/ inspect /, { code: 0, stdout: `${paths.root}|${dockerfileHash()}|2684354560|1-browser\n` }],
       [/ start /, () => ((started = true), { code: 0 })],
       [/curl/, { code: 7 }],
     ]);

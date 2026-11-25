@@ -238,7 +238,7 @@ const engines = createEngines({
   copyLogins: () => copyLogins({ docker: dockerContainers.binary()!, podman: machine.binary(), podmanArgs: machine.args(), run: runTool }),
   marker: join(testMachine ? dataDir : MACHINE_HOME, "logins-copied"),
 });
-const workshop = new Workshop({ paths: paths, locale: () => hostLocale(), engine: () => engines.current(), network: () => ({ ports: [kernel?.mcpPort, relay.port].filter((p): p is number => typeof p === "number"), domains: agentDomains, locked: workspaceLock.locked() }) });
+const workshop = new Workshop({ paths: paths, locale: () => hostLocale(), engine: () => engines.current(), browserMode: () => agentMode === "browser", network: () => ({ ports: [kernel?.mcpPort, relay.port].filter((p): p is number => typeof p === "number"), domains: agentDomains, locked: workspaceLock.locked() }) });
 
 let kernel: Kernel | null = null;
 let error: string | null = null;
@@ -584,9 +584,10 @@ const applyAi = async () => {
 const applyMode = () => {
   const was = agentMode;
   agentMode = labOn && wantedMode === "workshop" ? "workshop" : "browser";
-  // To Navigateur: no session (custom profiles too) keeps its shell, and no running app keeps running agent-written code
-  // (with the lab going off, relab stops them: one call). AI off: applyAi stops the sessions instead.
-  if (was === "workshop" && agentMode === "browser") {
+  // A change recreates the container with the mode's mounts (Workshop's shape): no session or app stays in the one removed.
+  // To Navigateur, too, no session (custom profiles too) keeps its shell, nor app agent-written code (with the lab going off,
+  // relab stops them: one call). AI off: applyAi stops the sessions instead.
+  if (was !== agentMode) {
     if (labOn) void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
     return aiOn ? sessions.relaunchActive() : undefined;
   }

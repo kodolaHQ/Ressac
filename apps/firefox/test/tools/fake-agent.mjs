@@ -4,7 +4,8 @@ import { join } from "node:path";
 
 const root = process.env.RESSAC_ROOT;
 // Written whole (temp file, then rename): tests poll these files and must never read half of one.
-const put = (f, v) => (writeFileSync(`${f}.tmp`, v), renameSync(`${f}.tmp`, f));
+// A temp name per process: two agents starting at once (both windows relaunched) never rename each other's.
+const put = (f, v) => (writeFileSync(`${f}.${process.pid}.tmp`, v), renameSync(`${f}.${process.pid}.tmp`, f));
 put(join(root, "fake-agent-args.json"), JSON.stringify(process.argv.slice(2)));
 put(join(root, "fake-agent-pid"), String(process.pid));
 const invite = () => process.stdout.write("fake agent ready> ");

@@ -812,6 +812,8 @@ export async function createKernel(o: {
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);
       // A custom profile's command is not held to Navigateur's limits, and one may have been planted while `.ressac` was writable.
       if (mode === "browser" && !(chosen.id in SHIPPED_PROFILES)) throw new Error(say(loc(), "kernel-err-custom-profile-browser", { name: chosen.name }));
+      // Before the start, which would recreate the container for the new mode and lose the reveal stamp it holds.
+      if (workspaceLock.locked() && (await workshop.shapeChanged())) throw new Error(say(loc(), "kernel-err-shape-locked"));
       const first = startup;
       startup = null;
       const attempt = first ? first.then(() => workshop.ensureStarted()) : workshop.ensureStarted();

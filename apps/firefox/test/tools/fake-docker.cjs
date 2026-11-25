@@ -3,7 +3,8 @@
 const { createHash } = require("node:crypto");
 const { appendFileSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } = require("node:fs");
 // Written whole (temp file, then rename): tests poll these files and must never read half of one.
-const put = (f, v) => (writeFileSync(`${f}.tmp`, v), renameSync(`${f}.tmp`, f));
+// A temp name per process: two agents starting at once (both windows relaunched) never rename each other's.
+const put = (f, v) => (writeFileSync(`${f}.${process.pid}.tmp`, v), renameSync(`${f}.${process.pid}.tmp`, f));
 const { dirname, join } = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 
@@ -56,16 +57,24 @@ if (args[0] === "build" && Number(env.FAKE_DOCKER_BUILD_STEP_MS) > 0 && !failing
   next();
   return;
 }
-if (args[0] === "run" && args[1] === "-d") rmSync(removedMark(), { force: true });
+// The container's shape label (Workshop's mounts by mode), kept from its last `run -d`; none yet: Navigateur's.
+const shapeFile = () => join(env.RESSAC_ROOT, "fake-docker-shape");
+if (args[0] === "run" && args[1] === "-d") {
+  rmSync(removedMark(), { force: true });
+  const label = args.find((a) => a.startsWith("ressac.shape="));
+  if (label) put(shapeFile(), label.slice("ressac.shape=".length));
+}
 if (args[0] === "inspect") {
   if (failing || (args[3] === "ressac-workshop" && existsSync(removedMark()))) quit(1, "", "No such object");
   const format = args[2] ?? "";
   if (format.includes("State.Running")) quit(0, "true\n");
+  const shape = existsSync(shapeFile()) ? readFileSync(shapeFile(), "utf8") : "1-browser";
+  if (format === '{{index .Config.Labels "ressac.shape"}}') quit(0, `${shape}\n`);
   const dockerfile = join(__dirname, "..", "..", "..", "..", "packages", "kernel", "docker", "workshop.Dockerfile");
   // Same recipe as the kernel's dockerfileHash: Dockerfile, network module, run-flags version.
   const network = join(dirname(dockerfile), "ressac-network.mjs");
   const hash = createHash("sha256").update(readFileSync(dockerfile)).update(readFileSync(network)).update("flags-6").digest("hex").slice(0, 12);
-  quit(0, `${env.RESSAC_ROOT}|${hash}|${2.5 * 2 ** 30}\n`);
+  quit(0, `${env.RESSAC_ROOT}|${hash}|${2.5 * 2 ** 30}|${shape}\n`);
 }
 /** PID of the `run` client of a harvest in progress, by container name. */
 const harvestPidFile = (name) => join(env.RESSAC_ROOT, `fake-docker-${name}.pid`);
