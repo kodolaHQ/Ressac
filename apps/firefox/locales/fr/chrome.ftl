@@ -247,6 +247,7 @@ chrome-hide-legend-field = Champ masqué : l'agent ne lit pas sa valeur en clair
 ## Suggestions du passeport sur un formulaire envoyé (chrome/passport/form-capture.ts)
 
 chrome-passport-suggest = Ajouter à votre passeport ?
+chrome-passport-suggest-value = { $kind } : { $value }
 chrome-passport-suggest-remember = Retenir { $site }
 chrome-passport-suggest-mute = Ne plus proposer
 chrome-passport-suggest-mute-site = Ne plus proposer sur ce site

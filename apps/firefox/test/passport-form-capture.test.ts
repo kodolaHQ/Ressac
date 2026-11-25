@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { suggestion } from "../chrome/passport/form-capture";
 import { parseAddress } from "../chrome/shims/kernel";
 import type { Draft } from "../chrome/passport/import-choice";
+import { typedFields } from "../chrome/passport/typed-fields";
 
 const record = { "given-name": "Camille", "family-name": "Aubrac", "street-address": "14 rue des Tanneurs", "postal-code": "69001", "address-level2": "Lyon", tel: "06 12 34 56 78", email: "camille@example.fr", country: "FR" };
 const all = new Set(Object.values(record));
@@ -43,5 +44,62 @@ describe("suggestion", () => {
     expect(parseAddress(text)).toEqual({ street: "14 rue des Tanneurs", postcode: "69001", city: "Lyon" });
     // A street without its town is no address.
     expect(suggestion({ "street-address": "14 rue des Tanneurs" }, new Set(["14 rue des Tanneurs"]), ctx)).toBeNull();
+  });
+});
+
+describe("typedFields", () => {
+  const field = (value = "") => ({ value });
+
+  it("a keydown then its input counts", () => {
+    const t = typedFields<{ value: string }>(), el = field();
+    t.arm(el, true);
+    el.value = "Camille";
+    t.input(el, true, "insertText");
+    expect(t.take()).toEqual(["Camille"]);
+    // Read once: a form detected again offers nothing more.
+    expect(t.take()).toEqual([]);
+  });
+
+  it("a paste or a drop arms too, a keydown arms one input only", () => {
+    const t = typedFields<{ value: string }>(), a = field(), b = field();
+    t.arm(a, true);
+    a.value = "14 rue des Tanneurs";
+    t.input(a, true, "insertFromPaste");
+    t.arm(b, true);
+    b.value = "Lyon";
+    t.input(b, true, "insertFromDrop");
+    expect(t.take()).toEqual(["14 rue des Tanneurs", "Lyon"]);
+    t.arm(a, true);
+    a.value = "x";
+    t.input(a, true, "insertText");
+    a.value = "xy";
+    t.input(a, true, "insertText");
+    expect(t.take()).toEqual([]);
+  });
+
+  it("an input alone, an execCommand, an autofill or an untrusted key never counts", () => {
+    const t = typedFields<{ value: string }>(), el = field("Piège");
+    t.input(el, true, "insertText"); // execCommand("insertText") by the page: trusted, no keydown
+    t.arm(el, false);
+    t.input(el, true, "insertText");
+    t.arm(el, true);
+    t.input(el, true, "insertReplacementText"); // Firefox's autofill after a key in its dropdown
+    t.arm(el, true);
+    t.input(el, false, "insertText");
+    t.arm(el, true);
+    t.input(el, true, undefined); // a plain Event("input") from privileged code (fill_field)
+    expect(t.take()).toEqual([]);
+  });
+
+  it("a later change removes the value", () => {
+    const t = typedFields<{ value: string }>(), a = field(), b = field();
+    for (const el of [a, b]) {
+      t.arm(el, true);
+      el.value = "Camille";
+      t.input(el, true, "insertText");
+    }
+    a.value = "Autre"; // a script, without any event
+    t.input(b, false, "insertText"); // an untrusted input
+    expect(t.take()).toEqual([]);
   });
 });

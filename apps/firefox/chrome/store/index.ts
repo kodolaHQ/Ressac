@@ -402,12 +402,12 @@ async function start(): Promise<RessacStore> {
     safeForUntrustedWebProcess: true,
   });
   // Typed address forms (typed-actor.ts, passport/form-capture.ts): top https documents of tab browsers. The child notes
-  // keyboard edits and answers or pushes bounded strings; the parent only keeps them per document, to narrow what
-  // Firefox captured.
+  // edits that follow a key, a paste or a drop, and answers or pushes bounded strings; the parent only keeps them per
+  // document, to narrow what Firefox captured.
   const typedActor = actorModule("typed-actor");
   ChromeUtils.registerWindowActor("RessacTyped", {
     parent: { esModuleURI: typedActor },
-    child: { esModuleURI: typedActor, events: { input: { capture: true }, submit: { capture: true }, beforeunload: {} } },
+    child: { esModuleURI: typedActor, events: { keydown: { capture: true }, paste: { capture: true }, drop: { capture: true }, input: { capture: true }, submit: { capture: true }, beforeunload: {}, pagehide: {} } },
     matches: ["https://*/*"],
     messageManagerGroups: ["browsers"],
     safeForUntrustedWebProcess: true,

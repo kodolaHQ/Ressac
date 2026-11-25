@@ -80,9 +80,18 @@ export function installFormCapture(o: {
     return false;
   };
 
+  /** Per <browser>, its open bar: another section of the same send adds its new values to it. */
+  const open = new WeakMap<object, { profile: string; host: string; found: Draft[]; show(): void }>();
+  /** Documents (innerWindowId) whose bar was refused or closed: never offered again. */
+  const declined = new Set<number>();
+  const decline = (doc: number) => {
+    declined.add(doc);
+    for (const k of declined) if (declined.size > 256) declined.delete(k);
+  };
+
   async function offer(wgp: any, raw: unknown, browser: any) {
     // shortcut: a form in a frame is never offered (the site would be the frame's); upgrade if address forms in frames matter.
-    if (!wgp || wgp.browsingContext?.parent || !browser || !raw || typeof raw !== "object") return;
+    if (!wgp || wgp.browsingContext?.parent || !browser || !raw || typeof raw !== "object" || declined.has(wgp.innerWindowId)) return;
     const facts = o.about(browser);
     if (!facts) return;
     const record = Object.fromEntries(Object.entries(raw).filter((e): e is [string, string] => typeof e[1] === "string"));
@@ -97,31 +106,43 @@ export function installFormCapture(o: {
     if (!suggestion(record, typed, { ...ctx, passportReadable: true, known: () => false })) return;
     const loaded = await o.load(facts.profile);
     const found = suggestion(record, typed, { ...ctx, passportReadable: loaded.state === "ok", known: (d) => !!twinOf(loaded.entries, entryOf(d)) });
-    if (found && host) await bar(browser, found, facts.profile, host);
+    if (found && host && !declined.has(wgp.innerWindowId)) await bar(browser, found, facts.profile, host, wgp.innerWindowId);
   }
 
-  async function bar(browser: any, found: Draft[], profile: string, host: string) {
+  async function bar(browser: any, found: Draft[], profile: string, host: string, docId: number) {
+    const l = (id: string, args?: Record<string, string | number>) => format(o.locale(), id, args);
+    // One bar per tab: a second section (billing after shipping) adds what is new to it, or is dropped.
+    const cur = open.get(browser);
+    if (cur) {
+      if (cur.profile === profile && cur.host === host) {
+        cur.found.push(...found.filter((d) => !twinOf(cur.found.map(entryOf), entryOf(d))));
+        cur.show();
+      }
+      return;
+    }
     const win = browser.ownerGlobal;
     const box = win?.gBrowser?.getNotificationBox?.(browser);
     if (!box) return;
     const doc = win.document;
-    const l = (id: string, args?: Record<string, string | number>) => format(o.locale(), id, args);
     const site = siteOf(`https://${host}`);
-    // Frozen at the send: exactly what « Ajouter » writes.
-    const label = doc.createDocumentFragment();
+    // Frozen at the send: exactly what « Ajouter » writes, each value with the kind it is stored as.
     const values = doc.createElementNS(XHTML, "strong");
-    values.textContent = found.map(shown).join(" · ");
+    const entry = { profile, host, found: [...found], show: () => (values.textContent = entry.found.map((d) => l("chrome-passport-suggest-value", { kind: l(`settings-passport-field-${d.field}`), value: shown(d) })).join(" · ")) };
+    entry.show();
+    open.set(browser, entry);
+    const label = doc.createDocumentFragment();
     const remember = doc.createElementNS(XHTML, "input") as HTMLInputElement;
     remember.type = "checkbox";
     const keep = doc.createElementNS(XHTML, "label");
     keep.append(remember, ` ${l("chrome-passport-suggest-remember", { site })}`);
     label.append(`${l("chrome-passport-suggest")} `, values, " ", keep);
+    const id = ++bars;
     // « Ne plus proposer ▾ »: its own popup, gone with the bar.
     const popup = doc.createXULElement("menupopup");
-    popup.id = `ressac-passport-mute-${++bars}`;
-    const item = (id: string, act: () => void) => {
+    popup.id = `ressac-passport-mute-${id}`;
+    const item = (key: string, act: () => void) => {
       const m = doc.createXULElement("menuitem");
-      m.setAttribute("label", l(id));
+      m.setAttribute("label", l(key));
       m.addEventListener("command", () => {
         act();
         box.removeNotification(n);
@@ -133,24 +154,39 @@ export function installFormCapture(o: {
       if (!now.includes(host)) Services.prefs.setCharPref(MUTED, [...now, host].join(","));
     });
     item("chrome-passport-suggest-mute-all", () => Services.prefs.setBoolPref("ressac.passport.suggest", false));
-    (doc.getElementById("mainPopupSet") ?? doc.documentElement).append(popup);
-    const n = await box.appendNotification(
-      `ressac-passport-suggest-${bars}`,
-      { label, priority: box.PRIORITY_INFO_HIGH, eventCallback: (e: string) => e === "removed" && popup.remove() },
-      [
-        { label: l("chrome-passport-suggest-mute"), popup: popup.id },
-        { label: l("chrome-passport-suggest-no"), callback: () => {} },
+    let n: any;
+    try {
+      n = await box.appendNotification(
+        `ressac-passport-suggest-${id}`,
         {
-          label: l("chrome-passport-suggest-add"),
-          callback: () => {
-            const origin = remember.checked ? `https://${host}` : null;
-            void o.addMany({ profile, drafts: found, how: "form", from: host, origin, reason: l("settings-passport-touchid-import") }).then((r) => {
-              if (r.ok || r.error !== "cancelled") void box.appendNotification(`ressac-passport-suggest-done-${bars}`, { label: !r.ok ? l("settings-passport-import-error") : r.full ? l("settings-passport-import-full", { n: r.full }) : l("settings-passport-import-done", { n: r.added + r.variants }), priority: box.PRIORITY_INFO_MEDIUM }, []);
-            });
+          label,
+          priority: box.PRIORITY_INFO_HIGH,
+          eventCallback: (e: string) => {
+            if (e === "dismissed") decline(docId);
+            if (e !== "removed") return;
+            popup.remove();
+            if (open.get(browser) === entry) open.delete(browser);
           },
         },
-      ],
-    );
+        [
+          { label: l("chrome-passport-suggest-mute"), popup: popup.id },
+          { label: l("chrome-passport-suggest-no"), callback: () => decline(docId) },
+          {
+            label: l("chrome-passport-suggest-add"),
+            callback: () => {
+              const origin = remember.checked ? `https://${host}` : null;
+              void o.addMany({ profile, drafts: entry.found, how: "form", from: host, origin, reason: l("settings-passport-touchid-import") }).then((r) => {
+                if (r.ok || r.error !== "cancelled") void box.appendNotification(`ressac-passport-suggest-done-${id}`, { label: !r.ok ? l("settings-passport-import-error") : r.full ? l("settings-passport-import-full", { n: r.full }) : l("settings-passport-import-done", { n: r.added + r.variants }), priority: box.PRIORITY_INFO_MEDIUM }, []);
+              });
+            },
+          },
+        ],
+      );
+    } catch (e) {
+      if (open.get(browser) === entry) open.delete(browser);
+      throw e;
+    }
+    (doc.getElementById("mainPopupSet") ?? doc.documentElement).append(popup);
     // The send often navigates: the bar outlives that one location change.
     n.persistence = 1;
   }
