@@ -42,13 +42,15 @@ const routes = {
     html(
       res,
       `<title>Relevé</title><p>Tél : ${PHONE}</p>` +
-        `<a href="/compte/saute">Saute</a> <a href="/compte/aller?u=${EMAIL}">Aller</a> <a href="/compte/envoie.html?x=1">Envoie</a> <a href="/compte/rebond.html">Rebond</a>`,
+        `<a href="/compte/saute">Saute</a> <a href="/compte/aller?u=${EMAIL}">Aller</a> <a href="/compte/envoie.html?x=1">Envoie</a> <a href="/compte/rebond.html">Rebond</a> <a href="/compte/profil?u=${EMAIL}">Profil</a>`,
     ),
   // A mail whose sender's display name is masked while its domain, which spells it, stays in clear.
   "/compte/courrier.html": (_req: unknown, res: ServerResponse) =>
     html(res, `<title>Courrier</title><p>De : Cabinet du Dr Hélène Marceau &lt;secretariat@cabinet-dr-marceau.fr&gt;</p><p>Objet : rendez-vous</p>`),
   // A statement line in clear: the employer is no masked kind.
   "/compte/virements.html": (_req: unknown, res: ServerResponse) => html(res, `<title>Virements</title><p>VIR SALAIRE VERRERIES GERLAND</p>`),
+  // No <title>: Firefox titles the tab with its bare address, the e-mail in it.
+  "/compte/profil": (_req: unknown, res: ServerResponse) => html(res, `<p>Profil de ${EMAIL}</p>`),
   "/compte/saute": (_req: unknown, res: ServerResponse) => void res.writeHead(302, { Location: `${other.url}/arrivee.html` }).end(),
   "/compte/aller": (_req: unknown, res: ServerResponse) => void res.writeHead(302, { Location: `${other.url}/arrivee.html` }).end(),
   // An open redirect by script, once loaded and without user activation; 1 s later the page, still there, says so.
@@ -200,6 +202,21 @@ it("an address the agent writes with a host word read only in the user's sources
   expect(danger).toBe("⚠ Adresse construite avec un nom lu dans 127.0.0.1 : ve••••es");
   await click(m, `${ADDRESS} button`, { text: "Refuser" });
   expect((await opening).text).toBe("Accès refusé par l'utilisateur à cet onglet.");
+});
+
+it("a page opened from a handle, titled by its bare address, never gives the masked value back: its label stands in", async () => {
+  const id = await start();
+  const read = await readTab(id);
+  const handle = read.match(/http:\/\/127\.0\.0\.1:\d+\/compte\/profil\?u=⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+  const label = handle.match(/⟨email-[a-z0-9]{8}⟩/)![0];
+  const opened = await call("open_tab", { url: handle });
+  expect(opened.error).toBe(false);
+  const tab = opened.text.match(/\S+$/)![0];
+  const page = await until(async () => (await call("read_tab", { id: tab })).text, (t) => t.includes("Profil de"));
+  expect(page).not.toContain("camille.exemple");
+  expect(page).toContain(`Profil de ${label}@novacourriel.test`);
+  const tabs = (await call("list_tabs", {})).text;
+  expect(tabs).not.toContain("camille.exemple");
 });
 
 it("under the lock, a script's redirect without user activation after a granted link (an open redirect) is cancelled: the page stays, nothing reaches B", async () => {

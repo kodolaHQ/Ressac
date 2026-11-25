@@ -646,3 +646,111 @@ test("source words: an address that gets another red line still keeps its host w
     expect(await danger("https://www.verreries-gerland.test/contact")).toContain("ve••••es");
   });
 });
+
+test("a pinned page's title, state and text never give back the value its handle masks: the label stands in", async () => {
+  // A page without <title>: Firefox shows the bare address, the masked value in clear.
+  const bare = PROFILE_URL.replace(/^https:\/\//, "");
+  const encoded = `${HOST}/u/${encodeURIComponent(MAIL)}`;
+  const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: `Profil de ${MAIL} — ${encoded}` } }, { search: { privateWindows: [], failing: [], hanging: [] } });
+  const search = new SearchSessions({ show: () => {} });
+  await serve({ bridge, search, settleMs: 0, emptySpanMs: 0 }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+    const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+    const label = masked.match(/⟨email-[a-z0-9]{8}⟩/)![0];
+    // The agent's own tab, on the web zone, opened from the handle.
+    await call("navigate", { id: "copie", url: masked }, t);
+    bridge.editTab("copie", { title: bare });
+    for (const [name, args] of [["read_tab", { id: "copie" }], ["list_tabs", {}]] as const) {
+      const out = (await call(name, args, t)).text;
+      expect(out, name).not.toContain("camille.exemple");
+      expect(out, name).toContain(`${label}@novacourriel.test`);
+    }
+    // A title holding the value among other words.
+    bridge.editTab("copie", { title: `Profil de ${MAIL} – Novacourriel` });
+    const titled = (await call("read_tab", { id: "copie" }, t)).text;
+    expect(titled).toContain(`Titre : Profil de ${label}@novacourriel.test – Novacourriel`);
+    expect(titled).not.toContain("camille.exemple");
+    // read_pages on the handle: the search tab's title is the real address.
+    const pages = (await call("read_pages", { urls: [masked], reason: "r" }, t)).text;
+    expect(pages).not.toContain("camille.exemple");
+    expect(pages).toContain(label);
+  });
+});
+
+test("the history of a page opened from a handle gives its value back as the label, in search_history and read_history", async () => {
+  const bare = PROFILE_URL.replace(/^https:\/\//, "");
+  const history = {
+    results: [{ url: PROFILE_URL, title: bare, lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: `Profil de ${MAIL}`, byUser: false }],
+    texts: [{ url: PROFILE_URL, title: bare, date: "2026-11-19T10:00:00.000Z", text: `Profil de ${MAIL}` }],
+  };
+  const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: "rien" } }, { history, widgetData: true });
+  await serve({ bridge }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+    const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+    const label = masked.match(/⟨email-[a-z0-9]{8}⟩/)![0];
+    await call("navigate", { id: "copie", url: masked }, t);
+    for (const [name, args] of [["search_history", { query: "profil" }], ["read_history", { url: PROFILE_URL }]] as const) {
+      const out = (await call(name, args, t)).text;
+      expect(out, name).not.toContain("camille.exemple");
+      expect(out, name).toContain(`${label}@novacourriel.test`);
+    }
+  });
+});
+
+test("a handle's values: relabelled where a granted redirect took them, never where a refused one did not, and in the opened page's links", async () => {
+  const track = `https://evil.test/r?u=${MAIL}`;
+  for (const grant of [true, false]) {
+    const history = { results: [{ url: track, title: `evil.test/r?u=${MAIL}`, lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "", byUser: false }] };
+    const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: "Profil", links: [{ text: "Partager", url: `https://c.test/?q=${MAIL}` }] } }, { history, widgetData: true, address: grant });
+    bridge.redirects.set(PROFILE_URL, track);
+    await serve({ bridge }, async ({ call, s, masker }) => {
+      masker.open("A", "W1");
+      const t = s.openSession("W1", undefined, "A");
+      const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+      const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+      const label = masked.match(/⟨email-[a-z0-9]{8}⟩/)![0];
+      await call("navigate", { id: "copie", url: masked }, t);
+      const rows = (await call("search_history", { query: "evil" }, t)).text;
+      if (grant) {
+        expect(rows).not.toContain("camille.exemple");
+        expect(rows).toContain(label);
+        // The opened page's own links: the page got the value, its link lines show the label.
+        const page = (await call("read_tab", { id: "copie", links: true }, t)).text;
+        expect(page).not.toContain("camille.exemple");
+        expect(page).toContain(`https://c.test/?q=${label}@novacourriel.test`);
+      } else {
+        // Refused: the value never reached evil.test, a guess there gets no answer.
+        expect(rows).toContain(MAIL);
+      }
+    });
+  }
+});
+
+test("a handle's origin is recorded once its request leaves: a site app sent there, a load that then fails", async () => {
+  const app: TabInfo = { id: "site:courrier", title: "Courrier", url: `${HOST}/inbox`, space: "", site: "courrier", domain: "mail.example-novacourriel.test" };
+  for (const way of ["site", "failing"] as const) {
+    const history = { results: [{ url: PROFILE_URL, title: PROFILE_URL.replace(/^https:\/\//, ""), lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: "", byUser: false }] };
+    const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: "rien" } }, { history, widgetData: true, sites: { courrier: ["mail.example-novacourriel.test"] } }, [user, copy, app]);
+    if (way === "failing") {
+      const navigate = bridge.navigate.bind(bridge);
+      bridge.navigate = async (...a: Parameters<typeof navigate>) => {
+        await navigate(...a);
+        throw new Error("délai dépassé");
+      };
+    }
+    await serve({ bridge }, async ({ call, s, masker }) => {
+      masker.open("A", "W1");
+      const t = s.openSession("W1", undefined, "A");
+      const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+      const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+      await call("navigate", { id: way === "site" ? app.id : "copie", url: masked, reason: "r" }, t);
+      expect(bridge.calls.some((c) => c.method === "navigate" && c.args[1] === PROFILE_URL), way).toBe(true);
+      const rows = (await call("search_history", { query: "profil" }, t)).text;
+      expect(rows, way).not.toContain("camille.exemple");
+    });
+  }
+});
