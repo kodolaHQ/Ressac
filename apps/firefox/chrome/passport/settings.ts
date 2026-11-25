@@ -1,4 +1,4 @@
-import { canonicalOf, cleanOrigin, rawOf, FIELD_LABEL, PASSPORT_LIMITS, validateEntry, validatePassport, type PassportEntry, type PassportField, type PassportValue } from "../shims/kernel";
+import { canonicalOf, cleanOrigin, foldWords, rawOf, FIELD_LABEL, PASSPORT_LIMITS, validateEntry, validatePassport, type PassportEntry, type PassportField, type PassportValue } from "../shims/kernel";
 import { testEnv } from "../test-env";
 import { reauth } from "../agent/reauth";
 import { passportFiles, type LoadResult, type PassportFiles } from "./store";
@@ -209,19 +209,33 @@ export function createPassportSettings(o: {
           for (const d of h.drafts) {
             const value: PassportValue = "given" in d.value ? { given: d.value.given.trim(), family: d.value.family.trim() } : { text: d.value.text.trim() };
             const fresh: PassportEntry = { id: crypto.randomUUID(), field: d.field, value, variants: [], origins: host ? [host] : [], how: h.how, from: h.from, created: at, updated: at };
-            const twin = list.find((k) => FIELD_LABEL[k.field] === FIELD_LABEL[fresh.field] && canonicalOf(k) === canonicalOf(fresh));
+            // A name in another word order is the same person: the kernel masks both orders under one label.
+            const words = (e: PassportEntry) => foldWords(rawOf(e)).split(" ").sort().join(" ");
+            const isName = "given" in fresh.value;
+            const twin = list.find((k) => FIELD_LABEL[k.field] === FIELD_LABEL[fresh.field] && (canonicalOf(k) === canonicalOf(fresh) || (isName && "given" in k.value && words(k) === words(fresh))));
             if (twin) {
+              let next = twin;
               const raw = rawOf(fresh);
-              if (raw === rawOf(twin) || twin.variants.includes(raw) || twin.variants.length >= PASSPORT_LIMITS.variants) continue;
-              const next = { ...twin, variants: [...twin.variants, raw], updated: at };
-              if (validateEntry(next, list).problems.length) continue;
-              list = list.map((x) => (x === twin ? next : x));
-              n.variants++;
+              if (raw !== rawOf(twin) && !twin.variants.includes(raw) && twin.variants.length < PASSPORT_LIMITS.variants) {
+                const v = { ...next, variants: [...next.variants, raw], updated: at };
+                if (!validateEntry(v, list).problems.length) {
+                  next = v;
+                  n.variants++;
+                }
+              }
+              if (host && !twin.origins.includes(host)) {
+                if (twin.origins.length >= PASSPORT_LIMITS.origins) n.full++;
+                else next = { ...next, origins: [...next.origins, host], updated: at };
+              }
+              if (next !== twin) list = list.map((x) => (x === twin ? next : x));
               continue;
             }
             const codes = validateEntry(fresh, list).problems.map((p) => p.code);
             if (codes.length) n[codes.includes("full") ? "full" : "invalid"]++;
-            else (list = [...list, fresh]), n.added++;
+            else {
+              list = [...list, fresh];
+              n.added++;
+            }
           }
           return list;
         });

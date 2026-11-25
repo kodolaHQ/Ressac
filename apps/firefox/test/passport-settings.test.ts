@@ -597,9 +597,25 @@ describe("addMany: one write path for an import or a form", () => {
   it("a known value in another writing becomes a variant", async () => {
     const { s, files } = setup();
     files.load.mockResolvedValueOnce(loaded([{ ...entry("0000000000000002"), value: { given: "Camille", family: "Aubrac" } }]));
-    expect(await add(s, [{ field: "nom", value: { given: "Camille", family: "AUBRAC" } }, { field: "nom", value: { given: "Camille", family: "Aubrac" } }])).toEqual({ ok: true, added: 0, variants: 1, full: 0, invalid: 0 });
+    expect(await add(s, [{ field: "nom", value: { given: "AUBRAC", family: "Camille" } }, { field: "nom", value: { given: "Camille", family: "Aubrac" } }])).toEqual({ ok: true, added: 0, variants: 1, full: 0, invalid: 0 });
     expect(written(files)).toHaveLength(1);
-    expect(written(files)[0]!.variants).toEqual(["Camille AUBRAC"]);
+    expect(written(files)[0]!.variants).toEqual(["AUBRAC Camille"]);
+  });
+
+  it("a known value gains the remembered site, even with no new variant", async () => {
+    const { s, files } = setup();
+    files.load.mockResolvedValueOnce(loaded([{ ...entry("0000000000000002"), value: { given: "Camille", family: "Aubrac" } }]));
+    expect(await add(s, [drafts[0]], { how: "form", origin: "https://www.Boutique.example/x" })).toEqual({ ok: true, added: 0, variants: 0, full: 0, invalid: 0 });
+    expect(written(files)[0]!.origins).toEqual(["www.boutique.example"]);
+    files.load.mockResolvedValueOnce(loaded([{ ...entry("0000000000000002"), value: { given: "Camille", family: "Aubrac" }, origins: Array.from({ length: 20 }, (_, i) => `s${i}.example`) }]));
+    expect(await add(s, [drafts[0]], { origin: "https://z.example" })).toMatchObject({ added: 0, full: 1 });
+  });
+
+  it("a full variants list adds nothing", async () => {
+    const { s, files } = setup();
+    files.load.mockResolvedValueOnce(loaded([{ ...entry("0000000000000002"), value: { given: "Camille", family: "Aubrac" }, variants: Array.from({ length: 10 }, (_, i) => `Camille Aubrac${"x".repeat(i)}`) }]));
+    expect(await add(s, [{ field: "nom", value: { given: "Camille", family: "AUBRAC" } }])).toEqual({ ok: true, added: 0, variants: 0, full: 0, invalid: 0 });
+    expect(files.save).not.toHaveBeenCalled();
   });
 
   it("a full passport counts full, loses nothing", async () => {
