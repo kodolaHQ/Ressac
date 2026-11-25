@@ -55,6 +55,20 @@ export async function memoryLevel(env: NodeJS.ProcessEnv = process.env): Promise
 export const memoryCalm = async (env: NodeJS.ProcessEnv = process.env) => (await memoryLevel(env)) <= 1;
 /** Scheduled harvests and page indexing may start: always, unless saving memory under macOS pressure. */
 export const memoryAllows = (saving: boolean, env: NodeJS.ProcessEnv = process.env) => (saving ? memoryCalm(env) : Promise.resolve(true));
+/**
+ * Some time after the Mac wakes: a wake is a jump of the wall clock between two `tick`s (a timer stops while the Mac
+ * sleeps). `ok` ticks too, so a job whose timer fires first at wake already sees it.
+ */
+export function createWakeGrace(graceMs: number, now = () => Date.now()): { tick(): void; ok(): boolean } {
+  let last = now();
+  let wokeAt = -Infinity;
+  const tick = () => {
+    const t = now();
+    if (t - last > 30_000) wokeAt = t;
+    last = t;
+  };
+  return { tick, ok: () => (tick(), now() - wokeAt >= graceMs) };
+}
 /** macOS's sun_path is 104 bytes with its final NUL. */
 const SOCKET_MAX = 103;
 /** Lima's vz network: the Mac seen from the guest. */
@@ -398,14 +412,15 @@ export function createMachine(o: {
 
   let timer: ReturnType<typeof setInterval> | undefined;
   let mode: WakeReason = "user";
-  let idle = 0;
+  // Wall clock: a Mac's sleep counts as idle (a count of poll ticks would not, and the machine kept its memory past a wake).
+  let idleSince = Date.now();
   let wakes = 0;
   /** `wakes` at the previous poll. */
   let polled = 0;
   let polling = false;
   function watch(reason: WakeReason): void {
     if (!timer || reason === "user") mode = reason; // a harvest on a machine running for the user keeps the idle rule
-    idle = 0;
+    idleSince = Date.now();
     wakes++;
     timer ??= setInterval(() => void poll(), pollMs);
     timer.unref?.();
@@ -418,8 +433,8 @@ export function createMachine(o: {
       // A harvest that woke the machine since the previous poll may not have started its container yet: one poll of grace.
       const quiet = seen === polled;
       polled = seen;
-      if ((await o.busy()) || (await upgrading())) idle = 0;
-      else if (mode === "harvest" ? quiet : (idle += pollMs) >= idleMs())
+      if ((await o.busy()) || (await upgrading())) idleSince = Date.now();
+      else if (mode === "harvest" ? quiet : Date.now() - idleSince >= idleMs())
         await serial(async () => {
           if (wakes === seen && timer) await stopInner(); // a wake since the busy check wins
         });

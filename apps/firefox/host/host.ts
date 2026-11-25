@@ -46,7 +46,7 @@ const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./de
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createWriterChoice } = await import("./writer.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
-const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, memoryAllows, memoryLevel, smallMac, vmImage } = await import("./machine.ts");
+const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, createWakeGrace, memoryAllows, memoryLevel, smallMac, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
@@ -162,11 +162,24 @@ let agentDomains: string[] = [];
 let machineIdleMinutes = 5;
 // « Économiser la mémoire » (told by the chrome): scheduled harvests and page indexing wait for calm memory.
 let saveMemory = false;
-const calm = () => memoryAllows(saveMemory);
-// Critical pressure while saving memory: the chrome unloads a tab now, and again every 10 s while it lasts (warn is
-// left to Firefox's own unloading). The sysctl, not Firefox's topic: Firefox does not tell warn from critical.
+// After the Mac wakes, Firefox reloads and reconnects its pages: harvests (which may boot the machine) and page indexing
+// (the embedding server) wait 2 min, whatever the memory looks like in those first seconds.
+const wakeGrace = createWakeGrace(2 * 60_000);
+setInterval(wakeGrace.tick, 5_000).unref();
+const calm = async () => wakeGrace.ok() && memoryAllows(saveMemory);
+// Critical pressure while saving memory: the chrome unloads tabs now, and again every 10 s while it lasts (warn is left
+// to Firefox's own unloading). On entering it the models unload and an unused machine stops too, at once; later in the
+// episode only the tab unloads relieve again (chrome/window/tabs.ts, at most every 60 s). The sysctl, not Firefox's
+// topic: Firefox does not tell warn from critical.
+let critical = false;
 setInterval(() => {
-  if (saveMemory) void memoryLevel().then((l) => l >= 4 && rpc.notify("memory.critical"));
+  if (!saveMemory) return void (critical = false);
+  void memoryLevel().then((l) => {
+    if (!saveMemory) return; // turned off while the level was read
+    if (l >= 4 && !critical) relieveMemory();
+    critical = l >= 4;
+    if (critical) rpc.notify("memory.critical");
+  });
 }, 10_000).unref();
 // An apply while the kernel is down leaves the MCP port closed on purpose: openAgentSession applies again before any session.
 // Without `network` the kernel applies no firewall: it must stay passed. The MCP port is known once the kernel is up, read at each apply.
@@ -588,6 +601,16 @@ const sessions = new SessionsAgent({
   send: (win, channel, v) => rpc.notify(channel === "data" ? "agent.data" : "agent.state", channel === "data" ? { window: win, data: v } : { window: win, state: v }),
 });
 
+/** macOS runs short of memory: the local models unload, idle agent sessions sleep, the machine stops unless in use. */
+function relieveMemory(): void {
+  void ai.stopServers().catch(() => {});
+  void sessions
+    .sleepIdle(Number(process.env.RESSAC_TEST_AGENT_SLEEP_MS) || 2 * 60_000)
+    .catch((e) => console.error("[ressac] the agent sessions did not sleep:", e))
+    .then(() => machine.relieve())
+    .catch((e) => console.error("[ressac] the machine did not stop:", e));
+}
+
 const rpc = createRpc({
   send: (line) => void writeStdout(line + "\n"),
   handlers: {
@@ -609,14 +632,7 @@ const rpc = createRpc({
     },
     // macOS runs short of memory (Firefox's memory-pressure): the local models unload, idle agent sessions sleep, the
     // machine stops unless in use.
-    "memory.pressure": () => {
-      void ai.stopServers().catch(() => {});
-      void sessions
-        .sleepIdle(Number(process.env.RESSAC_TEST_AGENT_SLEEP_MS) || 2 * 60_000)
-        .catch((e) => console.error("[ressac] the agent sessions did not sleep:", e))
-        .then(() => machine.relieve())
-        .catch((e) => console.error("[ressac] the machine did not stop:", e));
-    },
+    "memory.pressure": () => relieveMemory(),
     // Only new windows take the new default: open agents stay.
     changeProfile: (p: { agentProfile: string }) => {
       defaultProfile = p.agentProfile;
