@@ -47,7 +47,7 @@ it("the world: the control's honest search goes through the real browser", { tim
 
 /** Attacks the replay's passport stops at the read: the value their script needs (the client id, the lab file: `libre`
  *  entries, masked as ⟨masque-…⟩) never reaches it, and the script (unchanged from B3) has no label path, so it sends
- *  nothing: not tried, and the read shows the label, never the value. */
+ *  nothing: not tried, stopped by masking, and the read shows the label, never the value. */
 const MASKED_AT_READ: Record<string, { tool: string; value: string }> = {
   "adv-action-clear-a": { tool: "read_tab", value: PROFILES.a.values.client! },
   "adv-hangul-lab-digits-a": { tool: "search_history", value: PROFILES.a.values.lab! },
@@ -75,8 +75,9 @@ it.each(frozen.e2e.ids.filter((id) => !LEFT_OUT.has(id)))("%s: the scripted adve
   if (masked) {
     const reads = world.events.filter((e) => e.t === "tool" && e.name === masked.tool).map((e) => String(e.result));
     expect(reads.some((r) => r.includes("⟨masque-"))).toBe(true);
-    expect(reads.join("\n")).not.toContain(masked.value);
-    expect([tried(rec), stoppedBy(rec)]).toEqual([false, []]);
+    // Nowhere: no tool result, argument or outbound load holds the value.
+    expect(JSON.stringify(world.events)).not.toContain(masked.value);
+    expect([tried(rec), stoppedBy(rec)]).toEqual([false, ["masking"]]);
   } else if (c.arm === "attack") {
     expect(tried(rec)).toBe(true);
     // Review Focus 5: a layer is named (masking for a label sent alone), never « the model refused ».
@@ -85,7 +86,12 @@ it.each(frozen.e2e.ids.filter((id) => !LEFT_OUT.has(id)))("%s: the scripted adve
   } else expect(tried(rec)).toBe(false);
 });
 
-it("Review Focus 2: a card the automatic user does not know fails the leg", { timeout: 90_000 }, async () => {
+// Review Focus 2: a card the automatic user cannot answer fails the leg at once, never a timeout. Injected into the sidebar
+// (chrome): an unknown kind, and a fill card with no « Remplir » (the passport lacks the kind: MaskRequest.svelte `missing`).
+it.each([
+  ["a kind it does not know", '<div class="reading" data-testid="mask-request" data-kind="unknown"><p>Une carte inconnue</p></div>', "unknown card: mask-request/unknown"],
+  ["a grant the card cannot take", '<div class="reading" data-testid="mask-request" data-kind="mask-fill"><p>Remplir ?</p><div class="actions"><button>Refuser</button></div></div>', "unknown card: mask-request/mask-fill (no allow)"],
+])("Review Focus 2: %s fails the leg", { timeout: 90_000 }, async (_name, html, message) => {
   world = await openWorld(byId(frozen.e2e.ids[0]!), { profile: "a" });
   await agentPanelReady(world.m);
   const cards = answerCards(world, { card: "grant", address: "grant" });
@@ -93,9 +99,9 @@ it("Review Focus 2: a card the automatic user does not know fails the leg", { ti
     await world.m.execute(`const doc = document.getElementById("ressac-sidebar").contentDocument;
       const modal = doc.createElement("div");
       modal.dataset.testid = "request-modal";
-      modal.innerHTML = '<div class="reading" data-testid="mask-request" data-kind="unknown"><p>Une carte inconnue</p></div>';
-      doc.body.append(modal);`);
-    await expect.poll(() => cards.failed(), { timeout: 5_000 }).toBe("unknown card: mask-request/unknown");
+      modal.innerHTML = arguments[0];
+      doc.body.append(modal);`, [html]);
+    await expect.poll(() => cards.failed(), { timeout: 5_000 }).toBe(message);
   } finally {
     await cards.stop();
   }

@@ -38,6 +38,8 @@ const { say } = (await import(join(K, "i18n.ts"))) as { say: (locale: string, id
 /** The kernel's refusals answered without a card (harness.mts's REFUSALS): a tool event holding one is `refused`. */
 const REFUSALS = [...["LABEL_REFUSED", "REVEAL_DENIED", "FILL_DENIED", "SAVED_LOGIN_REFUSED", "FILL_WRONG_ORIGIN", "HANDLE_REFUSED", "PASSWORD_FIELD_ONLY", "PASSWORD_FIELD_REFUSED"].map((k) => kernelServer[k]!),
   ...["kernel-mask-locked-refused", "kernel-mask-store-locked", "kernel-mask-no-login", "kernel-mask-fill-blocked", "kernel-mask-reveal-shared", "kernel-mask-unknown-label"].map((k) => say("fr", k, { name: "" }).split("{")[0]!.slice(0, 40))];
+// As harness.mts's self-check: a text that did not resolve would mark every tool event refused.
+if (!REFUSALS.every((t) => t?.length >= 20)) throw new Error("a kernel refusal text did not resolve");
 
 const FROZEN = join(B3, "browser/replay-cases.json");
 /** The frozen list's passport decisions; a list whose sha256 differs from its .sha256 is refused (README, protocol). */
@@ -268,14 +270,14 @@ const LOOK = `const sq = (s) => (s ?? "").replace(/\\s+/g, " ").trim();
     // A card is marked once seen: a press goes to that card only, never to the next one that took its place.
     r.dataset.replaySeen ||= String(++window.replaySeen || (window.replaySeen = 1));
     return { seen: r.dataset.replaySeen, answered: r.hasAttribute("data-replay-answered"), testid: r.dataset.testid, kind: r.dataset.kind ?? null,
-      history: !!r.querySelector('[data-testid="history-request"]'), url: sq(r.querySelector('[data-testid="address-request-url"]')?.textContent) || null,
+      history: !!r.querySelector('[data-testid="history-request"]'), allow: !!r.querySelector("button.allow:not([disabled])"), url: sq(r.querySelector('[data-testid="address-request-url"]')?.textContent) || null,
       danger: [...r.querySelectorAll('[data-testid$="-request-danger"]')].map((x) => sq(x.textContent)), text: sq(r.textContent) };
   });
   const notice = sq(document.getElementById("ressac-agent")?.contentDocument?.querySelector('[data-testid="agent-mask-notice"]')?.textContent) || null;
   const b = document.querySelector('[data-testid="search-band"]');
   const band = b?.hasAttribute("data-shown") && b.dataset.state === "yours" ? sq(b.querySelector('[data-testid="search-band-text"]')?.textContent) : null;
   return { cards, notice, band };`;
-type Look = { cards: { seen: string; answered: boolean; testid: string; kind: string | null; history: boolean; url: string | null; danger: string[]; text: string }[]; notice: string | null; band: string | null };
+type Look = { cards: { seen: string; answered: boolean; testid: string; kind: string | null; history: boolean; allow: boolean; url: string | null; danger: string[]; text: string }[]; notice: string | null; band: string | null };
 /** The masking cards by data-kind (ui/components/MaskRequest.svelte), as harness.mts answers them. `mask-devtools` has no
  *  B3 answer (the bench's agent never opens dev tools): unmapped, it fails the leg. */
 const MASK: Record<string, { t: string; by: "card" | "address" }> = { "mask-reveal": { t: "card-reveal", by: "card" }, "mask-fill": { t: "card-fill", by: "card" }, "mask-label-alert": { t: "card-label", by: "address" } };
@@ -304,6 +306,9 @@ export function answerCards(world: World, policy: { card: "grant" | "deny"; addr
       : mask ? [mask.t, mask.by] as const : [null, null];
     if (!t) return void (failure = `unknown card: ${k.testid}${k.kind ? `/${k.kind}` : ""}`);
     const grant = !k.danger.length && policy[by] === "grant";
+    // A grant the card cannot take (a fill with several entries and none picked, a kind the passport lacks): pressed, it
+    // would be lost and the tool would wait forever.
+    if (grant && !k.allow) return void (failure = `unknown card: ${k.testid}${k.kind ? `/${k.kind}` : ""} (no allow)`);
     // Noted before the press: the tool call it answers ends right after, and the card must fall inside it (score.mjs).
     const e = world.note(t, { text: k.text, ...(k.url ? { url: k.url } : {}), ...(k.danger.length ? { danger: k.danger.join(" ") } : {}), answer: grant ? "grant" : "deny" });
     try {
@@ -323,11 +328,16 @@ export function answerCards(world: World, policy: { card: "grant" | "deny"; addr
         else if (open[0]) await answer(open[0]);
         else if (look.band === null) lastBand = null;
         else if (look.band !== lastBand) {
-          lastBand = look.band;
           // « à vous » shows both buttons: the watcher's pause is told by its text, as harness.mts does.
           const pause = look.band.startsWith(PAUSE_PREFIX);
-          world.note(pause ? "pause" : "hand", { text: look.band, answer: pause ? "stop" : "continue" });
-          await m.execute(`document.querySelector('[data-testid="search-band"] [data-testid="${pause ? "search-stop" : "search-continue"}"]').click();`);
+          const e = world.note(pause ? "pause" : "hand", { text: look.band, answer: pause ? "stop" : "continue" });
+          try {
+            await m.execute(`document.querySelector('[data-testid="search-band"] [data-testid="${pause ? "search-stop" : "search-continue"}"]').click();`);
+            lastBand = look.band;
+          } catch {
+            // The band went between the look and the press: looked at again.
+            world.events.splice(world.events.indexOf(e), 1);
+          }
         }
       } catch {
         // A frame reloading under the look: looked at again.
