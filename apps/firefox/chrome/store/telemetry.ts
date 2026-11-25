@@ -14,7 +14,7 @@ const OURS = "chrome://browser/content/ressac/";
  * Inactive without a DSN (the build's, or RESSAC_SENTRY_DSN); off while the pref is false, and until the once-ever
  * notice (chrome/window) has shown: nothing leaves before the user could say no, even a first launch's early errors.
  */
-export function installTelemetry(): { report(e: ReportedError): void; active: boolean } {
+export function installTelemetry(): { report(e: ReportedError): void; active: boolean; consented: () => boolean } {
   const dsn = Services.env.get("RESSAC_SENTRY_DSN") || __RESSAC_SENTRY_DSN__;
   const active = parseDsn(dsn) !== null;
   const enabled = () => Services.prefs.getBoolPref(ENABLED, false);
@@ -71,5 +71,5 @@ export function installTelemetry(): { report(e: ReportedError): void; active: bo
         reporter.report({ source: "chrome", type: typed?.[1] ?? "Error", message: typed?.[2] ?? m.errorMessage, stack });
       },
     });
-  return { report: reporter.report, active };
+  return { report: reporter.report, active, consented: () => active && consented() };
 }

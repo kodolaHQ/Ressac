@@ -628,15 +628,23 @@ async function start(): Promise<RessacStore> {
   // A site app's or an agent app's downloads are cancelled: an app downloads nothing (an agent app would drop files in ~/Downloads unasked).
   const downloads = await createDownloads((id) => isSiteContainer(id) || isAppContainer(id));
   refreshMirror = trackState(store, agent, windows);
-  installAbruptExitWatch({ report: telemetry.report, smallMac, saveMemory: () => store.state.settings.saveMemory });
+  installAbruptExitWatch({ report: telemetry.report, consented: telemetry.consented, smallMac, saveMemory: () => store.state.settings.saveMemory });
   // macOS runs short of memory (browser.lowMemoryResponseMask, ressac.js): the host unloads the models and stops an unused machine.
   // Once as it starts: « low-memory-ongoing » repeats every 10 s while it lasts, and would kill a model the user just reloaded.
   Services.obs.addObserver((_s: unknown, _t: string, data: string) => data !== "low-memory-ongoing" && agent.notify("memory.pressure"), "memory-pressure");
   // Critical macOS pressure while saving memory (the host checks every 10 s): the 3 least recently used eligible tabs
   // unload now, without the inactivity floor (jetsam kills within seconds, one tab per check was too slow after a wake);
   // Firefox's rules and our undiscardable flag still spare the rest.
+  // One round at a time: under heavy swapping a round may outlast the 10 s between checks.
+  let unloading = false;
   agent.on("memory.critical", async () => {
-    for (let i = 0; i < CRITICAL_UNLOADS && (await TabUnloader.unloadLeastRecentlyUsedTab(0).catch(() => false)); i++);
+    if (unloading) return;
+    unloading = true;
+    try {
+      for (let i = 0; i < CRITICAL_UNLOADS && (await TabUnloader.unloadLeastRecentlyUsedTab(0).catch(() => false)); i++);
+    } finally {
+      unloading = false;
+    }
   });
   // Registered before any UI listener: the UI reads `access` once it is updated.
   agent.on("access", (e: AccessState) => (access = e));

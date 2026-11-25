@@ -13,26 +13,30 @@ function reportDirs(): { system: string; user: string } {
   return { system: "/Library/Logs/DiagnosticReports", user: PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "Library/Logs/DiagnosticReports") };
 }
 
+// A run of days writes many JetsamEvents (~0.5 MB each): the newest few are enough to find the end.
+const MAX_REPORTS = 20;
+
 /** The newest report since `since` that names our end: a jetsam kill first (the likeliest on a small Mac). */
 async function findEnding(since: number, pid: number | undefined): Promise<Ending | null> {
   const { system, user } = reportDirs();
-  const recent = async (dir: string, keep: (name: string) => boolean) => {
+  const recent = async (dirs: string[], keep: (name: string) => boolean) => {
     const out: { path: string; name: string; at: number }[] = [];
-    for (const path of await IOUtils.getChildren(dir).catch(() => [] as string[])) {
-      const name = PathUtils.filename(path);
-      if (!keep(name)) continue;
-      const at = (await IOUtils.stat(path).catch(() => null))?.lastModified ?? 0;
-      if (at >= since) out.push({ path, name, at });
-    }
+    for (const dir of new Set(dirs))
+      for (const path of await IOUtils.getChildren(dir).catch(() => [] as string[])) {
+        const name = PathUtils.filename(path);
+        if (!keep(name)) continue;
+        const at = (await IOUtils.stat(path).catch(() => null))?.lastModified ?? 0;
+        if (at >= since) out.push({ path, name, at });
+      }
     // Newest first: the report nearest the end.
-    return out.sort((a, b) => b.at - a.at);
+    return out.sort((a, b) => b.at - a.at).slice(0, MAX_REPORTS);
   };
-  // shortcut: only the files' text is read whole (JetsamEvents are ~0.5 MB), fine for the few written since a launch
-  for (const f of await recent(system, (n) => n.startsWith("JetsamEvent-"))) {
+  for (const f of await recent([system], (n) => n.startsWith("JetsamEvent-"))) {
     const ending = jetsamEnding(await IOUtils.readUTF8(f.path).catch(() => ""), pid, f.at);
     if (ending) return ending;
   }
-  for (const f of await recent(user, (n) => n.toLowerCase().startsWith("ressac"))) {
+  // macOS writes a crash in the user's folder, a hang's spindump often in the system one.
+  for (const f of await recent([user, system], (n) => n.toLowerCase().startsWith("ressac"))) {
     const ending = reportEnding(f.name, await IOUtils.readUTF8(f.path).catch(() => ""), pid, f.at);
     if (ending) return ending;
   }
@@ -44,7 +48,7 @@ async function findEnding(since: number, pid: number | undefined): Promise<Endin
  * reported (`report` sends only with the user's consent). The mark keeps when the Mac slept and woke, the last memory
  * pressure and the tab counts, so a kill after waking shows as such.
  */
-export function installAbruptExitWatch(o: { report(e: ReportedError): void; smallMac: boolean; saveMemory: () => boolean }): void {
+export function installAbruptExitWatch(o: { report(e: ReportedError): void; consented: () => boolean; smallMac: boolean; saveMemory: () => boolean }): void {
   const file = PathUtils.join(PathUtils.profileDir, "ressac-run.json");
   let quitting = false;
   const mark: RunMark = { started: Date.now(), pid: Services.appinfo.processID, version: __RESSAC_VERSION__, smallMac: o.smallMac, saveMemory: o.saveMemory(), at: Date.now() };
@@ -64,7 +68,8 @@ export function installAbruptExitWatch(o: { report(e: ReportedError): void; smal
   void (async () => {
     const previous = (await IOUtils.readJSON(file).catch(() => null)) as RunMark | null;
     write();
-    if (previous?.started) o.report(abruptExitReport(previous, await findEnding(previous.started, previous.pid)));
+    // macOS's reports are only read when this one may be sent.
+    if (previous?.started && o.consented()) o.report(abruptExitReport(previous, await findEnding(previous.started, previous.pid)));
   })().catch((e) => console.warn("[abrupt-exit] check failed:", e));
 
   Services.obs.addObserver(() => write({ sleptAt: Date.now() }), "sleep_notification");

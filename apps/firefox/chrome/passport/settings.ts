@@ -293,9 +293,10 @@ export type PassportSettings = ReturnType<typeof createPassportSettings>;
 
 /**
  * What Réglages pages get (`win.store.passport`): no `addOrigin` (only a written fill card's tick adds a site), no
- * `hide`/`unhide` (only Ressac's own « Cacher pour l'agent » gesture, unhide having no Touch ID).
+ * `hide`/`unhide` (only Ressac's own « Cacher pour l'agent » gesture, unhide having no Touch ID), no `drop` (a page
+ * deletes a passport through `removePassport`, with a Touch ID token).
  */
-export const pagePassport = ({ addOrigin: _a, hide: _h, unhide: _u, ...pages }: PassportSettings) => pages;
+export const pagePassport = ({ addOrigin: _a, hide: _h, unhide: _u, drop: _d, ...pages }: PassportSettings) => pages;
 export type PagePassport = ReturnType<typeof pagePassport>;
 
 /** `RESSAC_TEST_PASSPORT_TIMES` (dev builds): « unlockMs,showMs », so an e2e waits for the relock and the remask. */

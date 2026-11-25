@@ -221,8 +221,9 @@ export function createPassportFiles(o: { dir: string; cipher: PassportCipher; no
    */
   const ensureKeyBesides = (profile: string): Promise<void> =>
     keyWhen(async () => {
-      // A cached « unreadable » is safe: this runs only while available() is false, when every file reads as unreadable.
-      for (const p of await list()) if (p !== profile && (state(p) ?? (await load(p)).state) !== "unreadable") return false;
+      // This runs only while available() is false, when every file reads as unreadable: a profile never loaded is one,
+      // with no load (a load waits for that profile's queue, whose save may be waiting for this very lock).
+      for (const p of await list()) if (p !== profile && (state(p) ?? "unreadable") !== "unreadable") return false;
       return true;
     });
 
