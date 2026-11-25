@@ -1,4 +1,4 @@
-# Firefox-side texts: banners, import, site windows, extensions, menus.
+# Firefox-side texts: banners, import, site windows, menus.
 
 # Import from another browser (end notification, errors).
 chrome-import-count-bookmarks = { $count ->
@@ -67,8 +67,6 @@ chrome-perm-open-app = open a link in another application
 chrome-perm-read-tab = read a tab
 chrome-perm-devtools = use the developer tools
 chrome-perm-widget-data = see a widget's data
-chrome-perm-extension = turn on an extension
-chrome-perm-extension-console = see an extension's whole console
 chrome-perm-agent-address = open an address written by the agent
 chrome-perm-other = an unknown permission
 chrome-perm-screen-share = share your screen

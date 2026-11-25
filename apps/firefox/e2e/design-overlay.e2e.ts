@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { bubbleSlot } from "../chrome/store/design-copies";
 import { INVALID_REQUEST } from "../shared/design-guards";
-import { openTab, testActor } from "./agent-extensions";
+import { openTab, testActor } from "./actors";
 import { startDesignServers, trustedMouse } from "./design";
 import { waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";

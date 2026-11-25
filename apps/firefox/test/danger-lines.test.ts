@@ -1,6 +1,5 @@
 import { expect, test } from "vitest";
-import { dangerLines, DANGER_LINES_MAX } from "../ui/components/danger-lines";
-import { UNLOCK_REASON_LENGTH } from "../shared/extensions-messages";
+import { dangerLines, DANGER_LINES_MAX, UNLOCK_REASON_LENGTH } from "../ui/components/danger-lines";
 
 test("every line of a card's danger is kept, past five, in order", () => {
   const lines = Array.from({ length: 7 }, (_, i) => `ligne ${i}`);

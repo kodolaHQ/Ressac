@@ -500,7 +500,7 @@ describe("Settings page", () => {
     await shows("settings-mask", "Vos mots de passe restent dans Ressac.");
     await shows("settings-mask", "seuls les codes, IBAN, cartes, numéros d'identité et de sécurité sociale sont masqués.");
     await shows("settings-mask", "Jamais masqués : un prénom seul");
-    await shows("settings-mask", "Une extension de l'agent peut lire les pages hors de vos sources.");
+    await shows("settings-mask", "Ce que vous tapez dans le terminal de l'agent, l'agent le voit.");
     await shows("settings-mask", "c'est celui qu'il voit masqué.");
     expect(await inUi(m, `return doc.querySelector('[data-testid="telemetry-switch"]').disabled`)).toBe(true);
     await w!.close();

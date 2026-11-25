@@ -1,11 +1,10 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
-  import { UNLOCK_REASON_LENGTH } from "../../shared/extensions-messages";
   import { siteOf, type Decision, type PendingRequest } from "../../shared/model";
   import { api } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import MaskReveal from "./MaskReveal.svelte";
-  import { dangerLines } from "./danger-lines";
+  import { dangerLines, UNLOCK_REASON_LENGTH } from "./danger-lines";
   import { showSection } from "./settings-section.svelte";
 
   /**

@@ -31,7 +31,7 @@ test("the closed inventory of the spec's stores", () => {
   expect(STORES).toEqual({
     workspace: "space", "agent-home": "space", "container-tmp": "space", "ressac-logs": "space",
     notebook: "shared", "site-memories": "shared", "widget-data": "shared", "action-results": "shared", "workflow-runs": "shared",
-    recaps: "shared", "agent-extension-storage": "shared", "design-external": "shared",
+    recaps: "shared", "design-external": "shared",
     history: "browser", "outflow-memory": "browser",
   });
 });
@@ -43,8 +43,6 @@ const ARGS: Record<string, Record<string, unknown>> = {
   note_lesson: { lesson: "une leçon" },
   show_recap: { title: "Récap", results: {}, plan: { blocks: [] } },
   harvest_widget: { id: "meteo" },
-  request_extension: { id: "ext" },
-  reload_extension: { id: "ext" },
 };
 
 test("under the workspace lock, each store-write tool is refused before its handler, and the stores on disk stay unchanged", async () => {
@@ -62,7 +60,7 @@ test("under the workspace lock, each store-write tool is refused before its hand
   const token = generateToken();
   const s = await startMcpServer({
     bridge, policy: new AccessPolicy(), token, masker, locale: () => "fr",
-    apps: recording(calls), widgets: recording(calls), actions: recording(calls), sites: recording(calls), extensions: recording(calls),
+    apps: recording(calls), widgets: recording(calls), actions: recording(calls), sites: recording(calls),
     recaps: createRecaps({ folder: recapsFolder }), search: new SearchSessions({ show: () => {} }), notes,
     openWorkflow: () => null, outflow: new Outflow(),
   });

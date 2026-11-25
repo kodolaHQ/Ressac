@@ -42,6 +42,21 @@
     <p>{t("settings-mask-promise-never")}</p>
     <p class="help">{t("settings-mask-limits")}</p>
   </div>
+  <h3 class="group-title">{t("settings-group-extensions")}</h3>
+  <div class="group">
+    <SettingsRow label={t("settings-quarantine-extensions-label")} id="extension-quarantine" help={t("settings-quarantine-extensions-help")}>
+      <input
+        id="extension-quarantine"
+        class="switch"
+        type="checkbox"
+        role="switch"
+        data-testid="extension-quarantine"
+        aria-describedby="extension-quarantine-help"
+        checked={appState.value?.settings.extensionQuarantine ?? true}
+        onchange={(e) => api.dispatch({ type: "setExtensionQuarantine", enabled: e.currentTarget.checked })}
+      />
+    </SettingsRow>
+  </div>
   <div class="group-head">
     <h3 class="group-title">{t("settings-group-permissions")}</h3>
     {#if rows && rows.length >= SEARCH_FROM}

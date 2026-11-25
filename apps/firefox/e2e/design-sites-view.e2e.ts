@@ -6,7 +6,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { bubbleSlot, rectCapture } from "../chrome/store/design-copies";
 import { CAPTURE_WARNING_SITE, UNAVAILABLE_DESIGN_SITE } from "../shared/design-guards";
-import { testActor } from "./agent-extensions";
+import { testActor } from "./actors";
 import { armActor, clearLog, CSP, CSP_PAGE, FRAME_PAGE, pageLog, trustedMouse } from "./design";
 import {
   OTHER_PAGE,

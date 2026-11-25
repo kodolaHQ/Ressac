@@ -88,7 +88,7 @@ const NAVIGATOR_REMOVED = ["mediaDevices", "mozGetUserMedia"];
  * reached the socket process, and that refused connection's teardown made the socket process exit (status 1) and
  * stalled a tab's call started at that moment (measured in e2e/ui-network.e2e.ts). Non-configurable own values, set
  * at DOMWindowCreated, before the document's first script and before the script that created an about:blank frame
- * reads it (as extension-actor.ts).
+ * reads it.
  */
 export class RessacFrameRtcChild extends JSWindowActorChild {
   handleEvent(): void {

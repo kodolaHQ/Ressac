@@ -6,7 +6,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import { writeAction } from "./actions";
-import { testActor } from "./agent-extensions";
+import { testActor } from "./actors";
 import { SITE_HOME, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";

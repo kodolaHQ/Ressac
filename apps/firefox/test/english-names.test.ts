@@ -85,8 +85,6 @@ export const bindings = (code: string, svelte = false) => names(code, svelte).bi
 
 /** French member and key names that stay on purpose, by file. */
 const KEPT: Record<string, string[]> = {
-  // the test page's field ids, read back by the test extension
-  "apps/firefox/e2e/agent-extensions-guards.e2e.ts": ["texte"],
   // fake French classified-ad sites: the scraped ads keep their French fields
   "apps/firefox/e2e/actions-scenarios-2.e2e.ts": ["titre"],
   "apps/firefox/e2e/watch.e2e.ts": ["titre"],

@@ -26,7 +26,6 @@ import {
   WORKFLOW_ACTION_PREFIX,
   URL_ACTIONS,
   URL_APPLICATIONS,
-  URL_EXTENSIONS,
   URL_SETTINGS,
   URL_RELEASE_NOTES,
   urlAction,
@@ -691,8 +690,6 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     // A single Applications page per window: go back to it (in its space) rather than open a second one.
     case "openApps":
       return openInternalPage(d, genId, a.windowId, URL_APPLICATIONS, "Applications");
-    case "openExtensions":
-      return openInternalPage(d, genId, a.windowId, URL_EXTENSIONS, "Extensions");
     case "openSettings":
       return openInternalPage(d, genId, a.windowId, URL_SETTINGS, format(d.locale, "chrome-page-settings"));
     // Likewise, a single « Voir le workflow » page per widget and per window.
@@ -812,6 +809,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     case "setVimMode": {
       if (d.settings.vimMode === a.enabled) return false;
       d.settings.vimMode = a.enabled;
+      return true;
+    }
+    case "setExtensionQuarantine": {
+      if (d.settings.extensionQuarantine === a.enabled) return false;
+      d.settings.extensionQuarantine = a.enabled;
       return true;
     }
     case "setShortcut": {

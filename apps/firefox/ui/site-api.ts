@@ -2,8 +2,6 @@ import type { ApiSite } from "../shared/api";
 import type { SiteWindowController } from "../chrome/store/sites";
 import { local } from "./design-api";
 
-const off = () => () => {};
-
 // The controller outlives this document: a listener into a dead document would throw on every call.
 const untilUnload = (unsubscribe: () => void) => {
   window.addEventListener("unload", unsubscribe, { once: true });
@@ -52,15 +50,6 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
     grant: async (yes, hash) => {
       if (typeof yes !== "boolean" || (hash !== undefined && (typeof hash !== "string" || hash.length > 128))) throw new Error("invalid accord request");
       await c.grant(yes, hash ?? "");
-    },
-    extensions: {
-      list: async () => [],
-      toggle: async () => ({ ok: false, error: "Pas encore disponible dans Ressac." }),
-      bar: async () => ({ partition: "", tab: null, actions: [] }),
-      onChange: off,
-      manage: () => {},
-      panel: () => {},
-      onClose: off,
     },
     design: {
       // A host that does not answer: the last state again, never a rejection (spec §5.10);

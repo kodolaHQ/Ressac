@@ -1,16 +1,14 @@
 <script lang="ts">
   import { command } from "./command.svelte";
   import { onMount, tick, untrack } from "svelte";
-  import { UNLOCK_REASON_LENGTH } from "../../shared/extensions-messages";
   import { siteOf, type PendingRequest, type TabId } from "../../shared/model";
   import { LABELS } from "../../../../packages/kernel/src/mask/table";
   import { api } from "../state.svelte";
   import { t } from "../i18n.svelte";
-  import ExtensionRequest from "./ExtensionRequest.svelte";
   import DevToolsRequest from "./DevToolsRequest.svelte";
   import MaskRequest from "./MaskRequest.svelte";
   import MaskReveal from "./MaskReveal.svelte";
-  import { dangerLines } from "./danger-lines";
+  import { dangerLines, UNLOCK_REASON_LENGTH } from "./danger-lines";
   import FrozenBackground from "./FrozenBackground.svelte";
 
   /** `ongletId`: the page shown at opening, captured for the background (null: none, or a panel hides it). */
@@ -32,23 +30,6 @@
 
   const devTools = $derived(request.permissions.includes("devtools"));
   const widgetData = $derived(request.permissions.includes("widget-data"));
-  const extension = $derived(request.permissions.includes("extension"));
-  const consoleExtension = $derived(request.permissions.includes("extension-console"));
-  /** Extension name (manifest) and agent reason: data, shown as text and bounded. */
-  const extensionName = $derived((request.title ?? request.origin).slice(0, 60));
-  /** The spaces the unlock covers: names given by the user, shown as text and bounded. */
-  const extensionSpaces = $derived((request.spaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
-  const consoleText = $derived(
-    t("home-request-console", {
-      name: extensionName,
-      where:
-        extensionSpaces.length === 0
-          ? t("home-request-console-where-profiles")
-          : extensionSpaces.length === 1
-            ? t("home-request-console-where-space", { space: extensionSpaces[0]! })
-            : t("home-request-console-where-spaces", { spaces: extensionSpaces.map((e) => t("home-quoted", { name: e })).join(", ") }),
-    }),
-  );
   const agentReason = $derived((request.reason ?? "").slice(0, UNLOCK_REASON_LENGTH));
   const agentAddress = $derived(request.permissions.includes("agent-address"));
   const masking = $derived(request.permissions.some((p) => p.startsWith("mask-")));
@@ -153,7 +134,6 @@
     tabindex="-1"
     role="alertdialog"
     aria-modal="true"
-    aria-describedby={request.extension?.hardened ? "extension-card-warning" : undefined}
     aria-label={t(
       devTools
         ? "home-request-label-devtools"
@@ -165,15 +145,11 @@
               : request.history
                 ? "home-request-label-history"
                 : "home-request-label-widget"
-          : extension
-            ? "home-request-label-extension"
-            : consoleExtension
-              ? "home-request-label-console"
-              : agentAddress
-                ? request.found ? "home-request-label-address-found" : "home-request-label-address"
-                : masking
-                  ? `home-request-label-${request.permissions[0]}`
-                  : "home-request-label",
+          : agentAddress
+            ? request.found ? "home-request-label-address-found" : "home-request-label-address"
+            : masking
+              ? `home-request-label-${request.permissions[0]}`
+              : "home-request-label",
     )}
   >
     {#key request.id}
@@ -182,26 +158,6 @@
         {#key request.id}<MaskRequest request={request} />{/key}
       {:else if devTools}
         <DevToolsRequest request={request} />
-      {:else if extension}
-        {#if request.extension}
-          <ExtensionRequest request={request} card={request.extension} />
-        {:else}
-          <!-- Never set without a card; if it were, nothing activates without having been shown. -->
-          <div class="reading">
-            <p>{t("home-request-unreadable")}</p>
-            <div class="actions"><button data-main onclick={deny}>{t("home-deny")}</button></div>
-          </div>
-        {/if}
-      {:else if consoleExtension}
-        <div class="reading" data-testid="extension-console-request">
-          <p>{consoleText}</p>
-          {#if agentReason}<p class="reason">{t("home-request-console-reason", { agent: request.agent ?? t("home-agent"), reason: agentReason })}</p>{/if}
-          <div class="actions">
-            <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->
-            <button data-main onclick={deny}>{t("home-deny")}</button>
-            <button class="allow" onclick={() => api.permissions.answer(request.id, "allow")}>{t("home-request-console-unlock")}</button>
-          </div>
-        </div>
       {:else if agentAddress}
         <div class="reading" data-testid="address-request">
           <p>{t(request.found ? "home-request-label-address-found" : "home-request-label-address")}</p>

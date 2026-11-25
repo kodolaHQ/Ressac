@@ -3,7 +3,7 @@ import { apply } from "../../core/state/actions";
 import { initialState } from "../../core/state/initial-state";
 import type { Action } from "../../shared/api";
 import { siteOf, urlRecap, type BrowserState } from "../../shared/model";
-import { waitForRights, waitForResponse, policyChanges, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace, boundLinks, boundCapture, boundFields, closedRecaps, activeRecap, shownRecaps } from "../../core/agent/bridge";
+import { waitForRights, waitForResponse, policyChanges, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace, boundLinks, boundCapture, boundFields, closedRecaps, activeRecap, shownRecaps } from "../../core/agent/bridge";
 
 /** Sets a space's private flag, leaving the rest untouched. */
 function setPrivate(e: BrowserState, ag: (a: Action) => unknown, id: string, isPrivate: boolean) {
@@ -361,53 +361,6 @@ test("spacesBecamePrivate: only the switch from non-private to private", () => {
   expect(spacesBecamePrivate(isPrivate, isPrivate)).toEqual([]);
   setPrivate(e(), ag, id, false);
   expect(spacesBecamePrivate(isPrivate, e())).toEqual([]);
-});
-
-const extensionCard = (spaceId: string, source: "store" | "agent", strengthened = false) => ({
-  key: source === "agent" ? "agent:essai" : `store:${"a".repeat(32)}`,
-  name: "Essai",
-  source,
-  version: "1.0.0",
-  rights: [],
-  sites: [],
-  allSites: false,
-  network: source === "agent" ? [] : null,
-  hardened: strengthened,
-  space: "Perso",
-  spaceId: spaceId,
-  otherSpaces: [],
-  alsoReplaces: [],
-  update: null,
-  hash: "0".repeat(64),
-});
-
-test("staleQuestion: an extension card lapses with its space; the agent's one too when the profile becomes private", () => {
-  const { e, ag, F } = prepare();
-  const space = e().spaces[0]!.id;
-  const agent = { id: "x", tabId: null, windowId: F, origin: "agent:essai", permissions: ["extension" as const], extension: extensionCard(space, "agent") };
-  const store = { ...agent, id: "y", extension: extensionCard(space, "store") };
-  expect(staleQuestion(agent, e())).toBe(false);
-  expect(staleQuestion(store, e())).toBe(false);
-  // Another space of the same profile becomes private: the profile is, and the agent's extension has no place there any more.
-  ag({ type: "createSpace", name: "Secret", icon: "🔒", private: false, profile: e().spaces[0]!.profile });
-  const secret = e().spaces.at(-1)!.id;
-  setPrivate(e(), ag, secret, true);
-  expect(staleQuestion(agent, e())).toBe(true);
-  expect(staleQuestion(store, e())).toBe(false);
-  // Space deleted: every card lapses.
-  expect(staleQuestion({ ...store, extension: extensionCard("inconnu", "store") }, e())).toBe(true);
-});
-
-test("allowedDecision: a « yes » to a reinforced card without the box ticked counts as a refusal", () => {
-  const strengthened = { id: "x", tabId: null, origin: "agent:essai", permissions: ["extension" as const], extension: extensionCard("e", "agent", true) };
-  expect(allowedDecision(strengthened, "allow")).toBe("deny");
-  expect(allowedDecision(strengthened, "allow", false)).toBe("deny");
-  expect(allowedDecision(strengthened, "allow", true)).toBe("allow");
-  expect(allowedDecision(strengthened, "deny", true)).toBe("deny");
-  const simple = { ...strengthened, extension: extensionCard("e", "agent") };
-  expect(allowedDecision(simple, "allow")).toBe("allow");
-  const reading = { id: "l", tabId: null, origin: "https://a.test", permissions: ["read-tab" as const] };
-  expect(allowedDecision(reading, "allow")).toBe("allow");
 });
 
 // ——— Site-app windows (`site:<id>`) ———

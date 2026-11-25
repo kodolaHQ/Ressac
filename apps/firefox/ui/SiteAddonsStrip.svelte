@@ -4,7 +4,7 @@
 
   // The add-on buttons of the app's window (chrome/window/addons.ts createSiteAddons),
   // copied into this document. Only in the « site » view: on the home or the card a popup would have no page shown.
-  // `api` is a prop of the bar, unused: ApiSite.extensions stays inert in Firefox.
+  // `api` is a prop of the bar, unused here.
   let { onSite }: { api: ApiSite; onSite: boolean } = $props();
   const addons = window.parent.ressacSiteWindow!.addons!;
   let buttons = $state<AddonButton[]>(structuredClone(addons.buttons()));

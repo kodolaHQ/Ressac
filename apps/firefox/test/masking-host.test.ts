@@ -56,14 +56,14 @@ it("maskingStatus: the lock's names, the window's uncovered conversation, the no
   const notices = new Map([["s1", "Remplissage bloqué."]]);
   const passport = hostPassport({});
   passport.markReady(["perso"]);
-  expect(maskingStatus(masker, lock({ since: "x", names: ["votre code"] }), notices, "f1", true, passport)).toEqual({ locked: ["votre code"], lockedAgreement: "one-m", uncovered: true, uncoveredPassport: [], notice: "Remplissage bloqué.", extensionReads: true, passportUnreadable: ["perso"] });
+  expect(maskingStatus(masker, lock({ since: "x", names: ["votre code"] }), notices, "f1", passport)).toEqual({ locked: ["votre code"], lockedAgreement: "one-m", uncovered: true, uncoveredPassport: [], notice: "Remplissage bloqué.", passportUnreadable: ["perso"] });
   masker.open("s2", "f1");
   passport.replace("perso", []);
-  expect(maskingStatus(masker, lock(null), notices, "f1", false, passport)).toEqual({ locked: null, lockedAgreement: "one-m", uncovered: false, uncoveredPassport: [], notice: null, extensionReads: false, passportUnreadable: [] });
+  expect(maskingStatus(masker, lock(null), notices, "f1", passport)).toEqual({ locked: null, lockedAgreement: "one-m", uncovered: false, uncoveredPassport: [], notice: null, passportUnreadable: [] });
   // A passport addition: its own cause, with the entries (profile and id) that marked the conversation.
   masker.markUncovered("s2", [{ profile: "perso", id: "a" }]);
-  expect(maskingStatus(masker, lock(null), notices, "f1", false, passport)).toMatchObject({ uncovered: false, uncoveredPassport: [{ profile: "perso", id: "a" }] });
-  expect(maskingStatus(null, lock({ since: "", names: [] }), notices, "f1", false, passport)).toEqual({ locked: [], lockedAgreement: "one-m", uncovered: false, uncoveredPassport: [], notice: null, extensionReads: false, passportUnreadable: [] });
+  expect(maskingStatus(masker, lock(null), notices, "f1", passport)).toMatchObject({ uncovered: false, uncoveredPassport: [{ profile: "perso", id: "a" }] });
+  expect(maskingStatus(null, lock({ since: "", names: [] }), notices, "f1", passport)).toEqual({ locked: [], lockedAgreement: "one-m", uncovered: false, uncoveredPassport: [], notice: null, passportUnreadable: [] });
 });
 
 it("hostPassport: waits for the chrome's ready; the loopback seam only from RESSAC_TEST_LOCAL_ADDRESSES, which a packaged host deletes first", async () => {
@@ -167,45 +167,13 @@ it("pushPassports: a read still pending at the cap is unreadable for now, then p
   await vi.waitFor(() => expect(sent.at(-1)).toEqual(["passport.replace", { profile: "slow", entries: [] }]));
 });
 
-it("pushPassports: a load that throws counts as unreadable, ready still comes; the passport hosts are known only once the loads settled", async () => {
-  vi.resetModules();
+it("pushPassports: a load that throws counts as unreadable, ready still comes", async () => {
   const { pushPassports } = await import("../chrome/agent/host");
-  const { onPassportHost } = await import("../chrome/passport/hosts");
   const sent: unknown[][] = [];
   const request = async (...a: unknown[]) => void sent.push(a);
-  let fail!: (e: Error) => void;
-  const files = { list: async () => ["bad", "ok"], load: (p: string) => (p === "bad" ? new Promise((_, no) => (fail = no)) : Promise.resolve({ profile: p, state: "ok", entries: [], dropped: 0, revision: "" })) };
-  // Before the first push settles every host counts as a passport's: an agent extension reaches none (fail closed).
-  expect(onPassportHost("https://any.test/")).toBe(true);
-  const pushing = pushPassports(request, files as never);
-  await vi.waitFor(() => expect(fail).toBeTypeOf("function"));
-  expect(onPassportHost("https://any.test/")).toBe(true);
-  fail(new Error("boom"));
-  await pushing;
+  const files = { list: async () => ["bad", "ok"], load: (p: string) => (p === "bad" ? Promise.reject(new Error("boom")) : Promise.resolve({ profile: p, state: "ok", entries: [], dropped: 0, revision: "" })) };
+  await pushPassports(request, files as never);
   expect(sent.at(-1)).toEqual(["passport.ready", { unreadable: ["bad"] }]);
-  await vi.waitFor(() => expect(onPassportHost("https://any.test/")).toBe(false));
-});
-
-it("pushPassports: a load past the cap keeps every host refused until it settles, though ready went at the cap", async () => {
-  vi.resetModules();
-  const { pushPassports } = await import("../chrome/agent/host");
-  const { onPassportHost } = await import("../chrome/passport/hosts");
-  const sent: unknown[][] = [];
-  let finish!: (r: unknown) => void;
-  const files = { list: async () => ["slow"], load: () => new Promise((r) => (finish = r)) };
-  await pushPassports(async (...a: unknown[]) => void sent.push(a), files as never, 1);
-  expect(sent).toEqual([["passport.ready", { unreadable: ["slow"] }]]);
-  expect(onPassportHost("https://any.test/")).toBe(true);
-  finish({ profile: "slow", state: "ok", entries: [{ origins: ["banque.test"] }], dropped: 0, revision: "" });
-  await vi.waitFor(() => expect(onPassportHost("https://any.test/")).toBe(false));
-});
-
-it("pushPassports: no passport file, the hosts are known at once", async () => {
-  vi.resetModules();
-  const { pushPassports } = await import("../chrome/agent/host");
-  const { onPassportHost } = await import("../chrome/passport/hosts");
-  await pushPassports(async () => {}, { list: async () => [], load: async () => { throw new Error("unused"); } } as never);
-  await vi.waitFor(() => expect(onPassportHost("https://any.test/")).toBe(false));
 });
 
 it("mask.runs: the window's session, the zone its passport origins give the tab, no label issued; no session, null", () => {

@@ -14,7 +14,6 @@ apps/firefox/src/browser/base/content/ressac/store.sys.mjs
 apps/firefox/src/browser/base/content/ressac/agent.js
 apps/firefox/src/browser/base/content/ressac/agent.css
 apps/firefox/src/browser/base/content/ressac/page-actor.sys.mjs
-apps/firefox/src/browser/base/content/ressac/extension-actor.sys.mjs
 apps/firefox/src/browser/base/content/ressac/site-actor.sys.mjs
 apps/firefox/src/browser/base/content/ressac/design-actor.sys.mjs
 apps/firefox/src/browser/base/content/ressac/vim-actor.sys.mjs

@@ -2,7 +2,6 @@ import type { AuraId } from "./aura";
 import type { HintId } from "./hints";
 import type { DevRight, TabAccessState, Owner } from "@ressac/kernel";
 import type { Binding, ShortcutId } from "./shortcuts";
-import type { ExtensionCard } from "./extensions";
 import type { ClaudeEngine, CodexEngine, MachineIdleMinutes } from "./settings";
 
 /** The look: the Mac's, light or dark (Réglages and the welcome, in this order). */
@@ -12,7 +11,6 @@ export type Appearance = (typeof APPEARANCES)[number];
 /** Internal Applications page: a tab without a web page, displayed by the UI. */
 export const URL_APPLICATIONS = "ressac://apps";
 /** Internal Extensions page (Store and agent), displayed by the UI. */
-export const URL_EXTENSIONS = "ressac://extensions";
 /** Internal Settings page, displayed by the UI. */
 export const URL_SETTINGS = "ressac://settings";
 /** Internal « Nouveautés » page (shared/release-notes.ts), displayed by the UI. */
@@ -292,6 +290,8 @@ export interface BrowserState {
     sidebarSide: "left" | "right";
     /** Vim keys in web tabs (off by default). */
     vimMode: boolean;
+    /** Firefox's quarantine keeps every extension off the sensitive sites (on by default; chrome/store/quarantine.ts). */
+    extensionQuarantine: boolean;
     /** Light or dark look, or the Mac's (the default). */
     appearance: Appearance;
     /** At launch each window shows the home page instead of the tab it was left on (on by default). */
@@ -419,10 +419,6 @@ export type Permission =
   | "devtools"
   /** The agent wants to see the data of a widget read with the user's account (for the current conversation). */
   | "widget-data"
-  /** Enable (or update) an extension: the grant card, coming from a click by the user or by the agent. */
-  | "extension"
-  /** The agent wants to see the whole console of one of its extensions (temporary unlock, until it is done). */
-  | "extension-console"
   /** The agent wants to open, in its search tab, an address it wrote itself (the whole address and its reason are shown). */
   | "agent-address"
   /** Masking (spec § 8): the agent wants to see a masked value for this conversation, which then stays locked. */
@@ -444,7 +440,7 @@ export interface Request {
   permissions: Permission[];
   /** « ouvrir-application »: the link to hand to another application (mailto:, zoommtg:…). */
   link?: string;
-  /** « lire-onglet »: title of the targeted tab; « donnees-widget », « console-extension »: name of the widget or extension, displayed as is. */
+  /** « lire-onglet »: title of the targeted tab; « donnees-widget »: name of the widget, displayed as is. */
   title?: string;
   /** « donnees-widget »: the id of the widget whose data the agent wants to see. */
   widget?: string;
@@ -460,9 +456,7 @@ export interface Request {
   target?: TabId;
   /** « outils-dev »: the rights requested by the agent, pre-checked. */
   rights?: DevRight[];
-  /** « console-extension »: the spaces of the profiles where the extension is active (what the unlock covers). */
-  spaces?: string[];
-  /** « outils-dev », « console-extension »: the reason given by the agent. */
+  /** « outils-dev »: the reason given by the agent. */
   reason?: string;
   /** « outils-dev » and « donnees-widget »: the agent's name, displayed as is. */
   agent?: string;
@@ -503,8 +497,6 @@ export interface Request {
      */
     remember?: { row: number; choice?: string; text: string }[];
   };
-  /** « extension »: the grant card, displayed as text. */
-  extension?: ExtensionCard;
 }
 export interface PendingRequest extends Request {
   id: string;

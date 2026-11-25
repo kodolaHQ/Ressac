@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { rectCapture } from "../chrome/store/design-copies";
-import { testActor } from "./agent-extensions";
+import { testActor } from "./actors";
 import {
   WITH_HOME,
   withHomeDeclaration,

@@ -98,22 +98,6 @@ describe("passport files", () => {
     expect(files.count("default")).toBe(1);
   });
 
-  it("a failed or unreadable load keeps the profile's last known hosts; a good load, a save or remove changes them", async () => {
-    const { onPassportHost, passportHostsKnown } = await import("../chrome/passport/hosts");
-    passportHostsKnown();
-    const cipher = fakeCipher();
-    const files = createPassportFiles({ dir, cipher });
-    const saved = await files.save("default", [{ ...entry("a"), origins: ["banque.test"] }], "");
-    expect(saved.ok).toBe(true);
-    expect((await files.load("default")).state).toBe("ok");
-    expect(onPassportHost("https://banque.test/")).toBe(true);
-    cipher.decrypt.mockRejectedValueOnce(new Error("locked"));
-    expect((await files.load("default")).state).toBe("unreadable");
-    expect(onPassportHost("https://banque.test/")).toBe(true);
-    await files.remove("default");
-    expect(onPassportHost("https://banque.test/")).toBe(false);
-  });
-
   it("passportShown reads the last good load only: masked displays, no cipher call, no read; nothing for a passport never read", async () => {
     const cipher = fakeCipher();
     const files = createPassportFiles({ dir, cipher });
@@ -273,9 +257,7 @@ describe("passport files", () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
 
-  it("a load runs in the save queue: a slow load started before a save never leaves its older hosts after the save's", async () => {
-    const { onPassportHost, passportHostsKnown } = await import("../chrome/passport/hosts");
-    passportHostsKnown();
+  it("a load runs in the save queue: a slow load started before a save settles before it", async () => {
     const cipher = fakeCipher();
     const files = createPassportFiles({ dir, cipher });
     const first = await files.save("default", [{ ...entry("a"), origins: ["old.test"] }], "");
@@ -289,8 +271,7 @@ describe("passport files", () => {
     release();
     expect((await load).state).toBe("ok");
     expect((await save).ok).toBe(true);
-    expect(onPassportHost("https://new.test/")).toBe(true);
-    expect(onPassportHost("https://old.test/")).toBe(false);
+    expect((await files.load("default")).entries.map((e) => e.origins)).toEqual([["new.test"]]);
     await files.remove("default");
   });
 

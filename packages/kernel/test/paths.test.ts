@@ -32,10 +32,6 @@ test("pathInContainer translates a space path and refuses the rest", () => {
   expect(() => pathInContainer("/tmp/w-autre/x", c)).toThrow();
 });
 
-test("spacePaths().extensions vaut <racine>/extensions", () => {
-  expect(spacePaths("/tmp/w").extensions).toBe("/tmp/w/extensions");
-});
-
 test("actions and components under the root", () => {
   const c = spacePaths("/tmp/w");
   expect(c.actions).toBe("/tmp/w/actions");

@@ -15,11 +15,10 @@ export const TOOL_KINDS: Readonly<Record<string, ToolKind>> = Object.freeze({
   ...kinds("outflow", ["navigate", "open_tab", "read_pages", "fill_field"]),
   // run_js: a script in the page sends anywhere (ruling); reload: reruns a page the agent may have rewritten, with Firefox's network.
   ...kinds("outflow-no-destination", ["search_web", "open_site", "launch_app", "launch_action", "open_workflow", "hand_over", "run_js", "reload"]),
-  ...kinds("store-write", ["note_lesson", "show_recap", "harvest_widget", "request_extension", "reload_extension"]),
+  ...kinds("store-write", ["note_lesson", "show_recap", "harvest_widget"]),
   ...kinds("read", [
     "reveal_value", "current_page", "list_tabs", "read_tab", "capture_screen", "stop_app", "app_log",
     "widget_data", "widget_runs", "action_runs", "read_recap", "list_sites", "close_site", "site_memory", "tweak_errors",
-    "list_extensions", "extension_console", "unlock_console", "lock_console",
     "search_history", "read_history", "search_bookmarks",
     "request_devtools", "read_console", "read_network", "read_request", "profile_performance", "memory_snapshot", "compare_memory",
   ]),
@@ -32,14 +31,14 @@ export const TOOL_KINDS: Readonly<Record<string, ToolKind>> = Object.freeze({
  */
 export type StoreId =
   | "workspace" | "agent-home" | "container-tmp" | "ressac-logs"
-  | "notebook" | "site-memories" | "widget-data" | "action-results" | "workflow-runs" | "recaps" | "agent-extension-storage" | "design-external"
+  | "notebook" | "site-memories" | "widget-data" | "action-results" | "workflow-runs" | "recaps" | "design-external"
   | "history" | "outflow-memory";
 
 export const STORES: Readonly<Record<StoreId, "space" | "shared" | "browser">> = Object.freeze({
   // `agent-home`: /home/node; `container-tmp`: /tmp and /var/tmp.
   workspace: "space", "agent-home": "space", "container-tmp": "space", "ressac-logs": "space",
   notebook: "shared", "site-memories": "shared", "widget-data": "shared", "action-results": "shared", "workflow-runs": "shared",
-  recaps: "shared", "agent-extension-storage": "shared", "design-external": "shared",
+  recaps: "shared", "design-external": "shared",
   history: "browser", "outflow-memory": "browser",
 });
 
@@ -48,6 +47,4 @@ export const TOOL_WRITES: Readonly<Record<string, StoreId[]>> = Object.freeze({
   note_lesson: ["notebook"],
   show_recap: ["recaps"],
   harvest_widget: ["widget-data"],
-  request_extension: ["agent-extension-storage"],
-  reload_extension: ["agent-extension-storage"],
 });

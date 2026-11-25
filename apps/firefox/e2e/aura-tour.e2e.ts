@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { openTab, testActor } from "./agent-extensions";
+import { openTab, testActor } from "./actors";
 import { startDesignServers } from "./design";
 import { dispatch, state, waitFor, waitReady, windowHandles } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";

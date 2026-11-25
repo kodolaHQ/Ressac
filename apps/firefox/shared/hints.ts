@@ -1,7 +1,7 @@
 import type { ShortcutId } from "./shortcuts";
 
 export type TipId = "ctrl-tab" | "cmd-t" | "cmd-l" | "cmd-j" | "spaces" | "design-mode";
-export type FirstTimeId = "agent" | "design" | "actions" | "extensions";
+export type FirstTimeId = "agent" | "design" | "actions";
 export type HintId = TipId | FirstTimeId;
 
 /** `text` and the first-time `title` / `text` are message ids (locales, sidebar.ftl): the screen calls t(). */
@@ -17,7 +17,6 @@ export const TIPS: { id: TipId; text: string; /** A fixed key, shown as is. */ k
 export const FIRST_TIME: Record<FirstTimeId, { title: string; text: string }> = {
   agent: { title: "sidebar-first-agent-title", text: "sidebar-first-agent-text" },
   design: { title: "sidebar-first-design-title", text: "sidebar-first-design-text" },
-  extensions: { title: "sidebar-first-extensions-title", text: "sidebar-first-extensions-text" },
   actions: { title: "sidebar-first-actions-title", text: "sidebar-first-actions-text" },
 };
 

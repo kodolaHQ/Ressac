@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { dirname, join, relative, isAbsolute } from "node:path";
 
-/** Kernel package root in dev; once shipped, the folder holding `templates/`, `extensions/` and `docker/`. */
+/** Kernel package root in dev; once shipped, the folder holding `templates/` and `docker/`. */
 export const KERNEL_ROOT = process.env.RESSAC_KERNEL_RESOURCES ?? join(import.meta.dirname, "..");
 
 export const CONTAINER_PATH = "/workspace";
@@ -19,8 +19,6 @@ export interface SpacePaths {
   mcpConfig: string;
   /** Logs of the launched applications (`<folder>.log`). */
   logs: string;
-  /** Extensions written by the agent (`<folder>/manifest.json`); nothing found there grants a right. */
-  extensions: string;
   /** Actions (`<folder>/action.json`, workflow.json); their data, results and grants are outside the workspace. */
   actions: string;
   /** Page components written by the agent (`<folder>/component.json`). */
@@ -43,7 +41,6 @@ export function spacePaths(root?: string): SpacePaths {
     profiles: join(internal, "profiles"),
     mcpConfig: join(internal, "mcp.json"),
     logs: join(internal, "logs"),
-    extensions: join(r, "extensions"),
     actions: join(r, "actions"),
     components: join(r, "components"),
     sites: join(r, "sites"),

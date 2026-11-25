@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { SITE_UNKNOWN, SITE_DENIED } from "../../../packages/kernel/src/mcp/server";
-import { testActor } from "./agent-extensions";
+import { testActor } from "./actors";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";

@@ -3,14 +3,13 @@ import { AURA_IDS } from "./aura";
 import { HINT_IDS } from "./hints";
 import { SHORTCUT_IDS, type ShortcutId } from "./shortcuts";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "./search";
-import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type AccessState, type BrowserState, type SpaceId, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
+import { APPEARANCES, LANGUAGE_SETTING, type Decision, type PendingRequest, type AccessState, type BrowserState, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
 import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile, type InstructionChange, type ChangedFile, type LiftChoice, type QuarantinedFile } from "@ressac/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, MachineIdleSchema, type DockerStatus, type MachineShown, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { PassportEntry, PassportField } from "../../../packages/kernel/src/mask/passport-fields.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
-import type { ExtensionsBar, ExtensionLine, SpaceExtensionLine, SiteExtensionLine } from "./extensions";
 import type { LeftZone } from "./reveal";
 
 const id = z.string().min(1);
@@ -140,8 +139,6 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("toggleAgentPanel"), windowId: id }),
   /** Activates the Applications page of the active space, or opens it. */
   z.object({ type: z.literal("openApps"), windowId: id }),
-  /** Activates this window's Extensions page, or opens it (like Applications). */
-  z.object({ type: z.literal("openExtensions"), windowId: id }),
   /** Activates this window's Settings page, or opens it (like Applications). */
   z.object({ type: z.literal("openSettings"), windowId: id }),
   /** Activates the « Voir le workflow » page of widget `id` in this window, or opens it. */
@@ -192,6 +189,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("markHintSeen"), id: z.enum(HINT_IDS) }),
   z.object({ type: z.literal("setHintsEnabled"), enabled: z.boolean() }),
   z.object({ type: z.literal("setVimMode"), enabled: z.boolean() }),
+  z.object({ type: z.literal("setExtensionQuarantine"), enabled: z.boolean() }),
   z.object({ type: z.literal("chooseAgentDomains"), domains: z.array(z.string()) }),
   z.object({ type: z.literal("chooseMachineIdle"), minutes: MachineIdleSchema }),
   z.object({ type: z.literal("setSidebarSide"), side: z.enum(["left", "right"]) }),
@@ -293,10 +291,9 @@ export interface ApiRessac {
   permissions: {
     pending(): Promise<PendingRequest[]>;
     /**
-     * `o.confirmed`: the « Je comprends » box of a hardened extension card is checked; `o.login`: the saved login chosen on a
-     * fill card; `o.remember`: its rows ticked « Retenir ce site » (this window's card only).
+     * `o.login`: the saved login chosen on a fill card; `o.remember`: its rows ticked « Retenir ce site » (this window's card only).
      */
-    answer(id: string, decision: Decision, rights?: DevRight[], o?: { confirmed?: boolean; login?: number; picks?: (string | null)[]; remember?: number[] }): void;
+    answer(id: string, decision: Decision, rights?: DevRight[], o?: { login?: number; picks?: (string | null)[]; remember?: number[] }): void;
   };
   onPermissions(callback: (list: PendingRequest[]) => void): () => void;
   /**
@@ -503,33 +500,6 @@ export interface ApiRessac {
     /** Whether app `id`'s essential tab can show a home (one written, no grant waiting). */
     hasHome(id: string): boolean;
   };
-  extensions: {
-    /** The installed or granted extensions, and the agent's folders never granted, seen from this space. */
-    forSpace(spaceId: SpaceId): Promise<SpaceExtensionLine[]>;
-    /** Enables or disables an extension in this space's profile (the agent without a grant goes through the card). */
-    toggle(key: string, spaceId: SpaceId, active: boolean): Promise<{ ok: true } | { ok: false; error: string }>;
-    /** The extension registry changed (or their errors): re-read. */
-    onChange(callback: () => void): () => void;
-    /** All the registry's extensions (Extensions page). */
-    list(): Promise<ExtensionLine[]>;
-    /** Is « Désactiver toutes les extensions » in force? */
-    allCut(): Promise<boolean>;
-    /** The extensions loaded in the profile of this window's active space. */
-    bar(): Promise<ExtensionsBar>;
-    pin(key: string, yes: boolean): Promise<ExtensionResult>;
-    /** Removed from all profiles (the grant stays). */
-    disableEverywhere(key: string): Promise<ExtensionResult>;
-    /** Store: uninstalled; agent: grant and copy erased (the agent's folder stays). */
-    remove(key: string): Promise<ExtensionResult>;
-    /** « Désactiver toutes les extensions »: nothing is loaded while it is true, even after a restart. */
-    cutAll(yes: boolean): Promise<ExtensionResult>;
-    /** The card of the pending update (Store) or of the widened scope (agent), in this window. */
-    review(key: string): Promise<ExtensionResult>;
-    /** An extension disabled for its crashes starts again (where it was active). */
-    reenable(key: string): Promise<ExtensionResult>;
-    /** « Couper le déblocage » of an agent extension's console. */
-    cutUnlock(key: string): Promise<ExtensionResult>;
-  };
   /** Design mode of this window's active tab, and baskets of notes. */
   design: ApiDesign;
   /** « Cacher pour l'agent »: the toolbar button arms (or leaves) the viewfinder over this window's tab. */
@@ -595,9 +565,6 @@ export interface SettingsApi {
   codexKeySaved(): Promise<boolean>;
   setCodexKey(key: string): Promise<SettingsResult>;
   deleteCodexKey(): Promise<SettingsResult>;
-  amoAccount(): Promise<{ saved: boolean; issuer: string | null }>;
-  setAmoAccount(issuer: string, secret: string): Promise<SettingsResult>;
-  deleteAmoAccount(): Promise<SettingsResult>;
   chooseCodexEngine(engine: CodexEngine): void;
   claudeKeySaved(): Promise<boolean>;
   setClaudeKey(key: string): Promise<SettingsResult>;
@@ -781,8 +748,6 @@ export interface MaskingStatus {
   uncoveredPassport: { profile: string; id: string }[];
   /** The kernel's notice for this conversation (fill_field blocked after unknown labels), as it rendered it. */
   notice: string | null;
-  /** An agent extension runs: it reads pages past the masker (Task 15). */
-  extensionReads: boolean;
   /** The login profiles whose passport could not be read: their data is not masked (design § 4.5). */
   passportUnreadable: string[];
 }
@@ -991,23 +956,6 @@ export interface ApiSite {
   open(url: string): Promise<boolean>;
   /** An image of an app domain, loaded with its session, as `data:`; null if it is refused. */
   image(url: string): Promise<string | null>;
-  /** The bar's « Extensions » menu (plan 16): the Store extensions, enabled for this app only. */
-  extensions: {
-    /** The Store extensions, and their state in this app. */
-    list(): Promise<SiteExtensionLine[]>;
-    /** The switch: the site view is reloaded after a success (the already loaded page only). */
-    toggle(key: string, active: boolean): Promise<ExtensionResult>;
-    /** Partition `persist:site-<id>`, tab = id of the view in « site » view (otherwise null), and the loaded extensions. */
-    bar(): Promise<ExtensionsBar>;
-    /** `CANAUX.extensionsChange`; returns the unsubscribe. */
-    onChange(callback: () => void): () => void;
-    /** The Extensions page, in a main window. */
-    manage(): void;
-    /** Height of the open menu panel under the bar (0: closed), bounded by `EXTENSIONS_PANEL_MAX`. */
-    panel(height: number): void;
-    /** The main process asks to close the menu (click in the site view, fullscreen); returns the unsubscribe. */
-    onClose(callback: () => void): () => void;
-  };
   /**
    * The app's design mode (plan 18), ✎ button and chevron of the bar: the main process recognizes the app by
    * the sender. `surChange` only listens to `CANAUX.designChange` (the counter follows), without any action.

@@ -147,7 +147,7 @@
     </ul>
   {/if}
 </form>
-<ExtensionsBar window={win} />
+<ExtensionsBar />
 </div>
 
 <style>

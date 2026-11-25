@@ -36,7 +36,6 @@ host-invalid-request = Demande invalide
 host-invalid-grant-request = Demande d'accord invalide
 host-widget-not-found = Widget introuvable
 host-review-unknown-comparison = Cette comparaison n'est plus gardée : Rafraîchissez la relecture.
-host-amo-keys-absent = Compte Mozilla non branché : Réglages › Agent › Compte Mozilla. Rien n'est parti chez Mozilla.
 host-engine-url-invalid = Adresse invalide (https://…)
 host-review-unknown-project = projet inconnu
 host-review-file-absent = fichier absent de la relecture

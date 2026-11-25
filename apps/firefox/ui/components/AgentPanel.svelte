@@ -330,9 +330,6 @@
       <button class="lift-open" data-testid="agent-mask-passport-open" onclick={() => openSettings(`settings:passport:${profile}`)}>{t("agent-mask-passport-open")}</button>
     </div>
   {/each}
-  {#if masking.extensionReads}
-    <p class="mask-banner" role="status" data-testid="agent-mask-extension" out:fade={{ duration: visible ? 150 : 0 }}>{t("agent-mask-extension")}</p>
-  {/if}
   {#if masking.notice}
     <p class="mask-banner" role="status" data-testid="agent-mask-notice" out:fade={{ duration: visible ? 150 : 0 }}>{masking.notice.slice(0, 300)}</p>
   {/if}

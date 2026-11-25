@@ -98,16 +98,6 @@ agent-shortcuts-fixed-recent = Recent tabs
 
 ## Settings › Agent › Mozilla account
 
-agent-mozilla-title = Mozilla account (agent extensions)
-agent-mozilla-help = Firefox only installs extensions signed by Mozilla. Ressac has them signed with your Mozilla developer account (free).
-agent-mozilla-on = Account connected
-agent-mozilla-off = Not connected
-agent-mozilla-remove = Remove
-agent-mozilla-link = Open the Mozilla keys page
-agent-mozilla-steps = Sign in or create an account, accept the developer agreement, then generate credentials.
-agent-mozilla-issuer = JWT issuer
-agent-mozilla-secret = JWT secret
-agent-mozilla-save = Save
 
 ## Settings › Privacy
 
@@ -277,7 +267,6 @@ agent-mask-passport-field-secu = your social security number
 agent-mask-passport-field-plaque = your licence plate
 agent-mask-passport-field-libre = an item of your passport
 agent-mask-passport-unknown = a value of your passport
-agent-mask-extension = An agent extension can read pages outside your sources.
 agent-mask-passport-unreadable = Your passport “{ $profile }” could not be read: its data is not masked from the agent.
 agent-mask-passport-open = Open the passport
 agent-mask-passport-no-space = No space

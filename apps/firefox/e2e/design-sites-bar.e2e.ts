@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { CAPTURE_WARNING_SITE, UNAVAILABLE_DESIGN_SITE } from "../shared/design-guards";
-import { testActor } from "./agent-extensions";
+import { testActor } from "./actors";
 import { WITH_HOME, withHomeDeclaration, overlayOf, LOGIN_PAGE, inStore, keyIn, openSite, siteExpr, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, OTHER_PAGE } from "./design-sites";
 import { waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";

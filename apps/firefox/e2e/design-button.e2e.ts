@@ -6,7 +6,7 @@ import { NO_CLIENT } from "../../../packages/kernel/src/design/projects";
 import { reviewUrl } from "../shared/model";
 import { MESSAGE_DURATION_MS } from "../chrome/store/design-copies";
 import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
-import { openTab, testActor } from "./agent-extensions";
+import { openTab, testActor } from "./actors";
 import { startDesignServers, trustedMouse } from "./design";
 import { dispatch, inWindow, newWindow, state, waitFor, waitWindowCount } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";

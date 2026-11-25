@@ -3,7 +3,6 @@ import { format } from "../../shared/i18n";
 import { hostCommand } from "./command";
 import { lineSplitter } from "./lines";
 import type { LoadResult, PassportFiles } from "../passport/store";
-import { passportHostsKnown } from "../passport/hosts";
 
 /** The shown text when the host process is gone. */
 export const hostStopped = (locale: string) => format(locale, "chrome-host-stopped");
@@ -16,39 +15,31 @@ const PASSPORT_LOAD_CAP_MS = 20_000;
 /**
  * Design § 5.2, at each host start: every profile's passport (`passport.replace`), then `passport.ready` naming those it
  * could not read; the host's tools answer nothing before. A read still pending at the cap counts as unreadable, and its
- * passport follows ready once it completes (a replace lifts the banner, ruling F9). The agent's extensions reach no
- * host until every load settled (chrome/passport/hosts.ts).
+ * passport follows ready once it completes (a replace lifts the banner, ruling F9).
  */
 export async function pushPassports(request: (method: string, params: unknown) => Promise<unknown>, files: Pick<PassportFiles, "list" | "load">, capMs = PASSPORT_LOAD_CAP_MS): Promise<void> {
   const replace = (r: LoadResult) => request("passport.replace", { profile: r.profile, entries: r.entries });
   const unreadable: string[] = [];
   let readySent!: () => void;
   const afterReady = new Promise<void>((r) => (readySent = r));
-  const loads: Promise<unknown>[] = [];
-  try {
-    await Promise.all(
-      (await files.list()).map(async (profile) => {
-        const load = files.load(profile);
-        loads.push(load);
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        try {
-          const r = await Promise.race([load, new Promise<null>((ok) => (timer = setTimeout(() => ok(null), capMs)))]).finally(() => clearTimeout(timer));
-          if (r === null) {
-            unreadable.push(profile);
-            void Promise.all([load, afterReady]).then(([late]) => (late.state === "unreadable" ? undefined : replace(late))).catch((e) => console.error("[ressac] passport push failed:", (e as Error)?.name));
-          } else if (r.state === "unreadable") unreadable.push(profile);
-          // Refused by the host (it holds nothing for it): unreadable, so ready still comes and the banner says so.
-          else await replace(r).catch(() => void unreadable.push(profile));
-        } catch {
-          // A load that threw: unreadable, so ready still comes.
+  await Promise.all(
+    (await files.list()).map(async (profile) => {
+      const load = files.load(profile);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const r = await Promise.race([load, new Promise<null>((ok) => (timer = setTimeout(() => ok(null), capMs)))]).finally(() => clearTimeout(timer));
+        if (r === null) {
           unreadable.push(profile);
-        }
-      }),
-    );
-  } finally {
-    // The hosts are known once every load settled, past the cap too (a load that never settles keeps them all refused).
-    void Promise.allSettled(loads).then(() => passportHostsKnown());
-  }
+          void Promise.all([load, afterReady]).then(([late]) => (late.state === "unreadable" ? undefined : replace(late))).catch((e) => console.error("[ressac] passport push failed:", (e as Error)?.name));
+        } else if (r.state === "unreadable") unreadable.push(profile);
+        // Refused by the host (it holds nothing for it): unreadable, so ready still comes and the banner says so.
+        else await replace(r).catch(() => void unreadable.push(profile));
+      } catch {
+        // A load that threw: unreadable, so ready still comes.
+        unreadable.push(profile);
+      }
+    }),
+  );
   await request("passport.ready", { unreadable });
   readySent();
 }

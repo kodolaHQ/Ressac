@@ -1,6 +1,5 @@
 import type { ShownSite } from "../shared/sites";
-import type { ChangedFile, DiffFile, QuarantinedFile, Action, ApiRessac, LocalAiStateShown, AgentPanelState, ApplicationList, ExtensionResult, MaskingStatus, ShownWidget } from "../shared/api";
-import type { ExtensionLine, SpaceExtensionLine } from "../shared/extensions";
+import type { ChangedFile, DiffFile, QuarantinedFile, Action, ApiRessac, LocalAiStateShown, AgentPanelState, ApplicationList, MaskingStatus, ShownWidget } from "../shared/api";
 import type { HomeTheme } from "../../../packages/kernel/src/home/theme.ts";
 import type { FreePlacement } from "../../../packages/kernel/src/home/schemas.ts";
 import type { Execution, ResumeExecution } from "../../../packages/kernel/src/workflows/executions.ts";
@@ -12,7 +11,7 @@ import { validFolder } from "../chrome/store/app-folder";
 import type { WindowController } from "../chrome/window/controller";
 
 // Here, not in shared/api.ts: a value import from there pulls the Node kernel (@ressac/kernel) into the UI bundle.
-export const NO_MASKING: MaskingStatus = { locked: null, lockedAgreement: "one-m", uncovered: false, uncoveredPassport: [], notice: null, extensionReads: false, passportUnreadable: [] };
+export const NO_MASKING: MaskingStatus = { locked: null, lockedAgreement: "one-m", uncovered: false, uncoveredPassport: [], notice: null, passportUnreadable: [] };
 import { forgetWidget, prepareWidget } from "../chrome/window/widget-frame";
 import { readableProfiles, profilesForGrant, openableUrl } from "./home-profiles";
 import { createActionsApi, createRecapsApi, activeSpacePrivate, type ActionsFirefox, type RecapsFirefox } from "./actions-api";
@@ -103,9 +102,6 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
   /** The widgets whose display this document prepared: the others' substitutions and copies are cleared. */
   const prepares = new Set<string>();
   const failed = (message: string) => localStates.forEach((cb) => cb({ state: "error", message }));
-  /** An extension action in the kernel host; its answer copied into this realm, a failure given back as text. */
-  const extension = (method: string, params: Record<string, unknown>) =>
-    host.request<ExtensionResult>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
   const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
   /** A host request answered in this realm; `fallback` when the host does not answer (no agent). */
   const ask = <T>(method: string, params: unknown, fallback: T): Promise<T> => host.request<T>(method, params).then((r) => structuredClone(r), () => fallback);
@@ -393,21 +389,6 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       else if (isOpen === false) win.store.design.closeOverlay(t, "basket");
     },
     onPanelClosed: (callback) => untilUnload(win.store.design.overlays.onColumnClosed({ type: "window", windowId: windowId }, () => callback())),
-    // The agent's extensions, kept by the kernel host: what the reused space modal, empty page and command bar call.
-    extensions: {
-      forSpace: (spaceId) => host.request<SpaceExtensionLine[]>("extensions.forSpace", { spaceId: spaceId }).then((l) => structuredClone(l), () => []),
-      toggle: (key, spaceId, active) => extension("extensions.toggle", { key: key, spaceId: spaceId, active: active, window: windowId }),
-      onChange: (callback) => untilUnload(host.on("extensions.change", () => callback())),
-      // The Extensions page: the agent's extensions only (decision 8); AMO add-ons stay in about:addons.
-      list: () => host.request<ExtensionLine[]>("extensions.list").then((l) => structuredClone(l), () => []),
-      allCut: () => host.request<boolean>("extensions.allCut").then((b) => b === true, () => false),
-      disableEverywhere: (key) => extension("extensions.disableEverywhere", { key: key }),
-      remove: (key) => extension("extensions.remove", { key: key }),
-      cutAll: (yes) => extension("extensions.cutAll", { yes: yes }),
-      review: (key) => extension("extensions.review", { key: key, window: windowId }),
-      reenable: (key) => extension("extensions.reenable", { key: key }),
-      cutUnlock: (key) => extension("extensions.cutUnlock", { key: key }),
-    } as Partial<ApiRessac["extensions"]> as ApiRessac["extensions"],
     // The workflow builder: its reads and writes in the kernel host. An action's is refused in a private space with the
     // shapes of the builder's answers; its reads are checked again once answered.
     workflow: {

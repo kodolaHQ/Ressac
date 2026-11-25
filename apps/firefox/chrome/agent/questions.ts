@@ -1,10 +1,9 @@
 import type { DevRight, FillRemember, FillRow, TabInfo } from "../shims/kernel";
-import type { ExtensionCard, GrantResponse } from "../../shared/extensions";
 import type { Decision, PendingRequest, WindowId, TabId, Outcome, Permission } from "../../shared/model";
 import { format } from "../../shared/i18n";
 import { SCHEMA_SITE } from "../../shared/sites";
 import { passportName, siteOf } from "../../shared/model";
-import { waitForRights, waitForOutcome, waitForResponse, QUESTION_DELAY_MS, allowedDecision, activeTabOf, originOf, staleQuestion, staleSiteQuestion } from "../../core/agent/bridge";
+import { waitForRights, waitForOutcome, waitForResponse, QUESTION_DELAY_MS, activeTabOf, originOf, staleQuestion, staleSiteQuestion } from "../../core/agent/bridge";
 import type { SitePermission } from "../store/site-permissions";
 import type { Store } from "../store/store";
 
@@ -41,7 +40,7 @@ type Reply = (d: Outcome, rights?: DevRight[], login?: number, picks?: (string |
 /** The scheme of a widget page's address. */
 export const SCHEMA_WIDGET = "ressac-widget";
 
-/** The agent's « lire l'onglet » and extension grant cards waiting for the user. */
+/** The agent's cards waiting for the user (« lire l'onglet », dev tools, masking…). */
 /**
  * The registrable domain of an origin (« evil.example » of « www.impots.gouv.fr.….evil.example »): a long host cut on
  * the card would hide it. The host itself for an IP or a single label.
@@ -205,24 +204,6 @@ export class Questions {
   }
 
   /**
-   * Shows the grant card of an agent extension (ExtensionRequest) in the window; it falls (« retirée ») after
-   * QUESTION_DELAY_MS, on `signal`, or when its space goes or turns private. A renforcée card needs « Je comprends ».
-   */
-  async askExtension(card: ExtensionCard, windowId: WindowId, signal?: AbortSignal): Promise<GrantResponse> {
-    const fields = { tabId: null, windowId: windowId, origin: card.key, permissions: ["extension" as const], extension: card };
-    const outcome = staleQuestion({ id: "", ...fields }, this.store.state)
-      ? "withdrawn"
-      : await waitForOutcome((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
-    return { accepted: outcome === "allow", ...(outcome === "withdrawn" ? { removed: true } : {}) };
-  }
-
-  /** The console unlock card of an agent extension: Refuser is the default; it falls after QUESTION_DELAY_MS or on `signal`. */
-  askConsole(o: { name: string; spaces: string[]; reason: string; agent: string }, windowId: WindowId, signal?: AbortSignal): Promise<Outcome> {
-    const fields = { tabId: null, windowId: windowId, origin: o.name, permissions: ["extension-console" as const], title: o.name, reason: o.reason, agent: o.agent, spaces: o.spaces };
-    return waitForOutcome((reply) => this.post(fields, reply), QUESTION_DELAY_MS, signal);
-  }
-
-  /**
    * A site's question, shown as the banner on its tab: no delay, it waits for the answer; it falls
    * (`withdrawn`) on `signal` or when its tab closes. `windowId` is not kept: site questions with one
    * would show them on every tab of the window and move them with a closed window.
@@ -269,13 +250,13 @@ export class Questions {
    * `rights`: those ticked on a dev tools card; `o.login`, `o.picks`: the saved login and passport entries chosen on a fill
    * card; `o.remember`: its rows ticked « Retenir ce site », kept only from the card's own window (`o.window`).
    */
-  answer(id: string, d: Decision, o?: { confirmed?: boolean; login?: number; picks?: (string | null)[]; remember?: number[]; window?: WindowId }, rights?: DevRight[]): void {
+  answer(id: string, d: Decision, o?: { login?: number; picks?: (string | null)[]; remember?: number[]; window?: WindowId }, rights?: DevRight[]): void {
     const q = this.open.get(id);
     if (!q) return;
     this.open.delete(id);
     // Copied into this realm: the UI's array dies with its document.
     q.reply(
-      allowedDecision(q.request, d, o?.confirmed),
+      d,
       rights && (Array.from(rights, String) as DevRight[]),
       o?.login === undefined ? undefined : Number(o.login),
       o?.picks && Array.from(o.picks, (p) => (typeof p === "string" ? p : null)),

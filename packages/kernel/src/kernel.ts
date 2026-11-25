@@ -20,7 +20,6 @@ import { AccessPolicy } from "./access/policy.js";
 import { SearchSessions } from "./search/sessions.js";
 import type { BrowserBridge, TabInfo } from "./mcp/bridge.js";
 import type { Zone } from "./mask/detectors.js";
-import type { ExtensionsTools } from "./mcp/extensions.js";
 import { Masker } from "./mask/masker.js";
 import { PassportStore } from "./mask/passport.js";
 import type { PassportEntry } from "./mask/passport-fields.js";
@@ -348,7 +347,7 @@ export async function createKernel(o: {
   apps?: AppsTools;
   /**
    * At a reveal, after the lock file and the network cut, before the value leaves: what the browser stops while the
-   * workspace is locked (the agent's apps, its extensions, its pages' CDNs and WebRTC). A failure refuses the reveal.
+   * workspace is locked (the agent's apps, its pages' CDNs and WebRTC). A failure refuses the reveal.
    */
   onLock?: () => Promise<void>;
   /** Wraps the sweep before a first session (stopAgentProcesses): the host stops its apps cleanly around it. */
@@ -398,8 +397,6 @@ export async function createKernel(o: {
   notify?: (n: NotificationWidget) => void;
   /** Memory is calm: scheduled harvests wait for it (see SchedulerOptions). */
   calm?: () => Promise<boolean>;
-  /** MCP tools of the extensions (provided by the browser). */
-  extensions?: ExtensionsTools;
   /** MCP tools of the site apps (provided by the browser). */
   sites?: SitesTools;
 }): Promise<Kernel> {
@@ -563,7 +560,6 @@ export async function createKernel(o: {
     widgets: widgetsTools,
     actions: actionsTools,
     ...(o.openWorkflow ? { openWorkflow: o.openWorkflow } : {}),
-    ...(o.extensions ? { extensions: o.extensions } : {}),
     ...(o.sites ? { sites: o.sites } : {}),
     ...(o.onActivity
       ? {

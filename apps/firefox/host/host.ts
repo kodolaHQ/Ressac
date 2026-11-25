@@ -50,8 +50,8 @@ const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, memoryAllows, memo
 const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
-const { ExtensionsAgent, extensionsAllowed } = await import("./extensions/agent.ts");
-const { CLAUDE_KEY, amoKeychain, keychain } = await import("./keychain.ts");
+const { removeAgentExtensions } = await import("./extensions-removal.ts");
+const { CLAUDE_KEY, keychain } = await import("./keychain.ts");
 const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { ollamaRelayTarget } = await import("./ollama-models.ts");
@@ -351,13 +351,12 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     onActivity: (a) => rpc.notify("agent.activity", a),
     ai: ai,
     profilingFolder: join(dataDir, "profiling"),
-    extensions: extensions.tools(),
     sites: sites.tools,
     workshop: workshop,
     apps: apps.manager,
-    // Before the revealed value leaves: no agent app keeps running, no agent extension, no CDN or WebRTC for agent pages.
+    // Before the revealed value leaves: no agent app keeps running, no CDN or WebRTC for agent pages.
     onLock: async () => {
-      await Promise.all([apps.manager.stopAll(), extensions.reevaluate(), pushPagesLock()]);
+      await Promise.all([apps.manager.stopAll(), pushPagesLock()]);
     },
     // The sweep before a first session kills every process of the agent's user: a sign-in by code in progress ends first
     // (the session waits for it, 2 min at most), then the apps stop cleanly (« arrêtée »).
@@ -384,7 +383,6 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
       // A lift: the panels read the status again, the site apps whose tweaks the lock held back get them.
       const offLock = n.workspaceLock.onChange(() => {
         maskingChanged();
-        reevaluateExtensions();
         void pushPagesLock().catch((e) => console.error("[ressac] agent pages' lock not sent:", e));
         if (!workspaceLock.locked()) sites.lockLifted();
       });
@@ -476,7 +474,6 @@ const stop = () =>
     const appsStopped = (process.env.RESSAC_TEST_APPS_STOP_FAILS === "1" ? Promise.reject(new Error("simulated apps stop")) : apps.stop()).catch((e) =>
       console.error("[ressac] the apps did not stop:", e),
     );
-    extensions.stop();
     indexer?.stop();
     settings.stopLogins();
     await sessions.stopAll();
@@ -637,7 +634,6 @@ const rpc = createRpc({
     "agent.mode": (p: { mode: unknown }) => {
       const was = agentMode;
       agentMode = p?.mode === "workshop" ? "workshop" : "browser";
-      reevaluateExtensions();
       // To Navigateur: no session (custom profiles too) keeps its shell, and no running app keeps running agent-written code.
       if (was === "workshop" && agentMode === "browser") {
         void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
@@ -992,7 +988,7 @@ const rpc = createRpc({
       sessions.write(p.window, p.data);
     },
     "agent.resize": (p: { window: string; size: TerminalSize }) => sessions.resize(p.window, p.size),
-    "agent.masking": async (p: { window?: unknown }) => maskingStatus(kernel?.masker ?? null, workspaceLock, maskNotices, String(p?.window), await extensions.running(), passport),
+    "agent.masking": async (p: { window?: unknown }) => maskingStatus(kernel?.masker ?? null, workspaceLock, maskNotices, String(p?.window), passport),
     // The chrome's passports (design § 5.2, § 5.3): kept by this process whether a kernel runs or not.
     "passport.replace": async (p: { profile?: unknown; entries?: unknown }) => {
       try {
@@ -1079,44 +1075,6 @@ const rpc = createRpc({
       // A session still starting (the panel's first opening) gets the context once active, and the tab again: its start takes the accesses back.
       sessions.prefill(p.window, contextPrefix(p.tab.title, p.tab.url), share);
     },
-    // Sent by the chrome on each host start, with the about:addons changes seen while no host ran (applied first:
-    // never reinstalled); answered when every granted extension is handled. A failed start is retried by the next one.
-    "extensions.ready": async (p: { outsideRessac?: { addonId: string; what: "uninstalled" | "disabled" }[]; crashes?: { addonId?: unknown; at?: unknown }[] }) => {
-      for (const c of Array.isArray(p?.crashes) ? p.crashes : []) extensions.crash(c?.addonId, c?.at);
-      for (const h of p?.outsideRessac ?? []) await extensions.outsideRessac(h.addonId, h.what);
-      return (extensionsStartup ??= extensions.start().catch((e) => {
-        extensionsStartup = undefined;
-        throw e;
-      }));
-    },
-    "extensions.outsideRessac": (p: { addonId: string; what: "uninstalled" | "disabled" }) =>
-      extensions.outsideRessac(p.addonId, p.what),
-    "extensions.ran": (p: { addonId: string; profile: string; readable: boolean }) => extensions.ran(p.addonId, p.profile, p.readable),
-    // A content script's message is readable only from a tab the agent can read as it is noted:
-    // tabReadableByAgent): asked of the policy here, which knows an agent-opened tab before Firefox hears of it.
-    "extensions.console": (p: { addonId?: unknown; message?: unknown; tab?: { tabId?: unknown; url?: unknown } | null }) => {
-      const o = p?.tab;
-      const readable = !!o && typeof o.tabId === "string" && typeof o.url === "string" && kernel?.policy.canRead({ id: o.tabId, url: o.url, title: "", space: "" }) === true;
-      extensions.noteConsole(p?.addonId, p?.message, o ? { readable: readable } : null);
-    },
-    "extensions.crash": (p: { addonId?: unknown; at?: unknown }) => extensions.crash(p?.addonId, p?.at),
-    "extensions.privateProfiles": (p: { profiles?: unknown }) =>
-      extensions.privateProfiles(Array.isArray(p?.profiles) ? p.profiles.filter((x): x is string => typeof x === "string") : []),
-    "extensions.forSpace": (p: { spaceId?: unknown }) => (typeof p?.spaceId === "string" ? extensions.forSpace(p.spaceId) : []),
-    "extensions.toggle": (p: { key?: unknown; spaceId?: unknown; active?: unknown; window?: unknown }) =>
-      typeof p?.key === "string" && typeof p.spaceId === "string"
-        ? extensions.toggle(p.key, p.spaceId, p.active === true, typeof p.window === "string" ? p.window : null)
-        : { ok: false, error: hostSay("host-invalid-params") },
-    // The Extensions page (the agent's extensions only, decision 8).
-    "extensions.list": () => extensions.entries(),
-    "extensions.allCut": () => extensions.cut(),
-    "extensions.remove": (p: { key?: unknown }) => byKey(p, (key) => extensions.deletePage(key)),
-    "extensions.disableEverywhere": (p: { key?: unknown }) => byKey(p, (key) => extensions.disableEverywhere(key)),
-    "extensions.reenable": (p: { key?: unknown }) => byKey(p, (key) => extensions.reactivate(key)),
-    "extensions.cutUnlock": (p: { key?: unknown }) => byKey(p, (key) => extensions.cutUnlock(key)),
-    "extensions.review": (p: { key?: unknown; window?: unknown }) =>
-      byKey(p, (key) => extensions.review(key, typeof p.window === "string" ? p.window : null)),
-    "extensions.cutAll": (p: { yes?: unknown }) => extensions.cutAll(p?.yes === true),
     // The RPC signal is ignored on purpose: the kernel's Pacing hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
     "read.changeHost": (p: { read: string; host: string }) => bridge.changeHost(p.read, p.host),
     // Tests only: a paced read through a Pacing shared by the calls, as a workflow's web widget does.
@@ -1166,21 +1124,8 @@ function maskNotice(o: { text: unknown }, win: string | undefined, unless = fals
 }
 const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url), maskNotice);
 const testPacing = new Pacing();
-/** A page request on one extension key: a malformed one is refused as text. */
-const byKey = <T,>(p: { key?: unknown } | undefined, f: (key: string) => T) => (typeof p?.key === "string" ? f(p.key) : { ok: false as const, error: hostSay("host-invalid-params") });
-// Outside the agent's kernel, like the history: granted extensions run even when the kernel does not start.
-// Masking: off in Navigateur and under the workspace lock (its file, read kernel or not; unreadable reads as locked).
-const extensions = new ExtensionsAgent({
-  folder: join(dataDir, "extensions"),
-  agentFolder: paths.extensions,
-  rpc,
-  allowed: () => extensionsAllowed(agentMode, workspaceLock),
-  onScopes: maskingChanged,
-});
-/** The mode or the lock changed: the agent's extensions follow (Task 15). */
-function reevaluateExtensions(): void {
-  void extensions.reevaluate().catch((e: unknown) => console.error("[extensions] not re-evaluated:", e));
-}
+// Agent-written extensions are gone (0.1.27): their leftovers go once, without holding the start.
+void removeAgentExtensions({ dataDir, workspace: root }).catch((e: unknown) => console.error("[ressac] agent extensions' leftovers not removed:", e));
 // Site apps: the Node side (list, memory, deletion); the windows are the chrome's, asked through the RPC.
 const sites = createSites({
   paths: paths,
@@ -1328,14 +1273,12 @@ const settings = createSettingsHandlers({
   deviceCommand: (argv) => workshop.execCommand(argv, { interactive: false }),
   keychain: keys.codex,
   claudeKeychain: keys.claude,
-  amoKeychain: amoKeychain(),
   forgetKey,
   notify,
   modelInstalled: (name) => name === SEARCH_MODEL && startIndexer(),
 });
 // The chrome may not answer yet (its handlers come up later): it calls "sites.ready" once it does.
 void sites.resync().catch(() => {});
-let extensionsStartup: Promise<void> | undefined;
 
 createInterface({ input: process.stdin, crlfDelay: Infinity })
   .on("line", (l) => rpc.receive(l))
