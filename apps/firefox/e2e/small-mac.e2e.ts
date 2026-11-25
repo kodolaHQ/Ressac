@@ -331,7 +331,7 @@ describe("small Mac, critical memory pressure", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("at critical: unloads background tabs inactive under 3 min, three at once, and relieves once; never the shown tab nor a kept essential", { timeout: 90_000 }, async () => {
+  it("at critical: unloads background tabs inactive under 3 min, three at once, and relieves on entering; never the shown tab nor a kept essential", { timeout: 90_000 }, async () => {
     // Marionette turns tab unloading off for its sessions: back on, as in use.
     await n.execute(`Services.prefs.setBoolPref("browser.tabs.unloadOnLowMemory", true);`);
     const windowId = (await state(n)).windows[0]!.id;
@@ -361,9 +361,16 @@ describe("small Mac, critical memory pressure", () => {
     for (const id of backgrounds) expect(await xulOf(id)).toEqual({ discarded: true, selected: false });
     // Entering critical also unloads the models and stops an unused machine.
     await waitFor(n, "return true", () => relieves() > relievedBefore, 15_000);
-    const relievedOnce = relieves();
+    // The first tab unload relieves too (at most every 60 s): the count settles before the window below.
+    let relievedOnce = relieves();
+    for (let stable = 0; stable < 2; ) {
+      await new Promise((r) => setTimeout(r, 2_000));
+      const now = relieves();
+      stable = now === relievedOnce ? stable + 1 : 0;
+      relievedOnce = now;
+    }
     // Still critical: further checks find nothing else to unload, and relieve no more (a reloaded model stays).
-    // The window starts after the relief, which came with the first critical check.
+    // The window starts once the relief of entering critical and of the first unload are both in.
     await new Promise((r) => setTimeout(r, 11_000));
     expect(await xulOf(shown)).toEqual({ discarded: false, selected: true });
     expect(await xulOf(kept)).toEqual({ discarded: false, selected: false });

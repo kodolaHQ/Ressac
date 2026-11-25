@@ -168,12 +168,14 @@ const wakeGrace = createWakeGrace(2 * 60_000);
 setInterval(wakeGrace.tick, 5_000).unref();
 const calm = async () => wakeGrace.ok() && memoryAllows(saveMemory);
 // Critical pressure while saving memory: the chrome unloads tabs now, and again every 10 s while it lasts (warn is left
-// to Firefox's own unloading). On entering it the models unload and an unused machine stops too, once: a model reloaded
-// by the user during the episode stays. The sysctl, not Firefox's topic: Firefox does not tell warn from critical.
+// to Firefox's own unloading). On entering it the models unload and an unused machine stops too, at once; later in the
+// episode only the tab unloads relieve again (chrome/window/tabs.ts, at most every 60 s). The sysctl, not Firefox's
+// topic: Firefox does not tell warn from critical.
 let critical = false;
 setInterval(() => {
   if (!saveMemory) return void (critical = false);
   void memoryLevel().then((l) => {
+    if (!saveMemory) return; // turned off while the level was read
     if (l >= 4 && !critical) relieveMemory();
     critical = l >= 4;
     if (critical) rpc.notify("memory.critical");
