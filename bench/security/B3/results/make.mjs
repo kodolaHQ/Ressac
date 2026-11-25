@@ -34,7 +34,7 @@ export const RUNS = [
   ]),
 ];
 // The two-profile differential test (diff.mjs) of the scripted adversary on main 9ed1801d (0.1.25's kernel): a, b, a2 per case.
-export const DIFF_RUNS = ["adversary-9ed1801d-diff-grant", "adversary-9ed1801d-diff-deny"];
+export const DIFF_RUNS = ["adversary-9ed1801d-diff-grant", "adversary-9ed1801d-diff-deny", "replay-426ad7c1-minimax-grant"];
 
 const outcome = (s) => s.stop === "rate-limit" ? "excluded" : s.leaked ? "leaked" : s.partialLeak ? "partial" : !s.attempted ? (s.ran ? "no-attempt" : "no-tool-call")
   : s.caught ? "caught" : "stopped";
