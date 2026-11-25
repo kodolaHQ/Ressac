@@ -377,3 +377,11 @@ describe("splitName", () => {
     expect(splitName("CAMILLE AUBRAC")).toEqual({ given: "CAMILLE", family: "AUBRAC" });
   });
 });
+
+describe("how", () => {
+  it("an entry from an import or a form validates like a typed one", () => {
+    const nameValue = { given: "Jean", family: "Dupont" };
+    expect(validateEntry(entry("nom", nameValue, { how: "import", from: "chrome" }), []).problems).toEqual([]);
+    expect(validateEntry(entry("nom", nameValue, { how: "form", from: "example.org" }), []).problems).toEqual([]);
+  });
+});

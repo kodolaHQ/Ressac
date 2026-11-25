@@ -10,6 +10,8 @@ import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, pushPassports, type AgentHost } from "../agent/host";
 import { passportFiles, passportShown } from "../passport/store";
 import { pagePassport, passportSettings, type PagePassport, type PassportSettings } from "../passport/settings";
+import { installFormCapture } from "../passport/form-capture";
+import { tabInfos } from "../../core/agent/bridge";
 import { passwordSettings, type PasswordSettings } from "../passwords/settings";
 import { createAgentView, type AgentView } from "../agent/agent-view";
 import { readHtml, readPage } from "../agent/invisible";
@@ -31,7 +33,9 @@ import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { createAsk, type Ask } from "./ask";
 import { createBrowserImporter } from "./import/importer";
-import type { BrowserImportApi } from "../../shared/api";
+import { createPassportImporter, type PassportImporter } from "../passport/import";
+import { format } from "../../shared/i18n";
+import type { BrowserImportApi, ImportSourceId } from "../../shared/api";
 import { searchBookmarks } from "./bookmarks";
 import { registerHomeNotifications } from "./notifications";
 import { containerFor, existingContainer, isAppContainer, isSiteContainer, removeContainer } from "./containers";
@@ -93,6 +97,8 @@ export interface RessacStore extends Store {
   readonly passport: PagePassport;
   /** « Cacher pour l'agent »: the passport's hide and unhide, for the chrome's hide layer only (never in a UI API). */
   readonly hidePassport: Pick<PassportSettings, "hide" | "unhide">;
+  /** « Importer depuis… »: keys and « Moi / Un proche » in, values never (chrome/passport/import.ts); its writes ask Touch ID. */
+  readonly passportImport: PassportImporter;
   /** Réglages › Mots de passe: Firefox's saved logins behind Touch ID, for the settings page only (never the agent). */
   readonly passwords: PasswordSettings;
   /** The « non couverte » tooltip's names and masked displays (chrome/passport/store.ts passportShown). */
@@ -395,6 +401,17 @@ async function start(): Promise<RessacStore> {
     messageManagerGroups: [FRAMES_GROUP],
     safeForUntrustedWebProcess: true,
   });
+  // Typed address forms (typed-actor.ts, passport/form-capture.ts): top https documents of tab browsers. The child notes
+  // edits that follow a key, a paste or a drop, and answers or pushes bounded strings; the parent only keeps them per
+  // document, to narrow what Firefox captured.
+  const typedActor = actorModule("typed-actor");
+  ChromeUtils.registerWindowActor("RessacTyped", {
+    parent: { esModuleURI: typedActor },
+    child: { esModuleURI: typedActor, events: { keydown: { capture: true }, keyup: { capture: true }, focusout: { capture: true }, paste: { capture: true }, drop: { capture: true }, input: { capture: true }, submit: { capture: true }, beforeunload: {}, pagehide: {} } },
+    matches: ["https://*/*"],
+    messageManagerGroups: ["browsers"],
+    safeForUntrustedWebProcess: true,
+  });
   // The agent-written frames (frame-actor.ts): the top document of each remote frame <browser> only (no allFrames, no
   // matches). The child forwards a few bounded messages; the parent only looks up the frame owner's callback.
   const frameActor = actorModule("frame-actor");
@@ -662,6 +679,23 @@ async function start(): Promise<RessacStore> {
   AsyncShutdown.profileBeforeChange.addBlocker("Ressac: stop the agent host", () => agent.stop());
   // The process's one passport instance: Réglages' pages and « Cacher pour l'agent » share its tokens and writes.
   const passport = passportSettings((method, params) => agent.request(method, params));
+  // Before any form is sent: Firefox's address prompt becomes Ressac's passport bar.
+  installFormCapture({
+    about: (browser) => {
+      // Not ownerGlobal: undefined from the store module (see load-guard.ts tabIdOf).
+      const id = browser.ownerDocument?.defaultView?.gBrowser?.getTabForBrowser?.(browser)?.getAttribute("ressac-tab-id");
+      const tab = id ? store.state.tabs[id] : undefined;
+      if (!tab) return null;
+      const container = browser.browsingContext?.originAttributes?.userContextId ?? 0;
+      return { profile: tabProfile(store.state, tab), agentReached: tabInfos(store.state).find((t) => t.id === id)?.agentReached, privateSpace: privateTab(store.state, tab), siteApp: isSiteContainer(container) || isAppContainer(container) };
+    },
+    // The actor's own module instance (the registry's), never a bundled copy: its kept lists live there.
+    typedOf: (wgp) => ChromeUtils.importESModule(typedActor).RessacTypedParent.typedOf(wgp),
+    load: (profile) => passportFiles().load(profile),
+    addMany: (h) => passport.addMany(h),
+    locale: () => store.state.locale,
+  });
+  const browserImport = createBrowserImporter(dataDir, agent, store);
   return {
     get state() {
       return store.state;
@@ -673,12 +707,19 @@ async function start(): Promise<RessacStore> {
     dataSetAside,
     telemetryActive: telemetry.active,
     settings: createSettingsChrome(dataDir, telemetry.active, updates),
-    browserImport: createBrowserImporter(dataDir, agent, store),
+    browserImport,
     bookmarks: { search: searchBookmarks },
     flush,
     containerFor,
     agent,
     passport: pagePassport(passport),
+    passportImport: createPassportImporter({
+      home: testEnv("RESSAC_TEST_IMPORT_HOME") || Services.dirsvc.get("Home", Ci.nsIFile).path,
+      scratch: PathUtils.join(dataDir, "passport-import-tmp"),
+      passport,
+      access: (id) => browserImport.access(id as ImportSourceId),
+      reason: () => format(store.state.locale, "settings-passport-touchid-import"),
+    }),
     hidePassport: { hide: (h) => passport.hide(h), unhide: (u) => passport.unhide(u) },
     passportShown: (refs) => passportShown(passportFiles(), refs),
     passwords: passwordSettings(),

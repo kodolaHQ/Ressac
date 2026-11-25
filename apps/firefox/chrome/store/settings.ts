@@ -5,6 +5,10 @@ import { testEnv } from "../test-env";
 
 const ENABLED = "ressac.telemetry.enabled";
 const CRASH_REPORTS = "ressac.telemetry.crashReports";
+// The bar of chrome/passport/form-capture.ts reads the same two prefs.
+const SUGGEST = "ressac.passport.suggest";
+const SUGGEST_MUTED = "ressac.passport.suggestMuted";
+const mutedHosts = (): string[] => Services.prefs.getCharPref(SUGGEST_MUTED, "").split(",").filter(Boolean);
 /** Firefox's own default browser service. */
 export const SHELL_SERVICE = "moz-src:///browser/components/shell/ShellService.sys.mjs";
 const EXPORT_NAME = /^Ressac-donnees-\d{4}-\d{2}-\d{2}( \(\d+\))?\.zip$/;
@@ -13,6 +17,10 @@ export interface SettingsChrome {
   telemetry(): { available: boolean; enabled: boolean; crashReports: boolean };
   setTelemetry(enabled: boolean): void;
   setCrashReports(on: boolean): void;
+  /** The form bar of the passport: on or off for every site, and the hosts it no longer offers on. */
+  passportSuggest(): { on: boolean; muted: string[] };
+  setPassportSuggest(on: boolean): void;
+  unmutePassportSite(host: string): void;
   version(): string;
   reveal(path: string): void;
   /** macOS's System Settings › Notifications: a site's or the watch's notification never shows while Ressac is off there. */
@@ -79,6 +87,9 @@ export function createSettingsChrome(dataDir: string, telemetryActive: boolean, 
     telemetry: () => ({ available: telemetryActive, enabled: Services.prefs.getBoolPref(ENABLED, false), crashReports: Services.prefs.getBoolPref(CRASH_REPORTS, false) }),
     setTelemetry: (enabled) => Services.prefs.setBoolPref(ENABLED, enabled === true),
     setCrashReports: (on) => Services.prefs.setBoolPref(CRASH_REPORTS, on === true),
+    passportSuggest: () => ({ on: Services.prefs.getBoolPref(SUGGEST, true), muted: mutedHosts() }),
+    setPassportSuggest: (on) => Services.prefs.setBoolPref(SUGGEST, on === true),
+    unmutePassportSite: (host) => Services.prefs.setCharPref(SUGGEST_MUTED, mutedHosts().filter((h: string) => h !== String(host)).join(",")),
     version: () => __RESSAC_VERSION__,
     checkForUpdate: () => updates.check(),
     restartToUpdate: () => updates.restart(),

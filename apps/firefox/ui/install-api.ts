@@ -1,8 +1,8 @@
 import { createApi, type ApiFirefox } from "./api";
 import { settingsPageDocument } from "./settings-api";
-import type { HideApi, MarksApi, OverlayApi } from "../shared/api";
+import type { HideApi, MarksApi, OverlayApi, PassportSuggestApi } from "../shared/api";
 import { createBadgeApi } from "./badge-api";
-import { wrapHideApi, wrapMarksApi, wrapOverlayApi } from "./overlay-api";
+import { wrapHideApi, wrapMarksApi, wrapOverlayApi, wrapPassportSuggestApi } from "./overlay-api";
 import { createSiteApi, inertRessac } from "./site-api";
 import type { BadgeChrome } from "../chrome/store/apps";
 
@@ -34,6 +34,11 @@ if (params.has("site")) {
   const hide = (window.frameElement as (Element & { ressacHide?: { api: HideApi } }) | null)?.ressacHide;
   if (!hide) throw new Error("Ressac hide layer loaded before its window controller");
   window.ressac = inertRessac(wrapHideApi(hide.api)) as ApiFirefox;
+} else if (params.has("passport-suggest")) {
+  // The passport's suggestion after a sent form (chrome/passport/form-capture.ts): only its answers.
+  const suggest = (window.frameElement as (Element & { ressacPassportSuggest?: { api: PassportSuggestApi } }) | null)?.ressacPassportSuggest;
+  if (!suggest) throw new Error("Ressac passport suggestion loaded before its controller");
+  window.ressac = inertRessac(wrapPassportSuggestApi(suggest.api)) as ApiFirefox;
 } else if (params.has("hide-marks")) {
   // « Voir ce qu'il ne voit pas »: only the rects to draw.
   const marks = (window.frameElement as (Element & { ressacMarks?: { api: MarksApi } }) | null)?.ressacMarks;

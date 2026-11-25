@@ -321,3 +321,39 @@ settings-passwords-error-password = The password cannot be empty.
 settings-passwords-error-duplicate = A password already exists for this username on this site.
 settings-passwords-error-missing = This password no longer exists.
 settings-passwords-error-write = Saving failed: nothing changed. Try again.
+settings-passport-touchid-import = add addresses to your passport
+settings-passport-import-open = Import from…
+settings-passport-import-pick = Import the addresses of:
+settings-passport-import-profile = In the passport:
+settings-passport-import-none = No address saved in { $name }.
+settings-passport-import-intro = Tick what you keep: { $name } saved these addresses.
+settings-passport-import-me = Me
+settings-passport-import-other = A relative
+settings-passport-import-as = For this line
+settings-passport-import-incomplete = { $n ->
+    [one] 1 incomplete address ignored
+   *[other] { $n } incomplete addresses ignored
+  }
+settings-passport-import-erase = Erase them from Firefox
+settings-passport-import-later = Later
+settings-passport-import-add = Add
+settings-passport-import-done = { $n ->
+    [one] 1 item added to your passport.
+   *[other] { $n } items added to your passport.
+  } Your name and address will be masked for the agent in your mail and accounts.
+settings-passport-import-full = { $n ->
+    [one] 1 item not added: the passport is full.
+   *[other] { $n } items not added: the passport is full.
+  }
+settings-passport-import-invalid = { $n ->
+    [one] 1 item not added.
+   *[other] { $n } items not added.
+  }
+settings-passport-import-error = The add failed: nothing changed. Try again.
+settings-passport-import-cancelled = Add cancelled: nothing changed.
+settings-passport-import-close = Close
+settings-passport-import-nothing = Everything was already in your passport.
+settings-passport-suggest-label = Offer to add your addresses when you fill in a form
+settings-passport-suggest-help = When you type an address in a form, a bar offers to add it to your passport (Touch ID asked). Off, Ressac offers you nothing.
+settings-passport-muted-label = Sites where not to offer
+settings-passport-unmute = Remove { $site }

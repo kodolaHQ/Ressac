@@ -520,6 +520,18 @@ export interface ImportSource { id: ImportSourceId; name: string; /** The instal
 /** denied: macOS refused a read, which the person can allow in Réglages Système › Fichiers et dossiers. */
 export interface ImportProgress { source: ImportSourceId; done: boolean; counts: Partial<Record<ImportType, number>>; failed: Partial<Record<ImportType, string>>; denied?: boolean }
 /** Import from another browser on this Mac: one run at a time, in the background; a notification tells the end. */
+/** « Importer depuis… » the saved addresses of another browser: the page picks by key, the values stay in the chrome. */
+export interface PassportImportApi {
+  /** The detected browsers and « ressac », by name only: nothing is read. */
+  sources(): Promise<{ id: string; name: string }[]>;
+  /** Reads that one source. `access: "ask"`: macOS wants the folder consent first (browserImport.grantAccess), nothing was read. */
+  proposals(source: string): Promise<{ proposals: PassportProposal[]; incomplete: number; name: string; access: "ready" | "ask" }>;
+  /** One Touch ID. `eraseRessac`: also removes the source « ressac »'s records from Firefox's store, after a good write. */
+  add(profile: string, rows: { key: string; as: "me" | "proche" }[], source: string, eraseRessac?: boolean): Promise<PassportImportResult>;
+}
+export type PassportProposal = { key: string; given: string; family: string; address: string; tel: string; email: string; ticked: boolean; other: boolean };
+export type PassportImportResult = { ok: true; added: number; variants: number; full: number; invalid: number } | { ok: false; error: "cancelled" | "unreadable" | "write" };
+
 export interface BrowserImportApi {
   /** Only the browsers whose data folder exists (no file of theirs is read). */
   sources(): Promise<ImportSource[]>;
@@ -594,6 +606,10 @@ export interface SettingsApi {
   setTelemetry(enabled: boolean): void;
   /** Firefox's crash reports (minidumps, unscrubbed), off by default; they also need the telemetry switch on. */
   setCrashReports(on: boolean): void;
+  /** The form bar of the passport (Réglages › Passeport): the switch and the sites muted with « Ne plus proposer ici ». */
+  passportSuggest(): Promise<{ on: boolean; muted: string[] }>;
+  setPassportSuggest(on: boolean): void;
+  unmutePassportSite(host: string): void;
   version(): Promise<string>;
   /** Whether macOS opens web links with Ressac. */
   defaultBrowser(): Promise<boolean>;
@@ -619,6 +635,8 @@ export interface SettingsApi {
   passport?: PassportSettingsApi;
   /** Réglages › Mots de passe: only in the document showing ressac://settings, like `passport`. */
   passwords?: PasswordsSettingsApi;
+  /** « Importer depuis… »: only in the document showing the settings page and the welcome, like `passport`. */
+  passportImport?: PassportImportApi;
 }
 
 /** A saved login as Réglages › Mots de passe lists it: never its password. `host`: the origin itself when not http(s). */
@@ -1086,6 +1104,27 @@ export type MarksApi = {
   marks(): HideRect[] | null;
   /** The shown language, for the legend. */
   locale(): string;
+  onChange(cb: () => void): () => void;
+};
+/** The passport's suggestion after a typed address form is sent (chrome/passport/form-capture.ts), for the selected tab. */
+export interface PassportSuggestContext {
+  /** Each value with its kind, frozen at the send: exactly what « Ajouter » writes. */
+  values: string[];
+  site: string;
+  remember: boolean;
+  /** busy: Touch ID and the write; done: `done` says what happened, then the bubble fades out. */
+  phase: "offer" | "busy" | "done";
+  done?: string;
+  failed?: boolean;
+  locale: string;
+}
+/** What the suggestion's frame may do: its answers only. `no` declines the document (never offered again). */
+export type PassportSuggestApi = {
+  context(): PassportSuggestContext | null;
+  remember(on: boolean): void;
+  add(): void;
+  no(): void;
+  mute(where: "site" | "all"): void;
   onChange(cb: () => void): () => void;
 };
 /** Text of a note: bounded at the entry of the main process. */

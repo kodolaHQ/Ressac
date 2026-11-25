@@ -6,6 +6,7 @@ import type { AgentHost } from "../chrome/agent/host";
 import type { SettingsChrome } from "../chrome/store/settings";
 import type { SitePermissions } from "../chrome/store/site-permissions";
 import type { PassportSettings } from "../chrome/passport/settings";
+import type { PassportImporter } from "../chrome/passport/import";
 import type { PasswordSettings } from "../chrome/passwords/settings";
 import { passportName, type Space } from "../shared/model";
 
@@ -30,6 +31,8 @@ export function createSettingsApi(o: {
   locale(): string;
   /** Only in the document showing the settings page: elsewhere the API has no `passport`. */
   passport?: Pick<PassportSettings, "passports" | "unlock" | "read" | "save" | "lock" | "onLocked" | "removePassport" | "moveTo" | "restart">;
+  /** Only in the document showing the settings page (the welcome's too), like `passport`: keys and « Moi / Un proche » in, never a value. */
+  passportImport?: Pick<PassportImporter, "sources" | "proposals" | "add">;
   /** Only in the document showing the settings page, like `passport`. */
   passwords?: PasswordSettings;
   /** The spaces, read at each call: they name the passports. */
@@ -68,7 +71,16 @@ export function createSettingsApi(o: {
   /** This page's password tokens: only they reach the chrome, and leaving the section revokes them. */
   const pageTokens = new Set<string>();
   const mine = (token: unknown) => (typeof token === "string" && pageTokens.has(token) ? token : "");
+  const importer = o.passportImport;
   return {
+    ...(importer && {
+      passportImport: {
+        sources: () => importer.sources().then((r) => structuredClone(r)),
+        proposals: (source) => importer.proposals(String(source)).then((r) => structuredClone(r)),
+        add: (profile, rows, source, eraseRessac) =>
+          importer.add(String(profile), (Array.isArray(rows) ? rows : []).map((r) => ({ key: String(r?.key), as: r?.as === "proche" ? "proche" : "me" })), String(source), eraseRessac === true).then((r) => structuredClone(r)),
+      },
+    }),
     ...(passwords && {
       passwords: {
         list: () => passwords.list().then((r) => structuredClone(r)),
@@ -197,6 +209,9 @@ export function createSettingsApi(o: {
     telemetry: async () => o.chrome.telemetry(),
     setTelemetry: (enabled) => o.chrome.setTelemetry(enabled),
     setCrashReports: (on) => o.chrome.setCrashReports(on),
+    passportSuggest: async () => structuredClone(o.chrome.passportSuggest()),
+    setPassportSuggest: (on) => o.chrome.setPassportSuggest(on),
+    unmutePassportSite: (host) => o.chrome.unmutePassportSite(host),
     version: async () => o.chrome.version(),
     defaultBrowser: async () => o.chrome.defaultBrowser(),
     setDefaultBrowser: () => o.chrome.setDefaultBrowser(),

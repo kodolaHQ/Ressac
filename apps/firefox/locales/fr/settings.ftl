@@ -321,3 +321,39 @@ settings-passwords-error-password = Le mot de passe ne peut pas être vide.
 settings-passwords-error-duplicate = Un mot de passe existe déjà pour cet identifiant sur ce site.
 settings-passwords-error-missing = Ce mot de passe n'existe plus.
 settings-passwords-error-write = L'enregistrement a échoué : rien n'a changé. Réessayez.
+settings-passport-touchid-import = ajouter des adresses à votre passeport
+settings-passport-import-open = Importer depuis…
+settings-passport-import-pick = Importer les adresses de :
+settings-passport-import-profile = Dans le passeport :
+settings-passport-import-none = Aucune adresse enregistrée dans { $name }.
+settings-passport-import-intro = Cochez ce que vous gardez : { $name } a enregistré ces adresses.
+settings-passport-import-me = Moi
+settings-passport-import-other = Un proche
+settings-passport-import-as = Pour cette ligne
+settings-passport-import-incomplete = { $n ->
+    [one] 1 adresse incomplète ignorée
+   *[other] { $n } adresses incomplètes ignorées
+  }
+settings-passport-import-erase = Les effacer de Firefox
+settings-passport-import-later = Plus tard
+settings-passport-import-add = Ajouter
+settings-passport-import-done = { $n ->
+    [one] 1 donnée ajoutée à votre passeport.
+   *[other] { $n } données ajoutées à votre passeport.
+  } Votre nom et votre adresse seront masqués pour l'agent dans vos mails et vos comptes.
+settings-passport-import-full = { $n ->
+    [one] 1 donnée non ajoutée : le passeport est plein.
+   *[other] { $n } données non ajoutées : le passeport est plein.
+  }
+settings-passport-import-invalid = { $n ->
+    [one] 1 donnée non ajoutée.
+   *[other] { $n } données non ajoutées.
+  }
+settings-passport-import-error = L'ajout a échoué : rien n'a changé. Réessayez.
+settings-passport-import-cancelled = Ajout annulé : rien n'a changé.
+settings-passport-import-close = Fermer
+settings-passport-import-nothing = Tout était déjà dans votre passeport.
+settings-passport-suggest-label = Proposer d'ajouter vos adresses quand vous remplissez un formulaire
+settings-passport-suggest-help = Quand vous tapez une adresse dans un formulaire, une barre propose de l'ajouter à votre passeport (Touch ID demandé). Désactivé, Ressac ne vous propose rien.
+settings-passport-muted-label = Sites où ne plus proposer
+settings-passport-unmute = Retirer { $site }

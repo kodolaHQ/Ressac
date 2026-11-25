@@ -13,6 +13,8 @@
   import { api, appState, currentWindow } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import Icon from "./Icon.svelte";
+  import PassportImport from "./PassportImport.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
   import { onLeavingPassport, requestedPassport, takeRequestedPassport } from "./settings-section.svelte";
 
   // Styles of groups, rows, pills and buttons come from Settings.svelte. Design § 9.2-9.3, mock-up screen 1.
@@ -60,6 +62,22 @@
   /** The row just saved, lit briefly. */
   let fresh = $state<string | null>(null);
   let busy = false;
+  /** The form bar: its switch and the sites muted with « Ne plus proposer sur ce site » (prefs, not the passport: no Touch ID). */
+  let suggest = $state<{ on: boolean; muted: string[] } | null>(null);
+  void api.settings.passportSuggest().then((r) => (suggest = r));
+  /** « Importer depuis… »: the sources offered (null: closed), then the one picked. */
+  let importFrom = $state<{ id: string; name: string }[] | null>(null);
+  let importing = $state<string | null>(null);
+  /** After an import: the counts, and the open passport's entries (the import wrote them behind this page). */
+  async function reloadOpen() {
+    await loadProfiles();
+    const id = current;
+    if (!id || !open) return;
+    const r = await p.read(id, open.token);
+    if (r && id === current && open) open = { ...open, ...r };
+  }
+  const openImport = () => void api.settings.passportImport!.sources().then((l) => (importFrom = l));
+  const closeImport = () => ([importFrom, importing] = [null, null]);
   /** Touch ID is asked: the button waits for its answer (no second prompt). */
   let unlocking = $state(false);
   /** « Supprimer ce passeport » or « Recommencer un passeport vide » after its Touch ID: the confirmation, holding that token. */
@@ -461,7 +479,46 @@
       </select>
     {/if}
   </div>
+  {#if profile?.state === "ok"}
+    <div class="importer" data-testid="passport-importer">
+      {#if !importFrom}
+        <button class="link appear" data-testid="passport-import-open" out:fade={{ duration: 150 }} onclick={openImport}>{t("settings-passport-import-open")}</button>
+      {:else if !importing}
+        <span class="muted appear" out:fade={{ duration: 150 }}>{t("settings-passport-import-pick")}</span>
+        <!-- Local outro only: the page must relock without waiting for one (test « no global transition »). -->{#each importFrom as s (s.id)}<button class="appear" data-testid="passport-import-source-{s.id}" out:fade={{ duration: 150 }} onclick={() => (importing = s.id)}>{s.name}</button>{/each}
+        <button class="link appear" out:fade={{ duration: 150 }} onclick={closeImport}>{t("settings-passport-import-later")}</button>
+      {:else}
+        <PassportImport source={importing} profile={current ?? undefined} onclose={closeImport} onadded={() => void reloadOpen()} />
+      {/if}
+    </div>
+  {/if}
   <p class="intro">{@render withLabel(around("settings-passport-intro", {}, "⟨adresse-…⟩"))}</p>
+  {#if suggest}
+    <SettingsRow label={t("settings-passport-suggest-label")} id="passport-suggest-switch" help={t("settings-passport-suggest-help")}>
+      <input
+        id="passport-suggest-switch"
+        class="switch"
+        type="checkbox"
+        role="switch"
+        data-testid="passport-suggest-switch"
+        aria-describedby="passport-suggest-switch-help"
+        checked={suggest.on}
+        onchange={(e) => {
+          suggest!.on = e.currentTarget.checked;
+          api.settings.setPassportSuggest(suggest!.on);
+        }}
+      />
+    </SettingsRow>
+    {#if suggest.muted.length}
+      <SettingsRow label={t("settings-passport-muted-label")} testid="passport-muted">
+        <div class="chips">
+          {#each suggest.muted as h (h)}
+            <span class="chip" out:fade={{ duration: 150 }}>{h}<button type="button" data-testid="passport-unmute-{h}" aria-label={t("settings-passport-unmute", { site: h })} onclick={() => { suggest!.muted = suggest!.muted.filter((x) => x !== h); api.settings.unmutePassportSite(h); }}>×</button></span>
+          {/each}
+        </div>
+      </SettingsRow>
+    {/if}
+  {/if}
   {#if notice}<p class="status alert appear" role="status" data-testid="passport-notice" out:fade={{ duration: 150 }}>{t(notice)}</p>{/if}
 
   <div class="stack">
@@ -580,6 +637,8 @@
 </section>
 
 <style>
+  .importer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
+  .importer > :global(.card) { flex: 1 1 100%; }
   .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; }
   .head h3 { margin: 0; font: 600 20px/1.2 var(--font-display); letter-spacing: -0.015em; }
   /* Changing profile cross-fades the content: the old and the new body share one grid cell. */

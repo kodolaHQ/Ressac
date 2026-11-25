@@ -364,7 +364,7 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       switchAgent,
       dataDir: win.store.dataDir,
       locale: () => win.store.state.locale,
-      ...(o.settingsPage ? { passport: win.store.passport, passwords: win.store.passwords } : {}),
+      ...(o.settingsPage ? { passport: win.store.passport, passwords: win.store.passwords, passportImport: win.store.passportImport } : {}),
       spaces: () => win.store.state.spaces,
       untilUnload,
     }),

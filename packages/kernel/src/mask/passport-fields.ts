@@ -13,7 +13,7 @@ export type PassportEntry = {
   value: PassportValue;
   variants: string[];
   origins: string[];
-  how: "typed" | "click";
+  how: "typed" | "click" | "import" | "form";
   from?: string;
   created: string;
   updated: string;

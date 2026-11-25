@@ -243,3 +243,15 @@ chrome-hide-error-full = Votre passeport est plein.
 chrome-hide-error-invalid = Ce texte ne correspond pas à ce type : choisissez-en un autre.
 chrome-hide-legend-text = Texte masqué : l'agent lit une étiquette à la place
 chrome-hide-legend-field = Champ masqué : l'agent ne lit pas sa valeur en clair
+
+## Suggestions du passeport sur un formulaire envoyé (chrome/passport/form-capture.ts)
+
+chrome-passport-suggest = Ajouter à votre passeport ?
+chrome-passport-suggest-value = { $kind } : { $value }
+chrome-passport-suggest-remember = Retenir { $site }
+chrome-passport-suggest-mute = Ne plus proposer
+chrome-passport-suggest-mute-site = Sur ce site
+chrome-passport-suggest-mute-all = Nulle part
+chrome-passport-suggest-no = Non
+chrome-passport-suggest-add = Ajouter
+chrome-passport-suggest-close = Fermer
