@@ -101,6 +101,7 @@ async function adversaryLeg(c: ReplayCase, o: LegOptions): Promise<Rec> {
     over = true;
     await cards.stop();
     return named(world, await record(world, { prompt: c.benign_task, ...end, agent: { kind: "scripted" }, config: config(o), seconds: (Date.now() - t0) / 1000 }));
+    return end.upstream ? { ...rec, upstream: end.upstream } : rec;
   } finally {
     await world.close();
   }
@@ -112,7 +113,7 @@ async function claudeLeg(c: ReplayCase, o: LegOptions): Promise<Rec> {
   const prompt = promptFor(c as unknown as Case) + ENDORSE;
   // ui.ts's typeText presses each character as a key combo: a « + » splits it, a newline would send the line early.
   if (/[+\n\r]/.test(prompt)) throw new Error(`${c.id}: the prompt holds « + » or a newline, which typeText cannot type`);
-  type End = { answer?: string; stop?: string; error?: string };
+  type End = { answer?: string; stop?: string; error?: string; upstream?: string };
   let ended: End | null = null;
   const finish = (e: End) => void (ended ??= e);
   let world: World | undefined;
@@ -122,7 +123,8 @@ async function claudeLeg(c: ReplayCase, o: LegOptions): Promise<Rec> {
     upstream: o.upstream ?? "http://127.0.0.1:11434", file: join(o.work, "model.jsonl"), owner: OWNER,
     // seen.tools is replaced by each request that declares tools: the same array later means no agent turn began since.
     onTurnEnd: (text: string) => void (turn = { text, tools: model.seen.tools, at: Date.now() }),
-    onStop: (why: string) => finish(why === "rate-limit" ? { stop: "rate-limit" } : why.startsWith("upstream-") ? { stop: "agent-error", error: `${UPSTREAM}${why}` } : { error: `${REFUSED}${why}` }),
+    // A 5xx is the provider's passing outage: retried like a rate limit (the record keeps which); a 4xx breaks the pass.
+    onStop: (why: string) => finish(why === "rate-limit" ? { stop: "rate-limit" } : /^upstream-5\d\d$/.test(why) ? { stop: "rate-limit", upstream: why } : why.startsWith("upstream-") ? { stop: "agent-error", error: `${UPSTREAM}${why}` } : { error: `${REFUSED}${why}` }),
   });
   // The `end` mark only takes a seq (endSeq), as toolCaller's: noted and dropped at once.
   const note = (t: string, more: Rec) => { const e = world!.note(t, more); if (t === "end") world!.events.pop(); return e; };
@@ -185,8 +187,9 @@ async function claudeLeg(c: ReplayCase, o: LegOptions): Promise<Rec> {
     writeFileSync(join(o.work, "terminal.txt"), await inUi<string>(w.m, TERMINAL, [], "agent").catch((e) => `unread: ${e}`));
     const end: End = ended!;
     const version = /claude-cli\/(\S+)/.exec(String(model.seen.userAgent ?? ""))?.[1] ?? null;
-    return named(w, await record(w, { prompt, answer: end.answer ?? turn?.text ?? "", agent: { init: { model: model.seen.model ?? null, tools: model.seen.tools ?? null, claude_code_version: version }, identity: "throwaway" },
+    const rec = named(w, await record(w, { prompt, answer: end.answer ?? turn?.text ?? "", agent: { init: { model: model.seen.model ?? null, tools: model.seen.tools ?? null, claude_code_version: version }, identity: "throwaway" },
       config: config(o), ...(end.stop ? { stop: end.stop } : {}), ...(end.error ? { error: end.error } : {}), seconds: (Date.now() - t0) / 1000 }));
+    return end.upstream ? { ...rec, upstream: end.upstream } : rec;
   } finally {
     await world?.close();
     await Promise.all([mcp.close(), model.close()]);
@@ -287,11 +290,12 @@ if (main && argv.includes("--self-check")) {
   // The fake upstream: the first agent turn (one message) asks for tools, the next one ends; 401 while `unsigned`
   // (an engine not signed in).
   const TEXT = "Voici les horaires de la piscine.";
-  let unsigned = false;
+  let unsigned = false, outage = false;
   const up = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const ch of req) chunks.push(ch as Buffer);
     if (unsigned) return void res.writeHead(401, { "content-type": "application/json" }).end('{"error":"unauthorized"}');
+    if (outage) return void res.writeHead(503, { "content-type": "application/json" }).end('{"error":"unavailable"}');
     const first = (JSON.parse(Buffer.concat(chunks).toString("utf8")).messages ?? []).length === 1;
     const ev = (x: Rec) => `event: ${x.type}\ndata: ${JSON.stringify(x)}\n\n`;
     res.writeHead(200, { "content-type": "text/event-stream" }).end([{ type: "message_start", message: { usage: { input_tokens: 40, output_tokens: 1 } } },
@@ -367,6 +371,12 @@ if (main && argv.includes("--self-check")) {
   assert.deepEqual([u.stop, u.error, levels(u).outcome], ["agent-error", "model upstream failed: upstream-401", "excluded"]);
   assert.ok(!existsSync(join(upc, "work/a", second.id)), "the second job never started");
   console.log("(e) ok");
+  // (e2) a provider 5xx is a passing outage: the leg ends as a rate limit (retried by the campaign, then excluded), never an error.
+  outage = true;
+  const o5 = await leg("search", { work: join(out, "work", "outage") });
+  outage = false;
+  assert.deepEqual([o5.stop, o5.upstream, o5.error, levels(o5).outcome], ["rate-limit", "upstream-503", undefined, "excluded"]);
+  console.log("(e2) ok");
   // (f) I5 and M4: a leg that throws (a prompt typeText cannot type) leaves a record under errors/ and counts as failed; a
   // resume runs it again.
   const throwing = { ...control, id: `${control.id}-plus`, benign_task: `${control.benign_task} 1+1` };
