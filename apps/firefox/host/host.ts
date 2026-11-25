@@ -306,7 +306,9 @@ const startIndexer = () => {
 
 // AI on (settings.aiEnabled, told by the chrome's `start` and `ai.enabled`): off, nothing below touches Docker or the local models.
 let aiOn = false;
-// The effective lab (shared/tiers.ts labOn: settings.lab and AI), told by the chrome's `start` and `lab.enabled`.
+// The lab as the chrome stores it (`start`, `lab.enabled`), and the effective lab: stored on and AI on (shared/tiers.ts),
+// held here too, whatever the chrome sends.
+let labWanted = false;
 let labOn = false;
 let aiWoken = false;
 // Once per off → on: the machine is installed (downloaded once) and the logins move over from Docker; where it cannot
@@ -572,14 +574,22 @@ const applyAi = async () => {
 const applyMode = () => {
   const was = agentMode;
   agentMode = labOn && wantedMode === "workshop" ? "workshop" : "browser";
-  // To Navigateur: no session (custom profiles too) keeps its shell, and no running app keeps running agent-written code.
-  // AI off: applyAi stops the sessions instead.
+  // To Navigateur: no session (custom profiles too) keeps its shell, and no running app keeps running agent-written code
+  // (with the lab going off, relab stops them: one call). AI off: applyAi stops the sessions instead.
   if (was === "workshop" && agentMode === "browser") {
-    void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
+    if (labOn) void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
     return aiOn ? sessions.relaunchActive() : undefined;
   }
   sessions.engineChanged("claude");
   sessions.engineChanged("codex");
+};
+/** `labWanted` or `aiOn` changed: the effective lab follows; off, no agent app keeps running agent-written code (site app windows: the chrome closes them). */
+const relab = () => {
+  const was = labOn;
+  labOn = labWanted && aiOn;
+  if (was === labOn) return;
+  if (!labOn) void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
+  return applyLab();
 };
 /** Brings the lab's parts to `labOn`: the kernel's gate, the external MCP, the actions watch and the agent's mode. */
 const applyLab = async () => {
@@ -668,7 +678,8 @@ const rpc = createRpc({
       refreshProfileAgents();
       if (typeof p.locale === "string") setHostLocale(p.locale);
       aiOn = p.aiEnabled === true;
-      labOn = p.lab === true;
+      labWanted = p.lab === true;
+      labOn = labWanted && aiOn;
       void applyLab().catch((e) => console.error("[ressac] lab at start failed:", e));
       return serialAi(async () => {
         await applyAi();
@@ -678,13 +689,12 @@ const rpc = createRpc({
     // Live switch (Réglages). Docker and OrbStack are left running when off: they may serve the user's own work.
     "ai.enabled": (p: { on?: unknown }) => {
       aiOn = p?.on === true;
+      void relab()?.catch((e) => console.error("[ressac] lab with AI failed:", e));
       return serialAi(applyAi).catch((e) => console.error(`[ressac] AI ${aiOn ? "on" : "off"} failed:`, e));
     },
     "lab.enabled": (p: { on?: unknown }) => {
-      labOn = p?.on === true;
-      // Off: no agent app keeps running agent-written code (site app windows: the chrome closes them).
-      if (!labOn) void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
-      return applyLab();
+      labWanted = p?.on === true;
+      return relab();
     },
     // Once, for a session saved before tiers: does the user already use the lab? The chrome sends its saved mode (no
     // `agent.mode` has come yet). Widget tiers come with Task 6.

@@ -145,8 +145,10 @@ describe("agent host", { timeout: 30_000 }, () => {
     await until(() => existsSync(agents) && readFileSync(agents, "utf8") === french, 5_000);
   });
 
-  it("the host starts the external MCP without the kernel", async () => {
+  it("the host starts the external MCP with the lab", async () => {
     const h = startHost();
+    // The lab needs AI (the kernel then starts too).
+    h.rpc.notify("ai.enabled", { on: true });
     h.rpc.notify("lab.enabled", { on: true });
     let e: { server: { state: string; port?: number } } | undefined;
     const end = Date.now() + 10_000;
@@ -157,7 +159,6 @@ describe("agent host", { timeout: 30_000 }, () => {
     }
     expect(e?.server.state).toBe("ready");
     expect(e?.server.port).toBeGreaterThan(0);
-    expect(existsSync(join(h.root, ".ressac", "mcp.json"))).toBe(false);
   });
 
   it("tier-3 RPCs answer lab-off", async () => {
@@ -201,7 +202,19 @@ describe("agent host", { timeout: 30_000 }, () => {
     const again = ready();
     await h.rpc.request("agent.start", { window: "f2", size: { cols: 80, rows: 24 } });
     await until(() => ready() > again);
-    expect(JSON.stringify(h.states)).not.toContain("labo");
+    // The agent's launches: Navigateur gives Claude its tool allowlist (no shell), the Atelier does not.
+    const launches = readFileSync(h.log, "utf8").split("\n").filter((l) => l.includes("--append-system-prompt"));
+    expect(launches.map((l) => (l.includes("--tools") ? "browser" : "workshop"))).toEqual(["workshop", "browser", "browser"]);
+  });
+
+  it("the lab holds only with AI: lab true and AI off refuses tier-3 RPCs, AI back on lets them through", async () => {
+    const h = startHost();
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: false, lab: true });
+    await expect(h.rpc.request("actions.list")).rejects.toThrow("lab-off");
+    await h.rpc.request("ai.enabled", { on: true });
+    expect(await h.rpc.request("actions.list")).toEqual([]);
+    await h.rpc.request("ai.enabled", { on: false });
+    await expect(h.rpc.request("sites.list")).rejects.toThrow("lab-off");
   });
 
   it("AI off: start runs no docker and makes no kernel; ai.enabled turns it on, then off", async () => {
@@ -601,6 +614,7 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("workflow.* answer a bad input with the UI's shapes", async () => {
     const h = startHost();
+    h.rpc.notify("ai.enabled", { on: true });
     h.rpc.notify("lab.enabled", { on: true });
     const target = { type: "widget", id: "veille" };
     const bad = { type: "widget", id: "../x" };
