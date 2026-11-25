@@ -10,6 +10,13 @@ export type AddManyResult = { ok: true; added: number; variants: number; full: n
 export type PassportSaveResult = { ok: true; revision: string; uncovered: number } | { ok: false; error: "stale" | "write" | "newer" | "full" | "locked" | "invalid" };
 
 
+/** addMany's twin of `fresh` in `list`: same label and canonical value, or a name in another word order (the kernel masks both orders under one label). */
+export function twinOf(list: readonly PassportEntry[], fresh: PassportEntry): PassportEntry | undefined {
+  const words = (e: PassportEntry) => foldWords(rawOf(e)).split(" ").sort().join(" ");
+  const isName = "given" in fresh.value;
+  return list.find((k) => FIELD_LABEL[k.field] === FIELD_LABEL[fresh.field] && (canonicalOf(k) === canonicalOf(fresh) || (isName && "given" in k.value && words(k) === words(fresh))));
+}
+
 type Purpose = "open" | "delete" | "move" | "restart";
 const PURPOSES: readonly Purpose[] = ["open", "delete", "move", "restart"];
 
@@ -209,10 +216,7 @@ export function createPassportSettings(o: {
           for (const d of h.drafts) {
             const value: PassportValue = "given" in d.value ? { given: d.value.given.trim(), family: d.value.family.trim() } : { text: d.value.text.trim() };
             const fresh: PassportEntry = { id: crypto.randomUUID(), field: d.field, value, variants: [], origins: host ? [host] : [], how: h.how, from: h.from, created: at, updated: at };
-            // A name in another word order is the same person: the kernel masks both orders under one label.
-            const words = (e: PassportEntry) => foldWords(rawOf(e)).split(" ").sort().join(" ");
-            const isName = "given" in fresh.value;
-            const twin = list.find((k) => FIELD_LABEL[k.field] === FIELD_LABEL[fresh.field] && (canonicalOf(k) === canonicalOf(fresh) || (isName && "given" in k.value && words(k) === words(fresh))));
+            const twin = twinOf(list, fresh);
             if (twin) {
               let next = twin;
               const raw = rawOf(fresh);

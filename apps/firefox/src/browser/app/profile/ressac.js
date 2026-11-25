@@ -64,6 +64,12 @@ pref("ressac.telemetry.noticeShown", false);
 // Firefox's crash reports (minidumps) can hold page data and are not scrubbed: only when the user turns them on.
 pref("ressac.telemetry.crashReports", false);
 
+// Typed address forms go to the encrypted passport (chrome/passport/form-capture.ts), never to Firefox's store, kept
+// in clear (autofill-profiles.json). Off for a whole Mac, or a comma-separated list of hosts.
+pref("extensions.formautofill.addresses.capture.enabled", false);
+pref("ressac.passport.suggest", true);
+pref("ressac.passport.suggestMuted", "");
+
 // A <link rel=dns-prefetch> would reach the web through DNS past the request guard of agent pages (chrome/agent/page-guard.ts).
 pref("network.dns.disablePrefetch", true);
 // So would a <link rel=preconnect> or a speculative connection (DNS and TCP, no HTTP request to cancel).

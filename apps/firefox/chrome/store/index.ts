@@ -10,6 +10,8 @@ import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, pushPassports, type AgentHost } from "../agent/host";
 import { passportFiles, passportShown } from "../passport/store";
 import { pagePassport, passportSettings, type PagePassport, type PassportSettings } from "../passport/settings";
+import { installFormCapture } from "../passport/form-capture";
+import { tabInfos } from "../../core/agent/bridge";
 import { passwordSettings, type PasswordSettings } from "../passwords/settings";
 import { createAgentView, type AgentView } from "../agent/agent-view";
 import { readHtml, readPage } from "../agent/invisible";
@@ -399,6 +401,17 @@ async function start(): Promise<RessacStore> {
     messageManagerGroups: [FRAMES_GROUP],
     safeForUntrustedWebProcess: true,
   });
+  // Typed address forms (typed-actor.ts, passport/form-capture.ts): top https documents of tab browsers. The child notes
+  // keyboard edits and answers or pushes bounded strings; the parent only keeps them per document, to narrow what
+  // Firefox captured.
+  const typedActor = actorModule("typed-actor");
+  ChromeUtils.registerWindowActor("RessacTyped", {
+    parent: { esModuleURI: typedActor },
+    child: { esModuleURI: typedActor, events: { input: { capture: true }, submit: { capture: true }, beforeunload: {} } },
+    matches: ["https://*/*"],
+    messageManagerGroups: ["browsers"],
+    safeForUntrustedWebProcess: true,
+  });
   // The agent-written frames (frame-actor.ts): the top document of each remote frame <browser> only (no allFrames, no
   // matches). The child forwards a few bounded messages; the parent only looks up the frame owner's callback.
   const frameActor = actorModule("frame-actor");
@@ -666,6 +679,21 @@ async function start(): Promise<RessacStore> {
   AsyncShutdown.profileBeforeChange.addBlocker("Ressac: stop the agent host", () => agent.stop());
   // The process's one passport instance: Réglages' pages and « Cacher pour l'agent » share its tokens and writes.
   const passport = passportSettings((method, params) => agent.request(method, params));
+  // Before any form is sent: Firefox's address prompt becomes Ressac's passport bar.
+  installFormCapture({
+    about: (browser) => {
+      const id = browser.ownerGlobal?.gBrowser?.getTabForBrowser?.(browser)?.getAttribute("ressac-tab-id");
+      const tab = id ? store.state.tabs[id] : undefined;
+      if (!tab) return null;
+      const container = browser.browsingContext?.originAttributes?.userContextId ?? 0;
+      return { profile: tabProfile(store.state, tab), agentReached: tabInfos(store.state).find((t) => t.id === id)?.agentReached, privateSpace: privateTab(store.state, tab), siteApp: isSiteContainer(container) || isAppContainer(container) };
+    },
+    // The actor's own module instance (the registry's), never a bundled copy: its kept lists live there.
+    typedOf: (wgp) => ChromeUtils.importESModule(typedActor).RessacTypedParent.typedOf(wgp),
+    load: (profile) => passportFiles().load(profile),
+    addMany: (h) => passport.addMany(h),
+    locale: () => store.state.locale,
+  });
   const browserImport = createBrowserImporter(dataDir, agent, store);
   return {
     get state() {
