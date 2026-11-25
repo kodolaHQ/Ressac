@@ -53,6 +53,24 @@ describe("passport import", () => {
     expect(remove.mock.calls.flatMap((c) => c[0])).toEqual([]);
   });
 
+  it("a key from an earlier read names the same content or nothing, never another line", async () => {
+    const remove = vi.fn(async (_g: string[]) => {});
+    const c = { guid: "c1", "given-name": "Camille", "family-name": "Aubrac", email: "camille@example.fr" };
+    const j = { guid: "j1", "given-name": "Jean", "family-name": "Martin", email: "jean@example.fr" };
+    let records = [c, j];
+    const addMany = vi.fn(async (_h: any) => ({ ok: true, added: 1, variants: 0, full: 0, invalid: 0 }) as const);
+    const i = createPassportImporter({ home: "/h", scratch: "/s", passport: { addMany }, reason: () => "r", ressacStore: async () => ({ records, remove }) });
+    const l1 = (await i.proposals("ressac")).proposals;
+    const kc = l1.find((p) => p.given === "Camille")!.key, kj = l1.find((p) => p.given === "Jean")!.key;
+    records = [j]; // the other card re-reads a source where Camille is gone
+    await i.proposals("ressac");
+    await i.add("default", [{ key: kc, as: "me" }], "ressac", true);
+    expect(addMany).not.toHaveBeenCalled();
+    await i.add("default", [{ key: kj, as: "me" }], "ressac", true);
+    expect(addMany.mock.calls[0]![0].drafts.map((d: any) => d.value)).toContainEqual({ text: "jean@example.fr" });
+    expect(remove.mock.calls.flatMap((c) => c[0])).toEqual(["j1"]);
+  });
+
   it("a value the passport refuses is left out and counted incomplete, and its record is kept", async () => {
     const remove = vi.fn(async (_g: string[]) => {});
     const records = [

@@ -1,7 +1,7 @@
 import { cleanOrigin, type PassportEntry } from "../shims/kernel";
 import { format, type Locale } from "../../shared/i18n";
 import { siteOf } from "../../shared/model";
-import { drafts, splitName, valid, type Draft } from "./import-choice";
+import { drafts, fieldsToProposal, valid, type Draft } from "./import-choice";
 import { twinOf, type AddManyResult, type PassportSettings } from "./settings";
 import type { LoadResult } from "./store";
 
@@ -28,10 +28,9 @@ export function suggestion(record: Record<string, string>, typed: ReadonlySet<st
     const v = typeof record[k] === "string" ? record[k].trim() : "";
     return v && typed.has(v) ? v : "";
   };
-  const named = t("given-name") || t("family-name") ? { given: t("given-name"), family: t("family-name") } : splitName(t("name"));
   // shortcut: a street split over address-line1/2 fields is not offered; upgrade by joining them if such forms matter.
-  const street = t("street-address"), rest = [t("postal-code"), t("address-level2")].filter(Boolean).join(" ");
-  const all = drafts({ key: "", ...named, address: street && rest ? `${street}\n${rest}` : "", tel: t("tel"), email: t("email"), ticked: true, other: false }, "me");
+  const raw = fieldsToProposal({ given: t("given-name"), family: t("family-name"), full: t("name"), street: t("street-address"), postcode: t("postal-code"), city: t("address-level2"), tel: t("tel"), email: t("email") });
+  const all = drafts({ key: "", ...raw, ticked: true, other: false }, "me");
   // Only what the passport accepts: the bar shows exactly what « Ajouter » writes.
   const fresh = all.filter((d) => valid(d) && !ctx.known(d));
   return fresh.length ? fresh : null;

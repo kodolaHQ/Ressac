@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { doneText, suggestion } from "../chrome/passport/form-capture";
-import { parseAddress } from "../chrome/shims/kernel";
+import { parseAddress } from "../../../packages/kernel/src/mask/passport-fields";
 import type { Draft } from "../chrome/passport/import-choice";
 import { typedFields } from "../chrome/passport/typed-fields";
 

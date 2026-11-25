@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { drafts, propose, splitName } from "../chrome/passport/import-choice";
-import { parseAddress } from "../chrome/shims/kernel";
+import { drafts, proposeWithMembers as propose, splitName } from "../chrome/passport/import-choice";
+import { parseAddress } from "../../../packages/kernel/src/mask/passport-fields";
 import type { FoundAddress } from "../chrome/passport/addresses";
 
 const line = (o: Partial<FoundAddress>): FoundAddress => ({ given: "", family: "", full: "", street: "", postcode: "", city: "", country: "", tel: "", email: "", usedAt: 0, useCount: 0, ...o });

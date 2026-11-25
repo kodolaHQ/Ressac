@@ -11,13 +11,17 @@ const t = (s: string) => s.trim();
 /** The draft passes the kernel's own check on its own (design § 4.2): what a card or a bar shows is what can be written. */
 export const valid = (d: Draft): boolean => !validateEntry({ id: "", ...d, variants: [], origins: [], how: "import", created: "", updated: "" }, []).problems.length;
 
-export const propose = (found: FoundAddress[]): { proposals: Proposal[]; incomplete: number } => {
-  const { proposals, incomplete } = proposeWithMembers(found);
-  return { proposals, incomplete };
-};
+type Fields = { given: string; family: string; full: string; street: string; postcode: string; city: string; tel: string; email: string };
+
+/** Loose address fields (an imported record, a typed form) to the shape of a proposal line, before the passport's own checks. */
+export function fieldsToProposal(f: Fields) {
+  const named = t(f.given) || t(f.family) ? { given: t(f.given), family: t(f.family) } : splitName(f.full);
+  const street = t(f.street), rest = [t(f.postcode), t(f.city)].filter(Boolean).join(" ");
+  return { ...named, address: street && rest ? `${street}\n${rest}` : "", tel: t(f.tel), email: t(f.email) };
+}
 
 /**
- * As `propose`, plus for each proposal the indexes in `found` of the records merged into it that it keeps whole: a
+ * The proposal lines, plus for each proposal the indexes in `found` of the records merged into it that it keeps whole: a
  * record that loses a part here (half an address, a value the passport refuses) counts as incomplete and is never
  * among them, so it is never erased.
  */
@@ -25,12 +29,10 @@ export function proposeWithMembers(found: FoundAddress[]): { proposals: Proposal
   let incomplete = 0;
   const merged = new Map<string, { p: Omit<Proposal, "key" | "ticked" | "other">; usedAt: number; useCount: number; name: string; at: number[] }>();
   for (const [n, f] of found.entries()) {
-    const named = t(f.given) || t(f.family) ? { given: t(f.given), family: t(f.family) } : splitName(f.full);
-    const street = t(f.street), rest = [t(f.postcode), t(f.city)].filter(Boolean).join(" ");
-    const raw = { ...named, address: street && rest ? `${street}\n${rest}` : "", tel: t(f.tel), email: t(f.email) };
+    const raw = fieldsToProposal(f);
     const ok = new Set(drafts({ ...raw, key: "", ticked: true, other: false }, "me").filter(valid).map((d) => d.field));
     const p = { given: ok.has("nom") ? raw.given : "", family: ok.has("nom") ? raw.family : "", address: ok.has("adresse") ? raw.address : "", tel: ok.has("tel") ? raw.tel : "", email: ok.has("email") ? raw.email : "" };
-    const lossy = !street !== !rest || (Object.keys(raw) as (keyof typeof raw)[]).some((k) => raw[k] !== p[k]);
+    const lossy = !t(f.street) !== ![t(f.postcode), t(f.city)].some(Boolean) || (Object.keys(raw) as (keyof typeof raw)[]).some((k) => raw[k] !== p[k]);
     const empty = !p.given && !p.family && !p.address && !p.tel && !p.email;
     if (lossy || empty) incomplete++;
     if (empty) continue;
@@ -41,14 +43,14 @@ export function proposeWithMembers(found: FoundAddress[]): { proposals: Proposal
     if (!old || f.usedAt > old.usedAt) merged.set(id, { p, name, usedAt: f.usedAt, useCount: Math.max(f.useCount, old?.useCount ?? 0), at });
     else old.at = at;
   }
-  const lines = [...merged.values()];
+  const lines = [...merged.values()], ids = [...merged.keys()];
   // The user's name: on the most lines, then the most used.
   const score = new Map<string, [number, number]>();
   for (const l of lines) if (l.name) { const s = score.get(l.name) ?? [0, 0]; score.set(l.name, [s[0] + 1, s[1] + l.useCount]); }
   const me = [...score].sort(([, a], [, b]) => b[0] - a[0] || b[1] - a[1])[0]?.[0];
   const parts = (l: (typeof lines)[number]) => [l.p.address, l.p.tel, l.p.email].filter(Boolean).length;
   const best = lines.filter((l) => l.name === me).sort((a, b) => parts(b) - parts(a) || b.usedAt - a.usedAt || b.useCount - a.useCount)[0];
-  return { proposals: lines.map((l, i) => ({ ...l.p, key: `p${i}`, ticked: l === best, other: !!l.name && l.name !== me })), incomplete, members: lines.map((l) => l.at) };
+  return { proposals: lines.map((l, i) => ({ ...l.p, key: ids[i]!, ticked: l === best, other: !!l.name && l.name !== me })), incomplete, members: lines.map((l) => l.at) };
 }
 
 export function drafts(p: Proposal, as: "me" | "proche"): Draft[] {
