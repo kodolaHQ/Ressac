@@ -51,6 +51,19 @@ describe("passport import", () => {
     expect(addMany).not.toHaveBeenCalled();
   });
 
+  it("erase removes only the ticked rows' Firefox records", async () => {
+    const remove = vi.fn(async (_g: string[]) => {});
+    const rec = (guid: string, given: string, family: string, street: string) => ({ guid, "given-name": given, "family-name": family, "street-address": street, "postal-code": "69001", "address-level2": "Lyon" });
+    const records = [rec("a1", "Camille", "Aubrac", "14 rue des Tanneurs"), rec("a2", "Camille", "Aubrac", "14 rue des Tanneurs"), rec("j1", "Jean", "Martin", "1 rue Autre")];
+    const addMany = vi.fn(async (_h: any) => ({ ok: true, added: 1, variants: 0, full: 0, invalid: 0 }) as const);
+    const i = createPassportImporter({ home: "/h", scratch: "/s", passport: { addMany }, reason: () => "r", ressacStore: async () => ({ records, remove }) });
+    const { proposals } = await i.proposals("ressac");
+    const camille = proposals.find((p) => p.given === "Camille")!;
+    await i.add("default", [{ key: camille.key, as: "me" }], "ressac", true);
+    expect(remove).toHaveBeenCalledWith(["a1", "a2"]);
+    expect(addMany.mock.calls[0]![0].from).toBe("ressac");
+  });
+
   it("eraseRessac removes Firefox records only after a successful write", async () => {
     const bad = setup({ ok: false });
     let { proposals } = await bad.i.proposals("ressac");

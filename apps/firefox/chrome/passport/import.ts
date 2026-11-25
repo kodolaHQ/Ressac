@@ -1,6 +1,6 @@
 import { detectSources, SOURCES, sourceRoot } from "../store/import/sources";
 import { fromFirefoxJson, readAddresses, type FoundAddress } from "./addresses";
-import { drafts, propose, type Draft, type Proposal } from "./import-choice";
+import { drafts, propose, proposeWithMembers, type Draft, type Proposal } from "./import-choice";
 import type { AddManyResult, PassportSettings } from "./settings";
 
 export type PassportImportSource = { id: string; name: string; count: number };
@@ -42,12 +42,12 @@ export function createPassportImporter(o: {
     queue = run.catch(() => {});
     return run;
   };
-  let last: { source: string; byKey: Map<string, Proposal>; guids: string[] } | null = null;
+  let last: { source: string; byKey: Map<string, Proposal>; guids: Map<string, string[]> } | null = null;
 
-  async function found(source: string): Promise<{ found: FoundAddress[]; guids: string[]; name: string } | null> {
+  async function found(source: string): Promise<{ found: FoundAddress[]; guids: (string | null)[]; name: string } | null> {
     if (source === "ressac") {
       const s = await store().catch(() => null);
-      return s && { found: fromFirefoxJson({ addresses: s.records }), guids: s.records.flatMap((r) => (typeof (r as { guid?: unknown })?.guid === "string" ? [(r as { guid: string }).guid] : [])), name: "Ressac" };
+      return s && { found: fromFirefoxJson({ addresses: s.records }), guids: s.records.map((r) => (typeof (r as { guid?: unknown })?.guid === "string" ? (r as { guid: string }).guid : null)), name: "Ressac" };
     }
     const def = (await detectSources(o.home, exists)).find((d) => d.id === source);
     return def ? { found: await read(def, sourceRoot(o.home, def), o.scratch), guids: [], name: def.name } : null;
@@ -69,24 +69,25 @@ export function createPassportImporter(o: {
     proposals: (source: string): Promise<Proposed> =>
       alone(async () => {
         const f = await found(String(source)).catch((e) => (console.error("[passport] import read failed:", (e as Error)?.name), null));
-        const r = propose(f?.found ?? []);
-        last = { source: String(source), byKey: new Map(r.proposals.map((p) => [p.key, p])), guids: f?.guids ?? [] };
+        const { members, ...r } = proposeWithMembers(f?.found ?? []);
+        last = { source: String(source), byKey: new Map(r.proposals.map((p) => [p.key, p])), guids: new Map(r.proposals.map((p, i) => [p.key, members[i]!.flatMap((n) => f?.guids[n] ?? [])])) };
         return structuredClone(r);
       }),
 
     async add(profile: string, rows: { key: string; as: "me" | "proche" }[], source: string, eraseRessac?: boolean): Promise<AddManyResult> {
       if (!last || last.source !== String(source)) return { ok: false, error: "unreadable" };
       const known = last;
+      const used = new Set<string>();
       const list: Draft[] = (Array.isArray(rows) ? rows : []).flatMap((r) => {
         const p = known.byKey.get(String(r?.key));
+        if (p) used.add(p.key);
         return p ? drafts(p, r.as === "proche" ? "proche" : "me") : [];
       });
       if (!list.length) return { ok: true, added: 0, variants: 0, full: 0, invalid: 0 };
-      const name = source === "ressac" ? "Ressac" : (SOURCES.find((d) => d.id === source)?.name ?? String(source));
-      const r = await o.passport.addMany({ profile: String(profile), drafts: list, how: "import", from: name, origin: null, reason: o.reason() });
-      if (r.ok && eraseRessac && source === "ressac" && known.guids.length) {
+      const r = await o.passport.addMany({ profile: String(profile), drafts: list, how: "import", from: String(source), origin: null, reason: o.reason() });
+      if (r.ok && eraseRessac && source === "ressac" && used.size) {
         const s = await store().catch(() => null);
-        await s?.remove(known.guids).catch((e) => console.error("[passport] erase failed:", (e as Error)?.name));
+        await s?.remove([...used].flatMap((k) => known.guids.get(k) ?? [])).catch((e) => console.error("[passport] erase failed:", (e as Error)?.name));
       }
       return r;
     },
