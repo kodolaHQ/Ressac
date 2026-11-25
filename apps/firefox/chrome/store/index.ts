@@ -407,7 +407,7 @@ async function start(): Promise<RessacStore> {
   const typedActor = actorModule("typed-actor");
   ChromeUtils.registerWindowActor("RessacTyped", {
     parent: { esModuleURI: typedActor },
-    child: { esModuleURI: typedActor, events: { keydown: { capture: true }, paste: { capture: true }, drop: { capture: true }, input: { capture: true }, submit: { capture: true }, beforeunload: {}, pagehide: {} } },
+    child: { esModuleURI: typedActor, events: { keydown: { capture: true }, keyup: { capture: true }, focusout: { capture: true }, paste: { capture: true }, drop: { capture: true }, input: { capture: true }, submit: { capture: true }, beforeunload: {}, pagehide: {} } },
     matches: ["https://*/*"],
     messageManagerGroups: ["browsers"],
     safeForUntrustedWebProcess: true,

@@ -52,6 +52,7 @@ export class RessacTypedChild extends JSWindowActorChild {
   handleEvent(e: Event): void {
     const el = field(e.composedPath()[0]);
     if (e.type === "keydown" || e.type === "paste" || e.type === "drop") return void (el && this.typed.arm(el, e.isTrusted));
+    if (e.type === "keyup" || e.type === "focusout") return void (el && this.typed.disarm(el));
     if (e.type === "input") return void (el && this.typed.input(el, e.isTrusted, (e as InputEvent).inputType));
     // submit, beforeunload, pagehide: the parent keeps the list for a submission it notes after the page is gone.
     const v = this.typed.take();

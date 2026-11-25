@@ -91,6 +91,33 @@ describe("typedFields", () => {
     expect(t.take()).toEqual([]);
   });
 
+  it("keydown, focusout, then input does not count", () => {
+    const t = typedFields<{ value: string }>(), el = field();
+    t.arm(el, true); // Tab: its keydown lands on the field being left
+    t.disarm(el);
+    el.value = "Piège";
+    t.input(el, true, "insertText"); // the page's execCommand later
+    expect(t.take()).toEqual([]);
+  });
+
+  it("keydown, keyup, then input does not count", () => {
+    const t = typedFields<{ value: string }>(), el = field();
+    t.arm(el, true); // Enter: its keydown runs the submit
+    t.disarm(el);
+    el.value = "Piège";
+    t.input(el, true, "insertText");
+    expect(t.take()).toEqual([]);
+  });
+
+  it("keydown, input, keyup counts", () => {
+    const t = typedFields<{ value: string }>(), el = field();
+    t.arm(el, true);
+    el.value = "C";
+    t.input(el, true, "insertCompositionText");
+    t.disarm(el);
+    expect(t.take()).toEqual(["C"]);
+  });
+
   it("a later change removes the value", () => {
     const t = typedFields<{ value: string }>(), a = field(), b = field();
     for (const el of [a, b]) {

@@ -10,7 +10,7 @@ export const bounded = (v: unknown): string[] =>
 
 /**
  * A field counts as typed when its input follows a trusted keydown, paste or drop on that same field (consumed by that
- * input): a script's change, execCommand and Firefox's autofill never qualify. A value counts only while the field
+ * input, dropped at its keyup or when the field loses focus): a script's change, execCommand and Firefox's autofill never qualify. A value counts only while the field
  * still holds it.
  */
 export function typedFields<E extends { value: string }>() {
@@ -20,6 +20,10 @@ export function typedFields<E extends { value: string }>() {
     /** A trusted keydown, paste or drop on `el`. */
     arm(el: E, trusted: boolean): void {
       if (trusted) armed.add(el);
+    },
+    /** A keyup or focusout on `el`: a key that typed nothing (Tab, Enter) leaves no arm for a later script. */
+    disarm(el: E): void {
+      armed.delete(el);
     },
     input(el: E, trusted: boolean, kind: unknown): void {
       const was = armed.delete(el);
