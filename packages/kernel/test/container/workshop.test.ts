@@ -214,7 +214,7 @@ test("a linked actions folder refuses the start", async () => {
   const c = spacePaths(root);
   symlinkSync(mkdtempSync(join(tmpdir(), "ressac-outside-")), c.actions);
   const { run: runCall, calls } = fakeRunner([[/ image inspect /, { code: 0 }], [/ inspect -f/, { code: 1 }]]);
-  await expect(new Workshop({ paths: c, docker: "docker", run: runCall }).ensureStarted()).rejects.toThrow(c.actions);
+  await expect(new Workshop({ paths: c, docker: "docker", run: runCall, locale: () => "fr" }).ensureStarted()).rejects.toThrow(`${c.actions} n'est pas un vrai dossier (un lien, par exemple) : remplacez-le par un dossier.`);
   expect(calls.some((a) => a.args[0] === "run")).toBe(false);
 });
 

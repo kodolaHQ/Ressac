@@ -79,6 +79,7 @@ kernel-err-lab-off = Cette fonction fait partie du labo, éteint : Réglages ›
 kernel-mcp-lab-off = Cet outil fait partie du labo, que l'utilisateur a éteint : n'insiste pas, dis-lui ce qu'il faudrait activer.
 kernel-workshop-no-engine = L'atelier n'a pas de moteur : ni sa machine ni Docker ne sont disponibles.
 kernel-workshop-path-unmountable = Ce chemin ne peut pas être monté dans l'atelier : { $path }
+kernel-workshop-not-folder = { $path } n'est pas un vrai dossier (un lien, par exemple) : remplacez-le par un dossier.
 kernel-err-custom-profile-browser = Le profil « { $name } » ne tourne qu'en mode Atelier : choisissez Atelier dans le panneau de l'agent.
 kernel-err-shape-locked = Le mode a changé pendant le verrou : levez d'abord le verrou pour ouvrir une conversation.
 kernel-err-instructions-changed = Les consignes de l'agent ont changé depuis la dernière session : rouvrez le panneau pour les relire.

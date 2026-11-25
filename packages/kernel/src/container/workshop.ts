@@ -680,7 +680,7 @@ export class Workshop {
     // A link would mount its target read-only while the agent writes it through the workspace: refused (fail closed).
     for (const f of TIER3_FOLDERS) {
       await mkdir(this.paths[f], { recursive: true });
-      if (!(await lstat(this.paths[f])).isDirectory()) throw new Error(say(this.locale(), "kernel-container-start-failed", { name: containerName(), error: `${this.paths[f]} is not a folder` }));
+      if (!(await lstat(this.paths[f])).isDirectory()) throw new Error(say(this.locale(), "kernel-container-start-failed", { name: containerName(), error: say(this.locale(), "kernel-workshop-not-folder", { path: this.paths[f] }) }));
     }
     const run = await this.launch([
       "run", "-d",

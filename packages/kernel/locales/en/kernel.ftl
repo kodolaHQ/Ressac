@@ -79,6 +79,7 @@ kernel-err-lab-off = This feature is part of the lab, which is off: Settings ›
 kernel-mcp-lab-off = This tool is part of the lab, which the user turned off: do not insist, tell them what they would need to turn on.
 kernel-workshop-no-engine = The workshop has no engine: neither its machine nor Docker is available.
 kernel-workshop-path-unmountable = This path cannot be mounted in the workshop: { $path }
+kernel-workshop-not-folder = { $path } is not a real folder (a link, say): replace it with a folder.
 kernel-err-custom-profile-browser = The « { $name } » profile only runs in Workshop mode: choose Workshop in the agent panel.
 kernel-err-shape-locked = The mode changed during the lock: lift the lock first to open a conversation.
 kernel-err-instructions-changed = The agent's instructions changed since the last session: reopen the panel to review them.

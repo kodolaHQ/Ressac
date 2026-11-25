@@ -207,6 +207,22 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(launches.map((l) => (l.includes("--tools") ? "browser" : "workshop"))).toEqual(["workshop", "browser", "browser"]);
   });
 
+  it("Atelier → Navigateur with no open session removes the Atelier-shaped container", async () => {
+    const h = startHost();
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true, lab: true });
+    h.rpc.notify("agent.mode", { mode: "workshop" });
+    const ready = () => h.data().split("fake agent ready>").length;
+    await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
+    await until(() => ready() > 1);
+    const shape = () => (existsSync(join(h.root, "fake-docker-shape")) ? readFileSync(join(h.root, "fake-docker-shape"), "utf8") : "");
+    expect(shape()).toBe("1-workshop");
+    await h.rpc.request("agent.closeWindow", { window: "f1" });
+    const removals = () => readFileSync(join(h.root, "fake-docker-calls.log"), "utf8").split("\n").filter((l) => l === "rm -f ressac-workshop").length;
+    const before = removals();
+    h.rpc.notify("agent.mode", { mode: "browser" });
+    await until(() => removals() > before);
+  });
+
   it("the lab holds only with AI: lab true and AI off refuses tier-3 RPCs, AI back on lets them through", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: false, lab: true });

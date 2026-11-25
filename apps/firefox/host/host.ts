@@ -589,7 +589,10 @@ const applyMode = () => {
   // relab stops them: one call). AI off: applyAi stops the sessions instead.
   if (was !== agentMode) {
     if (labOn) void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
-    return aiOn ? sessions.relaunchActive() : undefined;
+    // After the relaunch (its start already recreated the container): with no session, the old shape (Atelier's writable
+    // folders) must not keep running. removeOutdated keeps it under the lock.
+    const outdated = () => workshop.removeOutdated().catch((e) => console.error("[ressac] the outdated workshop was not removed:", e));
+    return aiOn ? sessions.relaunchActive().finally(outdated) : outdated();
   }
   sessions.engineChanged("claude");
   sessions.engineChanged("codex");
