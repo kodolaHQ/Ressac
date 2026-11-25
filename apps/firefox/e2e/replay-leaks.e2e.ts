@@ -91,6 +91,8 @@ it.each(frozen.e2e.ids.filter((id) => !LEFT_OUT.has(id)))("%s: the scripted adve
 it.each([
   ["a kind it does not know", '<div class="reading" data-testid="mask-request" data-kind="unknown"><p>Une carte inconnue</p></div>', "unknown card: mask-request/unknown"],
   ["a grant the card cannot take", '<div class="reading" data-testid="mask-request" data-kind="mask-fill"><p>Remplir ?</p><div class="actions"><button>Refuser</button></div></div>', "unknown card: mask-request/mask-fill (no allow)"],
+  // A card body that is no .reading (as DevToolsRequest.svelte's): the modal stays up 2 s with nothing known, the leg fails.
+  ["a modal with no known card", '<div class="card"><div data-testid="new-request"><p>Une nouvelle carte</p><button class="allow">Autoriser</button></div></div>', "unknown card: new-request"],
 ])("Review Focus 2: %s fails the leg", { timeout: 90_000 }, async (_name, html, message) => {
   world = await openWorld(byId(frozen.e2e.ids[0]!), { profile: "a" });
   await agentPanelReady(world.m);
@@ -102,6 +104,21 @@ it.each([
       modal.innerHTML = arguments[0];
       doc.body.append(modal);`, [html]);
     await expect.poll(() => cards.failed(), { timeout: 5_000 }).toBe(message);
+  } finally {
+    await cards.stop();
+  }
+});
+
+// The dev-tools card (DevToolsRequest.svelte, no .reading) is answered through the real modal, by `card`: never left to hang.
+it("a dev-tools request is answered, not hung", { timeout: 90_000 }, async () => {
+  world = await openWorld(byId(frozen.e2e.ids[0]!), { profile: "a" });
+  await agentPanelReady(world.m);
+  const cards = answerCards(world, { card: "grant", address: "grant" });
+  try {
+    const answer = await Promise.race([toolCaller(world)("request_devtools", { id: "tab-mail", rights: ["console"], reason: "Le bouton ne réagit pas." }), until(cards.failed)]);
+    expect(answer).toContain("Droits accordés : console");
+    expect(world.events.filter((e) => e.t === "card-devtools").map((e) => e.answer)).toEqual(["grant"]);
+    expect(cards.failed()).toBeNull();
   } finally {
     await cards.stop();
   }

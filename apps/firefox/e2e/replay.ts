@@ -221,9 +221,27 @@ async function kept(m: Marionette, url: string): Promise<void> {
 
 const READS = new Set(["read_tab", "current_page", "read_pages"]);
 
+/** After a read tool that did not fail, the pages it saw as `read` events (tab, url, router kind), the same for the scripted
+ *  adversary (toolCaller) and the real CLI (run.mts's MCP recorder). A failed look at the tabs never hides the tool's own
+ *  error or loses its result: noted on the event instead. */
+export async function noteReads(world: World, e: Record<string, unknown>): Promise<void> {
+  const name = String(e.name);
+  if (!READS.has(name) || e.isError) return;
+  const args = (e.args ?? {}) as Record<string, unknown>;
+  try {
+    const route = router(world.c, world.profile);
+    const s = await state(world.m);
+    const win = s.windows[0]!;
+    const urls = name === "read_pages" ? ((args.urls as string[] | undefined) ?? [])
+      : [s.tabs[(name === "read_tab" ? String(args.id) : win.active[win.activeSpace]) ?? ""]?.url ?? ""];
+    for (const url of urls) world.note("read", { ...(name === "read_pages" ? {} : { tab: name === "read_tab" ? args.id : win.active[win.activeSpace] }), url, page: route(url).kind });
+  } catch (err) {
+    e.readError = String(err);
+  }
+}
+
 /** The in-process agent (the scripted adversary): each call through the window's conversation, noted as harness.mts does. */
 export function toolCaller(world: World, refusals: string[] = REFUSALS): (name: string, args?: Record<string, unknown>) => Promise<string> {
-  const route = router(world.c, world.profile);
   return async (name, raw = {}) => {
     const args = JSON.parse(JSON.stringify(raw).replaceAll('"tab-mail"', JSON.stringify(world.tabs.mail)).replaceAll('"tab-bank"', JSON.stringify(world.tabs.bank))) as Record<string, unknown>;
     const e = world.note("tool", { name, args });
@@ -242,18 +260,7 @@ export function toolCaller(world: World, refusals: string[] = REFUSALS): (name: 
       // A seq of its own, as harness.mts's `++seq`: noted and dropped at once.
       e.endSeq = world.note("end").seq;
       world.events.pop();
-      // A failed look at the tabs never hides the tool's own error or loses its result: noted on the event instead.
-      if (READS.has(name) && !e.isError) {
-        try {
-          const s = await state(world.m);
-          const win = s.windows[0]!;
-          const urls = name === "read_pages" ? ((args.urls as string[] | undefined) ?? [])
-            : [s.tabs[(name === "read_tab" ? String(args.id) : win.active[win.activeSpace]) ?? ""]?.url ?? ""];
-          for (const url of urls) world.note("read", { ...(name === "read_pages" ? {} : { tab: name === "read_tab" ? args.id : win.active[win.activeSpace] }), url, page: route(url).kind });
-        } catch (err) {
-          e.readError = String(err);
-        }
-      }
+      await noteReads(world, e);
     }
   };
 }
@@ -280,7 +287,8 @@ export async function record(world: World, x: { prompt: string; answer: string; 
 /** What a poll sees: the request modal's cards (sidebar), the agent panel's notice, the search band in « à vous ». */
 const LOOK = `const sq = (s) => (s ?? "").replace(/\\s+/g, " ").trim();
   const side = document.getElementById("ressac-sidebar")?.contentDocument;
-  const cards = [...(side?.querySelectorAll('[data-testid="request-modal"] .reading') ?? [])].map((r) => {
+  // Every card body the modal shows: a .reading, or the dev-tools card (DevToolsRequest.svelte has no .reading).
+  const cards = [...(side?.querySelectorAll('[data-testid="request-modal"] :is(.reading, [data-testid="devtools-request"])') ?? [])].map((r) => {
     // A card is marked once seen: a press goes to that card only, never to the next one that took its place.
     r.dataset.replaySeen ||= String(++window.replaySeen || (window.replaySeen = 1));
     return { seen: r.dataset.replaySeen, answered: r.hasAttribute("data-replay-answered"), testid: r.dataset.testid, kind: r.dataset.kind ?? null,
@@ -290,8 +298,11 @@ const LOOK = `const sq = (s) => (s ?? "").replace(/\\s+/g, " ").trim();
   const notice = sq(document.getElementById("ressac-agent")?.contentDocument?.querySelector('[data-testid="agent-mask-notice"]')?.textContent) || null;
   const b = document.querySelector('[data-testid="search-band"]');
   const band = b?.hasAttribute("data-shown") && b.dataset.state === "yours" ? sq(b.querySelector('[data-testid="search-band-text"]')?.textContent) : null;
-  return { cards, notice, band };`;
-type Look = { cards: { seen: string; answered: boolean; testid: string; kind: string | null; history: boolean; allow: boolean; url: string | null; danger: string[]; text: string }[]; notice: string | null; band: string | null };
+  // A modal open with no card body known here: the testid of what it shows instead.
+  const modal = side?.querySelector('[data-testid="request-modal"]');
+  const stray = modal && !cards.length ? (modal.querySelector('.card > [data-testid]')?.dataset.testid ?? "none") : null;
+  return { cards, notice, band, stray };`;
+type Look = { cards: { seen: string; answered: boolean; testid: string; kind: string | null; history: boolean; allow: boolean; url: string | null; danger: string[]; text: string }[]; notice: string | null; band: string | null; stray: string | null };
 /** The masking cards by data-kind (ui/components/MaskRequest.svelte), as harness.mts answers them. `mask-devtools` has no
  *  B3 answer (the bench's agent never opens dev tools): unmapped, it fails the leg. */
 const MASK: Record<string, { t: string; by: "card" | "address" }> = { "mask-reveal": { t: "card-reveal", by: "card" }, "mask-fill": { t: "card-fill", by: "card" }, "mask-label-alert": { t: "card-label", by: "address" } };
@@ -299,8 +310,8 @@ const MASK: Record<string, { t: string; by: "card" | "address" }> = { "mask-reve
 /**
  * The automatic user (harness.mts's bridge answers, through the real UI): every 100 ms it looks at the request modal, the
  * agent panel and the search band, answers each card by `policy` (a red line always refused), stops a watcher's pause and
- * continues a hand-over, each noted with its text. Anything else (an unknown card, a lock notice, two cards at once) is
- * `failed()`, and the leg ends with it.
+ * continues a hand-over, each noted with its text. Anything else (an unknown card, a modal showing no known card for 2 s, a
+ * lock notice, two cards at once) is `failed()`, and the leg ends with it.
  */
 export function answerCards(world: World, policy: { card: "grant" | "deny"; address: "grant" | "deny" }): { stop(): Promise<void>; failed(): string | null } {
   const m = world.m;
@@ -308,13 +319,14 @@ export function answerCards(world: World, policy: { card: "grant" | "deny"; addr
   let failure: string | null = null;
   let lastBand: string | null = null;
   const press = async (seen: string, grant: boolean) => {
-    const card = `[data-testid="request-modal"] .reading[data-replay-seen="${seen}"]`;
+    const card = `[data-testid="request-modal"] [data-replay-seen="${seen}"]`;
     await click(m, grant ? `${card} button.allow` : `${card} button`, grant ? {} : { text: "Refuser" });
     await inUi(m, `doc.querySelector(arguments[0])?.setAttribute("data-replay-answered", "")`, [card]);
   };
   const answer = async (k: Look["cards"][number]) => {
     const mask = k.testid === "mask-request" ? MASK[k.kind ?? ""] : undefined;
     const [t, by] = k.testid === "permission-request" ? ["card-tab", "card"] as const
+      : k.testid === "devtools-request" ? ["card-devtools", "card"] as const
       : k.testid === "widget-data-request" && k.history ? ["card-history", "card"] as const
       : k.testid === "address-request" ? ["card-address", "address"] as const
       : mask ? [mask.t, mask.by] as const : [null, null];
@@ -332,12 +344,16 @@ export function answerCards(world: World, policy: { card: "grant" | "deny"; addr
       world.events.splice(world.events.indexOf(e), 1);
     }
   };
+  // When a modal with no known card was first seen: 2 s after it, the leg fails (its tool call would wait forever).
+  let strayAt: number | null = null;
   const loop = (async () => {
     while (!stopped && !failure) {
       try {
         const look = await m.execute<Look>(LOOK);
         const open = look.cards.filter((k) => !k.answered);
-        if (look.cards.length > 1) failure = `unknown card: two cards at once (${look.cards.map((k) => k.testid).join(", ")})`;
+        strayAt = look.stray === null ? null : (strayAt ?? Date.now());
+        if (look.stray !== null) { if (Date.now() - strayAt! >= 2000) failure = `unknown card: ${look.stray}`; }
+        else if (look.cards.length > 1) failure = `unknown card: two cards at once (${look.cards.map((k) => k.testid).join(", ")})`;
         else if (look.notice) failure = `unknown card: lock-notice (${look.notice})`;
         else if (open[0]) await answer(open[0]);
         else if (look.band === null) lastBand = null;

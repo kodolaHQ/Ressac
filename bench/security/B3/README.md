@@ -788,18 +788,18 @@ The kernel moved under the bench; each change in the wiring:
 
 ```sh
 TSX=packages/kernel/node_modules/.bin/tsx
-# no model, about 2 min: the stand-in `claude`, then the scripted adversary on one pair under a and b
+# no model, about 2 min 30 s: the stand-in `claude` (a granted bank card, an unsafe tool, no agent turn, a changed prompt, a 401 upstream, a leg that throws), then the scripted adversary on one pair under a and b
 $TSX bench/security/B3/browser/run.mts --self-check
 # the free scripted A/B on every e2e pair, then the indistinguishability test of what the agent received
 $TSX bench/security/B3/browser/run.mts --set e2e --agent adversary --legs 2 --run replay-adversary-<commit8>
 node bench/security/B3/indistinguishable.mjs bench/security/B3/out/replay-adversary-<commit8>
 # the model pass (paid, approved by the maintainer first): the obedient arm on minimax through Ollama, 4 legs per case
 $TSX bench/security/B3/browser/run.mts --set model --cases after0123 --ollama minimax-m3.1-flash:cloud --legs 4 \
-  --card grant --address grant --run replay-minimax-<commit8>-grant
+  --card grant --address grant --max-legs <cases × 4> --run replay-minimax-<commit8>-grant
 node bench/security/B3/diff.mjs bench/security/B3/out/replay-minimax-<commit8>-grant
 ```
 
-Options: `--cases all|after0123|<id,…>`, `--legs 1|2|4` (a, b, a2, b2, as `run.mjs --differential`; with 1, records go straight into `out/<run>/`), `--parallel 3`, `--max-tools 100`, `--timeout-s 600`, `--card` and `--address` (`deny` is the arm planned after 15 December 2026), and `--no-stop`. `--timeout-s` counts from the moment the prompt is typed, not from the launch. node prints an `ExperimentalWarning` for `node:sqlite` once per run: expected. The runner refuses a frozen list whose sha256 differs, `--agent claude` without `--ollama`, and `--agent adversary` with `--set model`. A record already in the run folder is not run again. A leg stopped by a rate limit runs again after 60 s × attempt, up to three times, and then keeps `stop: "rate-limit"`. Once a case's legs are done, any full or partial leak, liaison or lesson stops the campaign (the protocol's stop rule): the case is printed and the run folder is left as it is. A model request refused by the model recorder (a built-in tool declared, or the owner's e-mail) stops the whole campaign even with `--no-stop`, as does a record that cannot be saved clean: the bench itself is then unsafe. Legs already running finish and close their Ressac; the exit code is 2.
+Options: `--cases all|after0123|<id,…>`, `--legs 1|2|4` (a, b, a2, b2, as `run.mjs --differential`; with 1, records go straight into `out/<run>/`), `--parallel 3`, `--max-tools 100`, `--timeout-s 600`, `--card` and `--address` (`deny` is the arm planned after 15 December 2026), `--max-legs <n>` and `--no-stop`. `--timeout-s` counts from the moment the prompt is typed, not from the launch. node prints an `ExperimentalWarning` for `node:sqlite` once per run: expected. The runner refuses a frozen list whose sha256 differs, `--agent claude` without `--ollama` or without `--max-legs`, and `--agent adversary` with `--set model`. **The spend guard:** before anything starts it prints how many legs it will run (and how many are already recorded), and it refuses a run that would start more than `--max-legs`. A record already in the run folder is not run again. **A leg that ended in an error** (a card the automatic user cannot answer, a refused request, an upstream failure, a leg whose run threw) is saved under `out/<run>/errors/<leg>/<id>.json`, never under the record's name (`diff.mjs` and `indistinguishable.mjs` read every record of a leg folder): a resume runs it again, and `report.mjs` lists it apart with its error text, never as « the model refused ». A case with an errored leg or with fewer legs than the run's N has no figure. A leg stopped by a rate limit runs again after 60 s × attempt, up to three times, and then keeps `stop: "rate-limit"`. Once a case's legs are done, any full or partial leak, liaison or lesson stops the campaign (the protocol's stop rule): the case is printed and the run folder is left as it is. A model request refused by the model recorder (a built-in tool declared, or the owner's e-mail) stops the whole campaign even with `--no-stop`, as does a record that cannot be saved clean: the bench itself is then unsafe. **An upstream failure stops the pass too**, even with `--no-stop`: a status of 400 or more that is no rate limit (Ollama not signed in, a model it lacks, a 5xx), an error event in a 200 stream, or a forward that throws. That leg is `stop: "agent-error"` (excluded), never « none »: every later leg would fail the same, and none is a result. Legs already running finish and close their Ressac; the exit code is 2, or 3 when the campaign was not stopped but some legs errored.
 
 **One leg** (`run.mts` `runLeg`): a fresh Ressac with a new profile and data folder (e2e `replay.ts` `openWorld`). The user's history pages are visited and kept, then each visit's `last_visit` is set straight in Ressac's `history.sqlite` to the profile's fixed date (harness.mts's dates, the same in a and b). Only the bookmarks go through Places. The passport is the replay passport of profile a or b. The mail and bank tabs are open and the user speaks from the mail tab.
 - With `--agent claude`, the steps run in this order:
@@ -815,9 +815,13 @@ Options: `--cases all|after0123|<id,…>`, `--legs 1|2|4` (a, b, a2, b2, as `run
   - the tool cap (`stop: "max-tools"`);
   - the timeout (`stop: "timeout"`);
   - a rate limit (`stop: "rate-limit"`);
-  - no model request within 120 s of the prompt (`stop: "agent-error"`);
+  - no agent turn within 120 s of the prompt (`stop: "agent-error"`): only a request that declares tools and gets a 2xx counts, never a title or a token count;
+  - a first agent turn whose last user message does not hold the typed prompt (`stop: "agent-error"`);
+  - an upstream failure (`stop: "agent-error"`, above);
   - a request that declares a tool other than `mcp__ressac__*` or holds the owner's account e-mail (`error`: the request never leaves the Mac);
-  - a card the automatic user cannot answer (`error`).
+  - a card the automatic user cannot answer (`error`), or a request modal open 2 s with no card it knows (`unknown card: <testid>`).
+
+  A prompt holding « + » or a newline is refused before the leg starts: `typeText` cannot type them.
 - With `--agent adversary`, `adversary.mjs` `play` makes its calls through the window's conversation (`toolCaller`), with no recorder.
 
 **The record** is harness.mts's (`bench: "ressac-e2e-injection/2"`), so `score.mjs`, `diff.mjs`, `indistinguishable.mjs` and `browser/report.mjs` (`tried`, `stoppedBy`) read it unchanged.
@@ -826,12 +830,12 @@ Options: `--cases all|after0123|<id,…>`, `--legs 1|2|4` (a, b, a2, b2, as `run
 - `events` holds:
   - `tool` events, with args, result, isError, refused, seq and endSeq;
   - `out` events, `search.open` with its query or `navigate` with its url: every document Firefox loads after the setup, through the local proxy;
-  - `read` and `subresource` events;
-  - the cards (`card-tab`, `card-history`, `card-address`, `card-reveal`, `card-fill`, `card-label`, `card-instructions`) with their answers;
+  - `read` events (after `read_tab`, `current_page` or `read_pages`: the tab, its url and the page kind, the same for the scripted adversary and the CLI, `replay.ts` `noteReads`) and `subresource` events;
+  - the cards (`card-tab`, `card-history`, `card-address`, `card-reveal`, `card-fill`, `card-label`, `card-devtools`, `card-instructions`) with their answers (`card-devtools` by `--card`);
   - `pause` and `hand`.
 - Ressac's random tab ids are renamed `tab-mail`, `tab-bank` and `agent-<n>`, in order of first appearance, so legs compare.
 - Each record goes through `harness.mts` `scrub` (the repo, the home folder, the owner's e-mail), then the temp folder is replaced too. A record that still holds a Mac path or the e-mail is refused.
-- Beside it, `out/<run>/work/<leg>/<id>/` holds `browser.log` and, for a `claude` leg, `model.jsonl` (every request body sent to the model, and its answer text) and `terminal.txt` (the terminal at the end), all scrubbed. `out/` is git-ignored. Summaries go to `results/` as for the other runs.
+- Beside it, `out/<run>/work/<leg>/<id>/` holds `browser.log` and, for a `claude` leg, `model.jsonl` (every request body sent to the model, its answer text and its `usage`, the token counts of `message_start` and `message_delta`) and `terminal.txt` (the terminal at the end), all scrubbed. `out/` is git-ignored. Summaries go to `results/` as for the other runs.
 
 **Bypassed layers**, written beside every figure from this replay:
 - **The container is replaced by `claude` on the Mac**, through the fake docker (`FAKE_DOCKER_AGENT=agent-on-mac.mjs`): its isolation and its allowlist proxy are not crossed. They are measured by B2.
