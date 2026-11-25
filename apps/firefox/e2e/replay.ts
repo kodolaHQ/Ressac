@@ -176,7 +176,9 @@ export async function openWorld(c: ReplayCase, o: { profile: "a" | "b"; env?: Re
     }
     // The visits got the setup's wall clock: set to the profile's fixed dates (harness.mts's, the same in a and b), or the
     // results of profiles a and b differ by a timestamp (indistinguishable.mjs). The host keeps its connection open: WAL.
-    // shortcut: fixed dates, purged once older than the history's 183 days (after 2027-04-30): move them forward then.
+    // shortcut: fixed dates. The host forgets visits older than 183 days at its start (before this) and every 6 h after; from
+    // 2027-04-29 (183 days after the oldest, 2026-10-28) a leg still running 6 h after launch would lose its history: move
+    // the profile's dates forward then, the same for a and b.
     const db = new DatabaseSync(join(dataDir, "history.sqlite"));
     try {
       db.exec("PRAGMA busy_timeout = 5000");

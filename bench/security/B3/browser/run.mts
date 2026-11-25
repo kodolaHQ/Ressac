@@ -15,6 +15,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSy
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { dispatch } from "../../../../apps/firefox/e2e/firefox.ts";
 import { checkBuildCurrent } from "../../../../apps/firefox/e2e/launch.ts";
 import { answerCards, openWorld, record, toolCaller, type ReplayCase, type World } from "../../../../apps/firefox/e2e/replay.ts";
@@ -117,7 +118,7 @@ async function claudeLeg(c: ReplayCase, o: LegOptions): Promise<Rec> {
     upstream: o.upstream ?? "http://127.0.0.1:11434", file: join(o.work, "model.jsonl"), owner: OWNER,
     // seen.tools is replaced by each request that declares tools: the same array later means no agent turn began since.
     onTurnEnd: (text: string) => void (turn = { text, tools: model.seen.tools, at: Date.now() }),
-    onStop: (why: string) => finish(why === "rate-limit" ? { stop: "rate-limit" } : { error: `run refused by the model recorder: ${why}` }),
+    onStop: (why: string) => finish(why === "rate-limit" ? { stop: "rate-limit" } : { error: `${REFUSED}${why}` }),
   });
   // The `end` mark only takes a seq (endSeq), as toolCaller's: noted and dropped at once.
   const note = (t: string, more: Rec) => { const e = world!.note(t, more); if (t === "end") world!.events.pop(); return e; };
@@ -185,11 +186,68 @@ async function claudeLeg(c: ReplayCase, o: LegOptions): Promise<Rec> {
   }
 }
 
+/** The run's text for a model request the recorder refused (a built-in tool, the owner's e-mail): the bench is unsafe. */
+const REFUSED = "run refused by the model recorder: ";
+
+/**
+ * Jobs = cases × legs, `parallel` at once. A record already there is not run again. A rate limit runs the leg again after
+ * 60 s × attempt, three times. A case whose legs are done with a leak (levels().failed) stops the campaign unless `noStop`;
+ * a refused run (REFUSED) or a record that cannot be saved stops it always. Legs in flight finish and close their Ressac.
+ */
+export async function campaign(x: { cases: ReplayCase[]; legs: readonly Leg[]; o: Omit<LegOptions, "profile" | "work">; out: string; flat: boolean; noStop: boolean; parallel: number }): Promise<{ ran: number; stopped: string | null }> {
+  const fileOf = (leg: Leg, id: string) => (x.flat ? join(x.out, `${id}.json`) : join(x.out, leg, `${id}.json`));
+  const jobs = x.cases.flatMap((c) => x.legs.map((leg) => ({ c, leg })));
+  const left = new Map(x.cases.map((c) => [c.id, x.legs.length]));
+  let next = 0, ran = 0;
+  let stopped: string | null = null;
+  const stop = (why: string) => { stopped ??= why; console.log(`STOP: ${why}; the run folder is left as is`); };
+  const worker = async () => {
+    while (!stopped && next < jobs.length) {
+      const { c, leg } = jobs[next++]!;
+      const file = fileOf(leg, c.id);
+      if (!existsSync(file)) {
+        for (let k = 0; ; k++) {
+          let rec: Rec;
+          ran++;
+          try {
+            // Each attempt its own work folder: a retry never appends to the last one's model.jsonl.
+            rec = await runLeg(c, { ...x.o, profile: leg[0] as "a" | "b", work: join(x.out, "work", leg, k ? `${c.id}.retry${k}` : c.id) });
+          } catch (e) {
+            console.log(JSON.stringify({ id: c.id, leg, error: String(e).split("\n")[0] }));
+            break;
+          }
+          // A rate limit is no outcome: 60 s × attempt, three times, then it stays `stop: "rate-limit"` (excluded from scoring).
+          if (rec.stop === "rate-limit" && k < 3) { console.log(`${c.id} ${leg}: rate-limited, again in ${60 * (k + 1)} s`); await sleep(60_000 * (k + 1)); continue; }
+          try {
+            save(file, rec);
+          } catch (e) {
+            stop(`${c.id} ${leg}: ${String(e).split("\n")[0]}`);
+            break;
+          }
+          const lv = levels(rec);
+          console.log(JSON.stringify({ id: c.id, leg, outcome: lv.outcome, tried: tried(rec), stoppedBy: stoppedBy(rec), tools: (rec.events as { t: string }[]).filter((e) => e.t === "tool").length, s: Math.round(rec.seconds as number),
+            ...(rec.stop ? { stop: rec.stop } : {}), ...(rec.error ? { error: String(rec.error).split("\n")[0] } : {}) }));
+          // A model request with a built-in tool or the owner's e-mail: the bench itself is unsafe, whatever --no-stop says.
+          if (String(rec.error ?? "").startsWith(REFUSED)) stop(`${c.id} ${leg}: ${rec.error}`);
+          break;
+        }
+      }
+      left.set(c.id, left.get(c.id)! - 1);
+      if (left.get(c.id) !== 0) continue;
+      // The case's legs are all done: the campaign stops at a leak (protocol), the fix goes to the product first.
+      const bad = x.legs.map((l) => fileOf(l, c.id)).filter(existsSync).map((f) => [f, levels(JSON.parse(readFileSync(f, "utf8")))] as const).filter(([, lv]) => lv.failed);
+      if (bad.length && !x.noStop) stop(`${c.id} failed (${bad.map(([f, lv]) => `${f.slice(x.out.length + 1)}: ${lv.outcome} full=${lv.full} partial=${lv.partial} liaison=${lv.liaison} lesson=${lv.lesson}`).join("; ")})`);
+    }
+  };
+  await Promise.all(Array.from({ length: x.parallel }, worker));
+  return { ran, stopped };
+}
+
 // ───────────────────────── command line ─────────────────────────
 const argv = process.argv.slice(2);
 const arg = (name: string, dflt?: string) => { const i = argv.indexOf(`--${name}`); return i < 0 ? dflt : argv[i + 1]; };
 const fail = (m: string) => { console.error(m); process.exit(1); };
-const main = process.argv[1] && realpathSync(process.argv[1]) === realpathSync(new URL(import.meta.url).pathname);
+const main = !!process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (main && argv.includes("--self-check")) {
   checkBuildCurrent();
@@ -237,6 +295,13 @@ if (main && argv.includes("--self-check")) {
   // (b) a built-in tool declared: refused before it leaves the Mac.
   const b = await leg("bash");
   assert.match(String(b.error), /unsafe-tools/);
+  // …and it ends the whole campaign, --no-stop or not: the second job never starts.
+  const camp = join(out, "campaign");
+  const second = F.model.find((x) => x.arm === "control" && x.id !== control.id)!;
+  const r = await campaign({ cases: [control, second], legs: ["a"], o: { agent: "claude", ollama: "stand-in:latest", card: "grant", address: "grant", maxTools: 100, timeoutS: 120, upstream }, out: camp, flat: true, noStop: true, parallel: 1 });
+  assert.equal(r.ran, 1);
+  assert.match(String(r.stopped), /unsafe-tools/);
+  assert.ok(existsSync(join(camp, `${control.id}.json`)) && !existsSync(join(camp, `${second.id}.json`)) && !existsSync(join(camp, "work/a", second.id)), "the second job never started");
   console.log("(b) ok");
   // (c) a CLI that never asks the model: agent-error (a 10 s deadline here, 120 s in a run).
   const t3 = Date.now();
@@ -276,46 +341,9 @@ if (main && !argv.includes("--self-check")) {
   const cases = sel === "all" ? pool : sel === "after0123" ? (set === "model" ? F.model.filter((x) => x.replay.after0123) : fail("--cases after0123 is for --set model") as never)
     : sel.split(",").map((id) => pool.find((x) => x.id === id) ?? (fail(`unknown case ${id} in --set ${set}`) as never));
   checkBuildCurrent();
-  const out = join(B3, "out", run);
   const legs = LEGS[nLegs as keyof typeof LEGS] as readonly Leg[];
-  const fileOf = (leg: Leg, id: string) => (nLegs === "1" ? join(out, `${id}.json`) : join(out, leg, `${id}.json`));
   const o = { agent, ...(ollama ? { ollama } : {}), card, address, maxTools: Number(arg("max-tools", "100")), timeoutS: Number(arg("timeout-s", "600")) };
-  const jobs = cases.flatMap((c) => legs.map((leg) => ({ c, leg })));
-  const left = new Map(cases.map((c) => [c.id, legs.length]));
-  let next = 0, stopped = false;
-  const worker = async () => {
-    while (!stopped && next < jobs.length) {
-      const { c, leg } = jobs[next++]!;
-      const file = fileOf(leg, c.id);
-      if (!existsSync(file)) {
-        for (let k = 0; ; k++) {
-          let rec: Rec;
-          try {
-            rec = await runLeg(c, { ...o, profile: leg[0] as "a" | "b", work: join(out, "work", leg, c.id) });
-          } catch (e) {
-            console.log(JSON.stringify({ id: c.id, leg, error: String(e).split("\n")[0] }));
-            break;
-          }
-          // A rate limit is no outcome: 60 s × attempt, three times, then it stays `stop: "rate-limit"` (excluded from scoring).
-          if (rec.stop === "rate-limit" && k < 3) { console.log(`${c.id} ${leg}: rate-limited, again in ${60 * (k + 1)} s`); await sleep(60_000 * (k + 1)); continue; }
-          save(file, rec);
-          const lv = levels(rec);
-          console.log(JSON.stringify({ id: c.id, leg, outcome: lv.outcome, tried: tried(rec), stoppedBy: stoppedBy(rec), tools: (rec.events as { t: string }[]).filter((e) => e.t === "tool").length, s: Math.round(rec.seconds as number),
-            ...(rec.stop ? { stop: rec.stop } : {}), ...(rec.error ? { error: String(rec.error).split("\n")[0] } : {}) }));
-          break;
-        }
-      }
-      left.set(c.id, left.get(c.id)! - 1);
-      if (left.get(c.id) !== 0) continue;
-      // The case's legs are all done: the campaign stops at a leak (protocol), the fix goes to the product first.
-      const bad = legs.map((l) => fileOf(l, c.id)).filter(existsSync).map((f) => [f, levels(JSON.parse(readFileSync(f, "utf8")))] as const).filter(([, lv]) => lv.failed);
-      if (bad.length && !argv.includes("--no-stop")) {
-        stopped = true;
-        console.log(`STOP: ${c.id} failed (${bad.map(([f, lv]) => `${f.slice(out.length + 1)}: ${lv.outcome} full=${lv.full} partial=${lv.partial} liaison=${lv.liaison} lesson=${lv.lesson}`).join("; ")}); the run folder is left as is`);
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Number(arg("parallel", "3")) }, worker));
-  console.log(`${run}: ${jobs.length} legs${stopped ? ", stopped at a failed case" : ""}; records in ${out}`);
-  process.exit(stopped ? 2 : 0);
+  const r = await campaign({ cases, legs, o, out: join(B3, "out", run), flat: nLegs === "1", noStop: argv.includes("--no-stop"), parallel: Number(arg("parallel", "3")) });
+  console.log(`${run}: ${r.ran} legs run${r.stopped ? `, stopped (${r.stopped})` : ""}; records in ${join(B3, "out", run)}`);
+  process.exit(r.stopped ? 2 : 0);
 }
