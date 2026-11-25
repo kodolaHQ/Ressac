@@ -835,11 +835,14 @@ describe("openAgentSession with a profile", () => {
       const claudeArgs = start.mock.calls[0]![0];
       const sources = claudeArgs.indexOf("--setting-sources");
       expect(claudeArgs.slice(sources, sources + 6)).toEqual(["--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", "/workspace/.ressac/instructions/AGENTS.md"]);
-      expect(browser).toContain("--disallowedTools Bash,mcp__ressac__launch_app --strict-mcp-config --setting-sources");
+      // An allowlist of built-in tools, files only: nothing that runs a command, spawns an agent or schedules a turn.
+      const tools = claudeArgs[claudeArgs.indexOf("--tools") + 1]!.split(",");
+      expect(tools).toEqual(["Read", "Glob", "Grep", "Write", "Edit"]);
+      expect(browser).toContain("--tools Read,Glob,Grep,Write,Edit --disallowedTools Bash,mcp__ressac__launch_app --strict-mcp-config --setting-sources");
       expect(browser).toContain("/workspace/.ressac/instructions/AGENTS.md --disallowedTools WebSearch,WebFetch");
       expect(claudeArgs.at(-2)).toBe("--mcp-config");
-      expect(workshop).not.toMatch(/Bash|launch_app|strict-mcp-config|setting-sources|AGENTS/);
-      expect(none).toContain("--disallowedTools Bash,mcp__ressac__launch_app");
+      expect(workshop).not.toMatch(/--tools|Bash|launch_app|strict-mcp-config|setting-sources|AGENTS/);
+      expect(none).toContain("--tools Read,Glob,Grep,Write,Edit --disallowedTools Bash,mcp__ressac__launch_app");
       expect(codex).toContain(`--disable shell_tool -c mcp_servers.ressac.disabled_tools=["launch_app"] -c notify=[] -c model_provider="openai" -m x`);
       // Codex's interactive TUI (0.169) refuses --ignore-user-config: only `codex exec` takes it.
       expect(codex).not.toContain("--ignore-user-config");

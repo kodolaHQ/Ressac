@@ -889,9 +889,12 @@ export async function createKernel(o: {
         // Claude reads no user, project or local settings, skills or agents (statusLine, apiKeyHelper… run commands; managed and
         // --settings still apply), so AGENTS.md, which it then skips as CLAUDE.md's import, comes as a system prompt file.
         // Codex: the built-in provider, so no `auth.command` of a provider the agent defines (Ressac's engines set theirs after).
+        // Claude's built-in tools are an allowlist (`--tools`, MCP tools untouched): a release that adds a tool that runs commands
+        // (Monitor, REPL, PowerShell…) gets none of it. Files only: the agent writes its widgets, actions and site apps, and reads the
+        // guides. The denylist stays as a second layer: it wins over `--tools` and is the only one that removes an MCP tool.
         const claudeNoShell =
           browser && program === "claude"
-            ? ["--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", ACCEPTED_AGENTS_IN_CONTAINER]
+            ? ["--tools", "Read,Glob,Grep,Write,Edit", "--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true}', "--append-system-prompt-file", ACCEPTED_AGENTS_IN_CONTAINER]
             : [];
         // Claude's auto-memory (~/.claude/projects/*/memory) loads as instructions the gate never sees and the agent can write.
         if (browser && program === "claude") env = { ...env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" };
