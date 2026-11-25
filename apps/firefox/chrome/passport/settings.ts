@@ -1,10 +1,12 @@
-import { canonicalOf, cleanOrigin, FIELD_LABEL, PASSPORT_LIMITS, validateEntry, validatePassport, type PassportEntry, type PassportField, type PassportValue } from "../shims/kernel";
+import { canonicalOf, cleanOrigin, rawOf, FIELD_LABEL, PASSPORT_LIMITS, validateEntry, validatePassport, type PassportEntry, type PassportField, type PassportValue } from "../shims/kernel";
 import { testEnv } from "../test-env";
 import { reauth } from "../agent/reauth";
 import { passportFiles, type LoadResult, type PassportFiles } from "./store";
+import type { Draft } from "./import-choice";
 
 /** `updated`: the entry's, as this hide left it; unhide removes a created entry only while it is unchanged. */
 export type HideResult = { ok: true; id: string; created: boolean; addedOrigin: boolean; updated: string } | { ok: false; error: "cancelled" | "long" | "invalid" | "unreadable" | "full" | "write" };
+export type AddManyResult = { ok: true; added: number; variants: number; full: number; invalid: number } | { ok: false; error: "cancelled" | "unreadable" | "write" };
 export type PassportSaveResult = { ok: true; revision: string; uncovered: number } | { ok: false; error: "stale" | "write" | "newer" | "full" | "locked" | "invalid" };
 
 
@@ -189,6 +191,49 @@ export function createPassportSettings(o: {
       }
     },
     /**
+     * An import or a typed form: every draft in one Touch ID, one write, one `passport.replace`. A value already there
+     * (same label, same canonical) only gains its raw writing as a variant, within the limit. Chrome only: never in the
+     * settings API.
+     */
+    async addMany(h: { profile: string; drafts: Draft[]; how: "import" | "form"; from: string; origin: string | null; reason: string }): Promise<AddManyResult> {
+      if (!(await o.reauth(h.reason))) return { ok: false, error: "cancelled" };
+      const host = h.origin === null ? null : cleanOrigin(h.origin);
+      const at = new Date(now()).toISOString();
+      let n = { added: 0, variants: 0, full: 0, invalid: 0 };
+      let ran = false;
+      try {
+        const r = await o.files.update(h.profile, (all) => {
+          ran = true;
+          n = { added: 0, variants: 0, full: 0, invalid: 0 };
+          let list = all;
+          for (const d of h.drafts) {
+            const value: PassportValue = "given" in d.value ? { given: d.value.given.trim(), family: d.value.family.trim() } : { text: d.value.text.trim() };
+            const fresh: PassportEntry = { id: crypto.randomUUID(), field: d.field, value, variants: [], origins: host ? [host] : [], how: h.how, from: h.from, created: at, updated: at };
+            const twin = list.find((k) => FIELD_LABEL[k.field] === FIELD_LABEL[fresh.field] && canonicalOf(k) === canonicalOf(fresh));
+            if (twin) {
+              const raw = rawOf(fresh);
+              if (raw === rawOf(twin) || twin.variants.includes(raw) || twin.variants.length >= PASSPORT_LIMITS.variants) continue;
+              const next = { ...twin, variants: [...twin.variants, raw], updated: at };
+              if (validateEntry(next, list).problems.length) continue;
+              list = list.map((x) => (x === twin ? next : x));
+              n.variants++;
+              continue;
+            }
+            const codes = validateEntry(fresh, list).problems.map((p) => p.code);
+            if (codes.length) n[codes.includes("full") ? "full" : "invalid"]++;
+            else (list = [...list, fresh]), n.added++;
+          }
+          return list;
+        });
+        if (!r.ok) return { ok: false, error: ran ? "write" : "unreadable" };
+        if (r.written) await o.request("passport.replace", { profile: h.profile, entries: r.entries }).catch((err) => void console.error("[ressac] passport push after an import failed:", (err as Error)?.name));
+        return { ok: true, ...n };
+      } catch (err) {
+        console.error("[ressac] passport addMany failed:", (err as Error)?.name);
+        return { ok: false, error: "write" };
+      }
+    },
+    /**
      * The toast's « Annuler » (its 8 s window is the caller's): removes the entry `hide` created, or only the site it
      * added. No Touch ID: the toast's gesture is the user's. A created entry edited since (its `updated` moved) keeps
      * the edit: only the site goes. False when nothing could be written.
@@ -296,7 +341,7 @@ export type PassportSettings = ReturnType<typeof createPassportSettings>;
  * `hide`/`unhide` (only Ressac's own « Cacher pour l'agent » gesture, unhide having no Touch ID), no `drop` (a page
  * deletes a passport through `removePassport`, with a Touch ID token).
  */
-export const pagePassport = ({ addOrigin: _a, hide: _h, unhide: _u, drop: _d, ...pages }: PassportSettings) => pages;
+export const pagePassport = ({ addOrigin: _a, hide: _h, addMany: _m, unhide: _u, drop: _d, ...pages }: PassportSettings) => pages;
 export type PagePassport = ReturnType<typeof pagePassport>;
 
 /** `RESSAC_TEST_PASSPORT_TIMES` (dev builds): « unlockMs,showMs », so an e2e waits for the relock and the remask. */

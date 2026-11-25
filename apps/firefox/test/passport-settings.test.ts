@@ -565,3 +565,86 @@ describe("« Cacher pour l'agent »: hide and unhide (chrome only)", () => {
     expect(pages).toHaveProperty("save");
   });
 });
+
+describe("addMany: one write path for an import or a form", () => {
+  const loaded = (entries: PassportEntry[]) => ({ profile: "default", state: "ok" as "ok" | "unreadable" | "newer", entries, dropped: 0, revision: "r1" });
+  const written = (files: ReturnType<typeof setup>["files"]) => files.save.mock.calls.at(-1)![1];
+  const add = (s: ReturnType<typeof setup>["s"], drafts: unknown[], over: Record<string, unknown> = {}) =>
+    s.addMany({ profile: "default", drafts, how: "import", from: "Chrome", origin: null, reason: "ajouter au passeport", ...over } as any);
+  const drafts = [
+    { field: "nom", value: { given: "Camille", family: "Aubrac" } },
+    { field: "adresse", value: { text: "12 rue des Lilas\n75011 Paris" } },
+  ];
+
+  it("addMany asks Touch ID once and writes all drafts", async () => {
+    const { s, files, reauth } = setup();
+    files.load.mockResolvedValueOnce(loaded([]));
+    expect(await add(s, drafts)).toEqual({ ok: true, added: 2, variants: 0, full: 0, invalid: 0 });
+    expect(reauth).toHaveBeenCalledTimes(1);
+    expect(reauth).toHaveBeenCalledWith("ajouter au passeport");
+    expect(written(files)).toHaveLength(2);
+    expect(written(files)[0]).toMatchObject({ field: "nom", how: "import", from: "Chrome" });
+  });
+
+  it("a refused Touch ID writes nothing", async () => {
+    const { s, files, request } = setup({ pass: false });
+    expect(await add(s, drafts)).toEqual({ ok: false, error: "cancelled" });
+    expect(files.load).not.toHaveBeenCalled();
+    expect(files.save).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("a known value in another writing becomes a variant", async () => {
+    const { s, files } = setup();
+    files.load.mockResolvedValueOnce(loaded([{ ...entry("0000000000000002"), value: { given: "Camille", family: "Aubrac" } }]));
+    expect(await add(s, [{ field: "nom", value: { given: "Camille", family: "AUBRAC" } }, { field: "nom", value: { given: "Camille", family: "Aubrac" } }])).toEqual({ ok: true, added: 0, variants: 1, full: 0, invalid: 0 });
+    expect(written(files)).toHaveLength(1);
+    expect(written(files)[0]!.variants).toEqual(["Camille AUBRAC"]);
+  });
+
+  it("a full passport counts full, loses nothing", async () => {
+    const { s, files, request } = setup();
+    files.load.mockResolvedValueOnce(loaded(Array.from({ length: 200 }, (_, i) => entry(`e${i}`, `Nom${"x".repeat(i)}`))));
+    expect(await add(s, drafts)).toEqual({ ok: true, added: 0, variants: 0, full: 2, invalid: 0 });
+    expect(files.save).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("an invalid draft counts invalid, the others still go in", async () => {
+    const { s, files } = setup();
+    files.load.mockResolvedValueOnce(loaded([]));
+    expect(await add(s, [{ field: "tel", value: { text: "12" } }, drafts[0]])).toEqual({ ok: true, added: 1, variants: 0, full: 0, invalid: 1 });
+    expect(written(files)).toHaveLength(1);
+  });
+
+  it("no origin unless given", async () => {
+    const { s, files } = setup();
+    files.load.mockResolvedValueOnce(loaded([]));
+    await add(s, [drafts[0]]);
+    expect(written(files)[0]!.origins).toEqual([]);
+    files.load.mockResolvedValueOnce(loaded([]));
+    await add(s, [drafts[0]], { how: "form", origin: "https://www.Boutique.example/x" });
+    expect(written(files)[0]).toMatchObject({ origins: ["www.boutique.example"], how: "form" });
+  });
+
+  it("passport.replace is pushed once", async () => {
+    const { s, files, request, order } = setup();
+    files.load.mockResolvedValueOnce(loaded([]));
+    await add(s, drafts);
+    expect(request.mock.calls.filter((c) => c[0] === "passport.replace")).toHaveLength(1);
+    expect(order).toEqual(["write", "passport.replace"]);
+  });
+
+  it("an unreadable file is unreadable; a failed save is write", async () => {
+    const { s, files } = setup();
+    files.load.mockResolvedValueOnce({ ...loaded([]), state: "unreadable" });
+    expect(await add(s, drafts)).toEqual({ ok: false, error: "unreadable" });
+    files.load.mockResolvedValueOnce(loaded([]));
+    files.save.mockResolvedValueOnce({ ok: false, error: "write" });
+    expect(await add(s, drafts)).toEqual({ ok: false, error: "write" });
+  });
+
+  it("Réglages pages never get addMany", () => {
+    expect(pagePassport(setup().s)).not.toHaveProperty("addMany");
+  });
+});
