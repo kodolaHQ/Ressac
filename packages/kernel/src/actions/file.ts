@@ -162,7 +162,8 @@ export class FileActions {
       return { already: false, end: existing.end.catch(() => undefined).then(() => this.ask(id, o).end) };
     }
     if (existing) return { already: true, end: existing.end };
-    if (this.isStopped || this.o.enabled?.() === false) return { already: false, end: Promise.resolve(this.stopped()) };
+    if (this.isStopped) return { already: false, end: Promise.resolve(this.stopped()) };
+    if (this.o.enabled?.() === false) return { already: false, end: Promise.resolve({ status: "interrupted", error: say(this.locale(), "kernel-err-lab-off"), kernelError: true }) };
     const d: Request = { id, ...o, ctl: new AbortController(), end: Promise.resolve(this.stopped()), since: this.o.clock().toISOString() };
     // The request leaves the map before its end is returned: a request made after the end starts again.
     d.end = this.unroll(d).finally(() => {

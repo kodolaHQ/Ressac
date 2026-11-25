@@ -87,7 +87,7 @@ describe("FileActions", () => {
     on = false;
     await f.stopRunning();
     expect((await end).status).toBe("interrupted");
-    expect((await f.launch("b", { input: null, trigger: "manual" }).end).status).toBe("interrupted");
+    expect(await f.launch("b", { input: null, trigger: "manual" }).end).toEqual({ status: "interrupted", error: "Cette fonction fait partie du labo, éteint : Réglages › Agent › Niveau d'usage.", kernelError: true });
     expect(launched.map((o) => o.id)).toEqual(["a"]);
     on = true;
     const again = f.launch("b", { input: null, trigger: "manual" }).end;

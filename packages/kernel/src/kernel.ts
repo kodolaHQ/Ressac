@@ -686,9 +686,11 @@ export async function createKernel(o: {
       actionSubscribers.add(callback);
       return () => void actionSubscribers.delete(callback);
     },
-    runs: async (id) => (ID_ACTION.test(id) ? listRuns(join(actionsFolder, id)) : []),
-    run: async (id, execution) => (ID_ACTION.test(id) && ID_EXECUTION.test(execution) ? readRun(join(actionsFolder, id), execution) : null),
+    runs: async (id) => (o.lab() && ID_ACTION.test(id) ? listRuns(join(actionsFolder, id)) : []),
+    run: async (id, execution) => (o.lab() && ID_ACTION.test(id) && ID_EXECUTION.test(execution) ? readRun(join(actionsFolder, id), execution) : null),
     async page(id, execution) {
+      // Lab off: its stores read empty, like an unknown action.
+      if (!o.lab()) return null;
       if (execution !== null && !ID_EXECUTION.test(execution)) return null;
       const action = await readAction(paths, id);
       if (!action) return null;

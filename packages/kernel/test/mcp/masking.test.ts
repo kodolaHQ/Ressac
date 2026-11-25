@@ -187,7 +187,7 @@ test("an exception thrown by a handler, or by hand_over, comes back as a masked 
 });
 
 test("a tool with an outputSchema cannot be registered: the masker covers content only", () => {
-  const server = createToolsServer(new FakeBridge([], { active: null, allow: false }), new AccessPolicy(), new Map());
+  const server = createToolsServer(new FakeBridge([], { active: null, allow: false }), new AccessPolicy(), new Map(), () => true);
   expect(() => server.registerTool("x", { outputSchema: {} }, async () => ({ content: [], structuredContent: {} }))).toThrow("outputSchema not supported: the masker covers content only");
 });
 
@@ -312,7 +312,7 @@ test("maskTyped masks what the user hands over as their own data and names it; l
 });
 
 test("content that is neither text nor an image is refused, as an error", async () => {
-  const server = createToolsServer(new FakeBridge([], { active: null, allow: false }), new AccessPolicy(), new Map());
+  const server = createToolsServer(new FakeBridge([], { active: null, allow: false }), new AccessPolicy(), new Map(), () => true);
   server.registerTool("resource", { description: "x" }, async () => ({ content: [{ type: "resource" as const, resource: { uri: "file:///x", text: IBAN } }] }));
   const [a, b] = InMemoryTransport.createLinkedPair();
   const c = new Client({ name: "test", version: "0" });

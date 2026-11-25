@@ -1102,11 +1102,14 @@ describe("the lab", () => {
 
   test("setLab(false) stops running actions; the lab's stores read empty until it is back on", async () => {
     let on = true;
-    const { n } = await createWithActions(async (root) => {
+    const { n, actionsFolder } = await createWithActions(async (root) => {
       const folder = join(spacePaths(root).actions, "gitlab");
       await mkdir(folder, { recursive: true });
       await writeFile(join(folder, "action.json"), JSON.stringify({ name: "GitLab", sources: { web: true } }));
     }, () => on);
+    const e = executionAction("gitlab", "2026-10-31T08:00:00.000Z");
+    await writeRun(join(actionsFolder, "gitlab"), e);
+    await writeResult(actionsFolder, "gitlab", { version: 1, run: e.id, input: null, results: { tickets: [{ title: "A" }] }, plan: { blocks: [{ component: "list", props: { items: "tickets", title: "title" } }] }, fallback: false, empty: false });
     const stopRunning = vi.spyOn(FileActions.prototype, "stopRunning");
     try {
       expect((await n.actions.list()).map((a) => a.id)).toEqual(["gitlab"]);
@@ -1114,10 +1117,16 @@ describe("the lab", () => {
       await n.setLab(false);
       expect(stopRunning).toHaveBeenCalledTimes(1);
       expect(await n.actions.list()).toEqual([]);
-      expect(await n.actions.launch("gitlab", {}).end).toMatchObject({ status: "interrupted" });
+      expect(await n.actions.runs("gitlab")).toEqual([]);
+      expect(await n.actions.run("gitlab", e.id)).toBeNull();
+      expect(await n.actions.page("gitlab", null)).toBeNull();
+      expect(await n.actions.launch("gitlab", {}).end).toMatchObject({ status: "interrupted", error: "Cette fonction fait partie du labo, éteint : Réglages › Agent › Niveau d'usage." });
       on = true;
       await n.setLab(true);
       expect((await n.actions.list()).map((a) => a.id)).toEqual(["gitlab"]);
+      expect((await n.actions.runs("gitlab")).map((x) => x.id)).toEqual([e.id]);
+      expect(await n.actions.run("gitlab", e.id)).toMatchObject({ id: e.id });
+      expect(await n.actions.page("gitlab", null)).toMatchObject({ run: e.id });
     } finally {
       stopRunning.mockRestore();
     }

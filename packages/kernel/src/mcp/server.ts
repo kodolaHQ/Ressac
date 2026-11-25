@@ -553,6 +553,8 @@ export function createToolsServer(
   bridge: BrowserBridge,
   policy: AccessPolicy,
   requests: OngoingRequests,
+  /** The lab is on: false leaves LAB_TOOLS out of the list and refuses them. */
+  lab: () => boolean,
   applications?: AppsTools,
   appTabDelayMs = APP_TAB_DELAY_MS,
   dev?: DevToolsOptions,
@@ -587,8 +589,6 @@ export function createToolsServer(
   workspaceLock: WorkspaceLockHook = NO_WORKSPACE_LOCK,
   /** Per tab, the field handles of the last read (`fill_field { field }`); a navigation drops them. Outlives a request's server. */
   listedFields = new Map<string, PageField[]>(),
-  /** The lab is on: false leaves LAB_TOOLS out of the list and refuses them. */
-  lab: () => boolean = () => true,
 ): McpServer {
   /** A text the user reads (band, card line, activity), in their language. */
   const l10n = (id: string, args?: Record<string, string | number>) => say(locale(), id, args);
@@ -2862,7 +2862,7 @@ export async function startMcpServer(o: {
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale, who.session, masker, agentSites, o.otherSessions, o.workspaceLock, listedFields, o.lab);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.lab, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale, who.session, masker, agentSites, o.otherSessions, o.workspaceLock, listedFields);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();
