@@ -10,29 +10,44 @@ export type Entry = { label: string; type: LabelType; value: string; raw: string
 /** A tab opened from an issued handle: printed as that handle, whatever address it is on now. */
 export type Pin = { handle: string; real: string };
 
-/**
- * The clear values a pin's handle masks, each with its label, longest first: the handle's labels aligned against its real
- * address (the literal pieces between them must match). Empty when they do not align.
- */
-export function pinValues(pin: Pin): { value: string; label: string }[] {
-  const labels = [...pin.handle.matchAll(new RegExp(LABEL_SOURCE, "g"))].map((m) => m[0]);
-  if (!labels.length) return [];
-  const escape = (x: string) => x.replace(/[\\^$.*+?()[\]{}|/-]/g, "\\$&");
-  const shape = pin.handle.split(new RegExp(LABEL_SOURCE.replace("(", "(?:"))).map(escape).join("(.+?)");
-  const m = pin.real.match(new RegExp(`^${shape}$`, "s"));
-  return m ? labels.map((label, i) => ({ value: m[i + 1]!, label })).sort((a, b) => b.value.length - a.value.length) : [];
-}
-
-/** `text` with each value `pinValues` gives, as written or percent-encoded either way, replaced by its label. */
-export function unpinned(text: string, pin: Pin): string {
-  for (const { value, label } of pinValues(pin)) {
-    let decoded = value;
-    try {
-      decoded = decodeURIComponent(value);
-    } catch {}
-    for (const form of new Set([value, decoded, encodeURIComponent(decoded)])) text = text.split(form).join(label);
+/** The regex-safe form of `s`. */
+const escaped = (s: string) => s.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+/** `encodeURIComponent`, or nothing for a string it cannot encode (a lone surrogate). */
+const encoded = (s: string) => {
+  try {
+    return encodeURIComponent(s);
+  } catch {
+    return "";
   }
-  return text;
+};
+// A value this short is replaced only as a whole word: inside other digits or letters it is a date, a price, a word.
+const SHORT_VALUE = 6;
+
+/**
+ * `text` with each entry's value replaced by its label, in any case, as written, percent-encoded or with `+` for spaces
+ * (as an address writes it). An e-mail keeps its `@domain`, as masking writes it.
+ */
+export function relabel(text: string, entries: readonly Entry[]): string {
+  const forms = new Map<string, string>();
+  const add = (form: string, to: string) => form && !forms.has(form.toLowerCase()) && forms.set(form.toLowerCase(), to);
+  for (const e of entries)
+    for (const v of new Set([e.raw, e.value])) {
+      const at = e.type === "email" ? v.lastIndexOf("@") : -1;
+      if (at > 0) {
+        add(v, `${e.label}${v.slice(at)}`);
+        add(encoded(v), `${e.label}%40${v.slice(at + 1)}`);
+      } else {
+        for (const f of [v, encoded(v)]) {
+          add(f, e.label);
+          add(f.replace(/%20| /g, "+"), e.label);
+        }
+      }
+    }
+  if (!forms.size) return text;
+  const alternatives = [...forms.keys()]
+    .sort((a, b) => b.length - a.length)
+    .map((f) => (f.length < SHORT_VALUE ? `(?<![\\p{L}\\p{N}])${escaped(f)}(?![\\p{L}\\p{N}])` : escaped(f)));
+  return text.replace(new RegExp(alternatives.join("|"), "giu"), (m) => forms.get(m.toLowerCase()) ?? m);
 }
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -58,6 +73,8 @@ export class LabelTable {
   private readonly zones: Record<Zone, Entry[]> = { sources: [], web: [] };
   /** Masked address as emitted → the real one and the origin it was read on (spec § 5.3, opaque handles). */
   private readonly handles = new Map<string, { real: string; origin: string }>();
+  /** Handles a load was sent to: their values reached their real address's origin. */
+  private readonly sentHandles = new Set<string>();
   /** Tabs opened from a handle, until the agent sends them to an address that is not one. */
   private readonly pins = new Map<string, Pin>();
   /** `maskText`'s search index per zone (and web origin), kept until the zone gains an entry; wiped with the table. */
@@ -116,6 +133,29 @@ export class LabelTable {
     return this.resolvable ? this.handles.get(url) : undefined;
   }
 
+  /** A load was sent to the handle `masked`'s real address. */
+  opened(masked: string): void {
+    if (this.handles.has(masked)) this.sentHandles.add(masked);
+  }
+
+  /**
+   * The entries behind the labels of every handle opened to `origin`: that origin's server got their values in the
+   * address, so its pages showing them back (a bare-address title) tell it nothing when they are masked there. A handle
+   * only shown, never opened, counts for nothing: masking a page's guess of it would be an oracle.
+   */
+  handledOn(origin: string): Entry[] {
+    const out = new Set<Entry>();
+    for (const masked of this.sentHandles) {
+      const real = this.handles.get(masked)!.real;
+      if (URL.canParse(real) && new URL(real).origin === origin)
+        for (const m of masked.matchAll(LABELS)) {
+          const e = this.byLabel.get(m[0]);
+          if (e) out.add(e);
+        }
+    }
+    return [...out];
+  }
+
   /** The tab now shows `pin.real`, opened from `pin.handle` (undefined: from anything else, the pin goes). Only a resolvable table pins. */
   pin(tab: string, pin: Pin | undefined): void {
     if (pin && this.resolvable) this.pins.set(tab, pin);
@@ -129,6 +169,7 @@ export class LabelTable {
   wipe(): void {
     this.lookups.clear();
     this.handles.clear();
+    this.sentHandles.clear();
     this.pins.clear();
     this.byKey.clear();
     this.byLabel.clear();

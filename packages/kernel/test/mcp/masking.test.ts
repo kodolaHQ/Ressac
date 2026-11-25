@@ -678,3 +678,25 @@ test("a pinned page's title, state and text never give back the value its handle
     expect(pages).toContain(label);
   });
 });
+
+test("the history of a page opened from a handle gives its value back as the label, in search_history and read_history", async () => {
+  const bare = PROFILE_URL.replace(/^https:\/\//, "");
+  const history = {
+    results: [{ url: PROFILE_URL, title: bare, lastVisit: "2026-11-19T10:00:00.000Z", visits: 1, excerpt: `Profil de ${MAIL}`, byUser: false }],
+    texts: [{ url: PROFILE_URL, title: bare, date: "2026-11-19T10:00:00.000Z", text: `Profil de ${MAIL}` }],
+  };
+  const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: "rien" } }, { history, widgetData: true });
+  await serve({ bridge }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A");
+    const read = (await call("read_tab", { id: "mail", links: true }, t)).text;
+    const masked = read.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+    const label = masked.match(/⟨email-[a-z0-9]{8}⟩/)![0];
+    await call("navigate", { id: "copie", url: masked }, t);
+    for (const [name, args] of [["search_history", { query: "profil" }], ["read_history", { url: PROFILE_URL }]] as const) {
+      const out = (await call(name, args, t)).text;
+      expect(out, name).not.toContain("camille.exemple");
+      expect(out, name).toContain(`${label}@novacourriel.test`);
+    }
+  });
+});
