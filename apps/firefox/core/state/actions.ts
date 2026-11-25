@@ -2,6 +2,7 @@ import { format } from "../../shared/i18n";
 import { RELEASE_NOTES } from "../../shared/release-notes";
 import { customEngineError } from "../../shared/search";
 import { cleanAgentDomains } from "../../shared/settings";
+import { labOn } from "../../shared/tiers";
 import { randomUUID } from "node:crypto";
 import type { Action } from "../../shared/api";
 import { DEFAULT_AURA } from "../../shared/aura";
@@ -718,7 +719,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       return true;
     }
     case "chooseAgentMode": {
-      if (d.settings.agentMode === a.mode) return false;
+      if (d.settings.agentMode === a.mode || (a.mode === "workshop" && !labOn(d.settings))) return false;
       d.settings.agentMode = a.mode;
       return true;
     }
@@ -751,6 +752,22 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.aiEnabled = false;
       d.aiSetup = false;
       for (const f of d.windows) f.agentPanelOpen = false;
+      return true;
+    }
+    case "enableLab": {
+      if (!d.settings.aiEnabled || d.settings.lab === true) return false;
+      d.settings.lab = true;
+      return true;
+    }
+    case "disableLab": {
+      if (d.settings.lab === false && d.settings.agentMode === "browser") return false;
+      d.settings.lab = false;
+      d.settings.agentMode = "browser";
+      return true;
+    }
+    case "decideLab": {
+      if (d.settings.lab !== null) return false;
+      d.settings.lab = a.on;
       return true;
     }
     case "finishAiSetup": {

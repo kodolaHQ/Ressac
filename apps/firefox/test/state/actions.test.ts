@@ -1534,3 +1534,50 @@ test("dismissNotice: removes that notice only; an absent one changes nothing", (
   expect(e).toBe(before);
   expect(SchemaAction.safeParse({ type: "dismissNotice", id: "other" }).success).toBe(false);
 });
+
+test("enableLab is refused while AI is off", () => {
+  e = initialState(genId);
+  const before = e;
+  ag({ type: "enableLab" });
+  expect(e).toBe(before);
+  expect(e.settings.lab).toBe(false);
+  ag({ type: "enableAi" });
+  ag({ type: "enableLab" });
+  expect(e.settings.lab).toBe(true);
+});
+
+test("disableLab puts the agent back in Navigateur", () => {
+  e = initialState(genId);
+  ag({ type: "enableAi" });
+  ag({ type: "enableLab" });
+  ag({ type: "chooseAgentMode", mode: "workshop" });
+  expect(e.settings.agentMode).toBe("workshop");
+  ag({ type: "disableLab" });
+  expect([e.settings.lab, e.settings.agentMode]).toEqual([false, "browser"]);
+});
+
+test("decideLab applies once", () => {
+  e = initialState(genId);
+  e.settings.lab = null;
+  ag({ type: "decideLab", on: true });
+  expect(e.settings.lab).toBe(true);
+  const before = e;
+  ag({ type: "decideLab", on: false });
+  expect(e).toBe(before);
+  expect(e.settings.lab).toBe(true);
+});
+
+test("Atelier needs the lab", () => {
+  e = initialState(genId);
+  ag({ type: "enableAi" });
+  const before = e;
+  ag({ type: "chooseAgentMode", mode: "workshop" });
+  expect(e).toBe(before);
+  // Lab stored on but AI off: the effective lab is off.
+  e.settings.lab = true;
+  ag({ type: "disableAi" });
+  const off = e;
+  ag({ type: "chooseAgentMode", mode: "workshop" });
+  expect(e).toBe(off);
+  expect(e.settings.agentMode).toBe("browser");
+});

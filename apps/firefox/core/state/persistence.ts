@@ -80,6 +80,8 @@ const SchemaSession = z.object({
     machineIdleMinutes: MachineIdleSchema.catch(5),
     // A session saved before the setting existed already had AI: it stays on.
     aiEnabled: z.boolean().catch(true),
+    // A session saved before tiers: the host decides it from the workspace.
+    lab: z.boolean().nullable().catch(null).default(null),
     // A session saved before the setting existed gets the default.
     startOnHome: z.boolean().catch(true),
     auraMotion: z.boolean().catch(true),
@@ -164,6 +166,7 @@ function known(s: BrowserState, text?: string): BrowserState {
   s.settings.onboarded = true;
   // No welcome to ask: AI stays as the user left it if the damaged file still says so, else on (they already had it).
   s.settings.aiEnabled = aiEnabledIn(text) !== false;
+  s.settings.lab = null;
   return s;
 }
 

@@ -15,6 +15,7 @@ import { readHtml, readPage } from "./invisible";
 import type { FillCard, Questions } from "./questions";
 import { testEnv } from "../test-env";
 import { format } from "../../shared/i18n";
+import { labOn } from "../../shared/tiers";
 import { passportSettings } from "../passport/settings";
 import { keepTicks, rememberSite } from "./remember";
 
@@ -355,6 +356,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
       if (tab) host.notify("agent.panelOpened", { window: f.id, tab: tab });
     }
     if (state.settings.aiEnabled !== previous.settings.aiEnabled) host.notify("ai.enabled", { on: state.settings.aiEnabled });
+    if (labOn(state.settings) !== labOn(previous.settings)) host.notify("lab.enabled", { on: labOn(state.settings) });
     if (changed(state.settings.codexEngine, previous.settings.codexEngine)) host.notify("agent.codexEngine", { engine: state.settings.codexEngine });
     if (changed(state.settings.agentDomains, previous.settings.agentDomains)) host.notify("settings.agentDomains", { domains: state.settings.agentDomains });
     if (state.settings.machineIdleMinutes !== previous.settings.machineIdleMinutes) host.notify("settings.machineIdle", { minutes: state.settings.machineIdleMinutes });

@@ -177,6 +177,12 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("finishOnboarding"), ai: z.boolean().optional() }),
   z.object({ type: z.literal("enableAi") }),
   z.object({ type: z.literal("disableAi") }),
+  /** The lab needs AI: refused while it is off. */
+  z.object({ type: z.literal("enableLab") }),
+  /** Also puts the agent back in Navigateur mode; nothing the lab made is deleted. */
+  z.object({ type: z.literal("disableLab") }),
+  /** Once, for a session saved before tiers (lab null): the host's reading of the workspace. */
+  z.object({ type: z.literal("decideLab"), on: z.boolean() }),
   z.object({ type: z.literal("finishAiSetup") }),
   z.object({ type: z.literal("replayOnboarding") }),
   /** At each start: records the running version, and opens « Nouveautés » when it changed and has notes. */

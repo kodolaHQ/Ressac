@@ -81,7 +81,7 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
  * A data folder without a space's widgets folder gets the starter widgets without their harvest (`starterHarvests` keeps
  * them, and their real-web reads: prefer a local server). `firstTimeNotes` leaves the one-time notes unseen (a new session has them seen). `writer` signs the fake Claude Code or Codex in (widgets and actions write through it). `output`: a file that gets the browser's stdout and stderr.
  */
-export async function launchRessac(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string; realTools?: boolean; ai?: boolean; writer?: "claude" | "codex" } = {}): Promise<LaunchedRessac> {
+export async function launchRessac(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string | undefined>; prefs?: Record<string, string | number | boolean>; starterHarvests?: boolean; firstTimeNotes?: boolean; output?: string; realTools?: boolean; ai?: boolean; lab?: boolean; writer?: "claude" | "codex" } = {}): Promise<LaunchedRessac> {
   const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-firefox-")));
   const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "ressac-data-")));
   const cleanup = () =>
@@ -131,6 +131,8 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
         RESSAC_SKIP_WELCOME: "1",
         // AI on unless the test asks for it off (`ai: false`).
         RESSAC_TEST_AI: o.ai === false ? "0" : "1",
+        // The lab likewise (`lab: false`): the existing tests use Atelier, actions and apps.
+        RESSAC_TEST_LAB: o.lab === false ? "0" : "1",
         // Réglages never changes the owner's macOS: his default browser and his screen recording grant stay his.
         RESSAC_TEST_NO_SYSTEM: "1",
         // Never the decision model running on this machine (nothing listens there). A test with a fake passes its own;

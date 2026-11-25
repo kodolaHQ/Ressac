@@ -702,3 +702,21 @@ test("an essential's « Garder chargé » is kept; a bad value is dropped, the e
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, essentials }));
   expect((await loadSession(d)).essentials.map((f) => [f.id, f.keepLoaded])).toEqual([["a", false], ["b", undefined]]);
 });
+
+test("a session saved before tiers loads with lab null", async () => {
+  const d = folder();
+  const old = structuredClone(initialState()) as unknown as { settings: Record<string, unknown> };
+  delete old.settings.lab;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.lab).toBe(null);
+  old.settings.lab = true;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
+  expect((await loadSession(d)).settings.lab).toBe(true);
+  expect(initialState().settings.lab).toBe(false);
+});
+
+test("a damaged session leaves lab undecided", async () => {
+  const bad = folder();
+  writeFileSync(join(bad, "session.json"), "{ not json");
+  expect((await loadSession(bad)).settings.lab).toBe(null);
+});

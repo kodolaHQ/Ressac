@@ -315,6 +315,8 @@ export interface BrowserState {
     shortcuts: Partial<Record<ShortcutId, Binding>>;
     /** The AI part (agent, local models, containers) is on. Off on a new install until the welcome asks; an older session keeps it on. */
     aiEnabled: boolean;
+    /** The lab (tier 3: Atelier, workflows, actions, apps, design mode, external MCP…) is on; it only counts with AI on (shared/tiers.ts labOn). Null: a session saved before tiers, the host decides it once from the workspace. */
+    lab: boolean | null;
     /** Extra domains the agent's container may reach (shared/settings.ts validAgentDomain). */
     agentDomains: string[];
     /** Minutes the idle workshop machine keeps running before it stops (shared/settings.ts MACHINE_IDLE_MINUTES). */

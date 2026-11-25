@@ -34,6 +34,7 @@ const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
 const { passportReady, ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE, WorkspaceLock, tweaksPaused } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
+const { labInUse } = await import("./tiers.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
@@ -305,6 +306,8 @@ const startIndexer = () => {
 
 // AI on (settings.aiEnabled, told by the chrome's `start` and `ai.enabled`): off, nothing below touches Docker or the local models.
 let aiOn = false;
+// The effective lab (shared/tiers.ts labOn: settings.lab and AI), told by the chrome's `start` and `lab.enabled`.
+let labOn = false;
 let aiWoken = false;
 // Once per off → on: the machine is installed (downloaded once) and the logins move over from Docker; where it cannot
 // run, an installed container app that is not running is started, and left running at quit (nothing of it is downloaded
@@ -519,7 +522,7 @@ const AI_SETTINGS = new Set<string>([
   "settings.pullModel",
   "settings.pullInBackground",
 ]);
-type StartParams = { agentProfile: string; locale?: string; aiEnabled?: boolean };
+type StartParams = { agentProfile: string; locale?: string; aiEnabled?: boolean; lab?: boolean };
 // Brings the host to `aiOn`, the latest wanted state (set at once by `start` and `ai.enabled`, before their turn in
 // serialAi): a step queued behind a newer switch converges to it. On: Docker, the apps and the kernel (once; a
 // failed start is retried). Off: the sessions, the apps and the kernel stop (after a launch in flight, chained on `ready`).
@@ -620,6 +623,7 @@ const rpc = createRpc({
       refreshProfileAgents();
       if (typeof p.locale === "string") setHostLocale(p.locale);
       aiOn = p.aiEnabled === true;
+      labOn = p.lab === true;
       return serialAi(async () => {
         await applyAi();
         return aiOn ? start() : null;
@@ -630,6 +634,10 @@ const rpc = createRpc({
       aiOn = p?.on === true;
       return serialAi(applyAi).catch((e) => console.error(`[ressac] AI ${aiOn ? "on" : "off"} failed:`, e));
     },
+    "lab.enabled": (p: { on?: unknown }) => void (labOn = p?.on === true),
+    // Once, for a session saved before tiers: does the user already use the lab? The chrome sends its saved mode (no
+    // `agent.mode` has come yet). Widget tiers come with Task 6.
+    "lab.decide": async (p: { agentMode?: unknown }) => ({ on: await labInUse(paths, p?.agentMode === "workshop" ? "workshop" : "browser", async () => false) }),
     // macOS runs short of memory (Firefox's memory-pressure): the local models unload, idle agent sessions sleep, the
     // machine stops unless in use.
     "memory.pressure": () => relieveMemory(),

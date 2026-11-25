@@ -1,5 +1,6 @@
 import { createRpc, type Handler, type Rpc } from "../../shared/rpc";
 import { format } from "../../shared/i18n";
+import { labOn } from "../../shared/tiers";
 import { hostCommand } from "./command";
 import { lineSplitter } from "./lines";
 import type { LoadResult, PassportFiles } from "../passport/store";
@@ -88,6 +89,10 @@ export function createHost(o: {
   locale: () => string;
   /** settings.aiEnabled: off, the host starts no Docker, local model nor kernel. */
   aiEnabled: () => boolean;
+  /** settings.lab; null (a session saved before tiers) asks the host once, before `start`, and gives the answer to decideLab. */
+  lab: () => boolean | null;
+  agentMode: () => "browser" | "workshop";
+  decideLab: (on: boolean) => void;
   /** The requests the host sends to Firefox (the browser bridge). */
   handlers: Record<string, Handler>;
   /** Each new process, before any other message: what the host must know first (private tabs mirror). `request` goes to that process only. */
@@ -160,7 +165,12 @@ export function createHost(o: {
         current = spawn();
         current.catch(() => (current = null));
       }
-      await host.request("start", { agentProfile: o.agentProfile(), locale: o.locale(), aiEnabled: o.aiEnabled() });
+      if (o.lab() === null) {
+        // Failed: lab stays null (off), asked again at the next start.
+        const r = await host.request<{ on?: unknown }>("lab.decide", { agentMode: o.agentMode() }).catch((e) => (console.error("[ressac] lab.decide failed:", e), null));
+        if (typeof r?.on === "boolean") o.decideLab(r.on);
+      }
+      await host.request("start", { agentProfile: o.agentProfile(), locale: o.locale(), aiEnabled: o.aiEnabled(), lab: labOn({ aiEnabled: o.aiEnabled(), lab: o.lab() }) });
     },
     async stop() {
       const r = await current?.catch(() => null);

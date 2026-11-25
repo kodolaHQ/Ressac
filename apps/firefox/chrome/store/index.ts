@@ -269,7 +269,9 @@ async function start(): Promise<RessacStore> {
     const aiOff = testEnv("RESSAC_TEST_AI") === "0";
     // A test launch skips the welcome: AI on for a fresh profile unless the test asks for it off.
     const aiEnabled = aiOff ? false : skip && !s.settings.onboarded ? true : s.settings.aiEnabled;
-    return skip ? { ...s, settings: { ...s.settings, onboarded: true, aiEnabled, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s;
+    // Likewise the lab: on for a fresh test profile unless RESSAC_TEST_LAB is "0".
+    const lab = testEnv("RESSAC_TEST_LAB") === "0" ? false : skip && !s.settings.onboarded ? true : s.settings.lab;
+    return skip ? { ...s, settings: { ...s.settings, onboarded: true, aiEnabled, lab, seenVersion: s.settings.seenVersion ?? __RESSAC_VERSION__ } } : s;
   }).then((s) => withEssentials({ ...s, notices: startupNotices(setAside, dataSetAside, telemetry.active) })).then(async (s) => {
     // Before the launch's lazy essentials: one allowed to notify (a messaging site) stays loaded. Read from Ressac's own
     // decisions: Firefox's copy is emptied and rebuilt from them just after, and a site app's container may be new.
@@ -599,6 +601,9 @@ async function start(): Promise<RessacStore> {
     agentProfile: () => store.state.settings.agentProfile,
     locale: () => store.state.locale,
     aiEnabled: () => store.state.settings.aiEnabled,
+    lab: () => store.state.settings.lab,
+    agentMode: () => store.state.settings.agentMode,
+    decideLab: (on) => store.dispatch({ type: "decideLab", on }),
     handlers: {
       ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites, apps),
       ...sites.handlers,
