@@ -2,7 +2,7 @@
 // The kernel's LaunchSpec owns the lockdown flags (before `app-server`); this adapter only sets the thread's policy.
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { ChatQuestion, SessionUpdate } from "../../../shared/chat";
+import type { ChatQuestion } from "../../../shared/chat";
 import type {
   AgentMessageDelta,
   InitializeParams,
@@ -18,7 +18,7 @@ import type {
   TurnHolder,
   TurnStartParams,
 } from "./codex-protocol";
-import { toolTitle, type ChatEngine, type EngineConversation } from "./engine";
+import { engineEvents, toolTitle, type ChatEngine, type EngineConversation } from "./engine";
 
 const AUTH = /\b(log ?in|not logged in|authenticat\w*|unauthori[sz]ed|401)\b/i;
 // The app-server only shows it in its user agent.
@@ -35,9 +35,8 @@ export const codexEngine: ChatEngine = {
   id: "codex",
 
   async open({ resumeId, launch, signal, tabTitle }): Promise<EngineConversation> {
-    const updateCbs = new Set<(u: SessionUpdate) => void>();
-    const endCbs = new Set<(e: { code: number | null; error?: string }) => void>();
-    const emit = (u: SessionUpdate) => updateCbs.forEach((cb) => cb(u));
+    const events = engineEvents(launch);
+    const { emit } = events;
 
     const cmd = launch.command([]);
     const child = spawn(cmd[0]!, cmd.slice(1), { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...launch.env }, signal });
@@ -52,19 +51,10 @@ export const codexEngine: ChatEngine = {
         send({ id, method, params });
       });
 
-    let stderrTail = "";
-    let ended = false;
-    child.stderr.on("data", (d) => (stderrTail = (stderrTail + d).slice(-2000)));
-    const finish = (code: number | null, error?: string) => {
-      if (ended) return;
-      ended = true;
+    events.watch(child, (error) => {
       for (const p of pending.values()) p.reject(new Error(error ?? "codex app-server ended"));
       pending.clear();
-      launch.ended();
-      endCbs.forEach((cb) => cb(error ? { code, error } : { code }));
-    };
-    child.once("exit", (code) => finish(code, code ? stderrTail.trim() || undefined : undefined));
-    child.once("error", (e) => finish(null, e.message));
+    });
 
     let threadId = "";
     let turnId = "";
@@ -190,14 +180,8 @@ export const codexEngine: ChatEngine = {
         child.stdin.end();
         await launch.stop();
       },
-      onUpdate(cb) {
-        updateCbs.add(cb);
-        return () => updateCbs.delete(cb);
-      },
-      onEnd(cb) {
-        endCbs.add(cb);
-        return () => endCbs.delete(cb);
-      },
+      onUpdate: events.onUpdate,
+      onEnd: events.onEnd,
     };
   },
 };

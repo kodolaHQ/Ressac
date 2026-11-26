@@ -3,8 +3,8 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { query, type PermissionResult, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { AskReply, ChatQuestion, SessionUpdate } from "../../../shared/chat";
-import { toolTitle, type ChatEngine, type EngineConversation } from "./engine";
+import type { AskReply, ChatQuestion } from "../../../shared/chat";
+import { engineEvents, toolTitle, type ChatEngine, type EngineConversation } from "./engine";
 
 const AUTH = /\b(log ?in|not logged in|authenticat\w*|401)\b/i;
 
@@ -13,9 +13,8 @@ export const claudeEngine: ChatEngine = {
 
   async open({ resumeId, sessionId, launch, signal, tabTitle }): Promise<EngineConversation> {
     const engineSessionId = resumeId ?? sessionId ?? randomUUID();
-    const updateCbs = new Set<(u: SessionUpdate) => void>();
-    const endCbs = new Set<(e: { code: number | null; error?: string }) => void>();
-    const emit = (u: SessionUpdate) => updateCbs.forEach((cb) => cb(u));
+    const events = engineEvents(launch);
+    const { emit } = events;
 
     // The prompt iterable: one SDKUserMessage per user turn, ended by close().
     const queue: SDKUserMessage[] = [];
@@ -38,8 +37,6 @@ export const claudeEngine: ChatEngine = {
     // Claude Code reports apiKeySource "none" for subscribers too: only a missing token proves a signed-out CLI.
     let noToken = false;
     let running = false;
-    let ended = false;
-    let stderrTail = "";
 
     const abort = new AbortController();
     if (signal.aborted) abort.abort();
@@ -74,15 +71,7 @@ export const claudeEngine: ChatEngine = {
         spawnClaudeCodeProcess: (o) => {
           const cmd = launch.command(o.args);
           const child = spawn(cmd[0]!, cmd.slice(1), { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...launch.env }, signal: o.signal });
-          child.stderr.on("data", (d) => (stderrTail = (stderrTail + d).slice(-2000)));
-          const finish = (code: number | null, error?: string) => {
-            if (ended) return;
-            ended = true;
-            launch.ended();
-            endCbs.forEach((cb) => cb(error ? { code, error } : { code }));
-          };
-          child.once("exit", (code) => finish(code, code ? stderrTail.trim() || undefined : undefined));
-          child.once("error", (e) => finish(null, e.message));
+          events.watch(child);
           return child;
         },
       },
@@ -169,14 +158,8 @@ export const claudeEngine: ChatEngine = {
         for (const resolve of questions.values()) resolve({ cancelled: true });
         await launch.stop();
       },
-      onUpdate(cb) {
-        updateCbs.add(cb);
-        return () => updateCbs.delete(cb);
-      },
-      onEnd(cb) {
-        endCbs.add(cb);
-        return () => endCbs.delete(cb);
-      },
+      onUpdate: events.onUpdate,
+      onEnd: events.onEnd,
     };
   },
 };

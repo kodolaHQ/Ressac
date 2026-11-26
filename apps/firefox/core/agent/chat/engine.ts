@@ -1,3 +1,4 @@
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import type { AskReply, SessionUpdate, ToolKind } from "../../../shared/chat";
 
 /** The subset of the kernel LaunchSpec adapters use (structural, so the kernel's satisfies it). */
@@ -33,6 +34,42 @@ export interface ChatEngine {
     signal: AbortSignal;
     tabTitle?: (id: unknown) => string | undefined;
   }): Promise<EngineConversation>;
+}
+
+type EndInfo = { code: number | null; error?: string };
+
+/**
+ * What both adapters share: the update and end subscribers, and the engine process's end, reported once with the tail of
+ * its stderr on a failed exit. `beforeEnd` runs first (Codex fails its pending requests).
+ */
+export function engineEvents(launch: Pick<LaunchSpecLike, "ended">) {
+  const updateCbs = new Set<(u: SessionUpdate) => void>();
+  const endCbs = new Set<(e: EndInfo) => void>();
+  return {
+    emit: (u: SessionUpdate) => updateCbs.forEach((cb) => cb(u)),
+    onUpdate(cb: (u: SessionUpdate) => void) {
+      updateCbs.add(cb);
+      return () => void updateCbs.delete(cb);
+    },
+    onEnd(cb: (e: EndInfo) => void) {
+      endCbs.add(cb);
+      return () => void endCbs.delete(cb);
+    },
+    watch(child: ChildProcessWithoutNullStreams, beforeEnd?: (error?: string) => void) {
+      let stderrTail = "";
+      let ended = false;
+      child.stderr.on("data", (d) => (stderrTail = (stderrTail + d).slice(-2000)));
+      const finish = (code: number | null, error?: string) => {
+        if (ended) return;
+        ended = true;
+        beforeEnd?.(error);
+        launch.ended();
+        endCbs.forEach((cb) => cb(error ? { code, error } : { code }));
+      };
+      child.once("exit", (code) => finish(code, code ? stderrTail.trim() || undefined : undefined));
+      child.once("error", (e) => finish(null, e.message));
+    },
+  };
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
