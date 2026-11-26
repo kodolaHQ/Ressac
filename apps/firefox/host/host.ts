@@ -331,6 +331,8 @@ const writerChoice = createWriterChoice({ workshop, preferred: preferredWriter, 
 const engineOf = (a: "claude" | "codex"): ClaudeEngine | CodexEngine => (a === "claude" ? claudeEngine : engine);
 /** Claude or Codex on its own subscription: the chat's model picker applies (on Ollama or an API, Réglages' model does). */
 const onSubscription = (a: string): a is "claude" | "codex" => (a === "claude" ? claudeEngine.kind === "subscription" : a === "codex" && engine.kind === "chatgpt");
+/** A discussion's model as it may reach a command line (--model=…, -c model=…): on the subscription, a strict name; else undefined. */
+const usableModel = (a: string, model: string | undefined): string | undefined => (model && onSubscription(a) && modelField.safeParse(model).success ? model : undefined);
 const hostWriter = createHostWriter({
   preferred: preferredWriter,
   engine: engineOf,
@@ -742,7 +744,8 @@ const sessions = new SessionsAgent({
     const relayed = await engineRelay(profile);
     const { token } = relayed;
     // « Mode avancé » of a chat: the discussion's model, on the subscription only (Réglages' model otherwise). One argv token each.
-    const picked = model && onSubscription(profile) && modelField.safeParse(model).success ? (profile === "claude" ? [`--model=${model}`] : ["-c", `model=${JSON.stringify(model)}`]) : [];
+    const m = usableModel(profile, model);
+    const picked = m ? (profile === "claude" ? [`--model=${m}`] : ["-c", `model=${JSON.stringify(m)}`]) : [];
     const extra = { ...relayed.extra, args: [...relayed.extra.args, ...picked] };
     try {
       const session = await n.openAgentSession({ ...t, window: f, profile, resume, ...(profile === "claude" ? { conversation } : thread ? { conversation: thread } : {}), extra, mode: agentMode, onBuildProgress, review });
@@ -862,7 +865,8 @@ async function switchOwnModel(chatId: string, model: string) {
   }
   ownSetting = next;
   const mark = ownOpens.get(chatId);
-  if (mark) Object.assign(mark, { remote, model, next });
+  // Until the next message the running turn may still use the old model: the mark names whichever is off this Mac.
+  if (mark) Object.assign(mark, { remote: remote ?? mark.remote, model, next, nextRemote: remote });
   for (const id of [...ownOpens.keys()]) if (id !== chatId) void chats.pause(id).catch((err) => console.error("[chat] own pause:", (err as Error).name));
   repushChat(chatId);
   return { ok: true as const, own: next };
@@ -878,7 +882,9 @@ const checkOwn = async (e: OwnEngine): Promise<string | null> => {
   return host;
 };
 /** Own discussions opening or open: the host and model their messages go to; `next`, a model picked in the chat, used from the next message. */
-const ownOpens = new Map<string, { remote: string | null; model: string; next?: OwnEngine }>();
+const ownOpens = new Map<string, OwnMark>();
+/** `next`/`nextRemote`: a model picked in the chat and its host, taken at the next message (switchOwnModel). */
+type OwnMark = { remote: string | null; model: string; next?: OwnEngine; nextRemote?: string | null };
 const pushChat = (win: string, view: ChatView) => {
   chatViews.set(view.summary.id, { win, view });
   rpc.notify("chat.view", { window: win, view: decorated(win, view) });
@@ -962,7 +968,10 @@ async function openChat(o: OpenOptions) {
       if (!checked && !(await accountSignedIn(o.engine))) throw new SignedOutError();
       // The discussion's model on the subscription, unless the engine's list (once read) no longer has it: its default then.
       const listed = engineModels.get(o.engine);
-      const model = o.model && onSubscription(o.engine) && modelField.safeParse(o.model).success && (!listed || listed.some((m) => m.value === o.model)) ? o.model : undefined;
+      const usable = usableModel(o.engine, o.model);
+      const model = usable && (!listed || listed.some((m) => m.value === usable)) ? usable : undefined;
+      // Dropped on the subscription: the record and the chip follow what runs.
+      if (o.model && !model && onSubscription(o.engine)) await chats.setModel(o.chatId, "");
       const conversation = await (o.engine === "claude" ? claudeChat : codexChat)
         .open({
           ...(o.resumeId ? { resumeId: o.resumeId } : {}),
@@ -1006,7 +1015,7 @@ async function openChat(o: OpenOptions) {
  */
 async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
   const e = ownSetting; // one snapshot: the check, the client and the view's host use the same address and model
-  const mark: { remote: string | null; model: string; next?: OwnEngine } = { remote: remoteOf(e), model: ownModelOf(e) };
+  const mark: OwnMark = { remote: remoteOf(e), model: ownModelOf(e) };
   ownOpens.set(o.chatId, mark);
   const forget = () => {
     if (ownOpens.get(o.chatId) === mark) ownOpens.delete(o.chatId);
@@ -1015,7 +1024,9 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
   try {
     const n = await kernelReady();
     // The model may have become a cloud one since Réglages: the view names where its messages go.
-    mark.remote = await checkOwn(e);
+    const checked = await checkOwn(e);
+    // A switch made meanwhile (switchOwnModel) owns the mark: this answer is the old model's.
+    if (!mark.next) mark.remote = checked;
     if (signal.aborted) throw new Error("closed");
     const raw = await n.openHostSession({ window: win, resume: (o.transcript?.length ?? 0) > 0, agent: hostSay("own-agent-name") });
     // Closed or ended: the view names the current setting again (the next open uses it).
@@ -1040,7 +1051,10 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
     // A model picked in the chat (switchOwnModel): from the next message, the same conversation and history.
     const prompt = conversation.prompt;
     conversation.prompt = (text) => {
-      if (mark.next) [current, mark.next] = [client(mark.next), undefined];
+      if (mark.next) {
+        [current, mark.next, mark.remote] = [client(mark.next), undefined, mark.nextRemote ?? null];
+        mark.nextRemote = undefined;
+      }
       prompt(text);
     };
     return { conversation, launch };

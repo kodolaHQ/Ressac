@@ -423,6 +423,29 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(await h.rpc.request("chat.model", { window: "f2", model: "sonnet" })).toMatchObject({ ok: false });
   });
 
+  it("chat model: a stored model the engine's list no longer has opens on the default, and the chip says so", async () => {
+    type V = { summary: { id: string; state: string }; model?: { value: string; name: string } };
+    const views: { window: string; view: V }[] = [];
+    const h = startHost({}, (d) => (mkdirSync(join(d, "workspace"), { recursive: true }), writeFileSync(join(d, "workspace", "fake-claude-auth.json"), '{"loggedIn":true}')), { handlers: { "chat.view": (p: (typeof views)[number]) => void views.push(p) } });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    h.rpc.notify("settings.agentView", { view: "chat" });
+    const ready = (id: string) => until(() => views.some((v) => v.view.summary.id === id && v.view.summary.state === "ready"), 20_000);
+    const first = (await h.rpc.request("chat.create", { window: "f1", space: "perso" })) as V;
+    await ready(first.summary.id);
+    // The list is read once the first discussion is open.
+    await until(() => views.some((v) => v.view.summary.id === first.summary.id && v.view.model?.value === ""));
+    expect(await h.rpc.request("chat.models", { window: "f1" })).toMatchObject({ ok: true });
+    h.rpc.notify("settings.chatModels", { models: { claude: "gone", codex: "" } });
+    const c = (await h.rpc.request("chat.create", { window: "f2", space: "perso" })) as V;
+    expect(c.model?.value).toBe("gone");
+    await ready(c.summary.id);
+    const argv = readFileSync(join(h.root, "fake-chat-claude.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((l) => l.argv);
+    expect(argv).toHaveLength(2);
+    expect(argv[1].argv.some((a: string) => a.startsWith("--model"))).toBe(false);
+    // Cleared before it is ready: the chip never names a model that does not run.
+    expect(views.find((v) => v.view.summary.id === c.summary.id && v.view.summary.state === "ready")?.view.model?.value).toBe("");
+  });
+
   it("outflow: keystrokes and the ⌘T question count as typed, pastes and prefills do not, closing the window forgets", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
@@ -1295,6 +1318,67 @@ describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
       await until(() => answers() === 2);
       expect(views.filter((v) => v.view.summary.id === c.summary.id).some((v) => v.view.summary.state === "paused")).toBe(false);
       expect(asked).toEqual(["qwen3", "gpt-oss:120b-cloud"]);
+    } finally {
+      ollama.close();
+    }
+  });
+
+  it("chat model, own: « en ligne » shows wherever a message may go, through a switch during the open or the turn", async () => {
+    const { createServer } = await import("node:http");
+    const asked: string[] = [];
+    const gates = new Map<string, () => void>();
+    const held = (name: string) => new Promise<void>((r) => gates.set(name, r));
+    let holdShow: Promise<void> | null = held("show");
+    let holdChat: Promise<void> | null = null;
+    const ollama = createServer((req, res) => {
+      let body = "";
+      req.on("data", (d) => (body += d)).on("end", async () => {
+        const parsed = body ? (JSON.parse(body) as { model?: string }) : {};
+        // The open's check of the first model waits for the test; any other answers at once.
+        if (req.url === "/api/show" && parsed.model === "qwen3" && holdShow) await holdShow;
+        if (req.url === "/api/chat") {
+          asked.push(parsed.model!);
+          if (holdChat) await holdChat;
+        }
+        const reply =
+          req.url === "/api/chat"
+            ? { message: { content: '{"action":"answer","text":"ok"}' } }
+            : req.url === "/api/tags"
+              ? { models: [{ name: "qwen3" }, { name: "gpt-oss:120b-cloud", remote_host: "https://ollama.com:443" }] }
+              : { details: {} };
+        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(reply));
+      });
+    });
+    await new Promise<void>((r) => ollama.listen(0, "127.0.0.1", r));
+    try {
+      const { h, views } = await ownHost();
+      const port = (ollama.address() as { port: number }).port;
+      await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: `http://127.0.0.1:${port}`, ollamaModel: "qwen3" }) });
+      const c = (await h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "own" })) as View;
+      const last = () => views.filter((v) => v.view.summary.id === c.summary.id).at(-1)?.view;
+      const answers = () => last()?.items.filter((i) => i.kind === "agent").length ?? 0;
+      // Switched to the cloud while the open still checks the local model: the open's answer does not hide it.
+      await until(() => gates.has("show"));
+      expect(await h.rpc.request("chat.model", { window: "f1", model: "gpt-oss:120b-cloud" })).toMatchObject({ ok: true });
+      holdShow = null;
+      gates.get("show")!();
+      await until(() => last()?.summary.state === "ready");
+      expect(last()?.remote).toBe("ollama.com");
+      holdChat = held("chat");
+      await h.rpc.request("chat.send", { window: "f1", draft: { text: "un" } });
+      await until(() => asked.length === 1);
+      // Back to the local model while the turn still runs on the cloud: still « en ligne » until the next message.
+      expect(await h.rpc.request("chat.model", { window: "f1", model: "qwen3" })).toMatchObject({ ok: true });
+      await new Promise((r) => setTimeout(r, 100)); // the switch's repush, if it dropped the mark, lands here
+      expect(last()?.remote).toBe("ollama.com");
+      holdChat = null;
+      gates.get("chat")!();
+      await until(() => answers() === 1);
+      expect(last()?.remote).toBe("ollama.com");
+      await h.rpc.request("chat.send", { window: "f1", draft: { text: "deux" } });
+      await until(() => answers() === 2);
+      expect(last()?.remote).toBeUndefined();
+      expect(asked).toEqual(["gpt-oss:120b-cloud", "qwen3"]);
     } finally {
       ollama.close();
     }
