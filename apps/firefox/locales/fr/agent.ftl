@@ -336,6 +336,7 @@ chat-composer-label = Message à l'agent
 chat-composer-placeholder = Demandez quelque chose à l'agent
 chat-composer-footer = Les données de votre passeport sont masquées avant l'envoi.
 chat-composer-sent-to = Envoyé à { $host }.
+chat-composer-own-warning = Votre modèle peut se tromper. Vérifiez les réponses importantes.
 chat-engine-own = Votre modèle
 chat-engine-own-remote = en ligne
 chat-engine-own-remote-title = Ce modèle n'est pas sur votre Mac : vos messages et ce que l'agent lit vont à { $host }.

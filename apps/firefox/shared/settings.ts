@@ -152,6 +152,21 @@ export function onMacUrl(url: string): URL | null {
 /** True when `url` points at this Mac (loopback): its model's traffic stays local (host and Réglages alike). */
 export const isOnMac = (url: string): boolean => onMacUrl(url) !== null;
 
+/**
+ * The host an Ollama cloud model sends prompts to: the local Ollama forwards them to its `remote_host` (from `/api/show` or
+ * `/api/tags`), « ollama.com » when only `remote_model` marks it. null for a model that runs on this Mac.
+ */
+export function ollamaCloudHost(m: { remote_host?: unknown; remote_model?: unknown } | null | undefined): string | null {
+  if (typeof m?.remote_host === "string" && m.remote_host) {
+    try {
+      return new URL(m.remote_host).host;
+    } catch {
+      return "ollama.com";
+    }
+  }
+  return m?.remote_model ? "ollama.com" : null;
+}
+
 /** null when the address is https://, or http:// to this Mac (loopback, as `isOnMac`): the key must not travel in clear over the network. */
 export function apiUrlProblem(url: string): string | null {
   try {

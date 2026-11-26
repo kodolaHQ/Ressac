@@ -87,15 +87,20 @@ describe("ollamaClient", () => {
 });
 
 describe("checkOwnModel (Ollama)", () => {
-  it("ollama check: missing, cloud, down", async () => {
+  it("ollama check: missing, down", async () => {
     const check = (r: () => Promise<Response>) => checkOwnModel(engine(), { key: null, fetch: capture(r).fetch });
     await expect(check(async () => json({ error: "not found" }, 404))).rejects.toThrow("Le modèle « qwen3:8b » est introuvable sur 127.0.0.1:11434.");
-    await expect(check(async () => json({ remote_model: "gpt-oss:120b", remote_host: "https://ollama.com:443" }))).rejects.toThrow("Modèle en ligne d'Ollama : refusé ici. Pour un modèle hébergé, connectez son API.");
     await expect(check(() => Promise.reject(new TypeError("fetch failed")))).rejects.toThrow("127.0.0.1:11434 ne répond pas.");
+  });
+  it("a cloud model passes, off this Mac: its remote host, ollama.com when only remote_model marks it", async () => {
+    const check = (body: object) => checkOwnModel(engine(), { key: null, fetch: capture(async () => json(body)).fetch });
+    expect(await check({ remote_model: "gpt-oss:120b", remote_host: "https://ollama.com:443" })).toBe("ollama.com");
+    expect(await check({ remote_model: "m", remote_host: "https://eu.example.com:8443" })).toBe("eu.example.com:8443");
+    expect(await check({ remote_model: "gpt-oss:120b", remote_host: "" })).toBe("ollama.com");
   });
   it("asks /api/show for the model, without redirects, and passes a local model", async () => {
     const f = capture(async () => json({ details: { family: "qwen3" } }));
-    await checkOwnModel(engine({ ollamaUrl: "http://localhost:11434" }), { key: null, fetch: f.fetch });
+    expect(await checkOwnModel(engine({ ollamaUrl: "http://localhost:11434" }), { key: null, fetch: f.fetch })).toBeNull();
     expect(f.calls[0]!.url).toBe("http://127.0.0.1:11434/api/show");
     expect(f.calls[0]!.init.redirect).toBe("error");
     expect(JSON.parse(f.calls[0]!.init.body as string)).toEqual({ model: "qwen3:8b" });
@@ -258,7 +263,7 @@ describe("checkOwnModel (API)", () => {
     await expect(check(async () => json({}, 404))).rejects.toThrow("Le modèle « deepseek-chat » est introuvable sur api.example.com.");
     await expect(check(() => Promise.reject(new TypeError("fetch failed")))).rejects.toThrow("api.example.com ne répond pas.");
     const f = capture(async () => json({ choices: [{ message: { content: "o" } }] }));
-    await checkOwnModel(api, { key: null, fetch: f.fetch });
+    expect(await checkOwnModel(api, { key: null, fetch: f.fetch })).toBe("api.example.com");
     expect(f.calls[0]!.url).toBe("https://api.example.com/v1/chat/completions");
     const sent = JSON.parse(f.calls[0]!.init.body as string);
     expect(sent.model).toBe("deepseek-chat");

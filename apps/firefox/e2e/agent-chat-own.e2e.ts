@@ -65,7 +65,8 @@ async function maybeHold(res: ServerResponse): Promise<boolean> {
 
 const routes: NonNullable<Parameters<typeof startServer>[0]>["routes"] = {
   "/api/tags": (req, res) => void readBody(req).then(() => json(res, 200, { models: [{ name: MODEL, details: { parameter_size: "4B" } }, { name: "gros:cloud", remote_host: "https://ollama.com:443" }] })),
-  "/api/show": (req, res) => void readBody(req).then(() => json(res, 200, { details: {} })),
+  // The cloud model: the local Ollama forwards it to its remote host.
+  "/api/show": (req, res) => void readBody(req).then((body) => json(res, 200, body.model === "gros:cloud" ? { remote_model: "gros", remote_host: "https://ollama.com:443", details: {} } : { details: {} })),
   "/api/chat": (req, res) =>
     void readBody(req).then(async (body) => {
       if (await maybeHold(res)) json(res, 200, { message: { content: step(body) }, prompt_eval_count: 200 });
@@ -142,8 +143,8 @@ async function ollamaOnFake(): Promise<void> {
   await fill("ollama-url", model.url);
   await ownSaved((e) => e.ollamaUrl === model.url);
   await waitUi(m, "const s = doc.querySelector(arguments[0]); return s?.tagName === 'SELECT' && [...s.options].some((o) => o.value === arguments[1])", [`${OWN} [data-testid="ollama-model"]`, MODEL]);
-  // F13: an Ollama cloud model is listed greyed, never offered.
-  expect(await inUi(m, "return [...doc.querySelector(arguments[0]).options].find((o) => o.value === 'gros:cloud')?.disabled", [`${OWN} [data-testid="ollama-model"]`])).toBe(true);
+  // An Ollama cloud model is offered, marked « en ligne ».
+  expect(await inUi(m, "const o = [...doc.querySelector(arguments[0]).options].find((o) => o.value === 'gros:cloud'); return [o?.disabled, o?.textContent]", [`${OWN} [data-testid="ollama-model"]`])).toEqual([false, "gros:cloud · en ligne"]);
   await fill("ollama-model", MODEL);
   await ownSaved((e) => e.kind === "ollama" && e.ollamaModel === MODEL);
   await shows("Ce que le modèle lit et écrit reste sur votre Mac");
@@ -207,6 +208,7 @@ it("Ollama : lit une page et répond", { timeout: 90_000 }, async () => {
   await send("Quelle ville ?");
   await approveRead();
   await agentSays("Lyon");
+  expect(await textOf("chat-own-warning")).toBe("Votre modèle peut se tromper. Vérifiez les réponses importantes.");
   expect(await waitAgent<number>("return doc.querySelectorAll('[data-testid=\"chat-tool\"]').length >= 2 && doc.querySelectorAll('[data-testid=\"chat-tool\"]').length")).toBeGreaterThanOrEqual(2);
   // The read result reached the model as data.
   expect(loopSteps().at(-1)!.body.messages.at(-1).content).toContain("La ville est Lyon.");
@@ -333,6 +335,19 @@ it("une API hors du Mac est signalée dans Réglages, sur la puce et sous la sai
   expect(await textOf("chat-engine-remote")).toBe("en ligne");
   expect(await waitAgent<string>("return doc.querySelector('[data-testid=\"chat-engine-remote\"]')?.title")).toContain("vont à 127.0.0.2");
   expect(await textOf("chat-sent-to")).toBe("Envoyé à 127.0.0.2.");
+});
+
+it("un modèle cloud d'Ollama se choisit, marqué en ligne ; la discussion dit où vont les messages", async () => {
+  await launch();
+  await ollamaOnFake();
+  await fill("ollama-model", "gros:cloud");
+  await ownSaved((e) => e.ollamaModel === "gros:cloud");
+  await shows("Ce modèle n'est pas sur votre Mac : ce que l'agent lit et ce que vous lui écrivez sont envoyés à ollama.com.");
+  await ownDiscussion();
+  // Known once the host checked the model at open (/api/show names its remote host).
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-sent-to\"]')?.textContent === 'Envoyé à ollama.com.'");
+  expect(await textOf("chat-engine-remote")).toBe("en ligne");
+  expect(await textOf("chat-own-warning")).toBe("Votre modèle peut se tromper. Vérifiez les réponses importantes.");
 });
 
 it("une clé saisie juste après une nouvelle adresse va à cette adresse", async () => {

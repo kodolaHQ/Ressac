@@ -56,7 +56,6 @@ host-machine-removed = La machine de l'atelier a été supprimée : installez-la
 host-machine-remove-failed = La machine de l'atelier n'a pas pu être supprimée : { $detail }
 host-machine-damaged = La machine de l'atelier est dans un état inattendu. Redémarrez le Mac ; si elle ne repart pas, supprimez-la quand même dans Réglages › Atelier (il faudra reconnecter Claude et Codex).
 own-url-refused = Adresse refusée : pour une adresse hors de votre Mac, choisissez « API compatible OpenAI ».
-own-ollama-cloud = Modèle en ligne d'Ollama : refusé ici. Pour un modèle hébergé, connectez son API.
 own-unreachable = { $host } ne répond pas. Vérifiez l'adresse et que le serveur est lancé.
 own-key-refused = { $host } refuse la clé d'API (erreur { $status }).
 own-model-missing = Le modèle « { $model } » est introuvable sur { $host }.

@@ -24,7 +24,7 @@ describe("listOllamaModels", () => {
   });
   it("marks a cloud model (remote_host set), whose -cloud name passes the field check", async () => {
     const f = fake(async () => json({ models: [{ name: "gpt-oss:120b-cloud", remote_model: "gpt-oss:120b", remote_host: "https://ollama.com:443", details: { parameter_size: "116.8B" } }, { name: "qwen3:0.6b", remote_host: "" }] }));
-    expect(await listOllamaModels("http://localhost:11434", { fetch: f.fetch })).toEqual({ ok: true, models: [{ name: "gpt-oss:120b-cloud", size: "116.8B", cloud: true }, { name: "qwen3:0.6b" }] });
+    expect(await listOllamaModels("http://localhost:11434", { fetch: f.fetch })).toEqual({ ok: true, models: [{ name: "gpt-oss:120b-cloud", size: "116.8B", cloud: "ollama.com" }, { name: "qwen3:0.6b" }] });
   });
   it("an empty list is ok", async () => {
     expect(await listOllamaModels("http://localhost:11434", { fetch: fake(async () => json({ models: [] })).fetch })).toEqual({ ok: true, models: [] });

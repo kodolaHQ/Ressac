@@ -1,9 +1,9 @@
 import { withoutV1, withV1 } from "./claude-engine.ts";
-import { macSideUrl, modelField } from "../shared/settings.ts";
+import { macSideUrl, modelField, ollamaCloudHost } from "../shared/settings.ts";
 import { hostSay } from "./locale.ts";
 
-/** `cloud`: an Ollama cloud model (pulled as `…-cloud`, `remote_host` set): its prompts go to ollama.com, not this Mac. */
-export type OllamaModels = { ok: true; models: { name: string; size?: string; cloud?: true }[] } | { ok: false; error: string };
+/** `cloud`: an Ollama cloud model (pulled as `…-cloud`, `remote_host` set): the host its prompts go to, not this Mac. */
+export type OllamaModels = { ok: true; models: { name: string; size?: string; cloud?: string }[] } | { ok: false; error: string };
 
 const down = (): OllamaModels => ({ ok: false, error: hostSay("host-ollama-down") });
 
@@ -34,7 +34,7 @@ export async function listOllamaModels(url: string, o: { fetch?: typeof fetch; t
       .map((m) => ({
         name: m.name,
         ...(typeof m.details?.parameter_size === "string" && m.details.parameter_size ? { size: m.details.parameter_size } : {}),
-        ...(typeof m.remote_host === "string" && m.remote_host ? { cloud: true as const } : {}),
+        ...(typeof m.remote_host === "string" && m.remote_host ? { cloud: ollamaCloudHost(m)! } : {}),
       }))
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     return { ok: true, models };

@@ -656,7 +656,7 @@ export interface SettingsApi {
   writer(): Promise<{ agent: "claude" | "codex" | "workshop-stopped" | null; via?: "subscription" | "api" | "ollama" }>;
   /** Downloads the given models one after the other without waiting; a system notification says the end. */
   pullInBackground(names: string[]): Promise<SettingsResult>;
-  ollamaModels(url: string): Promise<{ ok: true; models: { name: string; size?: string; cloud?: true }[] } | { ok: false; error: string }>;
+  ollamaModels(url: string): Promise<{ ok: true; models: { name: string; size?: string; cloud?: string }[] } | { ok: false; error: string }>;
   grants(): Promise<GrantRow[]>;
   revoke(kind: GrantKind, key: string): Promise<void>;
   dataDir(): string;

@@ -171,6 +171,7 @@
     {/if}
     <button type="submit" class="primary" data-testid="chat-send" disabled={!text.trim() || sending}>{t("chat-send")}</button>
   </div>
+  {#if chat.view?.summary.engine === "own"}<p class="note" data-testid="chat-own-warning">{t("chat-composer-own-warning")}</p>{/if}
   {#if chat.view?.remote}<p class="note sent-to" data-testid="chat-sent-to" out:fade={{ duration: chat.visible ? 150 : 0 }}>{t("chat-composer-sent-to", { host: chat.view.remote })}</p>{/if}
 </form>
 

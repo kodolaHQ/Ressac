@@ -1,7 +1,7 @@
 import { withoutV1 } from "./claude-engine.ts";
 import type { Keychain } from "./keychain.ts";
 import { hostSay } from "./locale.ts";
-import { apiUrlProblem, isOnMac, onMacUrl as onMac, type OwnEngine } from "../shared/settings.ts";
+import { apiUrlProblem, isOnMac, ollamaCloudHost, onMacUrl as onMac, type OwnEngine } from "../shared/settings.ts";
 
 export type ModelMessage = { role: "system" | "user" | "assistant"; content: string };
 /** One model reply for the loop (core/agent/chat/own.ts). `promptTokens`: the reply's own prompt count, null when absent. */
@@ -205,18 +205,21 @@ export async function listOwnModels(
   }
 }
 
-/** Throws the French line when the chosen model cannot be used (checked at save and at every open). */
-export async function checkOwnModel(e: OwnEngine, o: { key: OwnKey | null; fetch?: typeof fetch }): Promise<void> {
+/**
+ * Throws the French line when the chosen model cannot be used (checked at save and at every open). Resolves to the host the
+ * messages go to when the model is off this Mac (a remote API, an Ollama cloud model), else null.
+ */
+export async function checkOwnModel(e: OwnEngine, o: { key: OwnKey | null; fetch?: typeof fetch }): Promise<string | null> {
   if (e.kind === "api") {
     // A tiny completion, the only check every compatible server answers the same way (some have no /models/<id>).
     // No output limit: newer models refuse `max_tokens`, older servers `max_completion_tokens`.
     const key = keyOrThrow(apiBase(e.apiUrl), o.key);
     const r = await apiPost(e, key, { model: e.apiModel, messages: [{ role: "user", content: "Reply OK." }] }, AbortSignal.timeout(15_000), o.fetch ?? fetch);
     if (!r.ok) throw r.error;
-    return;
+    return isOnMac(e.apiUrl) ? null : new URL(e.apiUrl).host;
   }
   const res = await ollamaPost(e, "/api/show", { model: e.ollamaModel }, AbortSignal.timeout(5000), o.fetch ?? fetch);
   const shown = (await res.json().catch(() => null)) as { remote_host?: unknown; remote_model?: unknown } | null;
-  // A cloud model (pulled as `…-cloud`) answers from ollama.com behind the loopback address.
-  if (shown?.remote_host || shown?.remote_model) throw new Error(hostSay("own-ollama-cloud"));
+  // A cloud model (pulled as `…-cloud`) answers from its remote host behind the loopback address.
+  return ollamaCloudHost(shown);
 }

@@ -51,7 +51,9 @@
 
   const model = $derived(engine.kind === "ollama" ? engine.ollamaModel : engine.apiModel);
   // The host's rule (shared): anything not on loopback is off this Mac. A saved apiUrl always parses.
-  const remoteHost = $derived(engine.kind === "api" && engine.apiUrl && !isOnMac(engine.apiUrl) ? new URL(engine.apiUrl).host : null);
+  // An Ollama cloud model: the local Ollama forwards its messages to the model's host.
+  let ollamaCloud = $state<string | null>(null);
+  const remoteHost = $derived(engine.kind === "api" ? (engine.apiUrl && !isOnMac(engine.apiUrl) ? new URL(engine.apiUrl).host : null) : ollamaCloud);
 
   let keySaved = $state(false);
   let key = $state("");
@@ -124,7 +126,7 @@
           {@render text("ollamaUrl", "ollama-url", t("own-ollama-url"))}
           <div class="field">
             <span>{t("own-model")}</span>
-            <OllamaModelPicker url={engine.ollamaUrl} value={engine.ollamaModel} noCloud onchange={(name) => change("ollamaModel", name)} />
+            <OllamaModelPicker url={engine.ollamaUrl} value={engine.ollamaModel} online bind:cloud={ollamaCloud} onchange={(name) => change("ollamaModel", name)} />
             {#if problems.ollamaModel}<span class="alert" role="status">{problems.ollamaModel}</span>{/if}
           </div>
         </div>

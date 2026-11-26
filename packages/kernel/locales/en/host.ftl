@@ -56,7 +56,6 @@ host-machine-removed = The workshop machine was removed: install it in Settings 
 host-machine-remove-failed = The workshop machine could not be removed: { $detail }
 host-machine-damaged = The workshop machine is in an unexpected state. Restart the Mac; if it still does not start, remove it anyway in Settings › Workshop (Claude and Codex will need signing in again).
 own-url-refused = Address refused: for an address outside your Mac, choose “OpenAI-compatible API”.
-own-ollama-cloud = Ollama cloud model: refused here. For a hosted model, connect its API.
 own-unreachable = { $host } does not answer. Check the address and that the server is running.
 own-key-refused = { $host } refuses the API key (error { $status }).
 own-model-missing = The model “{ $model }” cannot be found on { $host }.

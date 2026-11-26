@@ -798,7 +798,7 @@ const decorated = (win: string, view: ChatView): ChatView => {
   const remote = view.summary.engine === "own" ? (ownOpens.get(id)?.remote ?? remoteOf(ownSetting)) : null;
   return { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}), ...(prefix ? { prefix } : {}), ...(terminalWindows.has(win) ? { advanced: true as const } : {}), ...(remote ? { remote } : {}) };
 };
-/** The own model's host when it is an API off this Mac (the chip's « en ligne », the composer's line); else null. */
+/** The own model's host when it is an API off this Mac (the chip's « en ligne », the composer's line); else null. An Ollama cloud model is known only once checked at open. */
 const remoteOf = (e: OwnEngine): string | null => (e.kind === "api" && e.apiUrl && !isOnMac(e.apiUrl) ? new URL(e.apiUrl).host : null);
 /** Own discussions opening or open, with the host their messages go to (the setting they opened with). */
 const ownOpens = new Map<string, { remote: string | null }>();
@@ -927,7 +927,8 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
   let launch: HostLaunch;
   try {
     const n = await kernelReady();
-    await checkOwnModel(e, { key: e.kind === "api" ? await readOwn() : null });
+    // The model may have become a cloud one since Réglages: the view names where its messages go.
+    mark.remote = await checkOwnModel(e, { key: e.kind === "api" ? await readOwn() : null });
     if (signal.aborted) throw new Error("closed");
     const raw = await n.openHostSession({ window: win, resume: (o.transcript?.length ?? 0) > 0, agent: hostSay("own-agent-name") });
     // Closed or ended: the view names the current setting again (the next open uses it).
