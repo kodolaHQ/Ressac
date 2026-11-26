@@ -208,7 +208,7 @@ it("Ollama : lit une page et répond", { timeout: 90_000 }, async () => {
   await send("Quelle ville ?");
   await approveRead();
   await agentSays("Lyon");
-  expect(await textOf("chat-own-warning")).toBe("Votre modèle peut se tromper. Vérifiez les réponses importantes.");
+  expect(await textOf("chat-own-warning")).toBe("Votre modèle peut se tromper");
   expect(await waitAgent<number>("return doc.querySelectorAll('[data-testid=\"chat-tool\"]').length >= 2 && doc.querySelectorAll('[data-testid=\"chat-tool\"]').length")).toBeGreaterThanOrEqual(2);
   // The read result reached the model as data.
   expect(loopSteps().at(-1)!.body.messages.at(-1).content).toContain("La ville est Lyon.");
@@ -334,7 +334,7 @@ it("une API hors du Mac est signalée dans Réglages, sur la puce et sous la sai
   await ownDiscussion();
   expect(await textOf("chat-engine-remote")).toBe("en ligne");
   expect(await waitAgent<string>("return doc.querySelector('[data-testid=\"chat-engine-remote\"]')?.title")).toContain("vont à 127.0.0.2");
-  expect(await textOf("chat-sent-to")).toBe("Envoyé à 127.0.0.2.");
+  expect(await textOf("chat-sent-to")).toBe("Envoyé à 127.0.0.2");
 });
 
 it("un modèle cloud d'Ollama se choisit, marqué en ligne ; la discussion dit où vont les messages", async () => {
@@ -345,9 +345,9 @@ it("un modèle cloud d'Ollama se choisit, marqué en ligne ; la discussion dit o
   await shows("Ce modèle n'est pas sur votre Mac : ce que l'agent lit et ce que vous lui écrivez sont envoyés à ollama.com.");
   await ownDiscussion();
   // Known once the host checked the model at open (its /api/tags entry names its remote host).
-  await waitAgent("return doc.querySelector('[data-testid=\"chat-sent-to\"]')?.textContent === 'Envoyé à ollama.com.'");
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-sent-to\"]')?.textContent === 'Envoyé à ollama.com'");
   expect(await textOf("chat-engine-remote")).toBe("en ligne");
-  expect(await textOf("chat-own-warning")).toBe("Votre modèle peut se tromper. Vérifiez les réponses importantes.");
+  expect(await textOf("chat-own-warning")).toBe("Votre modèle peut se tromper");
 });
 
 it("le modèle se change dans le chat : la discussion continue sur le nouveau, marqué en ligne, et Réglages le garde", { timeout: 90_000 }, async () => {
@@ -363,7 +363,7 @@ it("le modèle se change dans le chat : la discussion continue sur le nouveau, m
   expect(await waitAgent<string>("return doc.querySelector('[data-testid=\"chat-model-gros:cloud\"]').textContent.replace(/\\s+/g, ' ').trim()")).toBe("gros:cloud · en ligne");
   await click(m, '[data-testid="chat-model-gros:cloud"]', { frame: "agent" });
   await waitAgent("return doc.querySelector('[data-testid=\"chat-model-chip\"]')?.textContent.trim() === 'gros:cloud' && !doc.querySelector('[data-testid=\"chat-model-menu\"]')");
-  await waitAgent("return doc.querySelector('[data-testid=\"chat-sent-to\"]')?.textContent === 'Envoyé à ollama.com.'");
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-sent-to\"]')?.textContent === 'Envoyé à ollama.com'");
   await ownSaved((e) => e.ollamaModel === "gros:cloud");
   await send("deux");
   await agentSays("Second.");
