@@ -83,11 +83,21 @@ const routes: NonNullable<Parameters<typeof startServer>[0]>["routes"] = {
 let model: Awaited<ReturnType<typeof startServer>>;
 let other: Awaited<ReturnType<typeof startServer>>;
 let site: Awaited<ReturnType<typeof startServer>>;
+/** What the form page posted on each input: the value the browser wrote in its field. */
+const got: string[] = [];
+const FORM = `<title>Inscription</title><form action="/recu"><label>E-mail <input type="email" name="email"></label></form>
+<script>document.querySelector("input").addEventListener("input", (e) => fetch("/recu?v=" + encodeURIComponent(e.target.value)));</script>`;
 beforeAll(async () => {
   model = await startServer({ routes });
   // A second provider (another origin) for the key's binding.
   other = await startServer({ routes });
-  site = await startServer({ routes: { "/ville": (_req, res) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end("<title>Ville</title><p>La ville est Lyon.</p>") } });
+  site = await startServer({
+    routes: {
+      "/ville": (_req, res) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end("<title>Ville</title><p>La ville est Lyon.</p>"),
+      "/formulaire": (_req, res) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(FORM),
+      "/recu": (req, res) => (got.push(new URL(req.url!, "http://x").searchParams.get("v") ?? ""), void res.writeHead(204).end()),
+    },
+  });
 });
 afterAll(async () => {
   await Promise.all([model?.close(), other?.close(), site?.close()]);
@@ -98,6 +108,7 @@ let w: LaunchedRessac | undefined;
 let m: Marionette;
 let ownProfile: string | undefined;
 beforeEach(() => {
+  got.length = 0;
   Object.assign(fake, { script: [], refuseJsonSchema: false, hold: false, heldClosed: false });
   rmSync(logFile, { force: true });
   rmSync(goFile, { force: true });
@@ -297,6 +308,51 @@ it("une adresse du passeport tapée arrive masquée au modèle", async () => {
   const sent = JSON.stringify(loopSteps().map((l) => l.body.messages));
   expect(sent).toContain("⟨email-");
   expect(sent).not.toContain(EMAIL.split("@")[0]);
+});
+
+const MASK_CARD = '[data-testid="mask-request"]';
+const actionsOf = (l: Logged) => l.body.format.properties.action.enum as string[];
+
+it("un modèle cloud d'Ollama remplit un champ avec le passeport, après la carte, sans voir la valeur", { timeout: 120_000 }, async () => {
+  const profile = (ownProfile = mkdtempSync(join(tmpdir(), "ressac-firefox-")));
+  await writePassport(profile, [{ id: "e", field: "email", value: { text: EMAIL }, origins: [] }]);
+  await launch({ profile, env: { RESSAC_TEST_PASSPORT_CIPHER: "memory", RESSAC_TEST_REAUTH: "pass" } });
+  await ollamaOnFake();
+  await fill("ollama-model", "gros:cloud");
+  await ownSaved((e) => e.ollamaModel === "gros:cloud");
+  let tab = "";
+  fake.script = [
+    () => ({ action: "open_tab", url: `${site.url}/formulaire` }),
+    (last) => ({ action: "read_tab", id: (tab = last.split("\n")[2]!.trim()) }),
+    (last) => ({ action: "fill_field", id: tab, field: Number(/(\d+)\. email — /.exec(last)![1]), passport: "email" }),
+    () => ({ action: "answer", text: "Rempli." }),
+  ];
+  await ownDiscussion();
+  await send("Remplis mon e-mail");
+  await approveRead();
+  await waitUi(m, "const c = doc.querySelector(arguments[0]); return c?.dataset.kind === 'mask-fill'", [MASK_CARD], 30_000);
+  await click(m, `${MASK_CARD} button`, { text: "Remplir" });
+  await agentSays("Rempli.");
+  await expect.poll(() => got.at(-1), { timeout: 15_000 }).toBe(EMAIL);
+  // The model chose among fill_field's, and never saw the value.
+  expect(loopSteps().every((l) => actionsOf(l).includes("fill_field"))).toBe(true);
+  expect(JSON.stringify(loopSteps().map((l) => l.body.messages))).not.toContain(EMAIL.split("@")[0]);
+  expect(await textOf("chat-tool")).toContain("Remplit le formulaire");
+});
+
+it("un modèle sur le Mac ne remplit pas : fill_field n'est pas proposé, et refusé s'il l'écrit", async () => {
+  await launch();
+  await ollamaOnFake();
+  fake.script = [() => ({ action: "fill_field", id: "t1", field: 0, value: "x" }), () => ({ action: "fill_field", id: "t1", field: 0, value: "x" })];
+  await ownDiscussion();
+  await send("Remplis le champ");
+  // The reply and its one retry, then the turn ends (« Arrêter » gives way to « Envoyer ») with no tool called.
+  await expect.poll(() => loopSteps().length, { timeout: 30_000 }).toBe(2);
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-stop\"]') && !!doc.querySelector('[data-testid=\"chat-send\"]')", [], 30_000);
+  expect(await waitAgent<number>("return doc.querySelectorAll('[data-testid=\"chat-tool\"]').length + 1")).toBe(1);
+  expect(loopSteps().length).toBe(2);
+  expect(loopSteps().some((l) => actionsOf(l).includes("fill_field") || l.body.messages[0].content.includes("fill_field"))).toBe(false);
+  expect(await inUi<boolean>(m, "return !!doc.querySelector(arguments[0])", [MASK_CARD])).toBe(false);
 });
 
 it("une adresse d'Ollama hors du Mac est refusée", async () => {
