@@ -49,6 +49,7 @@ const { labInUse } = await import("./tiers.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
+const { asksLog } = await import("./asks-log.ts");
 const { hostPassport, maskGuess, maskingStatus, maskPaste, maskRuns, revealLocal } = await import("./masking.ts");
 const { createSites } = await import("./sites.ts");
 const { copyComponentRequest, copyHomeRequest } = await import("./home-copy.ts");
@@ -1664,7 +1665,7 @@ function maskNotice(o: { text: unknown }, win: string | undefined, unless = fals
   maskNotices.set(session, String(o.text).slice(0, 300));
   maskingChanged();
 }
-const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url), maskNotice);
+const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url), maskNotice, asksLog(join(dataDir, "logs", "asks.jsonl")));
 // The titles the agent's list_tabs gives, for the chat's « Lit la page « … » » lines (read_tab's input has the id only).
 const listTabs = bridge.listTabs;
 bridge.listTabs = () => listTabs().then((l) => (rememberTabs(l), l));

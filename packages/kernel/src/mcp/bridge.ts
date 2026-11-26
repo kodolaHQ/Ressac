@@ -3,6 +3,7 @@ import type { CpuProfile } from "../devtools/summaries.js";
 import type { ChangeHost } from "../workflows/pacing.js";
 import type { ReadPage } from "../workflows/protocol.js";
 import type { Band } from "../search/sessions.js";
+import type { AskSink } from "./asks.js";
 
 /** The options of an invisible page read (see `BrowserBridge.lirePageInvisible`). */
 export interface PageReadOptions {
@@ -146,6 +147,8 @@ export type LoadOptions = { allow?: string[] | null };
 
 /** What the browser gives the kernel. */
 export interface BrowserBridge {
+  /** The approval log (mcp/asks.ts): every card the kernel asks writes its why and its answer here; absent, none. */
+  noteAsk?: AskSink;
   activeTab(): Promise<TabInfo | null>;
   listTabs(): Promise<TabInfo[]>;
   /** Throws TabNotFound if the id is unknown (like lireTexte, naviguer and capturer). */

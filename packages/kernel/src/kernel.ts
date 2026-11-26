@@ -19,6 +19,7 @@ import { SessionAgent } from "./pty/session.js";
 import { AccessPolicy } from "./access/policy.js";
 import { SearchSessions } from "./search/sessions.js";
 import type { BrowserBridge, TabInfo } from "./mcp/bridge.js";
+import { askScope, noted } from "./mcp/asks.js";
 import type { Zone } from "./mask/detectors.js";
 import { Masker } from "./mask/masker.js";
 import { PassportStore } from "./mask/passport.js";
@@ -886,7 +887,9 @@ export async function createKernel(o: {
           const { snapshot, changes } = await instructions.pending(kind);
           if (changes.length === 0) break;
           if (!review || round === 3) throw new Error(say(loc(), "kernel-err-instructions-changed"));
-          if ((await review(changes)) === "keep") await instructions.keep(kind, snapshot);
+          const note = { kind: "instruction-review", rule: `instructions-changed-${kind}` };
+          const scope = { window: win, agent: chosen.id, chat: conversation ?? null, mode };
+          if ((await askScope.run(scope, () => noted(o.bridge.noteAsk, note, () => review(changes), (c) => c === "keep"))) === "keep") await instructions.keep(kind, snapshot);
           else await instructions.revert(kind, snapshot);
         }
         if (kind === "claude") await instructions.acceptedAgents();

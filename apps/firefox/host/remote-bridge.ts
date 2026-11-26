@@ -18,6 +18,7 @@ import {
   type BrowserBridge,
   type Band,
   type LoadOptions,
+  type AskSink,
 } from "../../../packages/kernel/src/index.ts";
 import type { History } from "../core/history.ts";
 import type { Rpc } from "../shared/rpc.ts";
@@ -41,6 +42,8 @@ export class RemoteBridge implements BrowserBridge {
     private readonly siteAllowed: (site: string, url: string) => boolean = () => false,
     /** The kernel's notice for a conversation (fill_field blocked): the host keeps it for the window's panel. */
     private readonly lockNotice: (o: { text: string }, window: string | undefined) => void = () => {},
+    /** The approval log (host/asks-log.ts); absent, no card is logged. */
+    readonly noteAsk?: AskSink,
   ) {
     if (h)
       this.history = {

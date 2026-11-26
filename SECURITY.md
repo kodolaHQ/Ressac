@@ -139,6 +139,7 @@ Réglages › Mots de passe lists, shows, copies, adds, edits and deletes Firefo
 
 - **Updates are signed** with Ressac's own key (its certificate is built into the app) and must be newer than the running version (an update that could not be staged is judged by the feed's unsigned version); the DMG is signed with a Developer ID and notarized, and publishing refuses an update that does not verify. The VM image and its tools are pinned by SHA-256.
 - **Telemetry** sends nothing before its notice has shown and one switch turns it all off: Ressac's own errors (addresses and the home path scrubbed), Firefox's crash reports (minidumps, which can hold page data and are not scrubbed: off by default, their own switch in Réglages › Confidentialité) and one count per launch (`apps/firefox/shared/telemetry.ts`, `apps/firefox/chrome/store/telemetry.ts`).
+- **A local log of approval requests**: every card the agent's session asks (and its answer and delay) leaves one line in the data folder's `logs/asks.jsonl`, capped near 1 MB, never sent: its kind, the rule that raised it, the tool, the site and an address path with no query, fragment or id-like segment (none when the card shows a red line). No page text, typed text, value, label or token (`packages/kernel/src/mcp/asks.ts`).
 
 ### The chat
 

@@ -1,3 +1,4 @@
+import { noted } from "./asks.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { DEV_RIGHTS, type DevRight, type AccessPolicy } from "../access/policy.js";
@@ -152,7 +153,7 @@ export function registerDevTools(
       const unsubscribe = policy.onChange(() => {
         if (policy.conversation !== conversation) removal.abort();
       });
-      const request = ask(o, { rights: missing, reason: reason, agent: c.agent }, removal.signal)
+      const request = noted(bridge.noteAsk, { kind: "devtools", rule: `rights-missing:${missing.join("+")}`, url: o.url }, () => ask(o, { rights: missing, reason: reason, agent: c.agent }, removal.signal), (r) => r.length > 0, removal.signal)
         .then(async (response) => {
           if (policy.conversation !== conversation) return [];
           // The user may have changed site during the question: their grant is for the site they saw.

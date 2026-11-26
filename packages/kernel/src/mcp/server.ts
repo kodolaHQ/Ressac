@@ -39,6 +39,7 @@ import { TOOL_KINDS } from "../mask/inventory.js";
 import { NO_WORKSPACE_LOCK, type WorkspaceLockHook } from "../mask/lock.js";
 import { nameAgreement, valueName } from "../mask/names.js";
 import { LABEL_SOURCE, LABELS, relabel, type Pin } from "../mask/table.js";
+import { askScope, noted } from "./asks.js";
 import { FIELDS_MAX, TabNotFound, PrivateTab, SiteChanged, LoadRefused, PRIVATE_TEXT, type TabInfo, type PageLink, type TabRead, type PageField, type FieldChoice, type BrowserDevTools, type BrowserBridge, type HistoryResult, type FillSeal } from "./bridge.js";
 
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
@@ -436,6 +437,8 @@ async function askDataCard(
   policy: AccessPolicy,
   requests: Map<string, Promise<boolean>>,
   card: { id: string; name: string; agent: string; kind?: "action" | "site" | "history" },
+  /** Why the card is asked, for the approval log (mcp/asks.ts). */
+  rule: string,
   giveGrant: () => void,
   granted: () => boolean,
   /** Key of the pending card in `demandes` (by default the target's id). */
@@ -445,7 +448,9 @@ async function askDataCard(
 ): Promise<boolean> {
   const ask = bridge.askWidgetData?.bind(bridge);
   if (!ask) return false;
-  return (await conversationCard(policy, requests, key, (signal) => ask(card, signal), giveGrant, stale)) && granted();
+  const kind = card.kind === "action" ? "action-data" : card.kind === "site" ? "site-app" : card.kind === "history" ? "history" : "widget-data";
+  const shown = (signal: AbortSignal) => noted(bridge.noteAsk, { kind, rule }, () => ask(card, signal), Boolean, signal);
+  return (await conversationCard(policy, requests, key, shown, giveGrant, stale)) && granted();
 }
 
 /**
@@ -494,13 +499,16 @@ function askAddressCard(
   bridge: BrowserBridge,
   policy: AccessPolicy,
   requests: Map<string, Promise<boolean>>,
-  card: { url: string; reason: string; agent: string; danger?: string },
+  /** `why`: the red line's or the mark's code, for the approval log only (never sent to the card). */
+  card: { url: string; reason: string; agent: string; danger?: string; found?: true; why?: string },
   key: string,
   window: string | undefined,
   /** Registers a callback for the end of the search (stop, idle, tab closed): the card then comes down. */
   onEnd: (f: () => void) => () => void,
   /** The agent's request: dropped, the card comes down (refused). */
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  /** Why the card is asked, for the approval log (mcp/asks.ts); `kind` defaults to the address card's. */
+  note: { kind?: string; rule: string },
 ): Promise<boolean> {
   let request = requests.get(key);
   if (!request) {
@@ -515,7 +523,10 @@ function askAddressCard(
     const abandon = new Promise<boolean>((ok) => removal.signal.addEventListener("abort", () => ok(false), { once: true }));
     const offEnd = onEnd(() => removal.abort());
     const unsubscribe = () => { offChange(); offEnd(); };
-    request = Promise.race([bridge.askAddress!(card, window, removal.signal), abandon])
+    const { why, ...shown } = card;
+    // An address with a red line may carry the value in its path: logged by its rule only.
+    const logged = { kind: note.kind ?? (card.found ? "address-found" : "address-composed"), rule: why ? `${note.rule}:${why}` : note.rule, ...(card.danger ? {} : { url: card.url }) };
+    request = Promise.race([noted(bridge.noteAsk, logged, () => bridge.askAddress!(shown, window, removal.signal), Boolean, removal.signal), abandon])
       .then((yes) => yes && policy.conversation === conversation)
       .finally(() => {
         unsubscribe();
@@ -767,10 +778,10 @@ export function createToolsServer(
    */
   const marked = new Map<string, { shown: string; lines: string[]; locked: boolean; found: boolean }>();
   /** `card` with the gate's lines for `url`, if it marked it. */
-  const withMask = <C extends { url: string; danger?: string }>(card: C, url: string): C => {
+  const withMask = <C extends { url: string; danger?: string; why?: string }>(card: C, url: string): C => {
     const m = marked.get(url);
     // `found`: a link read on a page (a handle), not an address the agent wrote: the card says so.
-    return m ? { ...card, url: m.shown, danger: [...m.lines, card.danger].filter(Boolean).join("\n"), ...(m.found ? { found: true as const } : {}) } : card;
+    return m ? { ...card, url: m.shown, danger: [...m.lines, card.danger].filter(Boolean).join("\n"), ...(m.found ? { found: true as const } : {}), why: [m.locked ? "mask-locked" : "mask-handle", card.why].filter(Boolean).join("+") } : card;
   };
   /** The key of `url`'s card: a marked one is this session's own, never shared with an unmarked card for it. */
   const cardKey = (url: string, otherwise: string) => (marked.has(url) ? `mask:${session}:${url}` : otherwise);
@@ -867,7 +878,8 @@ export function createToolsServer(
       if (!names.length) continue;
       const { name, agreement, de } = named(names);
       const alert = { name, destination: x.to, text: l10n("kernel-mask-label-alert", { agreement, de, destination: x.to }) };
-      if (!(await bridge.askLabelAlert?.(alert, win ?? undefined, signal))) return false;
+      const ask = bridge.askLabelAlert?.bind(bridge);
+      if (!ask || !(await noted(bridge.noteAsk, { kind: "mask-label-alert", rule: "label-sent" }, () => ask(alert, win ?? undefined, signal), Boolean, signal))) return false;
     }
     return true;
   }
@@ -897,7 +909,7 @@ export function createToolsServer(
     const card = { url, reason: why.slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", danger };
     // During a search, a step like the other cards: the idle delay does not end the search under the card.
     const cur = searching?.sessions.current(key);
-    const ask = () => askAddressCard(bridge, policy, requests, card, `mask:${session}:${url}`, win ?? undefined, cur ? (f) => searching!.sessions.onEnd(cur.tabId, f) : () => () => {}, signal);
+    const ask = () => askAddressCard(bridge, policy, requests, card, `mask:${session}:${url}`, win ?? undefined, cur ? (f) => searching!.sessions.onEnd(cur.tabId, f) : () => () => {}, signal, { kind: "outflow", rule: [locked ? "outflow-locked" : "", hit ? `outflow-hit-${hit.kind}` : ""].filter(Boolean).join("+") });
     return (await (cur ? searching!.sessions.step(cur.tabId, l10n("kernel-search-address-step"), ask) : ask())) ? null : refused;
   }
   /** A tab and its origin, for a check that leaves out what was read there; the origin is unknown for a missing tab. */
@@ -922,7 +934,7 @@ export function createToolsServer(
         }
       : run;
     // The single exit (spec § 5.3): results, errors and exceptions all leave masked; an image is gated by its tool.
-    const masked = async (...a: unknown[]): Promise<Result> => {
+    const guarded = async (...a: unknown[]): Promise<Result> => {
       // Read at the call: the lab may have gone off since the agent listed the tools.
       if (LAB_TOOLS.has(name) && !lab()) return text(l10n("kernel-mcp-lab-off"), true);
       let r: Result;
@@ -947,6 +959,8 @@ export function createToolsServer(
       const content = r.content.map((c) => (c.type === "text" ? { type: "text" as const, text: segments.apply(c.text, labels, words) } : c));
       return { content, ...(r.isError ? { isError: true } : {}) };
     };
+    // The approval log names the tool a card was asked from (mcp/asks.ts).
+    const masked = (...a: unknown[]) => askScope.run({ ...askScope.getStore(), tool: name }, () => guarded(...a));
     masker.covered.add(name);
     return registerTool(name, config as never, masked as never);
   }) as unknown as typeof server.registerTool;
@@ -968,7 +982,7 @@ export function createToolsServer(
     // Deleted during the card: the card is removed and counts as a denial (recreated, the app asks for its own again).
     const removals = policy.siteReadRemovals(site);
     return askDataCard(
-      bridge, policy, requests, { id: site, name: name, agent: dev?.agent ?? "L'agent", kind: "site" },
+      bridge, policy, requests, { id: site, name: name, agent: dev?.agent ?? "L'agent", kind: "site" }, "site-app-not-granted",
       () => policy.grantSiteRead(site, hash), () => policy.grantedSiteRead(site, hash), `site:${site}`,
       () => policy.siteReadRemovals(site) !== removals,
     );
@@ -982,7 +996,7 @@ export function createToolsServer(
     if (policy.canRead(o)) return true;
     // Like for a tab: site.json may have been rewritten (window re-read) during the card; today's window counts.
     if (o.site !== undefined) return (await siteAccess(o.site, o.title, o.hash)) && policy.canRead(await tab(o.id));
-    if (!(await conversationCard(policy, requests, o.id, (signal) => bridge.askPermission(o, signal), () => policy.grant(o)))) return false;
+    if (!(await conversationCard(policy, requests, o.id, (signal) => noted(bridge.noteAsk, { kind: "read-tab", rule: "tab-not-granted", url: o.url }, () => bridge.askPermission(o, signal), Boolean, signal), () => policy.grant(o)))) return false;
     // The user may have changed site during the question: their grant is for the site they saw.
     return policy.canRead(await tab(o.id));
   }
@@ -1175,7 +1189,7 @@ export function createToolsServer(
   }
 
   /** Pauses the search on its tab with `band`. Returns the text to answer, or undefined when the user lets it go on. */
-  async function pause(tabId: string, band: string, signal?: AbortSignal): Promise<string | undefined> {
+  async function pause(tabId: string, band: string, signal: AbortSignal | undefined, rule: string): Promise<string | undefined> {
     const sessions = searching!.sessions;
     // A hand already open (hand_over, another pause): the user answers it first, then sees this message on its own.
     const dropped = new Promise<void>((ok) => signal?.addEventListener("abort", () => ok(), { once: true }));
@@ -1188,7 +1202,7 @@ export function createToolsServer(
     signal?.addEventListener("abort", abandon, { once: true });
     if (signal?.aborted) abandon();
     let r;
-    try { r = await waiting; } finally { signal?.removeEventListener("abort", abandon); }
+    try { r = await noted(bridge.noteAsk, { kind: "search-pause", rule }, () => waiting, (x) => x.outcome === "continue", signal); } finally { signal?.removeEventListener("abort", abandon); }
     if (r.outcome === "continue") return undefined;
     if (r.outcome === "stop") { searching!.sessions.takeStop(win ?? MAIN_WINDOW, tabId); return STOP_TEXT; }
     return CLOSED_TEXT;
@@ -1196,8 +1210,9 @@ export function createToolsServer(
 
   /** The red line of an address card whose address carries a secret or private data the agent read (it never blocks);
    *  `clicks`: what the link followed spells with the ones before it, judged first. */
-  async function danger(url: string, clicks?: OutflowHit): Promise<{ danger?: string }> {
-    const hit = clicks ?? checkOutflow(url, true) ?? maskedNameIn(url);
+  async function danger(url: string, clicks?: OutflowHit): Promise<{ danger?: string; why?: string }> {
+    const out = clicks ?? checkOutflow(url, true);
+    const hit = out ?? maskedNameIn(url);
     // The fallback: a word of its host the agent read only in the user's sources (an employer, a shop on a statement).
     const host = URL.canParse(url) ? domainToUnicode(new URL(url).hostname) : "";
     // The user's own sites (every source tab open, read or not) are no leak: their host words, alone or joined, count for none.
@@ -1208,8 +1223,9 @@ export function createToolsServer(
     const read = hit ? undefined : outflow?.sourceWord(key, foldedWords(host).filter((w) => !HOST_STOP_WORDS.has(w) && !own.has(w)));
     // Sent before its page is read, whatever line it got: that page showing the words does not make them the web's.
     outflow?.wrote(key, host);
-    if (hit) return { danger: OUTFLOW_DANGER(locale(), hit) };
-    return read ? { danger: l10n("kernel-outflow-danger-source-word", { source: read.source, masked: mask(read.word) }) } : {};
+    // `why`: the approval log's code for the red line (mcp/asks.ts), never shown.
+    if (hit) return { danger: OUTFLOW_DANGER(locale(), hit), why: `${clicks ? "clicks" : out ? "outflow" : "masked-name"}-${hit.kind}` };
+    return read ? { danger: l10n("kernel-outflow-danger-source-word", { source: read.source, masked: mask(read.word) }), why: "source-word" } : {};
   }
   /** A whole word of a name this conversation masked, written in `out` (an address or a query): the agent may spell a
    *  masked name it saw in clear elsewhere (a sender's domain). Case and accents ignored; words under 4 letters (« du »,
@@ -1262,7 +1278,7 @@ export function createToolsServer(
     if (!isSensitive(o.url)) return true;
     return oncePerSearch(
       (t) => `search:${t}:${originOf(o.url)}`,
-      (k) => (had ? conversationCard(policy, requests, k, (signal) => bridge.askPermission(o, signal), () => {}) : Promise.resolve(true)),
+      (k) => (had ? conversationCard(policy, requests, k, (signal) => noted(bridge.noteAsk, { kind: "read-tab", rule: "sensitive-once-per-search", url: o.url }, () => bridge.askPermission(o, signal), Boolean, signal), () => {}) : Promise.resolve(true)),
     );
   }
 
@@ -1301,7 +1317,7 @@ export function createToolsServer(
     if (url.length > URL_MAX) return TOO_LONG_TEXT;
     if (!bridge.askAddress) return denial(url);
     const card = withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(shown, clicks)) }, url);
-    const yes = await askAddressCard(bridge, policy, requests, card, cardKey(url, `address:${url}`), win ?? undefined, () => () => {}, signal);
+    const yes = await askAddressCard(bridge, policy, requests, card, cardKey(url, `address:${url}`), win ?? undefined, () => () => {}, signal, { rule: free ? "address-unread" : "address-flagged" });
     if (!yes) return denial(url);
     policy.grantAddress(shown);
     return null;
@@ -1351,7 +1367,7 @@ export function createToolsServer(
     const danger = l10n("kernel-mask-handle-danger", { ...named(pin ? issuedNames(pin.handle) : []), from: siteOf(from), to: siteOf(to) });
     const card = { url: to, reason: "", agent: dev?.agent ?? "L'agent", danger };
     // Keyed by what it says too: a load from another handle waits for its own card, never shares one naming another value.
-    return askAddressCard(bridge, policy, requests, card, `mask:${session}:hop:${pin?.handle ?? ""}:${to}`, win ?? undefined, () => () => {}, signal);
+    return askAddressCard(bridge, policy, requests, card, `mask:${session}:hop:${pin?.handle ?? ""}:${to}`, win ?? undefined, () => () => {}, signal, { kind: "mask-hop", rule: "handle-hop" });
   }
 
   /** The search tab `id` is the user's for now (a hand is open on it). */
@@ -1424,7 +1440,7 @@ export function createToolsServer(
         // The user's card names a passport value by its field (design § 8.1); the agent's texts and the lock keep the type's name.
         const shown = found.passport ? passportCardName(found) : name;
         const card = { name: shown, reason, agent: dev?.agent ?? "L'agent", conversation, text: l10n("kernel-mask-reveal-card", { name: shown }), label };
-        const yes = ask && (await conversationCard(policy, requests, `reveal:${conversation}:${label}`, (signal) => ask(card, win ?? undefined, AbortSignal.any([signal, extra.signal])), () => {}));
+        const yes = ask && (await conversationCard(policy, requests, `reveal:${conversation}:${label}`, (signal) => noted(bridge.noteAsk, { kind: "mask-reveal", rule: "reveal-asked" }, () => ask(card, win ?? undefined, AbortSignal.any([signal, extra.signal])), Boolean, signal), () => {}));
         if (!yes) return text(REVEAL_DENIED);
         if (otherSessions()) return text(l10n("kernel-mask-reveal-shared", { name }));
         // The conversation may have ended during the card: its table is wiped.
@@ -1666,7 +1682,8 @@ export function createToolsServer(
         const ask = bridge.askFill.bind(bridge);
         let picks: (string | null)[] | undefined;
         const yes = await conversationCard(policy, requests, `fill:${session}:${seals.map((s) => s.seal).join(",")}`, async (signal) => {
-          const answer = await ask(card, win ?? undefined, AbortSignal.any([signal, ...(extra ? [extra.signal] : [])]));
+          const why = [saved_login && "saved-login", used.length && "labels", byKind && "by-kind", foreign.length && "foreign", framed.length && "framed", locked && "locked", hit && `hit-${hit.kind}`, acts && "action-elsewhere", elsewhere.length && "posts-elsewhere", choosing && "choosing"].filter(Boolean).join("+");
+          const answer = await noted(bridge.noteAsk, { kind: "mask-fill", rule: `fill:${why}`, ...(danger ? {} : { url: card.where }) }, () => ask(card, win ?? undefined, AbortSignal.any([signal, ...(extra ? [extra.signal] : [])])), (r) => r.yes, signal);
           login = answer.login;
           picks = answer.picks;
           return answer.yes;
@@ -1801,7 +1818,7 @@ export function createToolsServer(
         if (!free || clicks || marked.has(url)) {
           if (!bridge.askAddress) return text(denial(url, UNREAD_ADDRESS_TEXT));
           const yes = await sessions.step(cur.tabId, l10n("kernel-search-address-step"), async () =>
-            askAddressCard(bridge, policy, requests, withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(given, clicks)) }, url), cardKey(url, `address:${cur.tabId}:${url}`), win ?? undefined, (f) => sessions.onEnd(cur.tabId, f), extra?.signal),
+            askAddressCard(bridge, policy, requests, withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(given, clicks)) }, url), cardKey(url, `address:${cur.tabId}:${url}`), win ?? undefined, (f) => sessions.onEnd(cur.tabId, f), extra?.signal, { rule: free ? "search-flagged" : "search-unread" }),
           );
           if (!sessions.owns(cur.tabId)) return text(sessions.takeStop(key, cur.tabId) ? STOP_TEXT : CLOSED_TEXT);
           if (!yes) return text(denial(url));
@@ -1861,7 +1878,7 @@ export function createToolsServer(
           // An address the agent composed: the user decides, on a card showing it whole.
           if (!bridge.askAddress) return text(denial(url, UNREAD_ADDRESS_TEXT));
           const yes = await sessions.step(id, l10n("kernel-search-address-step"), async () =>
-            askAddressCard(bridge, policy, requests, withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(asGiven, clicks)) }, url), cardKey(url, `address:${id}:${url}`), win ?? undefined, (f) => sessions.onEnd(id, f), extra?.signal),
+            askAddressCard(bridge, policy, requests, withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(asGiven, clicks)) }, url), cardKey(url, `address:${id}:${url}`), win ?? undefined, (f) => sessions.onEnd(id, f), extra?.signal, { rule: free ? "search-flagged" : "search-unread" }),
           );
           if (!sessions.owns(id)) return text(sessions.takeStop(win ?? MAIN_WINDOW, id) ? STOP_TEXT : CLOSED_TEXT);
           // The user took the page while the card was up.
@@ -2025,7 +2042,7 @@ export function createToolsServer(
           let o: TabInfo;
           if (current) {
             if (hit) {
-              const held = await pause(current.tabId, OUTFLOW_PAUSE(locale(), hit), extra?.signal);
+              const held = await pause(current.tabId, OUTFLOW_PAUSE(locale(), hit), extra?.signal, `outflow-query-${hit.kind}`);
               if (held) return text(held);
               // The user took the page again after the pause.
               if (sessions.handing(current.tabId)) return text(HANDING_TEXT, true);
@@ -2041,7 +2058,7 @@ export function createToolsServer(
             sessions.start(key, o.id, goal);
             searching!.asked.add(`ran:${policy.conversation}:${o.id}`);
             if (hit) {
-              const stop = await pause(o.id, OUTFLOW_PAUSE(locale(), hit), extra?.signal);
+              const stop = await pause(o.id, OUTFLOW_PAUSE(locale(), hit), extra?.signal, `outflow-query-${hit.kind}`);
               if (stop) return text(stop);
               const held = await open({ query }, o.id);
               if (typeof held === "string") return text(held);
@@ -2093,7 +2110,7 @@ export function createToolsServer(
             if (free && !clicks && !marked.has(real)) { ok.push([u, go]); continue; }
             if (!bridge.askAddress) { errors.set(u, `Erreur : ${denial(real, UNREAD_ADDRESS_TEXT)}`); continue; }
             const t = tabId;
-            const ask = async () => askAddressCard(bridge, policy, requests, withMask({ url: real, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(u, clicks)) }, real), cardKey(real, `address:${t ?? key}:${real}`), win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}), extra?.signal);
+            const ask = async () => askAddressCard(bridge, policy, requests, withMask({ url: real, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(u, clicks)) }, real), cardKey(real, `address:${t ?? key}:${real}`), win ?? undefined, (f) => (t ? sessions.onEnd(t, f) : () => {}), extra?.signal, { rule: free ? "search-flagged" : "search-unread" });
             const yes = await (t ? sessions.step(t, l10n("kernel-search-address-step"), ask) : ask());
             if (t && !sessions.owns(t)) return ended();
             if (!yes) { errors.set(u, `Erreur : ${denial(real)}`); continue; }
@@ -2262,7 +2279,7 @@ export function createToolsServer(
   const historyAccess = (): Promise<boolean> =>
     policy.historyGranted()
       ? Promise.resolve(true)
-      : askDataCard(bridge, policy, requests, { id: "history", name: "", agent: dev?.agent ?? "L'agent", kind: "history" }, () => policy.grantHistory(), () => policy.historyGranted(), "history:");
+      : askDataCard(bridge, policy, requests, { id: "history", name: "", agent: dev?.agent ?? "L'agent", kind: "history" }, "history-not-granted", () => policy.grantHistory(), () => policy.historyGranted(), "history:");
 
   /** `historyAccess`, then rule 3: the card comes again once per search, and once after it (a card just answered counts). */
   async function userDataAccess(): Promise<boolean> {
@@ -2270,7 +2287,7 @@ export function createToolsServer(
     if (!(await historyAccess())) return false;
     return oncePerSearch(
       (t) => `history:${t}`,
-      (k) => (had ? askDataCard(bridge, policy, requests, { id: "history", name: "", agent: dev?.agent ?? "L'agent", kind: "history" }, () => {}, () => policy.historyGranted(), k) : Promise.resolve(true)),
+      (k) => (had ? askDataCard(bridge, policy, requests, { id: "history", name: "", agent: dev?.agent ?? "L'agent", kind: "history" }, "sensitive-once-per-search", () => {}, () => policy.historyGranted(), k) : Promise.resolve(true)),
     );
   }
 
@@ -2350,7 +2367,7 @@ export function createToolsServer(
         if (!locked(o)) return true;
         const ask = bridge.askDevUnlock?.bind(bridge);
         const card = { agent: dev.agent, text: l10n("kernel-mask-devtools-card") };
-        if (!ask || !(await conversationCard(policy, requests, `dev-unlock:${o.id}`, (signal) => ask(o, card, signal), () => policy.unlockDev(o)))) return false;
+        if (!ask || !(await conversationCard(policy, requests, `dev-unlock:${o.id}`, (signal) => noted(bridge.noteAsk, { kind: "mask-devtools", rule: policy.devLocked(o) ? "dev-carrier" : "sources-zone", url: o.url }, () => ask(o, card, signal), Boolean, signal), () => policy.unlockDev(o)))) return false;
         // Unlocked for the origin the card showed: a tab that left it meanwhile stays locked.
         const now = await tab(o.id);
         return originOf(now.url) === originOf(o.url) && !locked(now);
@@ -2393,7 +2410,7 @@ function registerWidgetsTools(
   async function askIfNeeded(id: string, widget: AgentWidget): Promise<boolean> {
     if (allowed(id, widget)) return true;
     return askDataCard(
-      bridge, policy, w.requests, { id, name: widget.name, agent: w.agent },
+      bridge, policy, w.requests, { id, name: widget.name, agent: w.agent }, "account-widget-not-granted",
       () => policy.grantWidgetData(id),
       () => policy.widgetDataGranted(id),
     );
@@ -2512,7 +2529,7 @@ function registerActionsTools(
   async function askIfNeeded(id: string, action: { name: string; account: boolean }): Promise<boolean> {
     if (allowed(id, action)) return true;
     return askDataCard(
-      bridge, policy, a.requests, { id, name: action.name, agent: a.agent, kind: "action" },
+      bridge, policy, a.requests, { id, name: action.name, agent: a.agent, kind: "action" }, "account-action-not-granted",
       () => policy.grantActionData(id),
       () => policy.actionDataGranted(id),
     );
@@ -2870,7 +2887,8 @@ export async function startMcpServer(o: {
     });
     try {
       await server.connect(transport);
-      await transport.handleRequest(req, res);
+      // The approval log's who (mcp/asks.ts): the tool call's cards run in this scope.
+      await askScope.run({ window: win, agent: named.agent, chat: who.session, mode: who.mode }, () => transport.handleRequest(req, res));
     } catch {
       if (!res.headersSent) res.writeHead(500).end();
     }

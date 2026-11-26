@@ -23,6 +23,7 @@ export * from "./container/engine.js";
 export * from "./pty/context.js";
 export * from "./pty/session.js";
 export * from "./mcp/bridge.js";
+export * from "./mcp/asks.js";
 export * from "./search/sessions.js";
 export * from "./access/policy.js";
 export * from "./mcp/server.js";
