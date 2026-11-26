@@ -248,13 +248,8 @@ agent-vim-4-3 = Afficher cette aide
 agent-vim-key-escape = Échap
 
 # Bandeaux du masquage dans le panneau de l'agent.
-agent-mask-locked = Conversation verrouillée : { $names } { $agreement ->
-        [one-f] a été révélée
-        [other-m] ont été révélés
-        [other-f] ont été révélées
-       *[one-m] a été révélé
-    }
-agent-mask-locked-unnamed = Conversation verrouillée : une valeur a été révélée
+agent-mask-locked = L'agent a vu { $names }. Vous pouvez continuer : Ressac vous demandera avant tout envoi vers un autre site.
+agent-mask-locked-unnamed = L'agent a vu une valeur masquée. Vous pouvez continuer : Ressac vous demandera avant tout envoi vers un autre site.
 agent-mask-uncovered = Conversation non couverte : commencée avant le masquage, elle a pu voir vos données en clair.
 agent-mask-uncovered-passport = Cette conversation a peut-être lu en clair une valeur que vous avez ajoutée depuis à votre passeport : l'agent peut la connaître. Tout le reste est toujours masqué.
 # Le nom de la donnée dans l'infobulle du bandeau « non couverte » (les noms des cartes de remplissage).
@@ -281,8 +276,8 @@ agent-mask-paste-clear = Coller en clair
 agent-mask-paste-cancel = Annuler
 agent-mask-bubble-hide = Masquer
 agent-mask-bubble-unknown = Cette étiquette n'appartient pas à cette conversation.
-agent-lift-open = Lever le verrou
-agent-lift-title = Lever le verrou
+agent-lift-open = Lever la protection
+agent-lift-title = Lever la protection
 agent-lift-body = L'atelier peut contenir { $names } sous une forme que Ressac ne reconnaît pas. Ces fichiers ont changé depuis la révélation :
 agent-lift-unnamed = une valeur révélée
 agent-lift-quarantine = Mettre en quarantaine et déverrouiller

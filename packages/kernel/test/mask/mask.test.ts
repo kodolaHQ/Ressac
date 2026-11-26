@@ -124,10 +124,9 @@ describe("valueName", () => {
 
   it("a sentence agrees with the names' gender and number, and « de » elides", () => {
     const locked = (names: string[]) => say("fr", "kernel-mask-locked-danger", { name: names.join(", "), ...nameAgreement(names, "fr") });
-    expect(locked(["votre carte"])).toBe("Conversation verrouillée : votre carte a été révélée. Cette sortie demande votre accord.");
-    expect(locked(["votre code"])).toBe("Conversation verrouillée : votre code a été révélé. Cette sortie demande votre accord.");
-    expect(locked(["votre carte", "une adresse"])).toContain("ont été révélées.");
-    expect(locked(["votre carte", "votre code"])).toContain("ont été révélés.");
+    expect(locked(["votre carte"])).toBe("L'agent a vu votre carte : cet envoi demande votre accord.");
+    expect(locked(["votre code"])).toBe("L'agent a vu votre code : cet envoi demande votre accord.");
+    expect(locked(["votre carte", "une adresse"])).toContain("L'agent a vu votre carte, une adresse :");
     const handle = say("fr", "kernel-mask-handle-danger", { name: "une adresse", from: "a.test", to: "b.test", ...nameAgreement(["une adresse"], "fr") });
     expect(handle).toBe("Cette adresse contient une adresse, lue sur a.test : elle l'envoie à b.test.");
     expect(nameAgreement(["un code", "votre carte"], "fr").de).toBe("d'un code, de votre carte");
@@ -138,7 +137,7 @@ describe("valueName", () => {
     // A name from another language: masculine, plain « de ».
     expect(nameAgreement(["your card"], "fr")).toEqual({ agreement: "one-m", de: "de your card" });
     expect(say("en", "kernel-mask-locked-danger", { name: "your card, your code", ...nameAgreement(["your card", "your code"], "en") })).toBe(
-      "Conversation locked: your card, your code were revealed. This outflow needs your approval.",
+      "The agent has seen your card, your code: this outflow needs your approval.",
     );
   });
 });

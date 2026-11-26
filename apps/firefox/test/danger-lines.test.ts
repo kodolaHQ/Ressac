@@ -9,7 +9,7 @@ test("every line of a card's danger is kept, past five, in order", () => {
 
 test("each line is bounded on its own: a long handle line never cuts the lock line after it", () => {
   const long = `Cette adresse contient votre e-mail, lue sur ${"suivi-colis.".repeat(30)}example`;
-  const lock = "Conversation verrouillée : votre code a été révélé. Cette sortie demande votre accord.";
+  const lock = "L'agent a vu votre code : cet envoi demande votre accord.";
   const shown = dangerLines(`${long}\n${lock}`);
   expect(shown[0]).toHaveLength(UNLOCK_REASON_LENGTH);
   expect(shown[1]).toBe(lock);

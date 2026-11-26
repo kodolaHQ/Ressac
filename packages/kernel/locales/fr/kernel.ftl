@@ -183,14 +183,9 @@ kernel-mask-name-web-date = une date
     .de = d'une date
 
 # Masquage : révélation d'une valeur et verrou de la conversation.
-kernel-mask-reveal-card = L'agent veut voir { $name } pour cette tâche. Ensuite la conversation et l'atelier restent verrouillés jusqu'à ce que vous leviez le verrou.
+kernel-mask-reveal-card = L'agent veut voir { $name } pour cette tâche. Ensuite, Ressac vous demandera avant tout envoi vers un autre site, jusqu'à ce que vous leviez la protection.
 kernel-mask-reveal-shared = Une autre conversation utilise l'atelier : l'agent ne peut pas voir { $name } tant qu'elle tourne.
-kernel-mask-locked-danger = Conversation verrouillée : { $name } { $agreement ->
-        [one-f] a été révélée
-        [other-m] ont été révélés
-        [other-f] ont été révélées
-       *[one-m] a été révélé
-    }. Cette sortie demande votre accord.
+kernel-mask-locked-danger = L'agent a vu { $name } : cet envoi demande votre accord.
 kernel-mask-locked-refused = Conversation verrouillée : cette sortie n'a pas reçu votre accord.
 kernel-mask-handle-danger = Cette adresse contient { $name }, { $agreement ->
         [one-f] lue

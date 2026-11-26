@@ -25,7 +25,7 @@ const BLOCKED = "Remplissage bloqué pour cette conversation : trop d'étiquette
 const CHANGED = "Le champ a changé avant le remplissage : rien n'a été écrit. Redemande.";
 const SAVED_LOGIN = "Le mot de passe enregistré ne se remplit que sur son site exact, dans un champ mot de passe ou identifiant, sans cadre ni formulaire d'un autre site.";
 const WRONG_ORIGIN = "Cette étiquette ne se remplit que sur le site où sa valeur a été lue.";
-const LOCKED = "Conversation verrouillée : votre code a été révélé. Cette sortie demande votre accord.";
+const LOCKED = "L'agent a vu votre code : cet envoi demande votre accord.";
 
 type Opts = ConstructorParameters<typeof FakeBridge>[1];
 type Call = (name: string, args: Record<string, unknown>) => Promise<{ text: string; isError: boolean }>;

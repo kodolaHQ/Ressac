@@ -119,7 +119,7 @@ it("Montrer then Touch ID: the value goes back, the lock banner names it and sur
   expect(r.text).toContain(REVEALED);
   expect(r.text.replace(/\D/g, "")).toContain(DIGITS);
   const banner = () => waitUi<string>(m, "return doc.querySelector('[data-testid=\"agent-mask-locked\"]')?.textContent", [], 15_000, "agent");
-  expect(await banner()).toContain("Conversation verrouillée : votre téléphone a été révélé");
+  expect(await banner()).toContain("L'agent a vu votre téléphone. Vous pouvez continuer");
   // Shown, closed and opened again (the session started with it closed): the banner is read from the lock, not kept by the panel.
   const toggle = async (hidden: boolean) => {
     await click(m, '[data-testid="agent-button"]');

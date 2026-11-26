@@ -157,13 +157,9 @@ kernel-mask-name-web-date = a date
     .de = of a date
 
 # Masking: revealing a value and the conversation's lock.
-kernel-mask-reveal-card = The agent wants to see { $name } for this task. Then the conversation and the workshop stay locked until you lift the lock.
+kernel-mask-reveal-card = The agent wants to see { $name } for this task. Then Ressac will ask you before anything goes to another site, until you lift the protection.
 kernel-mask-reveal-shared = Another conversation is using the workshop: the agent cannot see { $name } while it runs.
-kernel-mask-locked-danger = Conversation locked: { $name } { $agreement ->
-        [other-m] were
-        [other-f] were
-       *[one-m] was
-    } revealed. This outflow needs your approval.
+kernel-mask-locked-danger = The agent has seen { $name }: this outflow needs your approval.
 kernel-mask-locked-refused = Conversation locked: this outflow did not get your approval.
 kernel-mask-handle-danger = This address holds { $name }, read on { $from }: it sends { $agreement ->
         [other-m] them

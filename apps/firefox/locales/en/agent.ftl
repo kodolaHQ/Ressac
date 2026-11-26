@@ -248,12 +248,8 @@ agent-vim-4-3 = Show this help
 agent-vim-key-escape = Esc
 
 # Masking banners in the agent panel.
-agent-mask-locked = Conversation locked: { $names } { $agreement ->
-        [other-m] were
-        [other-f] were
-       *[one-m] was
-    } revealed
-agent-mask-locked-unnamed = Conversation locked: a value was revealed
+agent-mask-locked = The agent has seen { $names }. You can carry on: Ressac will ask you before anything goes to another site.
+agent-mask-locked-unnamed = The agent has seen a masked value. You can carry on: Ressac will ask you before anything goes to another site.
 agent-mask-uncovered = Conversation not covered: started before masking, it may have seen your data in clear.
 agent-mask-uncovered-passport = This conversation may have read in clear a value you have since added to your passport: the agent may know it. Everything else is still masked.
 # The item's name in the « not covered » banner's tooltip (the fill cards' names).
@@ -280,8 +276,8 @@ agent-mask-paste-clear = Paste in clear
 agent-mask-paste-cancel = Cancel
 agent-mask-bubble-hide = Hide
 agent-mask-bubble-unknown = This label does not belong to this conversation.
-agent-lift-open = Lift the lock
-agent-lift-title = Lift the lock
+agent-lift-open = Lift the protection
+agent-lift-title = Lift the protection
 agent-lift-body = The workshop may hold { $names } in a form Ressac does not recognise. These files changed since the reveal:
 agent-lift-unnamed = a revealed value
 agent-lift-quarantine = Quarantine and unlock

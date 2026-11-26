@@ -154,7 +154,7 @@ it("an address card shows each red line on its own, the lock line kept whole aft
   await start();
   const win = await m.execute<string>("return window.ressacWindow.windowId");
   const long = `Cette adresse contient votre e-mail, lu sur mail.example : elle l'envoie à ${"suivi-colis.".repeat(30)}example.`;
-  const lock = "Conversation verrouillée : votre code a été révélé. Cette sortie demande votre accord.";
+  const lock = "L'agent a vu votre code : cet envoi demande votre accord.";
   await m.execute(
     `return (async () => {
       const s = await ChromeUtils.importESModule("${STORE}").ready;
