@@ -188,6 +188,12 @@ export class Chats {
     await Promise.all([...this.entries.values()].filter(idle).map((e) => this.close(e)));
   }
 
+  /** The app's mode changed: idle discussions pause, and every one not live shows the mode it will reopen in. */
+  async modeChanged(): Promise<void> {
+    await this.pauseIdle();
+    for (const e of this.entries.values()) if (!e.conv && !e.opening) this.push(e);
+  }
+
   /** The window's discussions pause and stay in the list. */
   async closeWindow(windowId: string): Promise<void> {
     this.actives.delete(windowId);
@@ -484,7 +490,9 @@ export class Chats {
   }
 
   private summary(e: Entry): ChatSummary {
-    return { ...summaryOf(e.rec), state: e.state, messages: e.rec.items.filter((i) => i.kind === "user" || i.kind === "agent").length };
+    // Not live: it reopens in the app's mode (start), so the chip says that one; a fresh one keeps the mode it was created with.
+    const mode = !e.fresh && !e.conv && !e.opening && this.o.mode ? this.o.mode() : e.rec.mode;
+    return { ...summaryOf(e.rec), mode, state: e.state, messages: e.rec.items.filter((i) => i.kind === "user" || i.kind === "agent").length };
   }
 
   private view(e: Entry): ChatView {

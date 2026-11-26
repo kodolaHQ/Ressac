@@ -449,6 +449,19 @@ test("a paused discussion reopens in the app's current mode, keeping its resume 
   expect(v?.summary.mode).toBe("browser");
 });
 
+test("a mode change (lab off) shows the new mode at once on idle and paused discussions, not at the next message", async () => {
+  let mode: "browser" | "workshop" = "workshop";
+  const { chats, views } = prepare(true, () => mode);
+  const idleOne = (await chats.create("w1", { ...opts, mode: "workshop" })).summary.id;
+  const pausedOne = (await chats.create("w2", { ...opts, mode: "workshop" })).summary.id;
+  await tick();
+  await chats.pause(pausedOne);
+  mode = "browser";
+  await chats.modeChanged();
+  const last = (id: string) => views.filter(([, v]) => v.summary.id === id).at(-1)![1].summary;
+  for (const id of [idleOne, pausedOne]) expect(last(id)).toMatchObject({ mode: "browser", state: "paused" });
+});
+
 test("a discussion created with an explicit mode opens in it (the chip's choice may reach the host after the create)", async () => {
   const { chats, opens } = prepare(true, () => "browser");
   await chats.create("w1", { ...opts, mode: "workshop" });

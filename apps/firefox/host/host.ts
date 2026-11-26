@@ -638,7 +638,7 @@ const applyMode = () => {
     // folders) must not keep running. removeOutdated keeps it under the lock.
     const outdated = () => workshop.removeOutdated().catch((e) => console.error("[ressac] the outdated workshop was not removed:", e));
     // The discussions resting in the old container pause (a running turn ends with it and shows « Réessayer »).
-    return aiOn ? Promise.all([sessions.relaunchActive(), chats.pauseIdle()]).finally(outdated) : outdated();
+    return aiOn ? Promise.all([sessions.relaunchActive(), chats.modeChanged()]).finally(outdated) : outdated();
   }
   sessions.engineChanged("claude");
   sessions.engineChanged("codex");
