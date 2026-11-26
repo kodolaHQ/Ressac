@@ -44,6 +44,14 @@ export interface ChatSummary {
   engineHistory?: true;
 }
 
+/** A model the chat's picker offers. `value` "": the engine's default; `cloud`: an Ollama cloud model's host (off this Mac). */
+export interface ChatModel {
+  value: string;
+  name: string;
+  description?: string;
+  cloud?: string;
+}
+
 export interface ChatView {
   summary: ChatSummary;
   items: ChatItem[];
@@ -59,6 +67,8 @@ export interface ChatView {
   advanced?: true;
   /** Own model behind a non-loopback API: its host (the « en ligne » mark). */
   remote?: string;
+  /** The model picker's choice (`value` "": the engine's default); absent when Réglages' model applies (Ollama, an API). */
+  model?: { value: string; name: string };
 }
 
 /** `pasted`: [start, end] ranges of pasted text; `clear`: labels the user chose to send in clear. */

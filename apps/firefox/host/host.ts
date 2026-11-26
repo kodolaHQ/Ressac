@@ -1,6 +1,7 @@
 import type { BuildProgress, HostLaunch, InstructionChange, Kernel, LaunchSpec, TabInfo } from "../../../packages/kernel/src/index.ts";
 import type { OpenOptions } from "../core/agent/chats.ts";
-import type { AskReply, ChatView } from "../shared/chat.ts";
+import type { AskReply, ChatModel, ChatView } from "../shared/chat.ts";
+import type { EngineModel } from "../core/agent/chat/engine.ts";
 import type { FrameBounds } from "../shared/model.ts";
 import type { ClaudeEngine, CodexEngine, DockerStatus, OwnEngine } from "../shared/settings.ts";
 import type { BuilderSelection, TerminalSize } from "../shared/api.ts";
@@ -42,7 +43,7 @@ const { ChatStore } = await import("../core/agent/chat-store.ts");
 const { claudeEngine: claudeChat } = await import("../core/agent/chat/claude.ts");
 const { codexEngine: codexChat } = await import("../core/agent/chat/codex.ts");
 const { ownEngine: ownChat, STEP_MAX } = await import("../core/agent/chat/own.ts");
-const { checkOwnModel, ollamaClient, openAiClient, readOwnKey } = await import("./own-model.ts");
+const { checkOwnModel, listOwnModels, ollamaClient, openAiClient, readOwnKey } = await import("./own-model.ts");
 const { cleanDraft, createChatSend, DRAFT_MAX } = await import("./chat-send.ts");
 const { createEngineHistory } = await import("./chat-history.ts");
 const { createLoginTerminals } = await import("./chat-login.ts");
@@ -71,9 +72,9 @@ const { removeAgentExtensions } = await import("./extensions-removal.ts");
 const { CLAUDE_KEY, OWN_KEY, keychain } = await import("./keychain.ts");
 const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
-const { ollamaRelayTarget } = await import("./ollama-models.ts");
+const { listOllamaModels, ollamaRelayTarget } = await import("./ollama-models.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
-const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DEFAULT_OWN_ENGINE, OwnEngineSchema, apiUrlProblem, isOnMac, remoteHost, MachineIdleSchema, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
+const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DEFAULT_OWN_ENGINE, OwnEngineSchema, apiUrlProblem, isOnMac, remoteHost, MachineIdleSchema, modelField, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
 const {
@@ -301,6 +302,8 @@ let engine = DEFAULT_CODEX_ENGINE;
 let claudeEngine = DEFAULT_CLAUDE_ENGINE;
 /** « Votre modèle » (Réglages › Agent), checked by `agent.ownEngine`. */
 let ownSetting: OwnEngine = DEFAULT_OWN_ENGINE;
+/** The model new Claude and Codex discussions take on their subscription (the state's `chatModels`): the last one picked in the chat. */
+let chatModels = { claude: "", codex: "" };
 const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY), own: keychain(OWN_KEY) };
 const cachedKeys: { codex?: string; claude?: string; own?: OwnKey } = {};
 /** Bumped by forgetKey: a read that started before a key was written or removed is not cached, it reads again. */
@@ -326,6 +329,8 @@ const preferredWriter = (): "claude" | "codex" => profileAgents.get(defaultProfi
 const writerChoice = createWriterChoice({ workshop, preferred: preferredWriter, installed: cli.installed });
 // Each agent's engine (Réglages › Agent): its API key or its Ollama first, its CLI only on its subscription.
 const engineOf = (a: "claude" | "codex"): ClaudeEngine | CodexEngine => (a === "claude" ? claudeEngine : engine);
+/** Claude or Codex on its own subscription: the chat's model picker applies (on Ollama or an API, Réglages' model does). */
+const onSubscription = (a: string): a is "claude" | "codex" => (a === "claude" ? claudeEngine.kind === "subscription" : a === "codex" && engine.kind === "chatgpt");
 const hostWriter = createHostWriter({
   preferred: preferredWriter,
   engine: engineOf,
@@ -731,10 +736,14 @@ const sessions = new SessionsAgent({
   mask: maskForAgent,
   // The mode counts as part of the engine: a change offers « Relancer » in the other windows' panels.
   engineOf: (p) => (p === "claude" ? JSON.stringify([claudeEngine, agentMode]) : p === "codex" ? JSON.stringify([engine, agentMode]) : ""),
-  async open(f, t, { profile, resume, conversation, thread, onBuildProgress, review }) {
+  async open(f, t, { profile, resume, conversation, thread, model, onBuildProgress, review }) {
     const n = await readyToStart(profile, onBuildProgress);
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, mode: agentMode, onBuildProgress, review });
-    const { extra, token } = await engineRelay(profile);
+    const relayed = await engineRelay(profile);
+    const { token } = relayed;
+    // « Mode avancé » of a chat: the discussion's model, on the subscription only (Réglages' model otherwise). One argv token each.
+    const picked = model && onSubscription(profile) && modelField.safeParse(model).success ? (profile === "claude" ? [`--model=${model}`] : ["-c", `model=${JSON.stringify(model)}`]) : [];
+    const extra = { ...relayed.extra, args: [...relayed.extra.args, ...picked] };
     try {
       const session = await n.openAgentSession({ ...t, window: f, profile, resume, ...(profile === "claude" ? { conversation } : thread ? { conversation: thread } : {}), extra, mode: agentMode, onBuildProgress, review });
       if (token) session.onEnd(() => relay.closeSession(token));
@@ -796,8 +805,68 @@ const decorated = (win: string, view: ChatView): ChatView => {
   const waiting = chatSend.waiting(id);
   const prefix = chats.active(win)?.summary.id === id ? chatSend.prefixOf(win) : null;
   const remote = view.summary.engine === "own" ? (ownOpens.get(id)?.remote ?? remoteOf(ownSetting)) : null;
-  return { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}), ...(prefix ? { prefix } : {}), ...(terminalWindows.has(win) ? { advanced: true as const } : {}), ...(remote ? { remote } : {}) };
+  const model = shownModel(view.summary.engine, id);
+  return { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}), ...(prefix ? { prefix } : {}), ...(terminalWindows.has(win) ? { advanced: true as const } : {}), ...(remote ? { remote } : {}), ...(model ? { model } : {}) };
 };
+const ownModelOf = (e: OwnEngine): string => (e.kind === "ollama" ? e.ollamaModel : e.apiModel);
+/** The picker's choice: the own model the next message goes to, or the discussion's on a subscription (named from the engine's list once read). */
+function shownModel(engine: "claude" | "codex" | "own", id: string): { value: string; name: string } | null {
+  if (engine === "own") {
+    const v = ownOpens.get(id)?.model ?? ownModelOf(ownSetting);
+    return { value: v, name: v };
+  }
+  if (!onSubscription(engine)) return null;
+  const v = chats.modelOf(id) ?? "";
+  return { value: v, name: v && (engineModels.get(engine)?.find((m) => m.value === v)?.name ?? v) };
+}
+/** Claude's and Codex's own model lists, read once per app run from a live discussion. */
+const engineModels = new Map<"claude" | "codex", EngineModel[]>();
+type ModelList = { ok: true; models: ChatModel[] } | { ok: false; error: string };
+/** What the chat's picker offers: the engine's own list (its default first, value ""), or the own model's server's. */
+async function chatModelList(chat: { id: string; engine: "claude" | "codex" | "own" }): Promise<ModelList> {
+  if (chat.engine === "own") {
+    const e = ownSetting;
+    if (e.kind === "ollama") {
+      const r = await listOllamaModels(e.ollamaUrl);
+      return r.ok ? { ok: true, models: r.models.map((m) => ({ value: m.name, name: m.name, ...(m.cloud ? { cloud: m.cloud } : {}) })) } : r;
+    }
+    const r = await listOwnModels(e, { key: await readOwn() });
+    return r.ok ? { ok: true, models: r.models.filter((m) => modelField.safeParse(m).success).map((m) => ({ value: m, name: m })) } : { ok: false, error: r.error };
+  }
+  if (!onSubscription(chat.engine)) return { ok: false, error: hostSay("chat-models-settings") };
+  let list = engineModels.get(chat.engine);
+  if (!list) {
+    const asked = chats.models(chat.id);
+    if (!asked) return { ok: false, error: hostSay("chat-models-starting") };
+    try {
+      list = await asked;
+    } catch {
+      return { ok: false, error: hostSay("chat-models-failed") };
+    }
+    engineModels.set(chat.engine, list);
+  }
+  const d = list.find((m) => m.default);
+  const description = d?.value === "" ? d.description : d?.name;
+  // Only names a command line can take as one value (they go as --model=… or -c model=…).
+  const listed = list.filter((m) => m.value !== "" && modelField.safeParse(m.value).success).map(({ value, name, description: about }) => ({ value, name, ...(about ? { description: about } : {}) }));
+  return { ok: true, models: [{ value: "", name: "", ...(description ? { description } : {}) }, ...listed] };
+}
+/** The own model picked in the chat: the setting changes, this discussion goes on with it from its next message, the other open ones pause. */
+async function switchOwnModel(chatId: string, model: string) {
+  const next: OwnEngine = { ...ownSetting, [ownSetting.kind === "ollama" ? "ollamaModel" : "apiModel"]: model };
+  let remote: string | null;
+  try {
+    remote = await checkOwn(next);
+  } catch (err) {
+    return { ok: false as const, error: (err as Error).message };
+  }
+  ownSetting = next;
+  const mark = ownOpens.get(chatId);
+  if (mark) Object.assign(mark, { remote, model, next });
+  for (const id of [...ownOpens.keys()]) if (id !== chatId) void chats.pause(id).catch((err) => console.error("[chat] own pause:", (err as Error).name));
+  repushChat(chatId);
+  return { ok: true as const, own: next };
+}
 /** The own model's host when it is off this Mac (the chip's « en ligne », the composer's line); else null. An Ollama cloud model is known once checked (open or Réglages). */
 const remoteOf = (e: OwnEngine): string | null => (e.kind === "api" ? remoteHost(e.apiUrl) : checkedCloud?.setting === JSON.stringify(e) ? checkedCloud.host : null);
 /** The last check's Ollama cloud host, for the setting it checked: a paused discussion's chip shows it before the next open. */
@@ -808,8 +877,8 @@ const checkOwn = async (e: OwnEngine): Promise<string | null> => {
   if (e.kind === "ollama") checkedCloud = { setting: JSON.stringify(e), host };
   return host;
 };
-/** Own discussions opening or open, with the host their messages go to (the setting they opened with). */
-const ownOpens = new Map<string, { remote: string | null }>();
+/** Own discussions opening or open: the host and model their messages go to; `next`, a model picked in the chat, used from the next message. */
+const ownOpens = new Map<string, { remote: string | null; model: string; next?: OwnEngine }>();
 const pushChat = (win: string, view: ChatView) => {
   chatViews.set(view.summary.id, { win, view });
   rpc.notify("chat.view", { window: win, view: decorated(win, view) });
@@ -891,10 +960,14 @@ async function openChat(o: OpenOptions) {
     try {
       if (signal.aborted) throw new Error("closed");
       if (!checked && !(await accountSignedIn(o.engine))) throw new SignedOutError();
+      // The discussion's model on the subscription, unless the engine's list (once read) no longer has it: its default then.
+      const listed = engineModels.get(o.engine);
+      const model = o.model && onSubscription(o.engine) && modelField.safeParse(o.model).success && (!listed || listed.some((m) => m.value === o.model)) ? o.model : undefined;
       const conversation = await (o.engine === "claude" ? claudeChat : codexChat)
         .open({
           ...(o.resumeId ? { resumeId: o.resumeId } : {}),
           ...(o.sessionId ? { sessionId: o.sessionId } : {}),
+          ...(model ? { model } : {}),
           launch,
           signal,
           tabTitle: (id) => (typeof id === "string" ? tabTitles.get(id) : undefined),
@@ -904,6 +977,12 @@ async function openChat(o: OpenOptions) {
           throw o.resumeId && !signal.aborted ? new ResumeError(err) : err;
         });
       if (token) conversation.onEnd(() => relay.closeSession(token));
+      // Read once per app run: the chip names the model, the picker opens at once.
+      if (onSubscription(o.engine) && !engineModels.has(o.engine))
+        conversation.models?.().then(
+          (l) => (engineModels.set(o.engine as "claude" | "codex", l), repushChat(o.chatId)),
+          () => {},
+        );
       return { conversation, launch };
     } catch (err) {
       await launch.stop();
@@ -927,7 +1006,7 @@ async function openChat(o: OpenOptions) {
  */
 async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
   const e = ownSetting; // one snapshot: the check, the client and the view's host use the same address and model
-  const mark = { remote: remoteOf(e) };
+  const mark: { remote: string | null; model: string; next?: OwnEngine } = { remote: remoteOf(e), model: ownModelOf(e) };
   ownOpens.set(o.chatId, mark);
   const forget = () => {
     if (ownOpens.get(o.chatId) === mark) ownOpens.delete(o.chatId);
@@ -947,15 +1026,23 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
   }
   try {
     if (signal.aborted) throw new Error("closed");
+    const client = (x: OwnEngine) => (x.kind === "ollama" ? ollamaClient(x) : openAiClient(x, { key: readOwn }));
+    let current = client(e);
     const conversation = await ownChat.open({
       launch,
       signal,
       tabTitle: (id) => (typeof id === "string" ? tabTitles.get(id) : undefined),
-      model: e.kind === "ollama" ? ollamaClient(e) : openAiClient(e, { key: readOwn }),
+      model: { step: (messages, schema, s) => current.step(messages, schema, s) },
       locale: hostLocale() === "en" ? "en" : "fr",
       ...(o.transcript ? { transcript: o.transcript } : {}),
       texts: { badFormat: hostSay("own-bad-format"), steps: hostSay("own-steps", { count: STEP_MAX }), timeout: hostSay("own-timeout") },
     });
+    // A model picked in the chat (switchOwnModel): from the next message, the same conversation and history.
+    const prompt = conversation.prompt;
+    conversation.prompt = (text) => {
+      if (mark.next) [current, mark.next] = [client(mark.next), undefined];
+      prompt(text);
+    };
     return { conversation, launch };
   } catch (err) {
     await launch.stop();
@@ -1007,7 +1094,8 @@ async function createChat(win: string, c: { profile?: unknown; mode?: unknown; s
   if (profile === "own" && c.mode === "workshop") throw new Error(hostSay("own-workshop-off"));
   const mode = profile === "own" ? "browser" : c.mode === "workshop" || c.mode === "browser" ? c.mode : agentMode;
   if (typeof c.space === "string") windowSpaces.set(win, c.space);
-  return chats.create(win, { profile, mode, engine: profile, spaceId: windowSpaces.get(win) ?? "" });
+  const model = profile !== "own" && onSubscription(profile) ? chatModels[profile] : "";
+  return chats.create(win, { profile, mode, engine: profile, spaceId: windowSpaces.get(win) ?? "", ...(model ? { model } : {}) });
 }
 
 /**
@@ -1170,6 +1258,10 @@ const rpc = createRpc({
       // An open discussion keeps the client it opened with: it pauses, so its next message goes where Réglages now says.
       if (changed) for (const id of [...ownOpens.keys()]) void chats.pause(id).catch((err) => console.error("[chat] own pause:", (err as Error).name));
       return { ok: true as const };
+    },
+    "settings.chatModels": (p: { models?: { claude?: unknown; codex?: unknown } }) => {
+      const pick = (v: unknown) => (typeof v === "string" && modelField.safeParse(v).success ? v : "");
+      chatModels = { claude: pick(p?.models?.claude), codex: pick(p?.models?.codex) };
     },
     "settings.ownCheck": aiOnly(async (_p: unknown) => {
       const e = ownSetting;
@@ -1654,6 +1746,23 @@ const rpc = createRpc({
         return null;
       }
     },
+    // The model picker (chat header): the engine's own list, read when the menu opens.
+    "chat.models": aiOnly(async (p: { window?: unknown }) => {
+      const chat = activeChat(p?.window);
+      return chat ? chatModelList(chat) : { ok: false as const, error: hostSay("host-invalid-params") };
+    }),
+    "chat.model": aiOnly(async (p: { window?: unknown; model?: unknown }) => {
+      const chat = activeChat(p?.window);
+      const model = p?.model;
+      // It reaches a command line (--model=…, -c model=…): the strict name charset, then the engine's own list.
+      if (!chat || typeof model !== "string" || !modelField.safeParse(model).success) return { ok: false as const, error: hostSay("host-invalid-params") };
+      const list = await chatModelList(chat);
+      if (!list.ok) return list;
+      if (!list.models.some((m) => m.value === model)) return { ok: false as const, error: hostSay("chat-model-unknown") };
+      if (chat.engine === "own") return switchOwnModel(chat.id, model);
+      await chats.setModel(chat.id, model);
+      return { ok: true as const };
+    }),
     "chat.cancel": (p: { window?: unknown }) => {
       const chat = activeChat(p?.window);
       if (!chat) return;
@@ -1703,7 +1812,8 @@ const rpc = createRpc({
         active: activeChat,
         pause: (id) => chats.pause(id),
         resumeIdOf: (id) => chats.resumeIdOf(id),
-        resumeNext: (w, profile, id) => sessions.resumeNext(w, profile, id),
+        // The terminal goes on with the discussion's model.
+        resumeNext: (w, profile, id) => sessions.resumeNext(w, profile, id, chats.modelOf(activeChat(w)?.id ?? "")),
         switchProfile: (w, profile) => sessions.switchProfile(w, profile),
         terminal: terminalWindows,
         repush: repushChat,

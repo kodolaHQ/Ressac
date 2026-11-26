@@ -12,6 +12,9 @@ export interface LaunchSpecLike {
 /** A model of the engine's own list. `value` "" is the engine's default (no choice made); `default`: the one it runs then. */
 export interface EngineModel { value: string; name: string; description?: string; default?: true }
 
+/** Claude's and Codex's open option: a value from the engine's own list (checked by the host); absent, the engine's default. */
+export type ModelOption = { model?: string };
+
 export interface EngineConversation {
   /** Claude session uuid, Codex thread id: stored for resume. */
   readonly engineSessionId: string;
@@ -42,8 +45,6 @@ export interface ChatEngine<L = LaunchSpecLike, X = {}> {
       launch: L;
       signal: AbortSignal;
       tabTitle?: (id: unknown) => string | undefined;
-      /** A value from the engine's own list (checked by the host); absent: the engine's default. */
-      model?: string;
     } & X,
   ): Promise<EngineConversation>;
 }

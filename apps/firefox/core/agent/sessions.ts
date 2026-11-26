@@ -108,6 +108,8 @@ interface Entry {
   resumeNext?: boolean;
   /** The Codex thread a chat handed over: this entry's resumes reopen it. */
   thread?: string;
+  /** The model of the chat discussion handed over: this entry's resumes keep it. */
+  model?: string;
   /** Keys typed since the wake, written once the resumed agent first speaks (its TUI is then up), then while they are delivered. */
   waking?: string;
   /** The buffered keys and pre-fill are being written to the woken agent (deliver). */
@@ -132,6 +134,8 @@ export class SessionsAgent {
           conversation: string;
           /** Resuming a chat discussion's Codex thread (« Mode avancé »): `codex resume <thread>`, not the workdir's latest. */
           thread?: string;
+          /** The chat discussion's model it goes on with (« Mode avancé »). */
+          model?: string;
           onBuildProgress: (p: BuildProgress) => void;
           /** Settles on answerReview, or rejects when the entry is dropped: the kernel never waits forever. */
           review: (changes: InstructionChange[]) => Promise<"keep" | "revert">;
@@ -202,6 +206,7 @@ export class SessionsAgent {
         resume,
         conversation,
         ...(resume && entry.thread ? { thread: entry.thread } : {}),
+        ...(resume && entry.model ? { model: entry.model } : {}),
         onBuildProgress: (p) => {
           if (this.inputs.get(f) === entry && !entry.session && !entry.review) this.o.send(f, "state", { state: "preparing", ...p });
         },
@@ -488,13 +493,14 @@ export class SessionsAgent {
    * A chat discussion goes to the terminal (« Mode avancé »): the window's session stops, and its next start runs `profile`
    * resuming `conversation` (Claude by that id; another profile resumes its workdir's latest).
    */
-  resumeNext(f: WindowId, profile: string, conversation: string): void {
+  resumeNext(f: WindowId, profile: string, conversation: string, model?: string): void {
     const old = this.inputs.get(f);
     this.inputs.delete(f);
     if (old) this.drop(old);
     const e = this.entry(f, old?.size ?? { cols: 80, rows: 24 }, profile, old?.ran);
     e.ran.set(profile, { id: conversation, sent: true });
     if (profile !== "claude") e.thread = conversation;
+    if (model) e.model = model;
     e.resumeNext = true;
   }
 

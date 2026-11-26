@@ -20,7 +20,7 @@ import type {
   TurnHolder,
   TurnStartParams,
 } from "./codex-protocol";
-import { engineEvents, toolTitle, type ChatEngine, type EngineConversation, type EngineModel } from "./engine";
+import { engineEvents, toolTitle, type ChatEngine, type EngineConversation, type EngineModel, type LaunchSpecLike, type ModelOption } from "./engine";
 
 const AUTH = /\b(log ?in|not logged in|authenticat\w*|unauthori[sz]ed|401)\b/i;
 // The app-server only shows it in its user agent.
@@ -33,7 +33,7 @@ function itemTitle(item: ThreadItem, tabTitle?: (id: unknown) => string | undefi
   return toolTitle("commandExecution", {});
 }
 
-export const codexEngine: ChatEngine = {
+export const codexEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
   id: "codex",
 
   async open({ resumeId, launch, signal, tabTitle, model }): Promise<EngineConversation> {

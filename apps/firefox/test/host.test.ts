@@ -389,6 +389,40 @@ describe("agent host", { timeout: 30_000 }, () => {
     await expect(h.rpc.request("chat.remove", { window: "f1", chatId: "../x" })).rejects.toThrow();
   });
 
+  it("chat model: new discussions take the setting's, the list is the engine's own, a switch keeps the conversation; anything else is refused", async () => {
+    type V = { summary: { id: string; state: string }; model?: { value: string; name: string } };
+    const views: { window: string; view: V }[] = [];
+    // Signed in (the fake docker's account file).
+    const h = startHost({}, (d) => (mkdirSync(join(d, "workspace"), { recursive: true }), writeFileSync(join(d, "workspace", "fake-claude-auth.json"), '{"loggedIn":true}')), { handlers: { "chat.view": (p: (typeof views)[number]) => void views.push(p) } });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    h.rpc.notify("settings.agentView", { view: "chat" });
+    h.rpc.notify("settings.chatModels", { models: { claude: "opus", codex: "" } });
+    const c = (await h.rpc.request("chat.create", { window: "f1", space: "perso" })) as V;
+    expect(c.model).toEqual({ value: "opus", name: "opus" });
+    await until(() => views.some((v) => v.view.summary.id === c.summary.id && v.view.summary.state === "ready"), 20_000);
+    const argv = () => readFileSync(join(h.root, "fake-chat-claude.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((l) => l.argv);
+    expect(argv()).toHaveLength(1);
+    expect(argv()[0].argv).toContain("--model=opus");
+    expect(await h.rpc.request("chat.models", { window: "f1" })).toEqual({
+      ok: true,
+      models: [
+        { value: "", name: "", description: "Opus 5.5" },
+        { value: "opus", name: "Opus", description: "Most capable" },
+        { value: "sonnet", name: "Sonnet", description: "Fast" },
+      ],
+    });
+    expect(await h.rpc.request("chat.model", { window: "f1", model: "sonnet" })).toEqual({ ok: true });
+    await until(() => views.at(-1)?.view.model?.name === "Sonnet");
+    for (const model of ["--dangerously-skip-permissions", "inconnu", 3, null]) expect(await h.rpc.request("chat.model", { window: "f1", model })).toMatchObject({ ok: false });
+    // No restart: still the one CLI process.
+    expect(argv()).toHaveLength(1);
+    // On an API key, Réglages' model applies: no picker, no model asked.
+    h.rpc.notify("agent.claudeEngine", { engine: { kind: "api", apiUrl: "https://api.example/v1", apiModel: "m", ollamaUrl: "", ollamaModel: "" } });
+    const api = (await h.rpc.request("chat.create", { window: "f2", space: "perso" })) as V;
+    expect(api.model).toBeUndefined();
+    expect(await h.rpc.request("chat.model", { window: "f2", model: "sonnet" })).toMatchObject({ ok: false });
+  });
+
   it("outflow: keystrokes and the ⌘T question count as typed, pastes and prefills do not, closing the window forgets", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
@@ -1221,6 +1255,48 @@ describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
       expect(b).toEqual(["/api/show", "/api/tags", "/api/chat"]);
     } finally {
       for (const x of servers) x.close();
+    }
+  });
+
+  it("chat model, own: the list is Ollama's, a switch changes the setting and the discussion goes on with the new model", async () => {
+    const { createServer } = await import("node:http");
+    const asked: string[] = [];
+    const ollama = createServer((req, res) => {
+      let body = "";
+      req.on("data", (d) => (body += d)).on("end", () => {
+        if (req.url === "/api/chat") asked.push((JSON.parse(body) as { model: string }).model);
+        const reply =
+          req.url === "/api/chat"
+            ? { message: { content: '{"action":"answer","text":"ok"}' } }
+            : req.url === "/api/tags"
+              ? { models: [{ name: "qwen3" }, { name: "gpt-oss:120b-cloud", remote_host: "https://ollama.com:443" }] }
+              : { details: {} };
+        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(reply));
+      });
+    });
+    await new Promise<void>((r) => ollama.listen(0, "127.0.0.1", r));
+    try {
+      const { h, views } = await ownHost();
+      const port = (ollama.address() as { port: number }).port;
+      await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: `http://127.0.0.1:${port}`, ollamaModel: "qwen3" }) });
+      const c = (await h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "own" })) as View & { model?: { value: string } };
+      expect(c.model).toEqual({ value: "qwen3", name: "qwen3" });
+      const last = () => views.filter((v) => v.view.summary.id === c.summary.id).at(-1)?.view as (View & { model?: { value: string } }) | undefined;
+      const answers = () => last()?.items.filter((i) => i.kind === "agent").length ?? 0;
+      await h.rpc.request("chat.send", { window: "f1", draft: { text: "un" } });
+      await until(() => answers() === 1);
+      expect(await h.rpc.request("chat.models", { window: "f1" })).toEqual({ ok: true, models: [{ value: "gpt-oss:120b-cloud", name: "gpt-oss:120b-cloud", cloud: "ollama.com" }, { value: "qwen3", name: "qwen3" }] });
+      expect(await h.rpc.request("chat.model", { window: "f1", model: "absent" })).toMatchObject({ ok: false });
+      expect(await h.rpc.request("chat.model", { window: "f1", model: "gpt-oss:120b-cloud" })).toEqual({ ok: true, own: own({ ollamaUrl: `http://127.0.0.1:${port}`, ollamaModel: "gpt-oss:120b-cloud" }) });
+      // The chrome saves it and tells the host: the same setting, nothing pauses.
+      await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: `http://127.0.0.1:${port}`, ollamaModel: "gpt-oss:120b-cloud" }) });
+      await until(() => last()?.model?.value === "gpt-oss:120b-cloud" && last()?.remote === "ollama.com");
+      await h.rpc.request("chat.send", { window: "f1", draft: { text: "deux" } });
+      await until(() => answers() === 2);
+      expect(views.filter((v) => v.view.summary.id === c.summary.id).some((v) => v.view.summary.state === "paused")).toBe(false);
+      expect(asked).toEqual(["qwen3", "gpt-oss:120b-cloud"]);
+    } finally {
+      ollama.close();
     }
   });
 

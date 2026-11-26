@@ -4,11 +4,11 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { query, type PermissionResult, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AskReply, ChatQuestion } from "../../../shared/chat";
-import { engineEvents, toolTitle, type ChatEngine, type EngineConversation, type EngineModel } from "./engine";
+import { engineEvents, toolTitle, type ChatEngine, type EngineConversation, type EngineModel, type LaunchSpecLike, type ModelOption } from "./engine";
 
 const AUTH = /\b(log ?in|not logged in|authenticat\w*|401)\b/i;
 
-export const claudeEngine: ChatEngine = {
+export const claudeEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
   id: "claude",
 
   async open({ resumeId, sessionId, launch, signal, tabTitle, model }): Promise<EngineConversation> {

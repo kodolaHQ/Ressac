@@ -338,22 +338,22 @@ test("a discussion handed to the terminal is resumed by its conversation at the 
   expect(opened[2]!.resume).toBe(false);
 });
 
-test("a Codex discussion handed to the terminal resumes its own thread, kept across a wake, gone with a profile switch", async () => {
-  const opened: { profile: string; resume: boolean; thread?: string }[] = [];
+test("a Codex discussion handed to the terminal resumes its own thread and model, kept across a wake, gone with a profile switch", async () => {
+  const opened: { profile: string; resume: boolean; thread?: string; model?: string }[] = [];
   const manager = new SessionsAgent({
     open: async (_f, _t, s) => {
-      opened.push({ profile: s.profile, resume: s.resume, ...(s.thread ? { thread: s.thread } : {}) });
+      opened.push({ profile: s.profile, resume: s.resume, ...(s.thread ? { thread: s.thread } : {}), ...(s.model ? { model: s.model } : {}) });
       return new FakeSession();
     },
     send: () => {},
   });
-  manager.resumeNext("F", "codex", "thread-1");
+  manager.resumeNext("F", "codex", "thread-1", "gpt-5.4");
   await manager.start("F", size);
-  expect(opened[0]).toEqual({ profile: "codex", resume: true, thread: "thread-1" });
+  expect(opened[0]).toEqual({ profile: "codex", resume: true, thread: "thread-1", model: "gpt-5.4" });
   await manager.sleepIdle(0);
   manager.write("F", "x");
   await new Promise((r) => setTimeout(r, 0));
-  expect(opened[1]).toEqual({ profile: "codex", resume: true, thread: "thread-1" });
+  expect(opened[1]).toEqual({ profile: "codex", resume: true, thread: "thread-1", model: "gpt-5.4" });
   await manager.switchProfile("F", "claude");
   await manager.switchProfile("F", "codex");
   expect(opened.at(-1)).toEqual({ profile: "codex", resume: true });
