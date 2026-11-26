@@ -115,6 +115,23 @@ export const CodexEngineSchema: z.ZodType<CodexEngine> = z.object({
   apiModel: modelField,
 });
 
+/** « Votre modèle »: the user's own model, driven by a loop in the host. Ollama is loopback only (host/own-model.ts). */
+export interface OwnEngine {
+  kind: "ollama" | "api";
+  ollamaUrl: string;
+  ollamaModel: string;
+  apiUrl: string;
+  apiModel: string;
+}
+export const DEFAULT_OWN_ENGINE: OwnEngine = { kind: "ollama", ollamaUrl: "http://127.0.0.1:11434", ollamaModel: "", apiUrl: "", apiModel: "" };
+export const OwnEngineSchema: z.ZodType<OwnEngine> = z.object({
+  kind: z.enum(["ollama", "api"]),
+  ollamaUrl: urlField,
+  ollamaModel: modelField,
+  apiUrl: urlField,
+  apiModel: modelField,
+});
+
 /** null when the address is https://, or http:// to this Mac (the key must not travel in clear over the network). */
 export function apiUrlProblem(url: string): string | null {
   try {
