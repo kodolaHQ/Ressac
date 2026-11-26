@@ -719,6 +719,9 @@ test("a turn ending on its step cap shows the engine's text (own model)", async 
   expect(chats.active("w1")?.error).toBe("L'agent s'est arrêté.");
   expect(chats.active("w1")?.summary.state).toBe("ready");
   chats.prompt(a.summary.id, "deux", "deux");
+  // Gone once the next message is sent, not only when its turn ends.
+  expect(chats.active("w1")?.error).toBeUndefined();
+  expect(chats.active("w1")?.summary.state).toBe("running");
   opens[0]!.conv.endTurn();
   expect(chats.active("w1")?.error).toBeUndefined();
 });

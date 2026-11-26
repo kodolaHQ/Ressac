@@ -406,6 +406,8 @@ export class Chats {
     if (!e.conv || e.turn || !e.pending.length || e.state === "signed-out") return;
     e.turn = true;
     e.state = "running";
+    // The last turn's error goes with the next message.
+    e.error = undefined;
     e.conv.prompt(e.pending.shift()!.text);
   }
 

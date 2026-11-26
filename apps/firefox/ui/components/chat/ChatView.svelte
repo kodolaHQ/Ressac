@@ -37,6 +37,9 @@
         <p role="alert">{t("chat-error", { message: view?.error ?? "" })}</p>
         <button data-testid="chat-retry" onclick={() => api.chat.retry()}>{t("agent-panel-retry")}</button>
       </div>
+    {:else if phase === "ready" && view?.error}
+      <!-- The last turn's error (a bad format, the step cap…): the discussion goes on, the next message clears it. -->
+      <p class="line turn-error" role="alert" data-testid="chat-turn-error" out:fade={{ duration: chat.visible ? 150 : 0 }}>{view.error}</p>
     {:else if phase === "queued"}
       <p class="line" role="status" out:fade={{ duration: chat.visible ? 150 : 0 }}>{t("chat-queued")}</p>
     {:else if phase === "paused"}
@@ -54,6 +57,7 @@
   .states:empty { display: none; }
   .line { display: flex; align-items: center; gap: 8px; margin: 0 14px 8px; color: var(--text-muted); font-size: 12.5px; line-height: 1.45; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .line p { flex: 1; margin: 0; }
+  .turn-error { color: var(--in-error); }
   button { flex: none; padding: 5px 12px; border-radius: 10px; border: 0; background: var(--accent); color: var(--accent-ink); font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap); }
   button:active { transform: scale(0.97); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

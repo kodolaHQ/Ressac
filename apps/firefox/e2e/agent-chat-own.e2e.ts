@@ -346,9 +346,8 @@ it("un modèle sur le Mac ne remplit pas : fill_field n'est pas proposé, et ref
   fake.script = [() => ({ action: "fill_field", id: "t1", field: 0, value: "x" }), () => ({ action: "fill_field", id: "t1", field: 0, value: "x" })];
   await ownDiscussion();
   await send("Remplis le champ");
-  // The reply and its one retry, then the turn ends (« Arrêter » gives way to « Envoyer ») with no tool called.
-  await expect.poll(() => loopSteps().length, { timeout: 30_000 }).toBe(2);
-  await waitAgent("return !doc.querySelector('[data-testid=\"chat-stop\"]') && !!doc.querySelector('[data-testid=\"chat-send\"]')", [], 30_000);
+  // The reply and its one retry, then the turn ends on the error, shown, with no tool called.
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-turn-error\"]')?.textContent === arguments[0]", ["Le modèle n'a pas répondu dans le format attendu."], 30_000);
   expect(await waitAgent<number>("return doc.querySelectorAll('[data-testid=\"chat-tool\"]').length + 1")).toBe(1);
   expect(loopSteps().length).toBe(2);
   expect(loopSteps().some((l) => actionsOf(l).includes("fill_field") || l.body.messages[0].content.includes("fill_field"))).toBe(false);
