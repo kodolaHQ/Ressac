@@ -16,6 +16,9 @@ export const RESULT_MAX = 6000;
 export const CONTEXT_TOKENS = 16384;
 const PRUNE_AT = 0.75 * CONTEXT_TOKENS;
 const CHARS_PER_TOKEN = 3.5;
+// Control characters except \t and \n; a page that writes a delimiter would close its own result early.
+const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
+const DELIMITERS = /\[(?:DÉBUT|FIN) DU RÉSULTAT\]|\[RESULT (?:START|END)\]/gi;
 
 /** Flat, as the 13 Nov spike measured it: one action from the enum, every argument optional. */
 export const ACTION_SCHEMA = {
@@ -131,7 +134,7 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
         throw new Error("aborted");
       }
     } catch (e) {
-      await launch.stop();
+      await launch.stop().catch(() => {}); // the connect error is the one to show
       throw e;
     }
 
@@ -206,8 +209,9 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
           throw e;
         }
         emit({ type: "tool_call_update", toolCallId, status: r.isError ? "failed" : "completed" });
-        const body = r.text.length > RESULT_MAX ? `${r.text.slice(0, RESULT_MAX)}\n${t.cut}` : r.text;
-        const msg: ModelMessage = { role: "user", content: `${t.resultOf(a.action)}\n${body}` };
+        const clean = r.text.replace(CONTROL, "").replace(DELIMITERS, "");
+        const body = clean.length > RESULT_MAX ? `${clean.slice(0, RESULT_MAX)}\n${t.cut}` : clean;
+        const msg: ModelMessage = { role: "user", content: `${t.resultOf(a.action)}\n${body}\n${t.end}` };
         messages.push(msg);
         results.push({ msg, tool: a.action });
       }
