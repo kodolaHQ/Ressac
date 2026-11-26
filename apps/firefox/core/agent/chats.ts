@@ -8,6 +8,7 @@ import type { ChatRecord, ChatStore } from "./chat-store";
 export const LIVE_MAX = 3;
 const NEW_TITLE = "Nouvelle discussion";
 const TITLE_MAX = 40;
+const RESUME_FAILED = "La conversation n'a pas pu être reprise : l'agent repart sans le contexte des échanges précédents.";
 
 /** What the host's `open` gets: it starts the kernel pipe session and the engine. */
 export interface OpenOptions {
@@ -28,7 +29,7 @@ interface Entry {
   streaming?: { messageId: string; text: string };
   error?: string;
   /** Texts for the engine, waiting for the conversation to open or the running turn to end. */
-  pending: string[];
+  pending: { text: string; itemId: string }[];
   /** A prompt is in the engine: the adapters track one turn at a time. */
   turn: boolean;
   conv?: EngineConversation;
@@ -108,8 +109,9 @@ export class Chats {
     const e = this.entries.get(chatId);
     if (!e) return;
     if (!e.rec.items.some((i) => i.kind === "user")) e.rec.title = userItemText.slice(0, TITLE_MAX);
-    e.rec.items.push({ kind: "user", id: randomUUID(), text: userItemText });
-    e.pending.push(sentText);
+    const itemId = randomUUID();
+    e.rec.items.push({ kind: "user", id: itemId, text: userItemText });
+    e.pending.push({ text: sentText, itemId });
     e.used = e.rec.updatedAt = this.now();
     // An ended conversation (error) waits for retry: it is never prompted.
     if (e.state === "paused") this.live(e);
@@ -121,8 +123,9 @@ export class Chats {
   cancel(chatId: string): void {
     const e = this.entries.get(chatId);
     if (!e) return;
-    e.pending = [];
+    unsend(e);
     if (e.turn) e.conv?.cancel();
+    this.push(e);
   }
 
   answer(chatId: string, requestId: string, reply: AskReply): void {
@@ -160,9 +163,7 @@ export class Chats {
   async retry(chatId: string): Promise<void> {
     const e = this.entries.get(chatId);
     if (!e) return;
-    const pending = e.pending;
     if (e.conv || e.opening) await this.close(e);
-    e.pending = pending;
     this.live(e);
   }
 
@@ -172,8 +173,9 @@ export class Chats {
     return e?.conv && e.launch ? e.launch.sessionId : null;
   }
 
+  /** App quit: messages still waiting are marked never sent. */
   async stopAll(): Promise<void> {
-    await Promise.all([...this.entries.values()].map((e) => this.close(e)));
+    await Promise.all([...this.entries.values()].map((e) => (unsend(e), this.close(e))));
   }
 
   private entry(rec: ChatRecord, state: ChatState): Entry {
@@ -201,6 +203,7 @@ export class Chats {
         this.push(e);
         return;
       }
+      // shortcut: the slot is free before the old process has exited (briefly LIVE_MAX + 1), await close() if memory shows it.
       void this.close(lru);
     }
     void this.start(e);
@@ -234,6 +237,13 @@ export class Chats {
     } catch (err) {
       if (e.opening !== opening) return;
       e.opening = undefined;
+      if (resumeId) {
+        // Once: the next start has no resumeId. The transcript stays; the engine loses the context.
+        e.rec.engineSessionId = undefined;
+        e.rec.items.push({ kind: "notice", id: randomUUID(), text: RESUME_FAILED });
+        void this.start(e);
+        return;
+      }
       e.state = "error";
       e.error = err instanceof Error ? err.message : String(err);
       this.push(e);
@@ -259,7 +269,7 @@ export class Chats {
     if (!e.conv || e.turn || !e.pending.length || e.state === "signed-out") return;
     e.turn = true;
     e.state = "running";
-    e.conv.prompt(e.pending.shift()!);
+    e.conv.prompt(e.pending.shift()!.text);
   }
 
   private update(e: Entry, conv: EngineConversation, u: SessionUpdate): void {
@@ -297,7 +307,8 @@ export class Chats {
           e.state = "ready";
           e.error = u.stopReason === "error" ? (u.error ?? "L'agent a rencontré une erreur.") : undefined;
         }
-        e.rec.engineSessionId = conv.engineSessionId;
+        // A turn that failed (turn/start refused) may leave an empty Codex thread: never resumed.
+        if (u.stopReason !== "error") e.rec.engineSessionId = conv.engineSessionId;
         e.used = e.rec.updatedAt = this.now();
         void this.save(e);
         this.pump(e);
@@ -342,7 +353,6 @@ export class Chats {
     const conv = this.detach(e);
     if (!live && !conv) return;
     flush(e);
-    e.pending = [];
     e.state = "paused";
     this.push(e);
     await Promise.all([conv?.close().catch((err) => console.error("[chat] close:", err)), this.save(e)]);
@@ -368,6 +378,15 @@ export class Chats {
 }
 
 const idle = (e: Entry): boolean => !!e.conv && !e.turn && !e.pending.length;
+/** Drops the waiting messages, marking their user items never sent. */
+function unsend(e: Entry): void {
+  for (const p of e.pending) {
+    const item = e.rec.items.find((i) => i.kind === "user" && i.id === p.itemId);
+    if (item?.kind === "user") item.unsent = true;
+  }
+  e.pending = [];
+}
+
 const openQuestion = (e: Entry): boolean => e.rec.items.some((i) => i.kind === "question" && !i.answer);
 
 /** A message cut short (turn end, death, pause) is kept as said. */

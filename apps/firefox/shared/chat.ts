@@ -23,7 +23,7 @@ export type SessionUpdate =
   | { type: "usage"; inputTokens?: number; outputTokens?: number; costUsd?: number };
 
 export type ChatItem =
-  | { kind: "user"; id: string; text: string }
+  | { kind: "user"; id: string; text: string; /** Never reached the engine (cancelled, or the app quit first). */ unsent?: true }
   | { kind: "agent"; id: string; text: string }
   | { kind: "tool"; id: string; title: string; toolKind: ToolKind; status: "pending" | "in_progress" | "completed" | "failed"; summary?: string }
   | { kind: "question"; id: string; questions: ChatQuestion[]; answer?: Record<string, string> | "cancelled" }

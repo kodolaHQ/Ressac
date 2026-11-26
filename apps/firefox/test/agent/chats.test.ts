@@ -302,4 +302,65 @@ test("cancel ends the running turn and drops the messages waiting behind it", as
   expect(opens[0]!.conv.cancels).toBe(1);
   opens[0]!.conv.emit({ type: "turn_end", stopReason: "cancelled" });
   expect(opens[0]!.conv.prompts).toEqual(["un"]);
+  expect(chats.active("w1")?.items.map((i) => (i.kind === "user" ? [i.text, i.unsent] : null))).toEqual([["un", undefined], ["deux", true]]);
+});
+
+test("a turn that ended in error does not make the thread resumable", async () => {
+  const { chats, opens } = prepare();
+  const a = await chats.create("w1", { ...opts, engine: "codex", profile: "codex" });
+  await tick();
+  chats.prompt(a.summary.id, "un", "un");
+  opens[0]!.conv.emit({ type: "turn_end", stopReason: "error", error: "signed-out" });
+  await chats.pause(a.summary.id);
+  await chats.select("w1", a.summary.id);
+  await tick();
+  expect(opens[1]!.o.resumeId).toBeUndefined();
+});
+
+test("a resume that fails opens fresh once, with a notice, and the transcript and waiting messages stay", async () => {
+  const { chats, opens } = prepare(false);
+  const a = await chats.create("w1", opts);
+  const id = a.summary.id;
+  opens[0]!.resolve();
+  await tick();
+  chats.prompt(id, "un", "un");
+  opens[0]!.conv.endTurn();
+  await chats.pause(id);
+  await chats.select("w1", id);
+  chats.prompt(id, "deux", "deux");
+  expect(opens[1]!.o.resumeId).toBe(opens[0]!.o.sessionId);
+  opens[1]!.reject(new Error("No conversation found"));
+  await tick();
+  expect(opens).toHaveLength(3);
+  expect(opens[2]!.o.resumeId).toBeUndefined();
+  expect(opens[2]!.o.sessionId).not.toBe(opens[0]!.o.sessionId);
+  opens[2]!.resolve();
+  await tick();
+  expect(opens[2]!.conv.prompts).toEqual(["deux"]);
+  const items = chats.active("w1")!.items;
+  expect(items.map((i) => i.kind)).toEqual(["user", "user", "notice"]);
+  expect(items[2]).toMatchObject({ text: expect.stringContaining("n'a pas pu être reprise") });
+  // A fresh open that fails is an error, not another fresh open.
+  await chats.pause(id);
+  await chats.select("w1", id);
+  opens[3]!.reject(new Error("boom"));
+  await tick();
+  expect(opens).toHaveLength(4);
+  expect(chats.active("w1")?.summary.state).toBe("error");
+});
+
+test("messages waiting when a window closes go after the reopen; at app quit they are marked never sent", async () => {
+  const { chats, opens } = prepare(false);
+  const a = await chats.create("w1", opts);
+  chats.prompt(a.summary.id, "un", "un");
+  await chats.closeWindow("w1");
+  await chats.select("w2", a.summary.id);
+  opens[1]!.resolve();
+  await tick();
+  expect(opens[1]!.conv.prompts).toEqual(["un"]);
+  expect(chats.active("w2")?.items[0]).not.toHaveProperty("unsent");
+  const b = await chats.create("w2", opts);
+  chats.prompt(b.summary.id, "deux", "deux");
+  await chats.stopAll();
+  expect((await chats.select("w2", b.summary.id))?.items[0]).toMatchObject({ text: "deux", unsent: true });
 });
