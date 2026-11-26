@@ -4,14 +4,14 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { query, type PermissionResult, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AskReply, ChatQuestion } from "../../../shared/chat";
-import { engineEvents, toolTitle, type ChatEngine, type EngineConversation } from "./engine";
+import { engineEvents, toolTitle, type ChatEngine, type EngineConversation, type EngineModel } from "./engine";
 
 const AUTH = /\b(log ?in|not logged in|authenticat\w*|401)\b/i;
 
 export const claudeEngine: ChatEngine = {
   id: "claude",
 
-  async open({ resumeId, sessionId, launch, signal, tabTitle }): Promise<EngineConversation> {
+  async open({ resumeId, sessionId, launch, signal, tabTitle, model }): Promise<EngineConversation> {
     const engineSessionId = resumeId ?? sessionId ?? randomUUID();
     const events = engineEvents(launch);
     const { emit } = events;
@@ -37,6 +37,9 @@ export const claudeEngine: ChatEngine = {
     // Claude Code reports apiKeySource "none" for subscribers too: only a missing token proves a signed-out CLI.
     let noToken = false;
     let running = false;
+    // The model asked for, and the one the CLI runs: set_model goes before the next message when they differ.
+    let wanted = model;
+    let applied = model;
 
     const abort = new AbortController();
     if (signal.aborted) abort.abort();
@@ -54,6 +57,7 @@ export const claudeEngine: ChatEngine = {
         systemPrompt: { type: "preset", preset: "claude_code" },
         includePartialMessages: true,
         permissionMode: "default",
+        ...(model ? { model } : {}),
         ...(resumeId ? { resume: resumeId } : { sessionId: engineSessionId }),
         canUseTool: async (name, toolInput, { signal: toolSignal }): Promise<PermissionResult> => {
           if (name !== "AskUserQuestion") return { behavior: "allow", updatedInput: toolInput };
@@ -141,8 +145,20 @@ export const claudeEngine: ChatEngine = {
       engineSessionId,
       prompt(text) {
         running = true;
-        queue.push({ type: "user", message: { role: "user", content: text }, parent_tool_use_id: null });
-        push();
+        const send = () => (queue.push({ type: "user", message: { role: "user", content: text }, parent_tool_use_id: null }), push());
+        if (wanted === applied) return send();
+        applied = wanted;
+        // Answered before the message goes: the turn runs on the new model.
+        q.setModel(wanted).catch(() => {}).finally(send);
+      },
+      async models() {
+        // Claude Code lists « default » (no --model) first: the empty choice.
+        return (await q.initializationResult()).models.map(
+          (m): EngineModel => ({ value: m.value === "default" ? "" : m.value, name: m.displayName, ...(m.description ? { description: m.description } : {}), ...(m.value === "default" ? { default: true as const } : {}) }),
+        );
+      },
+      setModel(m) {
+        wanted = m;
       },
       cancel() {
         if (!running) return;

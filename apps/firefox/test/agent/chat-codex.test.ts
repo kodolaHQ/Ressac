@@ -17,7 +17,7 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-async function start(o: { resumeId?: string } = {}) {
+async function start(o: { resumeId?: string; model?: string } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ressac-chat-codex-"));
   dirs.push(dir);
   const logFile = join(dir, "log.jsonl");
@@ -134,4 +134,31 @@ test("close() stops the launch; the process exit calls ended() and onEnd once", 
   expect(launch.stop).toHaveBeenCalled();
   await expect.poll(() => ends).toEqual([{ code: 0 }]);
   expect(launch.ended).toHaveBeenCalledTimes(1);
+});
+
+test("model: thread/start and thread/resume carry the chosen one; the list is model/list's visible models", async () => {
+  const { conv, received } = await start({ model: "gpt-5.4" });
+  expect(received()[2]).toMatchObject({ method: "thread/start", params: { model: "gpt-5.4" } });
+  expect(await conv.models!()).toEqual([
+    { value: "gpt-5.5", name: "GPT-5.5", description: "Frontier", default: true },
+    { value: "gpt-5.4", name: "GPT-5.4", description: "Fast" },
+  ]);
+  const { received: resumed } = await start({ resumeId: "thr_old", model: "gpt-5.4" });
+  expect(resumed()[2]).toMatchObject({ method: "thread/resume", params: { threadId: "thr_old", model: "gpt-5.4" } });
+});
+
+test("setModel applies from the next turn/start; back to the default sends the default model once", async () => {
+  const { conv, received, updates } = await start();
+  const turns = () => received().filter((m) => m.method === "turn/start").map((m) => m.params.model ?? null);
+  conv.prompt("hello");
+  await expect.poll(() => updates.filter((u) => u.type === "turn_end").length).toBe(1);
+  conv.setModel!("gpt-5.4");
+  conv.prompt("hello");
+  await expect.poll(() => updates.filter((u) => u.type === "turn_end").length).toBe(2);
+  conv.setModel!(undefined);
+  conv.prompt("hello");
+  await expect.poll(() => updates.filter((u) => u.type === "turn_end").length).toBe(3);
+  conv.prompt("hello");
+  await expect.poll(() => updates.filter((u) => u.type === "turn_end").length).toBe(4);
+  expect(turns()).toEqual([null, "gpt-5.4", "gpt-5.5", null]);
 });

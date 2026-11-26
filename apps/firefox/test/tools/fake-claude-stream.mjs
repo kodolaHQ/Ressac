@@ -12,6 +12,12 @@ const text = (id, t) => out({ type: "assistant", parent_tool_use_id: null, messa
 const delta = (t) => out({ type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } });
 
 log({ argv: process.argv.slice(2) });
+// The model picker's list (the CLI's own `models`, « default » first as Claude Code sends it).
+const MODELS = [
+  { value: "default", displayName: "Default (recommended)", description: "Opus 5.5" },
+  { value: "opus", displayName: "Opus", description: "Most capable" },
+  { value: "sonnet", displayName: "Sonnet", description: "Fast" },
+];
 let askId = "";
 let n = 0;
 /** The held rest of a « Bonjour » turn, polled until FAKE_CHAT_GO exists; an interrupt drops it. */
@@ -25,8 +31,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   const m = JSON.parse(line);
   log(m);
   if (m.type === "control_request" && m.request.subtype === "initialize") {
-    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: { commands: [], agents: [], models: [], output_style: "default", available_output_styles: [], account: { tokenSource: process.env.FAKE_TOKEN_SOURCE ?? "claude.ai" } } } });
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: { commands: [], agents: [], models: MODELS, output_style: "default", available_output_styles: [], account: { tokenSource: process.env.FAKE_TOKEN_SOURCE ?? "claude.ai" } } } });
     out({ type: "system", subtype: "init", apiKeySource: "none", tools: [], mcp_servers: [], model: "m", permissionMode: "default" });
+  } else if (m.type === "control_request" && m.request.subtype === "set_model") {
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
   } else if (m.type === "control_request" && m.request.subtype === "interrupt") {
     clearTimeout(held);
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });

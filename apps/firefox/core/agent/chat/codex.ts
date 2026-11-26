@@ -7,6 +7,7 @@ import type {
   AgentMessageDelta,
   InitializeParams,
   ItemNotification,
+  ModelListResponse,
   RequestUserInputParams,
   RequestUserInputResponse,
   RpcId,
@@ -14,11 +15,12 @@ import type {
   RpcResponse,
   ThreadItem,
   ThreadResponse,
+  ThreadResumeParams,
   ThreadStartParams,
   TurnHolder,
   TurnStartParams,
 } from "./codex-protocol";
-import { engineEvents, toolTitle, type ChatEngine, type EngineConversation } from "./engine";
+import { engineEvents, toolTitle, type ChatEngine, type EngineConversation, type EngineModel } from "./engine";
 
 const AUTH = /\b(log ?in|not logged in|authenticat\w*|unauthori[sz]ed|401)\b/i;
 // The app-server only shows it in its user agent.
@@ -34,7 +36,7 @@ function itemTitle(item: ThreadItem, tabTitle?: (id: unknown) => string | undefi
 export const codexEngine: ChatEngine = {
   id: "codex",
 
-  async open({ resumeId, launch, signal, tabTitle }): Promise<EngineConversation> {
+  async open({ resumeId, launch, signal, tabTitle, model }): Promise<EngineConversation> {
     const events = engineEvents(launch);
     const { emit } = events;
 
@@ -140,19 +142,42 @@ export const codexEngine: ChatEngine = {
     try {
       await request("initialize", CLIENT);
       send({ method: "initialized" });
-      const start: ThreadStartParams = { cwd: "/workspace", approvalPolicy: "never", sandbox: "danger-full-access" };
-      threadId = (await (resumeId ? request<ThreadResponse>("thread/resume", { threadId: resumeId }) : request<ThreadResponse>("thread/start", start))).thread.id;
+      const pick = model ? { model } : {};
+      const start: ThreadStartParams = { cwd: "/workspace", approvalPolicy: "never", sandbox: "danger-full-access", ...pick };
+      const resume: ThreadResumeParams = { threadId: resumeId ?? "", ...pick };
+      threadId = (await (resumeId ? request<ThreadResponse>("thread/resume", resume) : request<ThreadResponse>("thread/start", start))).thread.id;
     } catch (e) {
       await launch.stop();
       throw e;
     }
 
+    const models = async (): Promise<EngineModel[]> =>
+      (await request<ModelListResponse>("model/list", {})).data
+        .filter((m) => !m.hidden)
+        .map((m) => ({ value: m.model || m.id, name: m.displayName || m.model || m.id, ...(m.description ? { description: m.description } : {}), ...(m.isDefault ? { default: true as const } : {}) }));
+    // A turn's model stays the thread's: going back to the default sends the default's id once.
+    let wanted = model;
+    let overridden = !!model;
+    const turnModel = async (): Promise<string | undefined> => {
+      if (wanted) return (overridden = true), wanted;
+      if (!overridden) return undefined;
+      const d = (await models().catch(() => [])).find((m) => m.default)?.value;
+      if (d) overridden = false;
+      return d;
+    };
+
     return {
       engineSessionId: threadId,
+      models,
+      setModel(m) {
+        wanted = m;
+      },
       prompt(text) {
         running = true;
-        const params: TurnStartParams = { threadId, input: [{ type: "text", text }] };
-        request<TurnHolder>("turn/start", params).then(
+        turnModel().then((m) => {
+          const params: TurnStartParams = { threadId, input: [{ type: "text", text }], ...(m ? { model: m } : {}) };
+          return request<TurnHolder>("turn/start", params);
+        }).then(
           (r) => setTurn(r.turn.id),
           (e: Error) => {
             running = cancelling = false;

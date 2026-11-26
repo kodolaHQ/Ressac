@@ -11,11 +11,20 @@ export interface ThreadStartParams {
   cwd: string;
   approvalPolicy: "never";
   sandbox: "danger-full-access";
+  model?: string;
 }
+export interface ThreadResumeParams { threadId: string; model?: string }
 /** thread/start and thread/resume results. */
 export interface ThreadResponse { thread: { id: string } }
 
-export interface TurnStartParams { threadId: string; input: { type: "text"; text: string }[] }
+/** `model`: for this turn and the next ones (the thread keeps it). */
+export interface TurnStartParams { threadId: string; input: { type: "text"; text: string }[]; model?: string }
+
+/** model/list (first page). `model` is the id turns take; `isDefault`: the one used without a choice. */
+export interface ModelListResponse {
+  data: { id: string; model: string; displayName: string; description: string; hidden: boolean; isDefault: boolean }[];
+  nextCursor: string | null;
+}
 
 export type CodexErrorInfo = string | Record<string, unknown>;
 export interface Turn {

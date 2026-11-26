@@ -22,6 +22,12 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", (l
   if (m.id === "srv_1" && waiting) return void (waiting(), (waiting = null));
   switch (m.method) {
     case "initialize": return send({ id: m.id, result: { userAgent: "fake" } });
+    case "model/list":
+      return send({ id: m.id, result: { nextCursor: null, data: [
+        { id: "gpt-5.5", model: "gpt-5.5", displayName: "GPT-5.5", description: "Frontier", hidden: false, isDefault: true },
+        { id: "gpt-5.4", model: "gpt-5.4", displayName: "GPT-5.4", description: "Fast", hidden: false, isDefault: false },
+        { id: "old", model: "old", displayName: "Old", description: "", hidden: true, isDefault: false },
+      ] } });
     case "thread/start": return send({ id: m.id, result: { thread: { id: "thr_new" } } });
     case "thread/resume": return send({ id: m.id, result: { thread: { id: m.params.threadId } } });
     case "turn/interrupt": clearTimeout(held); send({ id: m.id, result: {} }); return done("interrupted");

@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-async function start(o: { resumeId?: string; sessionId?: string } = {}, env: Record<string, string> = {}) {
+async function start(o: { resumeId?: string; sessionId?: string; model?: string } = {}, env: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ressac-chat-claude-"));
   dirs.push(dir);
   const logFile = join(dir, "log.jsonl");
@@ -154,4 +154,31 @@ test("resume passes the stored id", async () => {
   expect(launch.engineArgs.join(" ")).toContain("--resume");
   expect(launch.engineArgs.join(" ")).toContain("22222222-2222-4222-8222-222222222222");
   expect(conv.engineSessionId).toBe("22222222-2222-4222-8222-222222222222");
+});
+
+test("model: the chosen one goes as --model; its list is the engine's own, « default » as the empty choice", async () => {
+  const { launch, conv } = await start({ model: "sonnet" });
+  // One token: the value can never read as an option of its own.
+  expect(launch.engineArgs).toContain("--model=sonnet");
+  expect(await conv.models!()).toEqual([
+    { value: "", name: "Default (recommended)", description: "Opus 5.5", default: true },
+    { value: "opus", name: "Opus", description: "Most capable" },
+    { value: "sonnet", name: "Sonnet", description: "Fast" },
+  ]);
+  const { launch: none } = await start();
+  expect(none.engineArgs.some((a) => a.startsWith("--model"))).toBe(false);
+});
+
+test("setModel applies from the next message: set_model goes before it, once; undefined goes back to the default", async () => {
+  const { conv, updates, received } = await start();
+  conv.setModel!("opus");
+  conv.prompt("hello");
+  await expect.poll(() => updates.filter((u) => u.type === "turn_end").length).toBe(1);
+  conv.prompt("hello");
+  await expect.poll(() => updates.filter((u) => u.type === "turn_end").length).toBe(2);
+  conv.setModel!(undefined);
+  conv.prompt("hello");
+  await expect.poll(() => updates.filter((u) => u.type === "turn_end").length).toBe(3);
+  const seen = received().flatMap((m) => (m.request?.subtype === "set_model" ? [`model:${m.request.model ?? "default"}`] : m.type === "user" ? ["user"] : []));
+  expect(seen).toEqual(["model:opus", "user", "user", "model:default", "user"]);
 });
