@@ -5,7 +5,7 @@
   import { appState } from "../../state.svelte";
   import { t } from "../../i18n.svelte";
   import Icon from "../Icon.svelte";
-  import { chat, newChat, openChat, removeChat } from "./chat.svelte";
+  import { chat, chatTitle, newChat, openChat, removeChat } from "./chat.svelte";
 
   let { profiles }: { profiles: { id: string; name: string }[] } = $props();
   let panel = $state<HTMLElement>();
@@ -84,7 +84,7 @@
 </script>
 
 {#snippet remove(s: ChatSummary)}
-  <button class="delete" aria-label={t("chat-delete", { title: s.title || t("chat-untitled") })} title={t("chat-delete", { title: s.title || t("chat-untitled") })} data-testid="chat-row-delete" onclick={(e) => askDelete(s, e)}>
+  <button class="delete" aria-label={t("chat-delete", { title: chatTitle(s.title) })} title={t("chat-delete", { title: chatTitle(s.title) })} data-testid="chat-row-delete" onclick={(e) => askDelete(s, e)}>
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M6 7l1 13h10l1-13" /><path d="M9 7V4h6v3" /></svg>
   </button>
 {/snippet}
@@ -103,7 +103,7 @@
       {#each live as s (s.id)}
         <div class="item" class:current={s.id === chat.view?.summary.id} out:fade={{ duration: chat.visible ? 150 : 0 }}>
           <button class="row" data-testid="chat-row" onclick={() => pick(s.id)}>
-            <span class="top"><span class="dot {dot(s)}" aria-hidden="true"></span><strong>{s.title || t("chat-untitled")}</strong><span class="side">{engineName(s)}</span></span>
+            <span class="top"><span class="dot {dot(s)}" aria-hidden="true"></span><strong>{chatTitle(s.title)}</strong><span class="side">{engineName(s)}</span></span>
             <span class="sub">{line(s)}</span>
           </button>
           {@render remove(s)}
@@ -115,7 +115,7 @@
       {#each paused as s (s.id)}
         <div class="item" class:current={s.id === chat.view?.summary.id} out:fade={{ duration: chat.visible ? 150 : 0 }}>
           <button class="row paused" data-testid="chat-row" onclick={() => pick(s.id)}>
-            <span class="top"><strong>{s.title || t("chat-untitled")}</strong><span class="side">{ago(s.updatedAt)}</span></span>
+            <span class="top"><strong>{chatTitle(s.title)}</strong><span class="side">{ago(s.updatedAt)}</span></span>
             <span class="sub">{t("chat-list-messages", { count: s.messages })}</span>
           </button>
           {@render remove(s)}

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { renderMarkdown, renderPlain } from "../../ui/components/chat/markdown";
+import { renderMarkdown, plainTitle, renderPlain } from "../../ui/components/chat/markdown";
 import { shiftRanges } from "../../ui/components/chat/draft";
 
 test("HTML is escaped, never rendered", () => {
@@ -55,4 +55,12 @@ test("pasted ranges follow the edits around them", () => {
   expect(shiftRanges([[2, 5]], "abXYZ", "abX1YZ")).toEqual([[2, 6]]);
   // Deleted entirely: gone.
   expect(shiftRanges([[2, 5]], "abXYZ", "ab")).toEqual([]);
+});
+
+test("a title shows its labels as their kind's words, never a token, and drops one the title cut", () => {
+  const name = (type: string) => `${type} masqué`;
+  expect(plainTitle("Mon adresse est ⟨email-wr4urdzq⟩@exemple", name)).toBe("Mon adresse est email masqué@exemple");
+  expect(plainTitle("Répète exactement ce numéro : ⟨tel-ni212", name)).toBe("Répète exactement ce numéro :");
+  expect(plainTitle("Appelle ⟨", name)).toBe("Appelle");
+  expect(plainTitle("Bonjour", name)).toBe("Bonjour");
 });

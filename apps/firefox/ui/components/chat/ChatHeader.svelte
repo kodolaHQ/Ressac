@@ -3,7 +3,7 @@
   import { api, labOn } from "../../state.svelte";
   import { t } from "../../i18n.svelte";
   import Icon from "../Icon.svelte";
-  import { chat, newChat, readList } from "./chat.svelte";
+  import { chat, chatTitle, newChat, readList } from "./chat.svelte";
 
   /** `profiles`: the agents a discussion can run (Claude Code, Codex); `onAdvanced`: « Mode avancé ». */
   let { profiles, onAdvanced }: { profiles: { id: string; name: string }[]; onAdvanced: () => void } = $props();
@@ -43,7 +43,7 @@
 
 <header>
   <button class="picker" data-testid="chat-picker" aria-haspopup="true" aria-expanded={chat.listOpen} title={t("chat-picker")} onclick={toggleList}>
-    <span class="title">{summary?.title || t("chat-untitled")}</span>
+    <span class="title">{chatTitle(summary?.title)}</span>
     <span class="down"><Icon name="chevron" size={12} /></span>
   </button>
   <span class="spacer"></span>

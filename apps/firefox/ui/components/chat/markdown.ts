@@ -18,6 +18,13 @@ export function renderPlain(text: string, chip?: Chip): string {
   return chip ? html.replace(LABELS, (label, type: string) => chip(label, type)) : html;
 }
 
+/**
+ * A title as plain text: its labels as their kind's words (`name`), and a label the title's length cut at its end dropped,
+ * so no token, whole or cut, ever shows.
+ */
+export const plainTitle = (title: string, name: (type: string) => string): string =>
+  title.replace(LABELS, (_label, type: string) => name(type)).replace(/\s*⟨[a-z]*(?:-[a-z0-9]*)?$/, "");
+
 function emphasis(text: string, chip?: Chip): string {
   const html = escape(text)
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
