@@ -786,6 +786,8 @@ export async function createKernel(o: {
 
   // Cleanups of the sessions with a window still open, also done at the kernel's shutdown.
   const openSessions = new Set<() => Promise<void>>();
+  // Host sessions (own model): no process in the container, so they never count for the sweep, a reveal, a lift or a restore.
+  const hostSessions = new Set<() => Promise<void>>();
   /** The Claude conversation id of each open session, by session (a reveal or a passport addition uncovers it). */
   const claudeOpen = new Map<string, string>();
   // A lift (or a lock) re-applies the container's network: a lift gives the code and user domains back.
@@ -796,6 +798,12 @@ export async function createKernel(o: {
   /** The lift under way: a session opening meanwhile waits for it, so the agent never runs beside the moves. */
   let lifting: Promise<void> | null = null;
   let liftingKey = "";
+  /** A new conversation: no grant, search nor typed text carried over from the previous one (both session kinds). */
+  const newConversation = (win: string | undefined, resume: boolean | undefined) => {
+    policy.reset();
+    search.reset();
+    if (win !== undefined && !resume) outflow.forgetTyped(win);
+  };
 
   return {
     paths: paths,
@@ -910,11 +918,9 @@ export async function createKernel(o: {
         }
         if (kind === "claude") await instructions.acceptedAgents();
         // After the card: a refused card leaves the other windows' grants alone, and nothing granted meanwhile leaks into this conversation.
-        policy.reset();
-        search.reset();
         // The outflow's reads are kept: a profile switched back resumes a conversation with its reads in context (over-retaining only over-blocks); the host forgets them when the window closes.
         // What the user typed is theirs to send for this conversation only: a new one forgets it (a profile switch over-blocks, acceptable).
-        if (win !== undefined && !resume) outflow.forgetTyped(win);
+        newConversation(win, resume);
         const byId = conversation !== undefined && program === "claude" && /^[0-9a-f-]{36}$/.test(conversation);
         // « Mode avancé » of a chat: its own Codex thread, never the workdir's latest (another discussion's). The id comes from the
         // container's app-server and goes into argv: a plain token starting alphanumeric, never something clap reads as an option.
@@ -1014,29 +1020,28 @@ export async function createKernel(o: {
       if (!win) throw new Error(say(loc(), "kernel-err-host-no-window"));
       // The session part of openAgentSession (see its comments), without the workshop: no start, network, sweep, instruction review nor CLI.
       while (lifting) await lifting.catch(() => {});
-      opening++;
+      newConversation(win, resume);
+      const id = randomBytes(8).toString("hex");
+      // Covered: the transcript only ever held masked text. Opened before the token, so a throw leaves no live token.
+      masker.open(id, win);
+      let sessionToken: string;
       try {
-        policy.reset();
-        search.reset();
-        if (!resume) outflow.forgetTyped(win);
-        const id = randomBytes(8).toString("hex");
-        const sessionToken = server.openSession(win, agent, id, "browser", HOST_LOOP_TOOLS);
-        // Covered: the transcript only ever held masked text.
-        masker.open(id, win);
-        let open = true;
-        const ended = () => {
-          if (!open) return;
-          open = false;
-          openSessions.delete(clean);
-          server.closeSession(sessionToken);
-          masker.close(id);
-        };
-        const clean = async () => ended();
-        openSessions.add(clean);
-        return { sessionId: id, url: `http://127.0.0.1:${server.port}/mcp`, token: sessionToken, ended, stop: clean };
-      } finally {
-        opening--;
+        sessionToken = server.openSession(win, agent, id, "browser", HOST_LOOP_TOOLS);
+      } catch (e) {
+        masker.close(id);
+        throw e;
       }
+      let open = true;
+      const ended = () => {
+        if (!open) return;
+        open = false;
+        hostSessions.delete(clean);
+        server.closeSession(sessionToken);
+        masker.close(id);
+      };
+      const clean = async () => ended();
+      hostSessions.add(clean);
+      return { sessionId: id, url: `http://127.0.0.1:${server.port}/mcp`, token: sessionToken, ended, stop: clean };
     },
     async openLoginSession({ cols, rows, program }) {
       // After the app's orphan sweep, which would kill it; the login runs no model, so it needs no window, token nor masking.
@@ -1115,8 +1120,9 @@ export async function createKernel(o: {
       offLock();
       if (sweeper) clearInterval(sweeper);
       tracking?.stop();
-      await Promise.all([...openSessions].map((clean) => clean()));
+      await Promise.all([...openSessions, ...hostSessions].map((clean) => clean()));
       openSessions.clear();
+      hostSessions.clear();
       // No access at all: the cards still displayed are removed, and a late answer grants nothing.
       policy.reset();
       search.reset();

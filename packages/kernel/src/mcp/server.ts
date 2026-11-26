@@ -1790,7 +1790,8 @@ export function createToolsServer(
     { description: "URL, titre, texte principal et sélection de l'onglet que l'utilisateur regarde." },
     protect(async () => {
       if (bridge.activePrivateTab?.()) return text(PRIVATE_TEXT);
-      const o = await bridge.activeTab();
+      // The session's window, as active_tab: the tab the user talks about, not whichever window has focus.
+      const o = await bridge.activeTab(win ?? undefined);
       return o ? content(o) : text("Aucun onglet actif.");
     }),
   );
@@ -2959,8 +2960,10 @@ export async function startMcpServer(o: {
   return {
     port,
     containerUrl: `http://host.docker.internal:${port}/mcp`,
-    /** `session`: the conversation's id (`Masker.open`); without it the token masks with the main token's table. */
-    /** `tools`: the only tools the token may list and call. */
+    /**
+     * `session`: the conversation's id (`Masker.open`); without it the token masks with the main token's table.
+     * `tools`: the only tools the token may list and call.
+     */
     openSession(win, agent, session, mode = "browser", tools) {
       const token = generateToken();
       sessions.set(token, { token: Buffer.from(token), window: win, ...(agent ? { agent: agent } : {}), session: session ?? null, mode, ...(tools ? { tools: new Set(tools) } : {}) });

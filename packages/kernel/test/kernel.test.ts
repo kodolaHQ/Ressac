@@ -1366,19 +1366,74 @@ describe("host session", () => {
     await b.stop();
   });
 
-  test("a lift is refused while a host session is open; stop() ends it once", async () => {
+  test("a host session blocks neither a lift nor a restore; stop() ends it once", async () => {
     const n = await createReady();
     await mkdir(join(n.paths.internal, "sessions"), { recursive: true });
     await n.workspaceLock.lock({ names: ["votre code"] });
     const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
-    await expect(n.masking.lift({ choice: "quarantine" })).rejects.toThrow("Arrêtez la conversation pour lever le verrou");
+    // The busy check comes first: an unknown id reaching « not in quarantine » means the host session did not count.
+    await expect(n.masking.quarantine.restore("nope")).rejects.toThrow("not in quarantine");
+    await n.masking.lift({ choice: "quarantine" });
+    expect(n.workspaceLock.locked()).toBe(false);
     const close = vi.spyOn(n.masker, "close");
     await launch.stop();
     await launch.stop();
     launch.ended();
     expect(close).toHaveBeenCalledTimes(1);
     expect((await fetch(launch.url, { method: "POST", headers: { Authorization: `Bearer ${launch.token}` } })).status).toBe(401);
-    await n.masking.lift({ choice: "quarantine" });
-    expect(n.workspaceLock.locked()).toBe(false);
+  });
+
+  test("an open host session does not skip the container sweep before a new session", async () => {
+    const n = await createReady();
+    const sweep = vi.spyOn(Workshop.prototype, "stopAgentProcesses").mockResolvedValue();
+    try {
+      await mkdir(join(n.paths.internal, "sessions"), { recursive: true });
+      const host = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "F1" });
+      expect(sweep).toHaveBeenCalledTimes(1);
+      await s.stop();
+      await host.stop();
+    } finally {
+      sweep.mockRestore();
+    }
+  });
+
+  test("a host session in another window does not refuse a reveal", async () => {
+    const code = "381" + "624";
+    const bridge = new FakeBridge([{ id: "mail", title: "Boîte", url: "https://mail.example.test/inbox", space: "perso", agentReached: false }], { active: "mail", allow: true, reveal: true });
+    bridge.pages.set("mail", { text: `Ton code : ${code}` });
+    const n = await createReady(() => "fr", { bridge });
+    const folder = join(n.paths.internal, "sessions");
+    const a = await n.openAgentSession({ cols: 80, rows: 24, window: "F1" });
+    const auth = JSON.parse(await readFile(join(folder, (await readdir(folder))[0]!), "utf8")).mcpServers.ressac.headers.Authorization;
+    const c = new Client({ name: "test", version: "0" });
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${n.mcpPort}/mcp`), { requestInit: { headers: { Authorization: auth } } }));
+    const call = async (name: string, args: Record<string, unknown>) => ((await c.callTool({ name, arguments: args })).content as { text: string }[])[0]!.text;
+    const host = await n.openHostSession({ window: "F2", resume: false, agent: "Votre modèle" });
+    try {
+      const label = (await call("read_tab", { id: "mail" })).match(/⟨code-[a-z0-9]{8}⟩/)![0];
+      expect(await call("reveal_value", { label, reason: "payer" })).toContain(code);
+    } finally {
+      await c.close();
+      await host.stop();
+      await a.stop();
+    }
+  });
+
+  test("a host session whose masking fails to open leaves no live token", async () => {
+    const n = await createReady();
+    const open = vi.spyOn(n.masker, "open").mockImplementationOnce(() => {
+      throw new Error("masker down");
+    });
+    const close = vi.spyOn(n.masker, "close");
+    try {
+      await expect(n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" })).rejects.toThrow("masker down");
+      // The next one opens normally and is the only one counted: its stop closes one masking session.
+      const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+      await launch.stop();
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      open.mockRestore();
+    }
   });
 });

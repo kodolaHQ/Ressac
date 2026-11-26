@@ -3664,7 +3664,7 @@ test("active_tab is the host loop's only: another token neither lists nor calls 
   });
 });
 
-test("active_tab answers for the discussion's window, never the focused one", async () => {
+test("active_tab and current_page answer for the discussion's window, never the focused one", async () => {
   const one: TabInfo = { id: "one", title: "Un", url: "https://un.test/", space: "perso" };
   const two: TabInfo = { id: "two", title: "Deux", url: "https://deux.test/", space: "perso" };
   const bridge = new FakeBridge([one, two], { active: "one", allow: false, activeIn: { W2: "two" } });
@@ -3677,6 +3677,8 @@ test("active_tab answers for the discussion's window, never the focused one", as
     await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${s.openSession("W2", undefined, undefined, "browser", HOST_LOOP_TOOLS)}` } } }));
     expect(text(await c.callTool({ name: "active_tab", arguments: {} }))).toBe("Deux\nhttps://deux.test/");
     expect(bridge.calls.filter((x) => x.method === "activeTab").map((x) => x.args)).toEqual([["W2"]]);
+    expect(text(await c.callTool({ name: "current_page", arguments: {} }))).toContain("deux.test");
+    expect(bridge.calls.filter((x) => x.method === "activeTab").map((x) => x.args)).toEqual([["W2"], ["W2"]]);
   } finally {
     await c.close();
     await s.stop();
