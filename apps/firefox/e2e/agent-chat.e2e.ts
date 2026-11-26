@@ -426,6 +426,11 @@ it("@onglet : une puce dans le message, l'agent lit cet onglet sans carte dans c
   await expect.poll(() => said().at(-1) ?? "", { timeout: 20_000 }).toContain(`"tab":"${cited}","title":"Page citee"`);
   expect(said().at(-1)).toContain("] resume — Pages que je cite");
   await waitAgent("return !doc.querySelector('[data-testid=\"chat-ref\"]')");
+  // The bubble and the title are the user's words; the tab spoken from and the cited one are lines under it, never the data.
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-user\"]')?.textContent === 'resume'");
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-picker\"] .title')?.textContent === 'resume'");
+  expect(await textOf("chat-user-pages")).toMatch(/^Page ici.*Page citee/);
+  expect(await textOf("chat-user-pages")).not.toContain("{");
   // The discussion's own agent, with its session's token.
   const folder = join(root(), ".ressac", "sessions");
   const config = join(folder, readdirSync(folder).find((f) => f.endsWith(".json"))!);

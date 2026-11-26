@@ -31,6 +31,9 @@
   const copyButton = $derived(`<span role="button" tabindex="0" class="copy-code" data-copy aria-label="${escape(t("chat-copy-code"))}" title="${escape(t("chat-copy-code"))}">${svg("copy", 13)}</span>`);
   const markdown = (text: string) => renderMarkdown(text, chip, copyButton);
 
+  /** A page under a message: its site only (the whole address is its tooltip). */
+  const siteOf = (url: string) => URL.parse(url)?.hostname || url;
+
   const READS = new Set<ToolKind>(["read", "search", "fetch"]);
   const TOOL_ICONS: Record<ToolKind, IconName> = { read: "book-open", search: "find", fetch: "globe", edit: "pencil", execute: "terminal", other: "wrench" };
 
@@ -91,8 +94,16 @@
   <div class="thread" data-testid="chat-thread" role="log" aria-live="polite" bind:this={scroller} {onscroll} {onclick} {onkeydown}>
     {#each view?.items ?? [] as item (item.id)}
       {#if item.kind === "user"}
+        {@const own = item.display ?? item.text}
         <div class="user">
-          <div class="bubble" data-testid="chat-user">{@html renderPlain(item.text, chip)}</div>
+          {#if own.trim()}<div class="bubble" data-testid="chat-user">{@html renderPlain(own, chip)}</div>{/if}
+          {#if item.pages?.length}
+            <ul class="pages" data-testid="chat-user-pages" aria-label={t("chat-user-pages")}>
+              {#each item.pages as p, i (i)}
+                <li class="page" title={p.url}><Icon name="globe" size={11} /><span class="page-title">{@html renderPlain(p.title || siteOf(p.url), chip)}</span><span class="page-site">{@html renderPlain(siteOf(p.url), chip)}</span></li>
+              {/each}
+            </ul>
+          {/if}
           {#if item.unsent}<span class="unsent">{t("chat-unsent")}</span>{/if}
         </div>
       {:else if item.kind === "agent"}
@@ -143,6 +154,11 @@
   .user { align-self: flex-end; max-width: 82%; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
   .bubble { padding: 10px 12px; border-radius: 16px 16px 4px 16px; background: var(--glass-hi); white-space: pre-wrap; overflow-wrap: anywhere; }
   .unsent { color: var(--text-muted); font-size: 11.5px; }
+  /* The tab and pages that went with a message: small lines under its bubble, title then site. */
+  .pages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; max-width: 100%; }
+  .page { display: flex; align-items: center; gap: 5px; max-width: 100%; padding: 2px 8px; border-radius: 999px; background: var(--glass-hi); color: var(--text-muted); font-size: 11.5px; }
+  .page-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .page-site { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .agent { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; max-width: 92%; line-height: 1.5; overflow-wrap: anywhere; }
   .agent.streamed { animation: none; }
   .md { align-self: stretch; min-width: 0; }

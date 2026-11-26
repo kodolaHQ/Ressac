@@ -156,6 +156,22 @@ test("a prompt given while starting is sent once open, in order", async () => {
   expect(opens[0]!.conv.prompts).toEqual(["un", "deux"]);
 });
 
+test("the title and the bubble come from the user's own text; the engine and the transcript keep the whole message", async () => {
+  const { chats, opens } = prepare();
+  const a = await chats.create("w1", opts);
+  await tick();
+  const whole = "[contexte : Page — https://a.fr/] résume — Pages : [{}]";
+  chats.prompt(a.summary.id, whole, whole, { text: "résume", title: "résume", pages: [{ title: "Page", url: "https://a.fr/" }] });
+  expect(opens[0]!.conv.prompts).toEqual([whole]);
+  expect(chats.active("w1")?.summary.title).toBe("résume");
+  expect(chats.active("w1")?.items[0]).toMatchObject({ kind: "user", text: whole, display: "résume", pages: [{ title: "Page", url: "https://a.fr/" }] });
+  // Nothing typed but the pages: the first page names it.
+  const b = await chats.create("w1", opts);
+  await tick();
+  chats.prompt(b.summary.id, whole, whole, { text: "", title: "", pages: [{ title: "Page", url: "https://a.fr/" }] });
+  expect(chats.active("w1")?.summary.title).toBe("Page");
+});
+
 test("a prompt during a running turn waits for turn_end", async () => {
   const { chats, opens } = prepare();
   const a = await chats.create("w1", opts);

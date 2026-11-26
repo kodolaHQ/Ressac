@@ -379,6 +379,7 @@ chat-ref-bookmark = favori
 chat-ref-bookmark-hint = Un de vos favoris
 chat-ref-tab-title = L'agent pourra lire cet onglet dans cette discussion sans vous le demander. Cliquez pour le retirer.
 chat-ref-page-title = L'agent reçoit le titre et l'adresse de cette page. Cliquez pour la retirer.
+chat-user-pages = Pages jointes au message
 chat-unsent = non envoyé
 chat-copy = Copier
 chat-copy-code = Copier le code

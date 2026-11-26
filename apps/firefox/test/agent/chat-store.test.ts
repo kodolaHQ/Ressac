@@ -56,3 +56,15 @@ test("sweep removes records older than 30 days and keeps the others", async () =
   await s.sweep(now);
   expect((await s.list("perso")).map((r) => r.id)).toEqual(["young"]);
 });
+
+test("a discussion saved with the panel's context in its title and bubble reads back clean", async () => {
+  const { store: s } = store();
+  const text = '[contexte : Gmail — https://mail.google.com/] trie mes mails — Pages : [{"tab":"t1","title":"x","url":"https://a.fr/"}]';
+  await s.write(rec("a", { title: text.slice(0, 40), items: [{ kind: "user", id: "u1", text }] }));
+  const r = (await s.read("a"))!;
+  expect(r.title).toBe("trie mes mails");
+  expect(r.items[0]).toEqual({ kind: "user", id: "u1", text, display: "trie mes mails" });
+  // A clean one is untouched.
+  await s.write(rec("b", { items: [{ kind: "user", id: "u1", text: "Bonjour" }] }));
+  expect((await s.read("b"))?.items[0]).toEqual({ kind: "user", id: "u1", text: "Bonjour" });
+});

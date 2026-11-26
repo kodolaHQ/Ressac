@@ -379,6 +379,7 @@ chat-ref-bookmark = bookmark
 chat-ref-bookmark-hint = One of your bookmarks
 chat-ref-tab-title = The agent may read this tab in this conversation without asking you. Click to remove it.
 chat-ref-page-title = The agent gets this page's title and address. Click to remove it.
+chat-user-pages = Pages sent with the message
 chat-unsent = not sent
 chat-copy = Copy
 chat-copy-code = Copy the code

@@ -17,6 +17,23 @@ export type ChatRecord = ChatSummary & {
   items: ChatItem[];
 };
 
+/** A discussion's title: the start of its first message. */
+export const TITLE_MAX = 40;
+
+/** Up to 0.1.28 a message kept the panel's context ahead of it and the pages' data after it in its bubble and its title. */
+const OLD_CONTEXT = /^\[contexte : (?:.*? — )?\S*\] /;
+const OLD_PAGES = / — [^\n]*? \[\{"(?:tab|title)":.*\}\]$/;
+function cleanOld(rec: ChatRecord): ChatRecord {
+  for (const i of rec.items) {
+    if (i.kind !== "user" || i.display !== undefined) continue;
+    const own = i.text.replace(OLD_CONTEXT, "").replace(OLD_PAGES, "");
+    if (own !== i.text) i.display = own;
+  }
+  const first = rec.items.find((i) => i.kind === "user");
+  if (rec.title.startsWith("[contexte : ") && first?.kind === "user" && first.display?.trim()) rec.title = first.display.slice(0, TITLE_MAX);
+  return rec;
+}
+
 /** Ids come from the UI: a plain name only, never a path. */
 const ID = /^[\w-]+$/;
 
@@ -32,7 +49,7 @@ export class ChatStore {
   async read(id: string): Promise<ChatRecord | null> {
     if (!ID.test(id)) return null;
     try {
-      return JSON.parse(await fs.readFile(this.path(id), "utf8")) as ChatRecord;
+      return cleanOld(JSON.parse(await fs.readFile(this.path(id), "utf8")) as ChatRecord);
     } catch {
       return null;
     }

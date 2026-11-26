@@ -86,13 +86,21 @@ interface Waiting {
   written?: () => void;
   /** The tabs the user pointed with @, as the host found them, and their « couper » count then: readable by this session from its send. */
   points?: { tab: TabInfo; cuts: number }[];
+  /** The bubble's text before masking: `before` without the panel's context, then the draft. */
+  own: string;
+  /** The panel's tab, the @ pages, ⌘T's pages, before masking: shown under the bubble. */
+  pages: Page[];
 }
+
+type Page = { title: string; url: string };
 
 /** Ressac's own text waiting for the window's next message (never typed): the panel's context applies to a first message only. */
 interface Prefix {
   text: string;
   firstOnly: boolean;
   written?: () => void;
+  /** The panel's context: its tab, shown as a page under the bubble instead of its text. */
+  page?: Page;
 }
 
 /**
@@ -150,11 +158,12 @@ export function createChatSend(o: {
       // A tab cut since the send stays cut: the user took it back before the agent got it.
       for (const p of w.points ?? []) if ((o.cuts?.(p.tab.id) ?? 0) === p.cuts) o.point?.(session, p.tab);
       o.interacted(w.win);
-      o.chats.prompt(chatId, r.sent, r.shown);
+      const mask = (s: string) => masker.maskTypedFor(session, s).text;
+      o.chats.prompt(chatId, r.sent, r.shown, { text: mask(w.own), title: mask(w.draft.text), pages: w.pages.map((p) => ({ title: mask(p.title), url: mask(p.url) })) });
     }
   }
 
-  async function send(win: string, chatId: string, draft: ChatDraft, extra: { before?: string; after?: string; written?: () => void } = {}): Promise<{ ok: true } | { ok: false; error: string }> {
+  async function send(win: string, chatId: string, draft: ChatDraft, extra: { before?: string; after?: string; written?: () => void; pages?: Page[] } = {}): Promise<{ ok: true } | { ok: false; error: string }> {
     // A @ tab must be a real tab the agent can see now: its title and address are the host's, never the composer's.
     const refs = draft.refs ?? [];
     const listed = refs.some((r) => "tab" in r) ? ((await o.tabs?.()) ?? []) : [];
@@ -173,11 +182,13 @@ export function createChatSend(o: {
     }
     const prefix = prefixFor(win, chatId);
     contexts.delete(win);
-    const before = (prefix?.text ?? "") + (extra.before ?? "") + (draft.command ? commandText(draft.command) : "");
+    const own = (extra.before ?? "") + (draft.command ? commandText(draft.command) : "");
+    const before = (prefix?.text ?? "") + own;
     const after = (extra.after ?? "") + referencesText(pages, say("host-chat-references"));
     const written = prefix?.written || extra.written ? () => (prefix?.written?.(), extra.written?.()) : undefined;
     const queue = waiting.get(chatId) ?? [];
-    queue.push({ win, draft, ...(before ? { before } : {}), ...(after ? { after } : {}), ...(written ? { written } : {}), ...(points.length ? { points } : {}) });
+    const shownPages = [...(prefix?.page ? [prefix.page] : []), ...pages.map((p) => ({ title: p.title, url: p.url })), ...(extra.pages ?? [])];
+    queue.push({ win, draft, own: (prefix?.page ? "" : (prefix?.text ?? "")) + own + draft.text, pages: shownPages, ...(before ? { before } : {}), ...(after ? { after } : {}), ...(written ? { written } : {}), ...(points.length ? { points } : {}) });
     waiting.set(chatId, queue);
     if (!o.chats.sessionIdOf(chatId) && !(await o.chats.select(win, chatId))) {
       waiting.delete(chatId);
@@ -193,16 +204,16 @@ export function createChatSend(o: {
     send,
     flush,
     /** ⌘T's question to the window's active discussion (a new one if none); `after`: the pages shown with it. */
-    async handOff(win: string, question: string, after: string): Promise<void> {
+    async handOff(win: string, question: string, after: string, pages: Page[] = []): Promise<void> {
       const chatId = (o.chats.active(win) ?? (await o.create(win))).summary.id;
-      const r = await send(win, chatId, { text: question, pasted: [], clear: [] }, { after });
+      const r = await send(win, chatId, { text: question, pasted: [], clear: [] }, { after, pages });
       if (!r.ok) throw new Error(r.error);
     },
     /** The panel opened on a tab: its context goes before the next first message of the window's discussion. */
-    panelOpened(win: string, prefix: string): void {
+    panelOpened(win: string, prefix: string, page?: Page): void {
       // An explicit prefill (an app's, a site app's) opens the panel itself: its text and its `written` stay.
       if (contexts.get(win)?.firstOnly === false) return;
-      contexts.set(win, { text: prefix, firstOnly: true });
+      contexts.set(win, { text: prefix, firstOnly: true, ...(page ? { page } : {}) });
     },
     /**
      * Ressac's own text for the window's agent (the terminal's prefill), never typed: `submit`, a message to the active

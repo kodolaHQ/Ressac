@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { AskReply, ChatItem, ChatState, ChatSummary, ChatView, SessionUpdate } from "../../shared/chat";
 import type { EngineConversation } from "./chat/engine";
-import type { ChatRecord, ChatStore } from "./chat-store";
+import { TITLE_MAX, type ChatRecord, type ChatStore } from "./chat-store";
 
 /** Chat engine processes alive at once in the app (R7): terminals count separately. */
 export const LIVE_MAX = 3;
 const NEW_TITLE = "Nouvelle discussion";
-const TITLE_MAX = 40;
 const RESUME_FAILED = "La conversation n'a pas pu être reprise : l'agent repart sans le contexte des échanges précédents.";
 
 /** The host's `open` found the engine's account signed out: the discussion waits for a login, then retry(). */
@@ -140,13 +139,16 @@ export class Chats {
     return this.view(e);
   }
 
-  /** `sentText` goes to the engine; `userItemText` (the masked text the user wrote) is what the transcript keeps. */
-  prompt(chatId: string, sentText: string, userItemText: string): void {
+  /**
+   * `sentText` goes to the engine; `userItemText` (masked) is what the transcript keeps and Votre modèle reloads. `own`: the
+   * bubble's text, the title's (the user's words only) and the pages that went with it.
+   */
+  prompt(chatId: string, sentText: string, userItemText: string, own?: { text: string; title: string; pages: { title: string; url: string }[] }): void {
     const e = this.entries.get(chatId);
     if (!e) return;
-    if (!e.rec.items.some((i) => i.kind === "user")) e.rec.title = userItemText.slice(0, TITLE_MAX);
+    if (!e.rec.items.some((i) => i.kind === "user")) e.rec.title = (own ? own.title.trim() || own.pages[0]?.title || own.text : userItemText).slice(0, TITLE_MAX) || NEW_TITLE;
     const itemId = randomUUID();
-    e.rec.items.push({ kind: "user", id: itemId, text: userItemText });
+    e.rec.items.push({ kind: "user", id: itemId, text: userItemText, ...(own && own.text !== userItemText ? { display: own.text } : {}), ...(own?.pages.length ? { pages: own.pages } : {}) });
     e.pending.push({ text: sentText, itemId });
     e.used = e.rec.updatedAt = this.now();
     // An ended conversation (error) waits for retry: it is never prompted.

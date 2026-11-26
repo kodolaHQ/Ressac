@@ -1141,8 +1141,8 @@ function prefillAgent(win: string, text: string, written?: () => void, submit = 
 }
 
 /** The panel's context in chat view: before the discussion's first message, shown in its composer meanwhile. */
-function prefillAgentContext(win: string, text: string): void {
-  chatSend.panelOpened(win, text);
+function prefillAgentContext(win: string, text: string, page: { title: string; url: string }): void {
+  chatSend.panelOpened(win, text, page);
   const id = activeChat(win)?.id;
   if (id) repushChat(id);
 }
@@ -1592,7 +1592,7 @@ const rpc = createRpc({
         if (typeof p.space === "string") windowSpaces.set(win, p.space);
         // The question is the user's own text (typed); the pages shown with it go after it, masked, never typed.
         const q = handOffText(question, [], "");
-        return chatSend.handOff(win, q, handOffText(question, shown, hostSay("host-ask-shown-pages")).slice(q.length));
+        return chatSend.handOff(win, q, handOffText(question, shown, hostSay("host-ask-shown-pages")).slice(q.length), shown.map((h) => ({ title: h.title, url: h.url })));
       }
       // Outflow rules: only the question is the user's own text, not the page titles shown with it. Fed as it is written,
       // after a fresh session's reset (⌘T usually opens the window's agent), not when it is queued; masked as it is written
@@ -1711,7 +1711,7 @@ const rpc = createRpc({
       const share = () => kernel?.policy.userInteraction(p.tab);
       share();
       // Chat: the context goes before the discussion's first message (its send gives the tab again, after the session's reset).
-      if (viewOf(p.window) === "chat") return prefillAgentContext(p.window, contextPrefix(p.tab.title, p.tab.url));
+      if (viewOf(p.window) === "chat") return prefillAgentContext(p.window, contextPrefix(p.tab.title, p.tab.url), { title: p.tab.title, url: p.tab.url });
       // A session still starting (the panel's first opening) gets the context once active, and the tab again: its start takes the accesses back.
       sessions.prefill(p.window, contextPrefix(p.tab.title, p.tab.url), share);
     },

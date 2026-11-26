@@ -70,14 +70,14 @@ test("cleanDraft refuses what the UI must not send", () => {
 /** A fake Chats: one discussion whose session opens when the test says. */
 function fakeChats() {
   let session: string | null = null;
-  const prompts: [string, string, string][] = [];
+  const prompts: [string, string, string, unknown?][] = [];
   const view = (): ChatView => ({ summary: { id: "c1", title: "", engine: "claude", profile: "claude", mode: "browser", state: session ? "ready" : "starting", updatedAt: 0, messages: 0 }, items: [] });
   return {
     prompts,
     openSession: (s: string) => (session = s),
     chats: {
       sessionIdOf: vi.fn((_id: string) => session),
-      prompt: vi.fn((id: string, sent: string, shown: string) => void prompts.push([id, sent, shown])),
+      prompt: vi.fn((id: string, sent: string, shown: string, own?: unknown) => void prompts.push(own === undefined ? [id, sent, shown] : [id, sent, shown, own])),
       select: vi.fn(async (_w: string, _id: string) => view()),
       active: vi.fn((_w: string) => view()),
     },
@@ -226,4 +226,25 @@ test("a @ tab cut between the send and the session's start is not pointed; a sit
   expect(point).not.toHaveBeenCalled();
   // Still sent, as data: the user pointed it.
   expect(f.prompts[0]![1]).toContain('"tab":"t1"');
+});
+
+test("the bubble and the title get the user's own text; the context and the pages come as chips; the engine's text is unchanged", async () => {
+  const f = fakeChats();
+  f.openSession("s1");
+  const mail = { id: "t1", title: `Boîte de ${EMAIL}`, url: "https://mail.example/inbox", space: "perso" };
+  const send = createChatSend({ chats: f.chats, masker: () => masker(), outflow: () => outflow(), interacted: () => {}, create: async () => f.chats.active("w1"), tabs: async () => [mail], say: (id) => (id === "host-chat-references" ? "Pages :" : id) });
+  send.panelOpened("w1", "[contexte : Page — https://a.fr/] ", { title: "Page", url: "https://a.fr/" });
+  await send.send("w1", "c1", draft("résume", { refs: [{ tab: "t1" }] }));
+  const [, sent, shown, own] = f.prompts[0]!;
+  expect(sent).toMatch(/^\[contexte : Page — https:\/\/a\.fr\/\] résume — Pages : \[\{"tab":"t1"/);
+  expect(shown).toBe(sent);
+  expect(own).toEqual({ text: "résume", title: "résume", pages: [{ title: "Page", url: "https://a.fr/" }, { title: expect.stringMatching(/^Boîte de ⟨email-\w+⟩@example\.com$/), url: "https://mail.example/inbox" }] });
+  // ⌘T: its pages are chips too, the question is the title.
+  await send.handOff("w1", "où est la piscine", " — pages [...]", [{ title: "Piscine", url: "https://piscine.example/" }]);
+  expect(f.prompts[1]![1]).toBe("où est la piscine — pages [...]");
+  expect(f.prompts[1]![3]).toEqual({ text: "où est la piscine", title: "où est la piscine", pages: [{ title: "Piscine", url: "https://piscine.example/" }] });
+  // An app's prefix stays in the bubble, out of the title.
+  await send.prefill("w1", "[application : Lune] ");
+  await send.send("w1", "c1", draft("corrige"));
+  expect(f.prompts[2]![3]).toEqual({ text: "[application : Lune] corrige", title: "corrige", pages: [] });
 });

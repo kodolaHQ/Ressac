@@ -22,7 +22,18 @@ export type SessionUpdate =
   | { type: "turn_end"; stopReason: "end_turn" | "cancelled" | "refusal" | "max_turns" | "error"; error?: string };
 
 export type ChatItem =
-  | { kind: "user"; id: string; text: string; /** Never reached the engine (cancelled, or the app quit first). */ unsent?: true }
+  | {
+      kind: "user";
+      id: string;
+      /** The whole message as the engine got it (masked): Ressac's context and the pages' data included. */
+      text: string;
+      /** What the bubble shows when it differs from `text`: the user's own words, without the context or the pages' data. */
+      display?: string;
+      /** The tab, the @ pages and ⌘T's pages that went with it (masked): small lines under the bubble. */
+      pages?: { title: string; url: string }[];
+      /** Never reached the engine (cancelled, or the app quit first). */
+      unsent?: true;
+    }
   | { kind: "agent"; id: string; text: string }
   | { kind: "tool"; id: string; title: string; toolKind: ToolKind; status: "pending" | "in_progress" | "completed" | "failed"; /** The tab it opened or navigated: its line selects it. */ tab?: string }
   | { kind: "question"; id: string; questions: ChatQuestion[]; answer?: Record<string, string> | "cancelled" }
