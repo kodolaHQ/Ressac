@@ -97,7 +97,7 @@ it("the panel runs the real CLI with the session's MCP config", async () => {
     "--session-id",
     expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
     "--tools",
-    "Read,Glob,Grep,Write,Edit",
+    "Read,Glob,Grep,Write,Edit,AskUserQuestion",
     "--disallowedTools",
     "Bash,mcp__ressac__launch_app",
     "--strict-mcp-config",

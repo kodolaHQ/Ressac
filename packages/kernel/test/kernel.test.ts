@@ -873,14 +873,14 @@ describe("openAgentSession with a profile", () => {
           ],
         },
       });
-      // An allowlist of built-in tools, files only: nothing that runs a command, spawns an agent or schedules a turn.
+      // An allowlist of built-in tools, files and questions only: nothing that runs a command, spawns an agent or schedules a turn.
       const tools = claudeArgs[claudeArgs.indexOf("--tools") + 1]!.split(",");
-      expect(tools).toEqual(["Read", "Glob", "Grep", "Write", "Edit"]);
-      expect(browser).toContain("--tools Read,Glob,Grep,Write,Edit --disallowedTools Bash,mcp__ressac__launch_app --strict-mcp-config --setting-sources");
+      expect(tools).toEqual(["Read", "Glob", "Grep", "Write", "Edit", "AskUserQuestion"]);
+      expect(browser).toContain("--tools Read,Glob,Grep,Write,Edit,AskUserQuestion --disallowedTools Bash,mcp__ressac__launch_app --strict-mcp-config --setting-sources");
       expect(browser).toContain("/workspace/.ressac/instructions/AGENTS.md --disallowedTools WebSearch,WebFetch");
       expect(claudeArgs.at(-2)).toBe("--mcp-config");
       expect(workshop).not.toMatch(/--tools|Bash|launch_app|strict-mcp-config|setting-sources|AGENTS/);
-      expect(none).toContain("--tools Read,Glob,Grep,Write,Edit --disallowedTools Bash,mcp__ressac__launch_app");
+      expect(none).toContain("--tools Read,Glob,Grep,Write,Edit,AskUserQuestion --disallowedTools Bash,mcp__ressac__launch_app");
       expect(codex).toContain(`--disable shell_tool -c mcp_servers.ressac.disabled_tools=["launch_app"] -c notify=[] -c model_provider="openai" -m x`);
       // Codex's interactive TUI (0.169) refuses --ignore-user-config: only `codex exec` takes it.
       expect(codex).not.toContain("--ignore-user-config");
@@ -1190,7 +1190,7 @@ describe("pipe transport", () => {
       expect(argv).not.toContain("-it");
       expect(argv).not.toContain("-t");
       const once = (flag: string) => argv.filter((a) => a === flag).length;
-      expect(argv.join(" ")).toContain("--tools Read,Glob,Grep,Write,Edit");
+      expect(argv.join(" ")).toContain("--tools Read,Glob,Grep,Write,Edit,AskUserQuestion");
       expect([once("--tools"), once("--strict-mcp-config"), once("--settings"), once("--mcp-config")]).toEqual([1, 1, 1, 1]);
       expect(argv).not.toContain("--dangerously-skip-permissions");
       expect(argv.slice(argv.indexOf("--session-id"), argv.indexOf("--session-id") + 2)).toEqual(["--session-id", conversation]);

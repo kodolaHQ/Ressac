@@ -962,12 +962,12 @@ export async function createKernel(o: {
         // Codex: the built-in provider, so no `auth.command` of a provider the agent defines (Ressac's engines set theirs after).
         // Claude's built-in tools are an allowlist (`--tools`, MCP tools untouched): a release that adds a tool that runs commands
         // (Monitor, REPL, PowerShell…) gets none of it. Files only: the agent writes its widgets, actions and site apps, and reads the
-        // guides. The denylist stays as a second layer: it wins over `--tools` and is the only one that removes an MCP tool.
+        // guides. AskUserQuestion runs nothing: the chat answers it with a question card, the terminal with Claude Code's own prompt. The denylist stays as a second layer: it wins over `--tools` and is the only one that removes an MCP tool.
         // The deny rules keep the subscription credentials and the Atelier's lesson notebook out of Read/Edit; Claude Code reads its own config outside the tools.
         // ~/.claude stays readable as a folder: Claude Code saves oversized tool results there and has the model Read them. ~/.codex is never needed.
         const claudeNoShell =
           browser && program === "claude"
-            ? ["--tools", "Read,Glob,Grep,Write,Edit", "--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true,"permissions":{"deny":["Read(//home/node/.claude/.credentials.json)","Read(//home/node/.codex/auth.json)","Edit(//home/node/.claude/.credentials.json)","Edit(//home/node/.codex/auth.json)","Read(//home/node/.codex/**)","Edit(//home/node/.codex/**)","Read(//workspace/.ressac/browsing-notes.md)"]}}', "--append-system-prompt-file", ACCEPTED_AGENTS_IN_CONTAINER]
+            ? ["--tools", "Read,Glob,Grep,Write,Edit,AskUserQuestion", "--disallowedTools", "Bash,mcp__ressac__launch_app", "--strict-mcp-config", "--setting-sources", "", "--settings", '{"skipDangerousModePermissionPrompt":true,"permissions":{"deny":["Read(//home/node/.claude/.credentials.json)","Read(//home/node/.codex/auth.json)","Edit(//home/node/.claude/.credentials.json)","Edit(//home/node/.codex/auth.json)","Read(//home/node/.codex/**)","Edit(//home/node/.codex/**)","Read(//workspace/.ressac/browsing-notes.md)"]}}', "--append-system-prompt-file", ACCEPTED_AGENTS_IN_CONTAINER]
             : [];
         // Claude's auto-memory (~/.claude/projects/*/memory) loads as instructions the gate never sees and the agent can write.
         if (browser && program === "claude") env = { ...env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" };
