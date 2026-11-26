@@ -50,6 +50,19 @@ describe("keychain", () => {
     expect(l.some((e) => e.argv.join(" ").includes("sk-abc_123"))).toBe(false);
   });
 
+  it("the own key's origin rides in the item's comment, never in the secret", async () => {
+    const kc = keychain({ command: fake, ...OWN_KEY });
+    await kc.write("sk-own", "http://[::1]:8080");
+    expect((await journal())[0]!.stdin).toBe('add-generic-password -U -s ressac-own-api -a default -w "sk-own" -j "http://[::1]:8080"\n');
+    for (const bad of ['https://x" -w "y', "https://x y", "file:///etc"]) await expect(kc.write("sk-own", bad)).rejects.toThrow("Clé invalide");
+    await writeFile(state, '0\nattributes:\n    "acct"<blob>="default"\n    "icmt"<blob>="https://api.example.com"\n');
+    expect(await kc.origin()).toBe("https://api.example.com");
+    await writeFile(state, '0\n    "icmt"<blob>=<NULL>\n');
+    expect(await kc.origin()).toBeNull();
+    await writeFile(state, "44\n");
+    expect(await kc.origin()).toBeNull();
+  });
+
   it("rejects odd keys", async () => {
     for (const k of ['sk "x', "sk\nx", "", "a".repeat(513)]) {
       await expect(keychain({ command: fake }).write(k)).rejects.toThrow("Clé invalide");
@@ -106,8 +119,12 @@ describe("keychain", () => {
     expect(await readFile(file, "utf8")).toBe("sk-codex");
     expect(await readFile(`${file}.claude`, "utf8")).toBe("sk-claude");
     expect(await keychain({ command: fake, env, service: CLAUDE_KEY.service }).read()).toBe("sk-claude");
-    await keychain({ command: fake, env, ...OWN_KEY }).write("sk-own");
+    const ownKc = keychain({ command: fake, env, ...OWN_KEY });
+    await ownKc.write("sk-own", "https://api.example.com");
     expect(await readFile(`${file}.own`, "utf8")).toBe("sk-own");
+    expect(await ownKc.origin()).toBe("https://api.example.com");
+    await ownKc.remove();
+    expect(await ownKc.origin()).toBeNull();
     expect(await readFile(file, "utf8")).toBe("sk-codex");
   });
 

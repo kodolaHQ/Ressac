@@ -1,5 +1,5 @@
 import { listOllamaModels } from "./ollama-models.ts";
-import { listOwnModels } from "./own-model.ts";
+import { listOwnModels, readOwnKey } from "./own-model.ts";
 import { readGrants, readSiteGrants, type LlamaModel, type LocalAi, type Workshop, type WriterAgent } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
@@ -323,17 +323,17 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     }),
     "settings.claudeKeySaved": () => o.claudeKeychain.has(),
     "settings.claudeKeyDelete": () => keyResult("claude", () => o.claudeKeychain.remove()),
-    "settings.ownKey": (p: { key?: unknown }) => keyResult("own", async () => {
+    // The key is saved for the address it is typed with: it is sent to that origin only (host/own-model.ts).
+    "settings.ownKey": (p: { key?: unknown; url?: unknown }) => keyResult("own", async () => {
       if (typeof p?.key !== "string") throw new Error(INVALID_KEY());
-      await o.ownKeychain.write(p.key);
+      if (typeof p.url !== "string" || apiUrlProblem(p.url)) throw new Error(hostSay("host-engine-url-invalid"));
+      await o.ownKeychain.write(p.key, new URL(p.url).origin);
     }),
     "settings.ownKeySaved": () => o.ownKeychain.has(),
     "settings.ownKeyDelete": () => keyResult("own", () => o.ownKeychain.remove()),
-    // shortcut: the saved key goes to the address being typed in Réglages (not yet saved); bind it to the saved apiUrl if that matters.
     "settings.ownModels": async (p: { url?: unknown }) => {
-      const problem = typeof p?.url === "string" ? apiUrlProblem(p.url) : "Adresse invalide";
-      if (problem) return { ok: false, error: problem };
-      return listOwnModels({ ...DEFAULT_OWN_ENGINE, kind: "api", apiUrl: p.url as string }, { key: await o.ownKeychain.read() });
+      if (typeof p?.url !== "string" || apiUrlProblem(p.url)) return { ok: false, error: hostSay("host-engine-url-invalid") };
+      return listOwnModels({ ...DEFAULT_OWN_ENGINE, kind: "api", apiUrl: p.url }, { key: await readOwnKey(o.ownKeychain) });
     },
     "settings.ollamaModels": (p: { url?: unknown }) => (typeof p?.url === "string" ? listOllamaModels(p.url) : { ok: false, error: "Adresse invalide" }),
     "settings.logout": async (p: { id?: unknown }) => {

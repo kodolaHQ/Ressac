@@ -132,11 +132,11 @@ export const OwnEngineSchema: z.ZodType<OwnEngine> = z.object({
   apiModel: modelField,
 });
 
-/** null when the address is https://, or http:// to this Mac (the key must not travel in clear over the network). */
+/** null when the address is https://, or http:// to this Mac (loopback, as `isOnMac` in host/own-model.ts): the key must not travel in clear over the network. */
 export function apiUrlProblem(url: string): string | null {
   try {
     const u = new URL(url);
-    if (!u.search && !u.hash && (u.protocol === "https:" || (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")))) return null;
+    if (!u.search && !u.hash && (u.protocol === "https:" || (u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)))) return null;
   } catch {
     // falls through to the message
   }

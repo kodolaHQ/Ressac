@@ -11,6 +11,9 @@ const capture = (r: () => Promise<Response>) => {
 };
 const SCHEMA = { type: "object", properties: { action: { type: "string" } }, required: ["action"] };
 const MESSAGES = [{ role: "user" as const, content: "Bonjour" }];
+const ORIGIN = "https://api.example.com";
+const own = (secret: string, origin = ORIGIN) => ({ secret, origin });
+const ELSEWHERE = "La clé d'API enregistrée est liée à api.example.com : elle n'est pas envoyée à other.example.com. Enregistrez votre clé de nouveau pour cette adresse.";
 
 describe("ollamaBase", () => {
   it("accepts only loopback", () => {
@@ -109,7 +112,7 @@ describe("openAiClient", () => {
   const api = (o: Partial<OwnEngine> = {}) => engine({ kind: "api", apiUrl: "https://api.example.com/v1/", apiModel: "deepseek-chat", ...o });
   const reply = (content: string, usage: object | null = { prompt_tokens: 42 }) => json({ choices: [{ message: { role: "assistant", content } }], usage });
   const SYS = [{ role: "system" as const, content: "Rôle" }, ...MESSAGES];
-  const run = (f: ReturnType<typeof capture>, key: string | null = "k", e = api()) => openAiClient(e, { key: async () => key, fetch: f.fetch }).step(SYS, SCHEMA, new AbortController().signal);
+  const run = (f: ReturnType<typeof capture>, key: string | null = "k", e = api()) => openAiClient(e, { key: async () => (key === null ? null : own(key)), fetch: f.fetch }).step(SYS, SCHEMA, new AbortController().signal);
   const body = (f: ReturnType<typeof capture>, i: number) => JSON.parse(f.calls[i]!.init.body as string);
   const refused = () => json({ error: { message: "response_format json_schema is not supported" } }, 400);
 
@@ -146,9 +149,29 @@ describe("openAiClient", () => {
   });
 
   it("an unrelated 400 is an error, not a downgrade", async () => {
-    const f = capture(async () => json({ error: { message: "context length exceeded" } }, 400));
-    await expect(run(f)).rejects.toThrow("api.example.com a répondu par une erreur : context length exceeded");
-    expect(f.calls.length).toBe(1);
+    for (const message of ["context length exceeded", "Unsupported value: 'temperature' is not supported with this model."]) {
+      const f = capture(async () => json({ error: { message } }, 400));
+      await expect(run(f)).rejects.toThrow(`api.example.com a répondu par une erreur : ${message}`);
+      expect(f.calls.length).toBe(1);
+    }
+  });
+
+  it("a refused max_tokens moves to max_completion_tokens, once for the run", async () => {
+    let n = 0;
+    const f = capture(async () => (++n === 1 ? json({ error: { message: "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead." } }, 400) : reply("{}")));
+    await run(f);
+    await run(f);
+    expect(f.calls.length).toBe(3);
+    expect(body(f, 1)).toMatchObject({ max_completion_tokens: 2048, response_format: { type: "json_schema" } });
+    expect(body(f, 1).max_tokens).toBeUndefined();
+    expect(body(f, 2).max_completion_tokens).toBe(2048);
+  });
+
+  it("the key goes to its own origin only", async () => {
+    const f = capture(async () => reply("{}"));
+    await expect(run(f, "k", api({ apiUrl: "https://other.example.com/v1" }))).rejects.toThrow(ELSEWHERE);
+    await expect(run(f, "k", api({ apiUrl: "https://api.example.com:8443/v1" }))).rejects.toThrow("n'est pas envoyée à api.example.com:8443");
+    expect(f.calls).toEqual([]);
   });
 
   it("a reply ignoring the format is not trusted", async () => {
@@ -191,7 +214,7 @@ describe("listOwnModels", () => {
   const api = engine({ kind: "api", apiUrl: "https://api.example.com/v1" });
   it("listOwnModels reads /models", async () => {
     const f = capture(async () => json({ data: [{ id: "b" }, { id: "a" }, { nope: 1 }] }));
-    expect(await listOwnModels(api, { key: "k", fetch: f.fetch })).toEqual({ ok: true, models: ["a", "b"] });
+    expect(await listOwnModels(api, { key: own("k"), fetch: f.fetch })).toEqual({ ok: true, models: ["a", "b"] });
     expect(f.calls[0]!.url).toBe("https://api.example.com/v1/models");
     expect(f.calls[0]!.init.redirect).toBe("error");
     expect((f.calls[0]!.init.headers as Record<string, string>).authorization).toBe("Bearer k");
@@ -200,12 +223,17 @@ describe("listOwnModels", () => {
     expect(await listOwnModels(api, { key: null, fetch: capture(() => Promise.reject(new TypeError("x"))).fetch })).toEqual(failed);
     expect(await listOwnModels(api, { key: null, fetch: capture(async () => json({ data: "x" })).fetch })).toEqual(failed);
   });
+  it("lists another address without the key, and says so", async () => {
+    const f = capture(async () => json({ data: [{ id: "a" }] }));
+    expect(await listOwnModels(engine({ kind: "api", apiUrl: "https://other.example.com/v1" }), { key: own("k"), fetch: f.fetch })).toEqual({ ok: true, models: ["a"], keyNotSent: ELSEWHERE });
+    expect(f.calls[0]!.init.headers).toEqual({});
+  });
 });
 
 describe("checkOwnModel (API)", () => {
   beforeEach(() => resetOwnModelCache());
   const api = engine({ kind: "api", apiUrl: "https://api.example.com/v1", apiModel: "deepseek-chat" });
-  const check = (r: () => Promise<Response>) => checkOwnModel(api, { key: "k", fetch: capture(r).fetch });
+  const check = (r: () => Promise<Response>) => checkOwnModel(api, { key: own("sk-check-key"), fetch: capture(r).fetch });
   it("api check: key refused, missing, down, ok", async () => {
     await expect(check(async () => json({}, 401))).rejects.toThrow("api.example.com refuse la clé d'API (erreur 401).");
     await expect(check(async () => json({}, 403))).rejects.toThrow("api.example.com refuse la clé d'API (erreur 403).");
@@ -214,6 +242,19 @@ describe("checkOwnModel (API)", () => {
     const f = capture(async () => json({ choices: [{ message: { content: "o" } }] }));
     await checkOwnModel(api, { key: null, fetch: f.fetch });
     expect(f.calls[0]!.url).toBe("https://api.example.com/v1/chat/completions");
-    expect(JSON.parse(f.calls[0]!.init.body as string)).toMatchObject({ model: "deepseek-chat", max_tokens: 1 });
+    const sent = JSON.parse(f.calls[0]!.init.body as string);
+    expect(sent.model).toBe("deepseek-chat");
+    expect(Object.keys(sent).filter((k) => k.startsWith("max_"))).toEqual([]);
+  });
+  it("api check: any refusing 400 is an error, never a pass", async () => {
+    for (const message of ["Unsupported parameter: 'max_tokens' is not supported with this model.", "response_format is not supported"])
+      await expect(check(async () => json({ error: { message } }, 400))).rejects.toThrow(`api.example.com a répondu par une erreur : ${message}`);
+  });
+  it("api check: a key saved for another address is not sent", async () => {
+    const f = capture(async () => json({ choices: [{ message: { content: "o" } }] }));
+    await expect(checkOwnModel(engine({ ...api, apiUrl: "https://other.example.com/v1" }), { key: own("k"), fetch: f.fetch })).rejects.toThrow(ELSEWHERE);
+    expect(f.calls).toEqual([]);
+    await checkOwnModel(api, { key: own("k"), fetch: f.fetch });
+    expect((f.calls[0]!.init.headers as Record<string, string>).authorization).toBe("Bearer k");
   });
 });

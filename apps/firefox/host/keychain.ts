@@ -18,9 +18,14 @@ export const INVALID_KEY = () => hostSay("host-invalid-key");
 export interface Keychain {
   read(): Promise<string | null>;
   has(): Promise<boolean>;
-  write(key: string): Promise<void>;
+  /** `origin`: the address the key is for, kept beside it (the item's comment), never inside the secret. */
+  write(key: string, origin?: string): Promise<void>;
   remove(): Promise<void>;
+  /** The origin written with the key, or null (none, absent, locked). */
+  origin(): Promise<string | null>;
 }
+/** An origin as `URL.origin` gives it: nothing that could break out of the quoted `security -i` line. */
+const ORIGIN = /^https?:\/\/[A-Za-z0-9.:[\]-]{1,300}$/;
 
 /**
  * A compatible API key in the macOS keychain (Codex's by default). The key goes to `security` through stdin only (never argv, visible in `ps`),
@@ -55,19 +60,27 @@ export function keychain(o: { service?: string; account?: string; command?: stri
       const found = await find([]);
       return found !== "absent" && found !== null;
     },
-    async write(key) {
-      if (!KEY_PATTERN.test(key)) throw new Error(INVALID_KEY());
-      if (file) return writeFile(file, key, { mode: 0o600 }).then(() => undefined);
+    async write(key, origin) {
+      if (!KEY_PATTERN.test(key) || (origin !== undefined && !ORIGIN.test(origin))) throw new Error(INVALID_KEY());
+      if (file) {
+        await writeFile(file, key, { mode: 0o600 });
+        return origin === undefined ? rm(`${file}.origin`, { force: true }) : writeFile(`${file}.origin`, origin);
+      }
       await new Promise<void>((resolve, reject) => {
         const p = spawn(command, ["-i"], { stdio: ["pipe", "ignore", "ignore"], timeout });
         p.on("error", () => reject(new Error("Écriture au trousseau impossible")));
         p.on("close", (code) => (code === 0 ? resolve() : reject(new Error("Écriture au trousseau impossible"))));
         p.stdin.on("error", () => reject(new Error("Écriture au trousseau impossible")));
-        p.stdin.end(`add-generic-password -U ${ids.join(" ")} -w "${key}"\n`);
+        p.stdin.end(`add-generic-password -U ${ids.join(" ")} -w "${key}"${origin === undefined ? "" : ` -j "${origin}"`}\n`);
       });
     },
+    async origin() {
+      if (file) return readFile(`${file}.origin`, "utf8").catch(() => null);
+      const found = await find([]);
+      return (found && found !== "absent" && /"icmt"<blob>="([^"]*)"/.exec(found)?.[1]) || null;
+    },
     async remove() {
-      if (file) return rm(file, { force: true });
+      if (file) return Promise.all([rm(file, { force: true }), rm(`${file}.origin`, { force: true })]).then(() => undefined);
       await run(command, ["delete-generic-password", ...ids], { timeout }).catch((e: { code?: unknown }) => {
         if (e.code !== ABSENT) throw new Error("Suppression au trousseau impossible"); // absent = done
       });

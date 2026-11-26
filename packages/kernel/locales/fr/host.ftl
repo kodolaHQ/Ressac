@@ -65,3 +65,4 @@ own-bad-format = Le modèle n'a pas répondu dans le format attendu.
 own-steps = L'agent s'est arrêté après { $count } étapes sans réponse. Reformulez ou précisez votre demande.
 own-workshop-off = Votre modèle ne fonctionne qu'en mode Navigateur.
 own-server-error = { $host } a répondu par une erreur : { $error }
+own-key-elsewhere = La clé d'API enregistrée est liée à { $saved } : elle n'est pas envoyée à { $host }. Enregistrez votre clé de nouveau pour cette adresse.

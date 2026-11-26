@@ -54,8 +54,8 @@ function setup(over: { state?: string; started?: string; exec?: (argv: string[])
       void argv;
       return [process.execPath, "-e", `require("fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");console.log("https://auth.openai.com/codex/device B3MH-2FT21");setTimeout(()=>{},60000)`];
     }),
-    keychain: { read: vi.fn(async () => null), has: vi.fn(async () => true), write: vi.fn(async (k: string) => void (k.includes(" ") && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}) },
-    claudeKeychain: { read: vi.fn(async () => null), has: vi.fn(async () => false), write: vi.fn(async () => {}), remove: vi.fn(async () => {}) },
+    keychain: { read: vi.fn(async () => null), has: vi.fn(async () => true), write: vi.fn(async (k: string) => void (k.includes(" ") && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}), origin: vi.fn(async () => null) },
+    claudeKeychain: { read: vi.fn(async () => null), has: vi.fn(async () => false), write: vi.fn(async () => {}), remove: vi.fn(async () => {}), origin: vi.fn(async () => null) },
     ownKeychain: keychain({ ...OWN_KEY, env: { RESSAC_TEST_KEYCHAIN: join(dataDir, "kc") } }),
     forgetKey: vi.fn(),
     writer: { via: vi.fn(async () => ({ agent: "claude" as const, via: "subscription" as const })), reset: vi.fn() },
@@ -312,9 +312,11 @@ describe("settings host", () => {
 
   it("own key is written to its own Keychain item and never returned", async () => {
     const { h, o } = setup();
-    const results = [await h["settings.ownKeySaved"]!({}), await h["settings.ownKey"]!({ key: "sk-own" }), await h["settings.ownKeySaved"]!({})];
+    const results = [await h["settings.ownKeySaved"]!({}), await h["settings.ownKey"]!({ key: "sk-own", url: "https://api.example.com/v1" }), await h["settings.ownKeySaved"]!({})];
     expect(results).toEqual([false, { ok: true }, true]);
     expect(readFileSync(join(o.dataDir, "kc.own"), "utf8")).toBe("sk-own");
+    expect(readFileSync(join(o.dataDir, "kc.own.origin"), "utf8")).toBe("https://api.example.com");
+    expect(await h["settings.ownKey"]!({ key: "sk-x", url: "http://192.168.1.4/v1" })).toEqual({ ok: false, error: "Adresse invalide (https://…)" });
     expect(o.forgetKey).toHaveBeenLastCalledWith("own");
     expect(await h["settings.ownKey"]!({ key: 42 })).toMatchObject({ ok: false, error: expect.stringContaining("Clé invalide") });
     const seen: RequestInit[] = [];
@@ -322,12 +324,18 @@ describe("settings host", () => {
     try {
       results.push(await h["settings.ownModels"]!({ url: "https://api.example.com/v1" }));
       results.push(await h["settings.ownModels"]!({ url: "http://192.168.1.4/v1" }));
+      results.push(await h["settings.ownModels"]!({ url: "https://typo.example.com/v1" }));
     } finally {
       vi.unstubAllGlobals();
     }
-    expect(results.slice(3)).toEqual([{ ok: true, models: ["m"] }, { ok: false, error: "Adresse invalide (https://…)" }]);
-    expect(seen.length).toBe(1);
+    expect(results.slice(3)).toEqual([
+      { ok: true, models: ["m"] },
+      { ok: false, error: "Adresse invalide (https://…)" },
+      { ok: true, models: ["m"], keyNotSent: expect.stringContaining("n'est pas envoyée à typo.example.com") },
+    ]);
+    expect(seen.length).toBe(2);
     expect((seen[0]!.headers as Record<string, string>).authorization).toBe("Bearer sk-own");
+    expect(seen[1]!.headers).toEqual({});
     results.push(await h["settings.ownKeyDelete"]!({}), await h["settings.ownKeySaved"]!({}));
     expect(results.at(-1)).toBe(false);
     expect(o.keychain.write).not.toHaveBeenCalled();

@@ -54,6 +54,7 @@ describe("codexEngineArgs", () => {
   it("apiUrlProblem", () => {
     expect(apiUrlProblem("https://openrouter.ai/api/v1")).toBeNull();
     expect(apiUrlProblem("http://127.0.0.1:1234/v1")).toBeNull();
+    expect(apiUrlProblem("http://[::1]:1234/v1")).toBeNull();
     for (const u of ["https://x.test/v1?a=b", "https://x.test/v1#f"]) expect(apiUrlProblem(u)).toBe("Adresse invalide (https://…)");
     for (const u of ["http://example.com", "ftp://x", "pas une url"]) expect(apiUrlProblem(u)).toBe("Adresse invalide (https://…)");
   });
