@@ -191,9 +191,21 @@
   const chatProfiles = $derived([...profiles.filter((p) => p.id === "claude" || p.id === "codex"), ...(ownReady ? [{ id: "own", name: t("chat-engine-own") }] : [])]);
   let chatPane = $state<ReturnType<typeof ChatView>>();
   $effect(() => void (chat.visible = visible));
-  // Shown in chat view: the window's active discussion (made if none, a paused one resumes).
+  /** The discussion the window's sidebar asked for (its « Agent » group title), or the one this panel last said it shows. */
+  const asked = $derived(browserState.value?.windows.find((f) => f.id === api.windowId)?.agentChat);
+  // Shown in chat view: the one asked for, else the window's active discussion (made if none, a paused one resumes).
   $effect(() => {
-    if (visible && chatMode) untrack(() => void openChat());
+    if (visible && chatMode) untrack(() => void openChat(asked));
+  });
+  // Asked while shown: the panel switches to it.
+  $effect(() => {
+    const id = asked;
+    untrack(() => visible && chatMode && id && id !== chat.view?.summary.id && void openChat(id));
+  });
+  // The window knows which discussion its panel shows: the sidebar groups the agent's tabs by it.
+  $effect(() => {
+    const id = chat.view?.summary.id;
+    untrack(() => id && id !== asked && api.dispatch({ type: "showChat", windowId: api.windowId, chatId: id }));
   });
   $effect(() => {
     if (!chatMode) chat.listOpen = false;

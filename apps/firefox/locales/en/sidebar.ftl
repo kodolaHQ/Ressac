@@ -16,6 +16,10 @@ sidebar-downloads = Downloads
 
 sidebar-agent-section = Agent
 sidebar-agent-tabs = Agent tabs
+sidebar-agent-no-chat = No conversation
+sidebar-agent-group-open = Open “{ $name }” in the agent panel
+sidebar-agent-group-fold = Fold “{ $name }”
+sidebar-agent-group-unfold = Unfold “{ $name }”
 sidebar-tab-keep = Keep in my tabs
 sidebar-tab-close-menu = Close
 sidebar-tab-pin = Pin

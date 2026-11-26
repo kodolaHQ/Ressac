@@ -381,11 +381,11 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(await h.rpc.request("chat.remove", { window: "f1", chatId: views[0]!.view.summary.id, engineHistory: true })).toEqual({ history: "done" });
     expect(await h.rpc.request("chat.list", { window: "f1", space: "perso" })).toEqual([]);
     expect(await h.rpc.request("chat.remove", { window: "f1", chatId: "inconnue" })).toEqual({ history: null });
-    // Deleted from f1 while f2 shows it: f2 is told, f1 (the caller) is not.
+    // Deleted from f1 while f2 shows it: every window is told (f2 moves on, every list drops it); an unknown id tells none.
     const other = (await h.rpc.request("chat.create", { window: "f2", space: "perso" })) as { summary: { id: string } };
     await h.rpc.request("chat.remove", { window: "f1", chatId: other.summary.id });
-    await until(() => removedIn.length > 0);
-    expect(removedIn).toEqual([{ window: "f2", chatId: other.summary.id }]);
+    await until(() => removedIn.length > 1);
+    expect(removedIn).toEqual([views[0]!.view.summary.id, other.summary.id].map((chatId) => ({ window: null, chatId })));
     await expect(h.rpc.request("chat.remove", { window: "f1", chatId: "../x" })).rejects.toThrow();
   });
 

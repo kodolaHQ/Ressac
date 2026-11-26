@@ -2,7 +2,6 @@ import type { ChatSummary, ChatView } from "../../../shared/chat";
 import { api } from "../../state.svelte";
 import { t } from "../../i18n.svelte";
 import { dismissBubble } from "../terminalAgent.svelte";
-import { plainTitle } from "./markdown";
 
 /**
  * The window's chat, shared by the panel's header, thread, composer and list: the active discussion as the host last
@@ -65,7 +64,7 @@ const off = api.onChat((v) => {
   else if (chat.listOpen) void readList();
 });
 
-// Deleted from another window: this one moves on to a new discussion, as after its own « Supprimer ».
+// Deleted (from any window): this one moves on to a new discussion, as after its own « Supprimer » (twice is harmless).
 const offRemoved = api.onChatRemoved((id) => {
   chat.list = chat.list.filter((s) => s.id !== id);
   if (chat.view?.summary.id === id) void openChat();
@@ -79,8 +78,5 @@ const offStream = api.onChatStream((id, s) => {
 // Hot reload (development): the old module gives its subscription back.
 if (import.meta.hot) import.meta.hot.dispose(() => (off(), offStream(), offRemoved()));
 
-const LABEL_TYPES = new Set(["nom", "adresse", "carte", "iban", "tel", "email", "code", "id", "cle", "secu", "motdepasse", "date", "masque"]);
-/** A chip's words for a label's kind: « nom masqué », « IBAN masqué »… */
-export const maskedName = (type: string): string => t(LABEL_TYPES.has(type) ? `chat-masked-${type}` : "chat-masked-masque");
-/** A discussion's title as shown: its labels as words, « Sans titre » when empty. */
-export const chatTitle = (title: string | undefined): string => (title && plainTitle(title, maskedName)) || t("chat-untitled");
+// The titles live apart: the sidebar's « Agent » groups use them without this window's chat state.
+export { chatTitle, maskedName } from "./title";

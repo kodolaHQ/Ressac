@@ -1742,8 +1742,8 @@ const rpc = createRpc({
       const removed = await chats.remove(id);
       chatViews.delete(id);
       chatPrep.delete(id);
-      // Another window showing it moves on (the caller's UI does so itself).
-      for (const w of removed?.windows ?? []) if (w !== p.window) rpc.notify("chat.removed", { window: w, chatId: id });
+      // Every window (window null): one showing it moves on, the lists and the sidebar's « Agent » groups drop it.
+      if (removed) rpc.notify("chat.removed", { window: null, chatId: id });
       if (p.engineHistory !== true || !removed?.historyIds.length || removed.engine === "own") return { history: null };
       const results = [];
       for (const hid of removed.historyIds) results.push(await engineHistory.forget({ engine: removed.engine, id: hid }));

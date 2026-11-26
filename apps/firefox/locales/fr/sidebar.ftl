@@ -16,6 +16,10 @@ sidebar-downloads = Téléchargements
 
 sidebar-agent-section = Agent
 sidebar-agent-tabs = Onglets de l'agent
+sidebar-agent-no-chat = Sans discussion
+sidebar-agent-group-open = Ouvrir « { $name } » dans le panneau de l'agent
+sidebar-agent-group-fold = Replier « { $name } »
+sidebar-agent-group-unfold = Déplier « { $name } »
 sidebar-tab-keep = Garder dans mes onglets
 sidebar-tab-close-menu = Fermer
 sidebar-tab-pin = Épingler
