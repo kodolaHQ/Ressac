@@ -49,6 +49,8 @@ async function launch(ai: boolean, prepare?: (dataDir: string) => Promise<void>)
   s.settings.hints.seen = Object.keys(FIRST_TIME) as FirstTimeId[];
   s.settings.startOnHome = true;
   s.settings.language = "fr";
+  // The terminal view, as launchRessac seeds it (R9).
+  s.settings.agentView = "terminal";
   await writeFile(join(dataDir, "session.json"), JSON.stringify(s));
   await prepare?.(dataDir);
   w = await launchRessac({ ai, dataDir, env: { RESSAC_OLLAMA_URL: ollama.url } });

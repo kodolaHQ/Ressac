@@ -441,9 +441,29 @@ if (args[0] === "exec") {
       const [key, ...value] = options[++i].split("=");
       vars[key] = value.length ? value.join("=") : env[key];
     }
+  // The chat's login terminal (openLoginSession): signed in once the test writes <RESSAC_ROOT>/fake-claude-login-go, or
+  // given up after 60 s, so a failed test leaves no process behind.
+  if (command.join(" ") === "claude auth login") {
+    process.stdout.write("fake login: waiting\r\n");
+    const end = Date.now() + 60_000;
+    const go = join(env.RESSAC_ROOT, "fake-claude-login-go");
+    setInterval(() => {
+      if (existsSync(go)) put(auth, '{"loggedIn":true,"email":"camille.aubrac@example.org"}\n');
+      if (existsSync(go) || Date.now() > end) quit(existsSync(go) ? 0 : 1);
+    }, 50);
+    return;
+  }
   // What the agent received from docker exec, for the tests.
   put(join(env.RESSAC_ROOT, "fake-agent-env.json"), JSON.stringify(Object.fromEntries(Object.entries(vars).filter(([k]) => /^(RESSAC_|ANTHROPIC_|CLAUDE_CODE_)/.test(k)))));
-  const r = spawnSync(process.execPath, [env.FAKE_DOCKER_AGENT || join(__dirname, "fake-agent.mjs"), ...command], { stdio: "inherit", env: { ...env, ...vars } });
+  // A chat's pipe session: the engine's protocol fake, its trace in RESSAC_ROOT; FAKE_CHAT_GO releases a held « Bonjour ».
+  const chat =
+    command[0] === "claude" && command.includes("--input-format") ? "fake-claude-stream.mjs"
+    : command[0] === "codex" && command.includes("app-server") ? "fake-codex-app-server.cjs"
+    : null;
+  const traces = { FAKE_CLAUDE_LOG: join(env.RESSAC_ROOT, "fake-chat-claude.jsonl"), FAKE_CODEX_LOG: join(env.RESSAC_ROOT, "fake-chat-codex.jsonl"), FAKE_CHAT_GO: join(env.RESSAC_ROOT, "fake-chat-go") };
+  const r = chat
+    ? spawnSync(process.execPath, [join(__dirname, chat), ...command.slice(1)], { stdio: "inherit", env: { ...env, ...vars, ...traces } })
+    : spawnSync(process.execPath, [env.FAKE_DOCKER_AGENT || join(__dirname, "fake-agent.mjs"), ...command], { stdio: "inherit", env: { ...env, ...vars } });
   process.exit(r.status ?? 1);
 }
 quit(0);

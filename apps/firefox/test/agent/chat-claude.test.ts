@@ -6,7 +6,7 @@ import type { SessionUpdate } from "../../shared/chat";
 import { claudeEngine } from "../../core/agent/chat/claude";
 import type { EngineConversation } from "../../core/agent/chat/engine";
 
-const fake = join(import.meta.dirname, "..", "fixtures", "fake-claude-stream.mjs");
+const fake = join(import.meta.dirname, "..", "tools", "fake-claude-stream.mjs");
 const dirs: string[] = [];
 const open: EngineConversation[] = [];
 

@@ -1,7 +1,8 @@
-// A fake `claude -p --input-format stream-json --output-format stream-json` for the chat adapter tests.
-// It answers the SDK's control protocol and plays a scripted turn per user text. Every line it reads, and its
-// argv, go to FAKE_CLAUDE_LOG (one JSON per line) so a test can check what the SDK sent.
-import { appendFileSync } from "node:fs";
+// A fake `claude -p --input-format stream-json --output-format stream-json` for the chat adapter tests and the chat e2e
+// (fake-docker.cjs runs it for a pipe session). It answers the SDK's control protocol and plays a scripted turn per user
+// text. Every line it reads, and its argv, go to FAKE_CLAUDE_LOG (one JSON per line) so a test can check what the SDK sent.
+// FAKE_CHAT_GO (e2e): a « Bonjour » turn streams its start, then holds until the test writes that file.
+import { appendFileSync, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const log = (o) => process.env.FAKE_CLAUDE_LOG && appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify(o) + "\n");
@@ -13,6 +14,13 @@ const delta = (t) => out({ type: "stream_event", parent_tool_use_id: null, event
 log({ argv: process.argv.slice(2) });
 let askId = "";
 let n = 0;
+/** The held rest of a « Bonjour » turn, polled until FAKE_CHAT_GO exists; an interrupt drops it. */
+let held;
+const hold = (then) => {
+  const go = process.env.FAKE_CHAT_GO;
+  const tick = () => (!go || existsSync(go) ? ((held = undefined), then()) : (held = setTimeout(tick, 50)));
+  tick();
+};
 createInterface({ input: process.stdin }).on("line", (line) => {
   const m = JSON.parse(line);
   log(m);
@@ -20,6 +28,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: { commands: [], agents: [], models: [], output_style: "default", available_output_styles: [], account: { tokenSource: process.env.FAKE_TOKEN_SOURCE ?? "claude.ai" } } } });
     out({ type: "system", subtype: "init", apiKeySource: "none", tools: [], mcp_servers: [], model: "m", permissionMode: "default" });
   } else if (m.type === "control_request" && m.request.subtype === "interrupt") {
+    clearTimeout(held);
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     result({ subtype: "error_during_execution", is_error: true, errors: [], stop_reason: null });
   } else if (m.type === "control_response" && m.response.request_id === askId) {
@@ -46,6 +55,13 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       result({ is_error: true, result: "Overloaded: request not authorized to retry (529)" });
     } else if (said === "exit") {
       process.exit(3);
+    } else if (said.includes("Bonjour")) {
+      out({ type: "stream_event", parent_tool_use_id: null, event: { type: "message_start", message: { id: "msg_b" } } });
+      delta("Bonjour, ");
+      hold(() => (delta("Camille."), text("msg_b", "Bonjour, Camille."), result({ result: "Bonjour, Camille." })));
+    } else if (said !== "wait") {
+      text(`msg_${++n}`, "Bien reçu.");
+      result({ result: "Bien reçu." });
     }
     // "wait": nothing until an interrupt.
   }

@@ -6,53 +6,8 @@ import type { SessionUpdate } from "../../shared/chat";
 import { codexEngine } from "../../core/agent/chat/codex";
 import type { EngineConversation } from "../../core/agent/chat/engine";
 
-// A fake `codex app-server`: logs every line it receives, answers by method, scripts a turn by its prompt text.
-const FAKE = String.raw`
-const fs = require("node:fs");
-const log = (m) => fs.appendFileSync(process.env.FAKE_CODEX_LOG, JSON.stringify(m) + "\n");
-const send = (m) => process.stdout.write(JSON.stringify(m) + "\n");
-const note = (method, params) => send({ method, params });
-let turn = 0, current = "", waiting = null;
-const done = (status, error) => note("turn/completed", { threadId: "thr", turn: { id: current, status, items: [], error: error ?? null } });
-const msg = (text) => (note("item/agentMessage/delta", { threadId: "thr", turnId: current, itemId: "msg_1", delta: "Bon" }),
-  note("item/agentMessage/delta", { threadId: "thr", turnId: current, itemId: "msg_1", delta: "jour" }),
-  note("item/completed", { threadId: "thr", turnId: current, item: { type: "agentMessage", id: "msg_1", text } }));
-require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
-  const m = JSON.parse(line);
-  log(m);
-  if (m.id === "srv_1" && waiting) return void (waiting(), (waiting = null));
-  switch (m.method) {
-    case "initialize": return send({ id: m.id, result: { userAgent: "fake" } });
-    case "thread/start": return send({ id: m.id, result: { thread: { id: "thr_new" } } });
-    case "thread/resume": return send({ id: m.id, result: { thread: { id: m.params.threadId } } });
-    case "turn/interrupt": send({ id: m.id, result: {} }); return done("interrupted");
-    case "turn/start": {
-      current = "turn_" + ++turn;
-      send({ id: m.id, result: { turn: { id: current, status: "inProgress", items: [] } } });
-      note("turn/started", { threadId: "thr", turn: { id: current, status: "inProgress", items: [] } });
-      const text = m.params.input[0].text;
-      if (text === "hello") return msg("Bonjour"), done("completed");
-      if (text === "tool") {
-        const item = { type: "mcpToolCall", id: "call_1", server: "ressac", tool: "read_tab", arguments: { id: 7 }, status: "inProgress" };
-        note("item/started", { threadId: "thr", turnId: current, item });
-        note("item/completed", { threadId: "thr", turnId: current, item: { ...item, status: "completed" } });
-        return done("completed");
-      }
-      if (text === "approve") {
-        waiting = () => done("completed");
-        return send({ id: "srv_1", method: "item/commandExecution/requestApproval", params: { threadId: "thr", turnId: current, itemId: "c" } });
-      }
-      if (text === "ask") {
-        waiting = () => done("completed");
-        return send({ id: "srv_1", method: "item/tool/requestUserInput", params: { threadId: "thr", turnId: current, itemId: "i",
-          questions: [{ id: "q1", header: "Couleur", question: "Quelle couleur ?", options: [{ label: "Bleu", description: "le ciel" }] }] } });
-      }
-      if (text === "unauth") return done("failed", { message: "401 Unauthorized", codexErrorInfo: "unauthorized" });
-      return; // "wait": runs until turn/interrupt
-    }
-  }
-});
-`;
+// A fake `codex app-server`, shared with the chat e2e: logs every line it receives, scripts a turn by its prompt text.
+const FAKE = join(import.meta.dirname, "..", "tools", "fake-codex-app-server.cjs");
 
 const dirs: string[] = [];
 const open: EngineConversation[] = [];
@@ -70,7 +25,7 @@ async function start(o: { resumeId?: string } = {}, codexConfig?: Record<string,
     engineArgs: undefined as string[] | undefined,
     command(args: string[]) {
       this.engineArgs = args;
-      return [process.execPath, "-e", FAKE];
+      return [process.execPath, FAKE];
     },
     env: { FAKE_CODEX_LOG: logFile },
     codexConfig,

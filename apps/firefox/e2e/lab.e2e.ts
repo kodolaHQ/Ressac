@@ -32,6 +32,8 @@ async function launch(o: { lab?: boolean; ai?: boolean } = {}): Promise<void> {
   s.settings.onboarded = true;
   s.settings.aiEnabled = true;
   s.settings.language = "fr";
+  // The terminal view, as launchRessac seeds it (R9).
+  s.settings.agentView = "terminal";
   const { lab: _, ...settings } = s.settings;
   await writeFile(join(dataDir, "session.json"), JSON.stringify({ ...s, settings }));
   await writeAction(dataDir, "rappel", { name: "Rappel" });
