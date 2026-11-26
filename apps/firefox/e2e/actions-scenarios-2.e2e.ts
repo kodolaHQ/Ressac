@@ -40,7 +40,7 @@ async function launch(height?: number): Promise<{ m: Marionette; q: ReturnType<t
     ...dirs,
     writer: "claude",
     ...(height ? { height } : {}),
-    env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" },
+    env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" },
   });
   const m = w.marionette;
   await m.setContext("chrome");

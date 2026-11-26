@@ -156,7 +156,7 @@ test("the harvest receives the widget, the data folder, the engine and the AI", 
 
 test("with a given dispatcher, the harvests use it", async () => {
   const keys: string[] = [];
-  const access = { kev: vi.fn(), gemma: vi.fn(), forget: vi.fn() };
+  const access = { gemma: vi.fn(), forget: vi.fn() };
   const dispatcher = { for: (key: string) => (keys.push(key), access) };
   const { p, harvest } = await prepare({ options: { dispatcher: dispatcher } });
   await p.check({ onLaunch: true });
@@ -1073,7 +1073,7 @@ test("arreter: a long run that does not finish is awaited in a bounded way, its 
 
 test("the AI goes through the dispatcher: each run has its view, calls reach the given AI, refused after its end", async () => {
   const calls: string[] = [];
-  const ai = { kev: async () => "k", gemma: async (o: { prompt: string }) => (calls.push(o.prompt), "g") };
+  const ai = { gemma: async (o: { prompt: string }) => (calls.push(o.prompt), "g") };
   const { p, c, harvest, harvestAttempt } = await prepare({ options: { ai: ai } });
   await writeWatch(c, "veille", 30);
   const responses: unknown[] = [];

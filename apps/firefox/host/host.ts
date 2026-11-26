@@ -23,14 +23,14 @@ process.env.RESSAC_CONTAINER_PORTS ||= "5300-5319";
 // from source under tsx, where the build flag is absent. (RESSAC_LLAMA_SERVER and RESSAC_KERNEL_RESOURCES are set by
 // the browser itself, over the inherited ones.)
 declare const __RESSAC_PACKAGED__: boolean | undefined;
-const DEV_OVERRIDES = ["RESSAC_GIT", "RESSAC_KEV_URL", "RESSAC_EMBED_URL", "RESSAC_EMBED_SHA256", "RESSAC_EMBED_SERVER_URL", "RESSAC_D1_URL", "RESSAC_D1_SHA256", "RESSAC_ROOT", "RESSAC_HOST_TEST", "RESSAC_MEMORY_LOOP"];
+const DEV_OVERRIDES = ["RESSAC_GIT", "RESSAC_EMBED_URL", "RESSAC_EMBED_SHA256", "RESSAC_EMBED_SERVER_URL", "RESSAC_ROOT", "RESSAC_HOST_TEST", "RESSAC_MEMORY_LOOP"];
 if (typeof __RESSAC_PACKAGED__ !== "undefined" && __RESSAC_PACKAGED__)
   for (const k of Object.keys(process.env)) if (k.startsWith("RESSAC_TEST_") || DEV_OVERRIDES.includes(k)) delete process.env[k];
 
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");
 const { appendFileSync, readFileSync } = await import("node:fs");
-const { stat } = await import("node:fs/promises");
+const { rm, stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
 const { passportReady, ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE, WorkspaceLock, tweaksPaused, isTier3Widget } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
@@ -47,7 +47,7 @@ const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./de
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createHostWriter, createWriterChoice } = await import("./writer.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
-const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, createWakeGrace, memoryAllows, memoryLevel, smallMac, vmImage } = await import("./machine.ts");
+const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, createWakeGrace, memoryAllows, memoryLevel, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
@@ -57,7 +57,7 @@ const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { ollamaRelayTarget } = await import("./ollama-models.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
-const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DECISION_MODEL, MachineIdleSchema, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
+const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, MachineIdleSchema, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
 const {
@@ -264,9 +264,9 @@ const broadcastAccess = () => {
   accessTimer ??= setTimeout(() => notifyAccess(), 50);
 };
 
-// The local AI: the decision model (d1-2B) runs in the llama-server shipped with Ressac (RESSAC_LLAMA_SERVER, set by
-// chrome/agent/command.ts), as does the search model (⌘T). RESSAC_D1_URL / RESSAC_D1_SHA256 and
-// RESSAC_EMBED_URL / RESSAC_EMBED_SHA256, RESSAC_EMBED_SERVER_URL (a search server already running): dev and tests only.
+// The local AI: the search model (⌘T) runs in the llama-server shipped with Ressac (RESSAC_LLAMA_SERVER, set by
+// chrome/agent/command.ts). RESSAC_EMBED_URL / RESSAC_EMBED_SHA256, RESSAC_EMBED_SERVER_URL (a search server already
+// running): dev and tests only.
 // The agent that writes (host/writer.ts): the default profile's, else the other, by its API key, its Ollama or its signed-in CLI.
 const profileAgents = new Map<string, "claude" | "codex">();
 // Best effort (the space may not exist yet): a profile read late leaves the default "claude" until agent.profiles runs.
@@ -307,14 +307,13 @@ const ai = new LocalAi({
   writer: hostWriter,
   folder: join(dataDir, "local-ai"),
   llamaServer: process.env.RESSAC_LLAMA_SERVER,
-  decisionUrl: process.env.RESSAC_D1_URL,
-  decisionSha256: process.env.RESSAC_D1_SHA256,
   embedUrl: process.env.RESSAC_EMBED_URL,
   embedSha256: process.env.RESSAC_EMBED_SHA256,
   locale: () => hostLocale(),
-  // A small Mac takes the decision model's 1.1 GB back after 2 min idle instead of 10.
-  ...(smallMac() ? { inactivityMs: 120_000 } : {}),
 });
+// The decision model (d1) is gone: its folder, left by an older Ressac, is removed once. A plain rm of the path: a link in
+// its place is unlinked, never followed outside the data folder.
+void rm(join(dataDir, "local-ai", "d1"), { recursive: true, force: true }).catch((e) => console.error("[ressac] the old d1 folder was not removed:", e));
 
 // The ⌘T bar's Demander mode: rules and the search model, outside the workflows' dispatcher queue.
 const ask = createAsk({ embed: ai.embed, history: () => hist ?? null });
@@ -335,12 +334,11 @@ let labOn = false;
 let aiWoken = false;
 // Once per off → on: the machine is installed (downloaded once) and the logins move over from Docker; where it cannot
 // run, an installed container app that is not running is started, and left running at quit (nothing of it is downloaded
-// without a click); Ollama, the agents' optional engine, is the user's to start. The decision model, needed by the agent's watch, then the search
-// model (⌘T), both small, are downloaded at once when missing; a failure shows in Réglages and is retried at the next launch.
+// without a click); Ollama, the agents' optional engine, is the user's to start. The search model (⌘T), small, is downloaded at once when missing; a failure shows in Réglages and is retried at the next launch.
 const wakeAi = () => {
   if (aiWoken) return;
   aiWoken = true;
-  void ai.check().then((v) => aiOn && settings.downloadModels([!v.decision && DECISION_MODEL, !v.embed && SEARCH_MODEL].filter((n) => n !== false)), () => {});
+  void ai.check().then((v) => aiOn && !v.embed && settings.downloadModels([SEARCH_MODEL]), () => {});
   // A machine the user removed stays so: only their « Installer la machine » brings it back.
   void machine.install({ auto: true }).then(
     // AI turned off meanwhile (machine.cancel): no hand-over, nor Docker start, until it is on again.

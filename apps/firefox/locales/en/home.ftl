@@ -23,8 +23,8 @@ home-welcome-yes = Yes
 home-welcome-done = Done
 home-welcome-ai-ask-title = Turn on AI?
 home-welcome-ai-ask-intro = An agent can work for you: it browses, searches, compares, builds apps and keeps your widgets up to date.
-home-welcome-ai-ask-needs = It needs OrbStack (or Docker Desktop) and a Claude or ChatGPT account. Ressac also downloads two small local AI models (1.4 GB).
-home-welcome-ai-ask-needs-machine = It needs a Claude or ChatGPT account. Ressac also downloads its workshop (about 500 MB) and two small local AI models (1.4 GB).
+home-welcome-ai-ask-needs = It needs OrbStack (or Docker Desktop) and a Claude or ChatGPT account. Ressac also downloads a small local AI model (334 MB).
+home-welcome-ai-ask-needs-machine = It needs a Claude or ChatGPT account. Ressac also downloads its workshop (about 500 MB) and a small local AI model (334 MB).
 home-welcome-ai-ask-later = Without AI, Ressac stays a browser, and nothing runs in the background. You can turn it on later in Settings › Agent.
 home-welcome-checking = Checking…
 home-welcome-recheck = Check again
@@ -58,13 +58,9 @@ home-welcome-ai-intro = A small AI runs on your Mac, alongside the agent. It is 
 home-welcome-ai-guard = watch the agent: it pauses it when one of its actions looks strange;
 home-welcome-ai-triage = sort for you: when Ressac follows a topic on your behalf, it picks what deserves to be shown to you;
 home-welcome-ai-search = find your pages by their meaning, when you ask a question with ⌘T.
-home-welcome-ai-needs = It uses two models Ressac downloads for you: d1-2B (1.1 GB) to watch and sort, and EmbeddingGemma (334 MB) for search.
+home-welcome-ai-needs = It uses one model Ressac downloads for you: EmbeddingGemma (334 MB), for search.
 home-welcome-models-started = Download in progress. Progress is in Settings › Local AI.
-home-welcome-models-missing = { $missing ->
-    [decision] The local AI model d1-2B is missing (1.1 GB).
-    [search] The search model EmbeddingGemma is missing (334 MB).
-   *[both] The local AI models are missing (1.4 GB).
-}
+home-welcome-models-missing = The search model EmbeddingGemma is missing (334 MB).
 home-welcome-models-pull = Download in the background
 home-welcome-models-ready = The models are installed.
 home-welcome-models-unreachable = Can't check right now.

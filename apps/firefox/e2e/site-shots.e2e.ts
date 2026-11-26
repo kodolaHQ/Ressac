@@ -61,7 +61,7 @@ describe.skipIf(!lang)("site shots", () => {
       height: 900,
       realTools: true,
       prefs: { "ui.systemUsesDarkTheme": 1, "ui.prefersReducedMotion": 0 },
-      env: { RESSAC_CONTAINER: "ressac-workshop-readme", RESSAC_CONTAINER_PORTS: "5340-5359", RESSAC_KEV_URL: undefined, RESSAC_TEST_MAC_LANGUAGES: lang === "en" ? "en-US" : "fr-FR" },
+      env: { RESSAC_CONTAINER: "ressac-workshop-readme", RESSAC_CONTAINER_PORTS: "5340-5359", RESSAC_TEST_MAC_LANGUAGES: lang === "en" ? "en-US" : "fr-FR" },
     });
     const m = w.marionette;
     await m.setContext("chrome");

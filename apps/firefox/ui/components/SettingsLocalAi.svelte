@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { LocalAiStateShown } from "../../shared/api";
-  import { DECISION_MODEL, SEARCH_MODEL, type PullProgress } from "../../shared/settings";
+  import { SEARCH_MODEL, type PullProgress } from "../../shared/settings";
   import { aiOn, api } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import AiAsleep from "./AiAsleep.svelte";
@@ -59,7 +59,7 @@
 </script>
 
 <!-- One of Ressac's models: its name and use, one error line at most, and « installé » or « absent » with a download button. -->
-{#snippet model(id: "decision" | "search", name: string, installed: boolean, title: string, detail: string, failed: string | undefined, serverError: string | null | undefined)}
+{#snippet model(id: "search", name: string, installed: boolean, title: string, detail: string, failed: string | undefined, serverError: string | null | undefined)}
   <div class="row" data-testid="ai-{id}">
     <div class="grow">
       <b>{title}</b><span class="muted">{detail}</span>
@@ -93,7 +93,6 @@
     <p class="status"><span class="pill" data-tone="error" data-testid="ai-error">{ai.error ?? t("settings-agent-silent")}</span></p>
   {:else}
     <div class="group">
-      {@render model("decision", DECISION_MODEL, !!v.decision, t("settings-ai-decision-model"), t("settings-ai-decision-detail"), ai.decisionError, ai.state === "error" ? ai.error : null)}
       {@render model("search", SEARCH_MODEL, !!v.embed, t("settings-ai-search-model"), t("settings-ai-search-detail"), ai.searchError, ai.searchServerError)}
       <div class="row" data-testid="ai-writer">
         <div class="grow"><b>{t("settings-ai-writer")}</b><span class="muted">{writer === undefined ? "" : writer.agent === "claude" || writer.agent === "codex" ? t(`settings-ai-writer-via-${writer.via}`, { agent: writer.agent === "claude" ? "Claude" : "Codex" }) : t(`settings-ai-writer-${writer.agent ?? "none"}`)}</span></div>

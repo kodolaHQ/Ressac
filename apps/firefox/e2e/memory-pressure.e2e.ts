@@ -17,7 +17,7 @@ const calls = () => {
 const press = (data: string) => m.execute(`Services.obs.notifyObservers(null, "memory-pressure", arguments[0]);`, [data]);
 
 beforeAll(async () => {
-  w = await launchRessac({ env: { RESSAC_TEST_MACHINE: "running", RESSAC_D1_URL: "http://127.0.0.1:9", RESSAC_EMBED_URL: "http://127.0.0.1:9" } });
+  w = await launchRessac({ env: { RESSAC_TEST_MACHINE: "running", RESSAC_EMBED_URL: "http://127.0.0.1:9" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);

@@ -23,7 +23,7 @@ const disabled = (selector: string) => inUi<boolean>(m, "return doc.querySelecto
 
 beforeAll(async () => {
   servers = await startActionServers();
-  w = await launchRessac({ writer: "claude", env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
+  w = await launchRessac({ writer: "claude", env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");

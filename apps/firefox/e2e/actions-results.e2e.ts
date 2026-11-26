@@ -13,7 +13,7 @@ let servers: Awaited<ReturnType<typeof startActionServers>>;
 const launched: LaunchedRessac[] = [];
 
 async function launch(env: Record<string, string> = {}) {
-  const w = await launchRessac({ env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1", ...env } });
+  const w = await launchRessac({ env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1", ...env } });
   launched.push(w);
   const m = w.marionette;
   await m.setContext("chrome");

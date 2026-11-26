@@ -138,8 +138,6 @@ export type MachineStatus =
   | { kind: "error"; message: string; forceRemovable?: true };
 /** What Réglages shows: `waiting` while the machine is ready but Docker's workshop still has sessions (it takes over after). */
 export type MachineShown = MachineStatus & { waiting?: true };
-/** The name the decision model's download (d1-2B, run by llama-server) goes under. */
-export const DECISION_MODEL = "d1-2B";
 /** The name the search model's download (EmbeddingGemma, run by llama-server for ⌘T Demander) goes under. */
 export const SEARCH_MODEL = "embeddinggemma-300m";
 

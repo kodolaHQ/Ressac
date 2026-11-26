@@ -78,7 +78,7 @@ Ressac est en bêta fermée, avec un petit groupe de testeurs. Ils reçoivent un
 
 - **Pour naviguer** : macOS 13.3 ou plus récent, puce Apple.
 - **Pour l'agent** : un compte Claude ou ChatGPT (ou une clé d'API, ou, si tu veux, ton propre [Ollama](https://ollama.com) pour des modèles locaux). Rien d'autre à installer : Ressac télécharge la machine de l'agent au premier usage.
-- **Pour l'IA locale** : rien à installer. Quand tu actives l'IA, Ressac télécharge une fois ses deux petits modèles, chacun vérifié par son SHA-256 : d1-2B (1,1 Go) et EmbeddingGemma (334 Mo). Les résumés des widgets et les pages d'actions sont écrits par ton compte Claude Code ou Codex, il faut donc que l'un des deux soit connecté.
+- **Pour l'IA locale** : rien à installer. Quand tu actives l'IA, Ressac télécharge une fois son petit modèle de recherche, EmbeddingGemma (334 Mo), vérifié par son SHA-256. Les résumés des widgets et les pages d'actions sont écrits par ton compte Claude Code ou Codex, il faut donc que l'un des deux soit connecté.
 
 Tu viens de WebAiOs, l'ancien nom de Ressac ? Quitte-le d'abord : au premier lancement, Ressac reprend tes données, ton profil, tes mots de passe et tes extensions.
 
@@ -106,9 +106,8 @@ Ressac repose sur le travail d'autres projets :
 - [Firefox](https://www.mozilla.org/firefox/) de Mozilla (MPL 2.0), le moteur et l'essentiel du navigateur.
 - [surfer](https://github.com/zen-browser/surfer) de l'équipe de Zen Browser (MPL 2.0), l'outil de build.
 - [Node.js](https://nodejs.org) et [node-pty](https://github.com/microsoft/node-pty) (MIT), embarqués pour l'hôte de l'agent.
-- [d1-2B](https://huggingface.co/LiquidAI/d1-2B-GGUF) de Liquid AI (LFM Open License v1.0), le petit modèle qui trie les articles des widgets et décide les étapes des workflows ; Ressac le télécharge lui-même, il n'est pas inclus.
 - [EmbeddingGemma](https://ai.google.dev/gemma/docs/embeddinggemma) 300M de Google, le modèle de recherche de la barre ⌘T ; Ressac le télécharge lui-même depuis Hugging Face ([le GGUF Q8_0 de ggml-org](https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF)), il n'est pas inclus. Gemma is provided under and subject to the Gemma Terms of Use found at [ai.google.dev/gemma/terms](https://ai.google.dev/gemma/terms).
-- [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), son `llama-server` est livré dans l'app et fait tourner d1-2B et EmbeddingGemma.
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), son `llama-server` est livré dans l'app et fait tourner EmbeddingGemma.
 - [Claude Code](https://claude.com/claude-code) d'Anthropic et [Codex](https://github.com/openai/codex) d'OpenAI, les agents, installés dans le conteneur et utilisés avec ton propre compte.
 - [Svelte](https://svelte.dev), [Vite](https://vite.dev), et les polices [Geist](https://vercel.com/font) et [Funnel Display](https://fonts.google.com/specimen/Funnel+Display) (OFL).
 

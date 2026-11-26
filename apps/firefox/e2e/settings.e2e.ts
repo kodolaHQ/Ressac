@@ -7,13 +7,13 @@ import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { SHELL_SERVICE } from "../chrome/store/settings";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
-import { startD1Server, startServer } from "./server";
+import { startModelServer, startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 // Plan 44 Task 6: the Settings page (agents, local AI, workshop, privacy, about).
 
 const PAGE = '[data-testid="settings-page"]';
-// Nothing listens there: the d1 download Ressac starts with AI fails at once, never the real 1.1 GB.
+// Nothing listens there: the search model download Ressac starts with AI fails at once, never the real 334 MB.
 const DEAD = "http://127.0.0.1:9";
 const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -32,8 +32,7 @@ afterEach(async () => {
 
 /** Launches with `files` written under the workspace (RESSAC_ROOT). Model downloads go to a dead address unless the test points them elsewhere. */
 async function launch(env: Record<string, string> = {}, files: Record<string, string> = {}, dataDir?: string): Promise<void> {
-  // The kernel's own decision-model address: an imposed one (RESSAC_KEV_URL) counts the model as installed.
-  w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD, RESSAC_EMBED_URL: DEAD, ...env } });
+  w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_EMBED_URL: DEAD, ...env } });
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(join(w.dataDir, "workspace"), { recursive: true });
     writeFileSync(join(w.dataDir, "workspace", name), text);
@@ -122,7 +121,7 @@ describe("Settings page", () => {
     // After afterEach has closed the app.
     onTestFinished(() => rmSync(dataDir, { recursive: true, force: true }));
     const relaunch = async () => {
-      w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_KEV_URL: undefined, RESSAC_D1_URL: DEAD, RESSAC_EMBED_URL: DEAD } });
+      w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: DEAD, RESSAC_EMBED_URL: DEAD } });
       m = w.marionette;
       await m.setContext("chrome");
       await waitReady(m);
@@ -352,12 +351,11 @@ describe("Settings page", () => {
     }
   });
 
-  it("local AI: only Ressac's two models, no Ollama nor Gemma row; their failed downloads show", async () => {
+  it("local AI: only the search model, no decision, Ollama nor Gemma row; its failed download shows", async () => {
     await launch();
     await openPage();
     await go("ai");
-    await shows("ai-decision", "absent");
-    await shows("ai-decision-error", "Téléchargement échoué");
+    expect(await inUi(m, `return !!doc.querySelector('[data-testid="ai-decision"]')`)).toBe(false);
     await shows("ai-search", "Modèle de recherche");
     await shows("ai-search", "absent");
     await shows("ai-search-error", "Téléchargement échoué");
@@ -365,19 +363,17 @@ describe("Settings page", () => {
     expect(await text("settings-ai")).not.toMatch(/Ollama|: Gemma|Plusieurs Go/);
   });
 
-  it("local AI: the sort model then the search model download by themselves, show a percentage, then installed", async () => {
-    const d1 = await startD1Server({ hold: true });
+  it("local AI: the search model downloads by itself, shows a percentage, then installed", async () => {
+    const model = await startModelServer({ hold: true });
     try {
-      await launch({ ...d1.env });
+      await launch({ ...model.env });
       await openPage();
       await go("ai");
-      await shows("ai-decision", "Téléchargement 50 %");
-      await shows("ai-search", "absent"); // queued behind d1
-      d1.release();
-      await shows("ai-decision", "installé");
+      await shows("ai-search", "Téléchargement 50 %");
+      model.release();
       await shows("ai-search", "installé");
     } finally {
-      await d1.close();
+      await model.close();
     }
   });
 

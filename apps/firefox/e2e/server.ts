@@ -140,11 +140,11 @@ export async function startServer(o: { host?: string; port?: number; routes?: Re
 }
 
 /**
- * A fake host for Ressac's llama-server models, d1 (RESSAC_D1_*) and the search model (RESSAC_EMBED_*): serves 1000 bytes,
+ * A fake host for Ressac's llama-server model, the search model (RESSAC_EMBED_*): serves 1000 bytes,
  * the first half at once, the rest once `release()` is called (`hold: false` serves it all at once). `hits` counts the
  * requests. Never the real models.
  */
-export async function startD1Server(o: { hold?: boolean } = {}): Promise<{ env: Record<string, string>; hits(): number; release(): void; close(): Promise<void> }> {
+export async function startModelServer(o: { hold?: boolean } = {}): Promise<{ env: Record<string, string>; hits(): number; release(): void; close(): Promise<void> }> {
   const data = Buffer.alloc(1000, 7);
   const sha256 = createHash("sha256").update(data).digest("hex");
   let release!: () => void;
@@ -162,7 +162,7 @@ export async function startD1Server(o: { hold?: boolean } = {}): Promise<{ env: 
     },
   });
   return {
-    env: { RESSAC_D1_URL: `${server.url}/model.gguf`, RESSAC_D1_SHA256: sha256, RESSAC_EMBED_URL: `${server.url}/model.gguf`, RESSAC_EMBED_SHA256: sha256 },
+    env: { RESSAC_EMBED_URL: `${server.url}/model.gguf`, RESSAC_EMBED_SHA256: sha256 },
     hits: () => hits,
     release,
     close: async () => {

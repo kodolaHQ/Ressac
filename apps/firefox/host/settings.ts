@@ -4,7 +4,7 @@ import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
 import { INVALID_KEY, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
-import { DECISION_MODEL, SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type MachineShown, type SettingsResult, type PullProgress } from "../shared/settings.ts";
+import { SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type MachineShown, type SettingsResult, type PullProgress } from "../shared/settings.ts";
 import type { DockerRuntime } from "./docker-runtime.ts";
 import type { createMachine } from "./machine.ts";
 import { hostSay } from "./locale.ts";
@@ -98,7 +98,7 @@ export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork" | "ensureStarted">;
   /** Who writes and how (the account check is cached): reset whenever an account may have changed. */
   writer: { via(): Promise<{ agent: WriterAgent; via: "subscription" | "api" | "ollama" } | "workshop-stopped" | null>; reset(): void };
-  ai: Pick<LocalAi, "state" | "check" | "installDecisionModel" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
+  ai: Pick<LocalAi, "check" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
   docker: DockerRuntime;
   /** The workshop machine (host/machine.ts); `install` also hands the workshop over to it once installed. */
   machine: Pick<ReturnType<typeof createMachine>, "status" | "usage" | "install" | "remove"> & {
@@ -134,7 +134,7 @@ const LOGIN_WAIT_MS = 120_000;
 export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTINGS_METHODS)[number], (p: any) => unknown> & {
   stopLogins(): void;
   loginEnded(maxMs?: number): Promise<void>;
-  /** Starts Ressac's own model downloads (d1, the search model), one after the other in the pull slot, after any pull in progress (AI start, models missing). */
+  /** Starts Ressac's own model downloads (the search model) in the pull slot, after any pull in progress (AI start, models missing). */
   downloadModels(names: string[]): void;
   /** Cancels those downloads and every pull still waiting for the slot (AI off); their partial files stay for the next try. */
   cancelDownloads(): void;
@@ -176,15 +176,14 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
   };
   const pullNow = async (name: string) => {
     try {
-      if (name === DECISION_MODEL) await installModel(name, (p) => o.ai.installDecisionModel(p));
-      else if (name === SEARCH_MODEL) await installModel(name, (p) => o.ai.embed.install(p));
+      if (name === SEARCH_MODEL) await installModel(name, (p) => o.ai.embed.install(p));
       else throw new Error(UNSUPPORTED_MODEL());
     } finally {
       pull = null;
     }
   };
   /** Ressac's own models, downloaded at AI start. */
-  const ressacModel = (name: string) => name === DECISION_MODEL || name === SEARCH_MODEL;
+  const ressacModel = (name: string) => name === SEARCH_MODEL;
   /** Ressac's download chain at AI start, from its first model to its last. */
   let ressacPulls: Promise<void> | undefined;
   const afterRessac = async () => {
@@ -407,7 +406,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     "settings.pullModel": async (p: { name?: unknown }): Promise<SettingsResult> => {
       try {
         const g = generation;
-        // Rechecked after the wait: of two d1 callers resuming together, the second finds the slot taken by the first and waits again.
+        // Rechecked after the wait: of two callers resuming together, the second finds the slot taken by the first and waits again.
         do await afterRessac(); while (ressacModel(String(p?.name)) && (ressacPulls || (pull && ressacModel(pull.name))));
         if (generation !== g) throw new Error(hostSay("kernel-ai-install-cancelled"));
         await pullOne(String(p?.name));
@@ -446,15 +445,13 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     },
     "ai.state": async (): Promise<LocalAiStateShown> => {
       const v = await o.ai.check().catch(() => undefined);
-      const decisionError = modelErrors.get(DECISION_MODEL);
       const searchError = modelErrors.get(SEARCH_MODEL);
       const search = o.ai.embed.state();
       const errors = {
-        ...(decisionError ? { decisionError } : {}),
         ...(searchError ? { searchError } : {}),
         ...(search.state === "error" && search.error ? { searchServerError: search.error } : {}),
       };
-      return { ...o.ai.state(), ...(v ? { verification: v } : {}), ...errors };
+      return { ...search, ...(v ? { verification: v } : {}), ...errors };
     },
   };
 }

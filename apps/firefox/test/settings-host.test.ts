@@ -26,9 +26,7 @@ function setup(over: { state?: string; started?: string; exec?: (argv: string[])
       ensureStarted: vi.fn(async () => (calls.push("ensureStarted"), (over.started ?? "started") as any)),
     },
     ai: {
-      state: () => ({ state: "stopped" as const }),
-      check: async () => ({ decision: true, embed: true }),
-      installDecisionModel: vi.fn(async (onPercent: (p: number | null) => void): Promise<void> => (onPercent(30), void calls.push("installDecisionModel"))),
+      check: async () => ({ embed: true }),
       cancelInstall: vi.fn(),
       embed: { state: vi.fn((): { state: AiState; error?: string } => ({ state: "stopped" })), install: vi.fn(async (onPercent: (p: number | null) => void): Promise<void> => (onPercent(60), void calls.push("embed.install"))) },
     },
@@ -347,28 +345,29 @@ describe("settings host", () => {
     expect(o.revokeSite).toHaveBeenCalledTimes(1);
   });
 
-  it("pullModel: only Ressac's models, progress visible meanwhile, errors returned", async () => {
+  it("pullModel: only the search model, progress visible meanwhile, errors returned", async () => {
     const { h, o } = setup();
-    for (const name of ["llama3", "gemma4:e4b-mlx", "ollama"]) expect(await h["settings.pullModel"]!({ name })).toEqual({ ok: false, error: "Modèle non pris en charge" });
+    for (const name of ["llama3", "gemma4:e4b-mlx", "ollama", "d1-2B", "pplx-decider-flash"]) expect(await h["settings.pullModel"]!({ name })).toEqual({ ok: false, error: "Modèle non pris en charge" });
     let finish!: () => void;
-    o.ai.installDecisionModel.mockImplementationOnce((onPercent) => new Promise<void>((ok) => (onPercent(50), (finish = ok))));
-    const first = h["settings.pullModel"]!({ name: "d1-2B" }) as Promise<unknown>;
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toEqual({ name: "d1-2B", status: "", percent: 50 }));
+    o.ai.embed.install.mockImplementationOnce((onPercent) => new Promise<void>((ok) => (onPercent(50), (finish = ok))));
+    const first = h["settings.pullModel"]!({ name: "embeddinggemma-300m" }) as Promise<unknown>;
+    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toEqual({ name: "embeddinggemma-300m", status: "", percent: 50 }));
     finish();
     expect(await first).toEqual({ ok: true });
     expect(await h["settings.pullProgress"]!({})).toBeNull();
-    o.ai.installDecisionModel.mockRejectedValueOnce(new Error("no space"));
-    expect(await h["settings.pullModel"]!({ name: "d1-2B" })).toEqual({ ok: false, error: "no space" });
+    o.ai.embed.install.mockRejectedValueOnce(new Error("no space"));
+    expect(await h["settings.pullModel"]!({ name: "embeddinggemma-300m" })).toEqual({ ok: false, error: "no space" });
   });
 
-  it("pullInBackground: answers at once, pulls in order, notifies the end or the failure; Gemma and Ollama are refused", async () => {
+  it("pullInBackground: answers at once, notifies the end or the failure; Gemma, Ollama and d1 are refused", async () => {
     const { h, o, calls } = setup();
     expect(await h["settings.pullInBackground"]!({ names: ["gemma4:e4b-mlx"] })).toEqual({ ok: false, error: "Modèle non pris en charge" });
-    expect(await h["settings.pullInBackground"]!({ names: ["ollama", "d1-2B"] })).toEqual({ ok: false, error: "Modèle non pris en charge" });
+    expect(await h["settings.pullInBackground"]!({ names: ["ollama", "embeddinggemma-300m"] })).toEqual({ ok: false, error: "Modèle non pris en charge" });
+    expect(await h["settings.pullInBackground"]!({ names: ["d1-2B"] })).toEqual({ ok: false, error: "Modèle non pris en charge" });
     expect(await h["settings.pullInBackground"]!({ names: [] })).toMatchObject({ ok: false });
-    expect(await h["settings.pullInBackground"]!({ names: ["d1-2B", "embeddinggemma-300m"] })).toEqual({ ok: true });
+    expect(await h["settings.pullInBackground"]!({ names: ["embeddinggemma-300m"] })).toEqual({ ok: true });
     await vi.waitFor(() => expect(o.notify).toHaveBeenCalledWith(expect.objectContaining({ title: "L'IA locale est prête" })));
-    expect(calls).toEqual(["installDecisionModel", "embed.install"]);
+    expect(calls).toEqual(["embed.install"]);
     expect(await h["settings.pullProgress"]!({})).toBeNull();
     o.ai.embed.install.mockRejectedValueOnce(new Error("no space"));
     expect(await h["settings.pullInBackground"]!({ names: ["embeddinggemma-300m"] })).toEqual({ ok: true });
@@ -384,7 +383,7 @@ describe("settings host", () => {
 
   it("ai.state", async () => {
     const { h } = setup();
-    expect(await h["ai.state"]!({})).toEqual({ state: "stopped", verification: { decision: true, embed: true } });
+    expect(await h["ai.state"]!({})).toEqual({ state: "stopped", verification: { embed: true } });
   });
 
   it("ai.state: the search server's start failure shows as searchServerError", async () => {
@@ -394,171 +393,115 @@ describe("settings host", () => {
     expect(await h["ai.state"]!({})).toMatchObject({ searchServerError: "llama-server did not start" });
   });
 
-  it("the decision model downloads through LocalAi, in the single pull slot; pplx is no longer pullable", async () => {
-    const { h, o, calls } = setup();
-    expect(await h["settings.pullModel"]!({ name: "pplx-decider-flash" })).toEqual({ ok: false, error: "Modèle non pris en charge" });
-    expect(await h["settings.pullModel"]!({ name: "d1-2B" })).toEqual({ ok: true });
-    expect(calls).toEqual(["installDecisionModel"]);
-    expect(o.ai.installDecisionModel).toHaveBeenCalledTimes(1);
-    expect(await h["settings.pullProgress"]!({})).toBeNull();
-  });
-
-  it("a failed decision download stays in ai.state as decisionError until a later success", async () => {
+  it("a failed search download stays in ai.state as searchError until a later success; no decision error exists", async () => {
     const { h, o } = setup();
-    o.ai.installDecisionModel.mockImplementationOnce(async () => {
+    o.ai.embed.install.mockImplementationOnce(async () => {
       throw new Error("HTTP 503");
     });
-    h.downloadModels(["d1-2B"]);
-    await vi.waitFor(async () => expect(await h["ai.state"]!({})).toMatchObject({ decisionError: "HTTP 503" }));
-    expect(await h["settings.pullModel"]!({ name: "d1-2B" })).toEqual({ ok: true });
+    h.downloadModels(["embeddinggemma-300m"]);
+    await vi.waitFor(async () => expect(await h["ai.state"]!({})).toMatchObject({ searchError: "HTTP 503" }));
     expect(await h["ai.state"]!({})).not.toHaveProperty("decisionError");
+    expect(await h["settings.pullModel"]!({ name: "embeddinggemma-300m" })).toEqual({ ok: true });
+    expect(await h["ai.state"]!({})).not.toHaveProperty("searchError");
   });
 
-  it("the welcome's pulls queue behind the background decision download instead of failing busy", async () => {
-    const { h, o, calls } = setup();
+  /** A background download held until `finish()`. */
+  const held = (o: ReturnType<typeof setup>["o"], calls: string[]) => {
     let finish!: () => void;
-    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((ok) => (finish = () => (calls.push("decision"), ok()))));
-    h.downloadModels(["d1-2B"]);
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
-    expect(await h["settings.pullInBackground"]!({ names: ["embeddinggemma-300m", "d1-2B"] })).toEqual({ ok: true });
+    o.ai.embed.install.mockImplementationOnce(() => new Promise<void>((ok) => (finish = () => (calls.push("held"), ok()))));
+    return () => finish();
+  };
+  const running = (h: ReturnType<typeof setup>["h"]) => vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "embeddinggemma-300m" }));
+
+  it("the welcome's pull queues behind the background download instead of failing busy", async () => {
+    const { h, o, calls } = setup();
+    const finish = held(o, calls);
+    h.downloadModels(["embeddinggemma-300m"]);
+    await running(h);
+    expect(await h["settings.pullInBackground"]!({ names: ["embeddinggemma-300m"] })).toEqual({ ok: true });
     expect(calls).toEqual([]);
     finish();
     await vi.waitFor(() => expect(o.notify).toHaveBeenCalledWith(expect.objectContaining({ title: "L'IA locale est prête" })));
-    expect(calls).toEqual(["decision", "embed.install", "installDecisionModel"]);
+    expect(calls).toEqual(["held", "embed.install"]);
   });
 
-  it("two clicks on the d1 row during the background download wait, none is refused busy", async () => {
-    const { h, o } = setup();
-    let finish!: () => void;
-    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((ok) => (finish = ok)));
-    h.downloadModels(["d1-2B"]);
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
-    const two = Promise.all([h["settings.pullModel"]!({ name: "d1-2B" }), h["settings.pullModel"]!({ name: "d1-2B" })]);
+  it("two clicks on the search row during the background download wait, none is refused busy", async () => {
+    const { h, o, calls } = setup();
+    const finish = held(o, calls);
+    h.downloadModels(["embeddinggemma-300m"]);
+    await running(h);
+    const two = Promise.all([h["settings.pullModel"]!({ name: "embeddinggemma-300m" }), h["settings.pullModel"]!({ name: "embeddinggemma-300m" })]);
     finish();
     expect(await two).toEqual([{ ok: true }, { ok: true }]);
   });
 
-  it("cancels the decision download when AI goes off, without keeping an error", async () => {
+  it("cancels the download when AI goes off, without keeping an error", async () => {
     const { h, o } = setup();
     let fail!: (e: Error) => void;
-    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
+    o.ai.embed.install.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
     o.ai.cancelInstall.mockImplementation(() => fail(new Error("Installation annulée")));
-    h.downloadModels(["d1-2B"]);
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
+    h.downloadModels(["embeddinggemma-300m"]);
+    await running(h);
     h.cancelDownloads();
     expect(o.ai.cancelInstall).toHaveBeenCalledTimes(1);
     await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toBeNull());
-    expect(await h["ai.state"]!({})).not.toHaveProperty("decisionError");
+    expect(await h["ai.state"]!({})).not.toHaveProperty("searchError");
   });
 
   it("pulls queued behind the background download are dropped when AI goes off meanwhile, without a failure notification", async () => {
     const { h, o } = setup();
     let fail!: (e: Error) => void;
-    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
+    o.ai.embed.install.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
     o.ai.cancelInstall.mockImplementation(() => fail(new Error("Installation annulée")));
-    h.downloadModels(["d1-2B"]);
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
+    h.downloadModels(["embeddinggemma-300m"]);
+    await running(h);
     const queued = h["settings.pullModel"]!({ name: "embeddinggemma-300m" });
     expect(await h["settings.pullInBackground"]!({ names: ["embeddinggemma-300m"] })).toEqual({ ok: true });
     h.cancelDownloads();
     expect(await queued).toEqual({ ok: false, error: "Installation annulée" });
     await new Promise((r) => setTimeout(r, 20));
-    expect(o.ai.embed.install).not.toHaveBeenCalled();
-    expect(o.ai.installDecisionModel).toHaveBeenCalledTimes(1);
+    expect(o.ai.embed.install).toHaveBeenCalledTimes(1);
     expect(o.notify).not.toHaveBeenCalled();
   });
 
-  it("AI off then on again while the cancelled download still ends: the new start's downloads run after it", async () => {
+  it("AI off then on again while the cancelled download still ends: the new start's download runs after it", async () => {
     const { h, o, calls } = setup();
     let fail!: (e: Error) => void;
-    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
-    h.downloadModels(["d1-2B"]);
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
+    o.ai.embed.install.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
+    h.downloadModels(["embeddinggemma-300m"]);
+    await running(h);
     h.cancelDownloads();
-    h.downloadModels(["d1-2B"]);
+    h.downloadModels(["embeddinggemma-300m"]);
     fail(new Error("Installation annulée"));
-    await vi.waitFor(() => expect(calls).toEqual(["installDecisionModel"]));
-    expect(o.ai.installDecisionModel).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(calls).toEqual(["embed.install"]));
+    expect(o.ai.embed.install).toHaveBeenCalledTimes(2);
   });
 
   it("a start queued behind a cancelled download is dropped by a second AI off", async () => {
     const { h, o } = setup();
     let fail!: (e: Error) => void;
-    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
-    h.downloadModels(["d1-2B"]);
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
+    o.ai.embed.install.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
+    h.downloadModels(["embeddinggemma-300m"]);
+    await running(h);
     h.cancelDownloads();
-    h.downloadModels(["d1-2B"]);
+    h.downloadModels(["embeddinggemma-300m"]);
     h.cancelDownloads();
     fail(new Error("Installation annulée"));
     await new Promise((r) => setTimeout(r, 20));
-    expect(o.ai.installDecisionModel).toHaveBeenCalledTimes(1);
+    expect(o.ai.embed.install).toHaveBeenCalledTimes(1);
   });
 
-  it("AI on with both models missing: d1 then the search model, one after the other in the background slot", async () => {
-    const { h, o, calls } = setup();
-    let finish!: () => void;
-    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((ok) => (finish = () => (calls.push("decision"), ok()))));
-    h.downloadModels(["d1-2B", "embeddinggemma-300m"]);
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
-    expect(o.ai.embed.install).not.toHaveBeenCalled();
-    finish();
-    await vi.waitFor(() => expect(calls).toEqual(["decision", "embed.install"]));
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toBeNull());
-  });
-
-  it("each model that finishes downloading is told to modelInstalled, a failed one is not", async () => {
+  it("a model that finishes downloading is told to modelInstalled, a failed one is not", async () => {
     const { o } = setup();
     const installed: string[] = [];
     const h = createSettingsHandlers({ ...o, modelInstalled: (n: string) => void installed.push(n) });
-    o.ai.installDecisionModel.mockImplementationOnce(async () => {
-      throw new Error("HTTP 503");
-    });
-    h.downloadModels(["d1-2B", "embeddinggemma-300m"]);
-    await vi.waitFor(() => expect(installed).toEqual(["embeddinggemma-300m"]));
-  });
-
-  it("a welcome pull waits behind both background downloads, never refused busy", async () => {
-    const { h, o, calls } = setup();
-    let finish!: () => void;
-    o.ai.embed.install.mockImplementationOnce(() => new Promise<void>((ok) => (finish = () => (calls.push("embed"), ok()))));
-    h.downloadModels(["d1-2B", "embeddinggemma-300m"]);
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "embeddinggemma-300m" }));
-    expect(await h["settings.pullInBackground"]!({ names: ["d1-2B"] })).toEqual({ ok: true });
-    expect(calls).toEqual(["installDecisionModel"]);
-    finish();
-    await vi.waitFor(() => expect(o.notify).toHaveBeenCalledWith(expect.objectContaining({ title: "L'IA locale est prête" })));
-    expect(calls).toEqual(["installDecisionModel", "embed", "installDecisionModel"]);
-  });
-
-  it("a failed search model download shows in ai.state as searchError, after d1 still ran; the next launch's try clears it", async () => {
-    const { h, o, calls } = setup();
-    o.ai.installDecisionModel.mockImplementationOnce(async () => {
-      throw new Error("HTTP 503");
-    });
     o.ai.embed.install.mockImplementationOnce(async () => {
-      throw new Error("HTTP 404");
+      throw new Error("HTTP 503");
     });
-    h.downloadModels(["d1-2B", "embeddinggemma-300m"]);
-    await vi.waitFor(async () => expect(await h["ai.state"]!({})).toMatchObject({ decisionError: "HTTP 503", searchError: "HTTP 404" }));
-    // The next launch asks again.
     h.downloadModels(["embeddinggemma-300m"]);
-    await vi.waitFor(() => expect(calls).toEqual(["embed.install"]));
-    expect(await h["ai.state"]!({})).not.toHaveProperty("searchError");
-    expect(await h["settings.pullModel"]!({ name: "embeddinggemma-300m" })).toEqual({ ok: true });
-  });
-
-  it("AI off during d1's download cancels it, and the search model does not start after it", async () => {
-    const { h, o } = setup();
-    let fail!: (e: Error) => void;
-    o.ai.installDecisionModel.mockImplementationOnce(() => new Promise<void>((_ok, ko) => (fail = ko)));
-    o.ai.cancelInstall.mockImplementation(() => fail(new Error("Installation annulée")));
-    h.downloadModels(["d1-2B", "embeddinggemma-300m"]);
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toMatchObject({ name: "d1-2B" }));
-    h.cancelDownloads();
-    await vi.waitFor(async () => expect(await h["settings.pullProgress"]!({})).toBeNull());
-    await new Promise((r) => setTimeout(r, 20));
-    expect(o.ai.embed.install).not.toHaveBeenCalled();
-    expect(await h["ai.state"]!({})).not.toHaveProperty("decisionError");
+    await vi.waitFor(async () => expect(await h["ai.state"]!({})).toMatchObject({ searchError: "HTTP 503" }));
+    expect(installed).toEqual([]);
+    h.downloadModels(["embeddinggemma-300m"]);
+    await vi.waitFor(() => expect(installed).toEqual(["embeddinggemma-300m"]));
   });
 });

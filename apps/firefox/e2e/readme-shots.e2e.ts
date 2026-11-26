@@ -34,7 +34,7 @@ describe.skipIf(!process.env.RESSAC_README_SHOTS)("README shots", () => {
       height: 900,
       realTools: true,
       prefs: { "ui.systemUsesDarkTheme": 1, "ui.prefersReducedMotion": 0 },
-      env: { RESSAC_CONTAINER: "ressac-workshop-readme", RESSAC_CONTAINER_PORTS: "5340-5359", RESSAC_KEV_URL: undefined },
+      env: { RESSAC_CONTAINER: "ressac-workshop-readme", RESSAC_CONTAINER_PORTS: "5340-5359" },
     });
     const m = w.marionette;
     await m.setContext("chrome");
@@ -114,7 +114,7 @@ describe.skipIf(!process.env.RESSAC_README_SHOTS)("README shots", () => {
       realTools: true,
       starterHarvests: true,
       prefs: { "ui.systemUsesDarkTheme": 1, "ui.prefersReducedMotion": 0 },
-      env: { RESSAC_CONTAINER: "ressac-workshop-readme", RESSAC_CONTAINER_PORTS: "5340-5359", RESSAC_KEV_URL: undefined },
+      env: { RESSAC_CONTAINER: "ressac-workshop-readme", RESSAC_CONTAINER_PORTS: "5340-5359" },
     });
     const m = w.marionette;
     await m.setContext("chrome");

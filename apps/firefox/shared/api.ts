@@ -439,7 +439,7 @@ export interface ApiRessac {
     live(): Promise<DirectState>;
     onLive(callback: (e: DirectState) => void): () => void;
   };
-  /** Local AI (the decision and search models). */
+  /** Local AI (the search model). */
   ai: {
     state(): Promise<LocalAiStateShown>;
   };
@@ -929,12 +929,10 @@ export interface ProfileForGrant {
 export interface LocalAiStateShown {
   state: AiState;
   error?: string;
-  verification?: { decision: boolean; embed: boolean };
-  /** The last failed download of the decision model, until one succeeds (retried at the next launch). */
-  decisionError?: string;
+  verification?: { embed: boolean };
   /** Same for the search model. */
   searchError?: string;
-  /** The search model's server failed to start (`error` is the decision server's). */
+  /** The search model's server failed to start (`error` is the same message). */
   searchServerError?: string;
 }
 

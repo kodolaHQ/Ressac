@@ -23,8 +23,8 @@ home-welcome-yes = Oui
 home-welcome-done = Terminer
 home-welcome-ai-ask-title = Activer l'IA ?
 home-welcome-ai-ask-intro = Un agent peut travailler pour vous : il navigue, cherche, compare, construit des applis et tient vos widgets à jour.
-home-welcome-ai-ask-needs = Il lui faut OrbStack (ou Docker Desktop) et un compte Claude ou ChatGPT. Ressac télécharge aussi deux petits modèles d'IA locale (1,4 Go).
-home-welcome-ai-ask-needs-machine = Il lui faut un compte Claude ou ChatGPT. Ressac télécharge aussi son atelier (environ 500 Mo) et deux petits modèles d'IA locale (1,4 Go).
+home-welcome-ai-ask-needs = Il lui faut OrbStack (ou Docker Desktop) et un compte Claude ou ChatGPT. Ressac télécharge aussi un petit modèle d'IA locale (334 Mo).
+home-welcome-ai-ask-needs-machine = Il lui faut un compte Claude ou ChatGPT. Ressac télécharge aussi son atelier (environ 500 Mo) et un petit modèle d'IA locale (334 Mo).
 home-welcome-ai-ask-later = Sans l'IA, Ressac reste un navigateur, et rien ne tourne en arrière-plan. Vous pourrez l'activer plus tard dans Réglages › Agent.
 home-welcome-checking = Vérification…
 home-welcome-recheck = Vérifier à nouveau
@@ -58,13 +58,9 @@ home-welcome-ai-intro = Une petite IA tourne sur votre Mac, en plus de l'agent. 
 home-welcome-ai-guard = surveiller l'agent : elle le met en pause quand une de ses actions paraît étrange ;
 home-welcome-ai-triage = trier pour vous : quand Ressac suit un sujet à votre place, elle choisit ce qui mérite de vous être montré ;
 home-welcome-ai-search = retrouver vos pages par leur sens, quand vous posez une question avec ⌘T.
-home-welcome-ai-needs = Elle utilise deux modèles que Ressac télécharge pour vous : d1-2B (1,1 Go) pour surveiller et trier, et EmbeddingGemma (334 Mo) pour la recherche.
+home-welcome-ai-needs = Elle utilise un modèle que Ressac télécharge pour vous : EmbeddingGemma (334 Mo), pour la recherche.
 home-welcome-models-started = Téléchargement en cours. Le suivi est dans Réglages › IA locale.
-home-welcome-models-missing = { $missing ->
-    [decision] Il manque le modèle d'IA locale d1-2B (1,1 Go).
-    [search] Il manque le modèle de recherche EmbeddingGemma (334 Mo).
-   *[both] Il manque les modèles d'IA locale (1,4 Go).
-}
+home-welcome-models-missing = Il manque le modèle de recherche EmbeddingGemma (334 Mo).
 home-welcome-models-pull = Télécharger en arrière-plan
 home-welcome-models-ready = Les modèles sont installés.
 home-welcome-models-unreachable = Impossible de vérifier pour l'instant.

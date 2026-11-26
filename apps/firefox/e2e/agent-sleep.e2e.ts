@@ -30,7 +30,7 @@ const asleepShown = () => inUi<boolean>(m, "return !!doc.querySelector('[data-te
 
 beforeAll(async () => {
   w = await launchRessac({
-    env: { RESSAC_TEST_MACHINE: "running", RESSAC_TEST_AGENT_SLEEP_MS: String(QUIET_MS), RESSAC_D1_URL: "http://127.0.0.1:9", RESSAC_EMBED_URL: "http://127.0.0.1:9" },
+    env: { RESSAC_TEST_MACHINE: "running", RESSAC_TEST_AGENT_SLEEP_MS: String(QUIET_MS), RESSAC_EMBED_URL: "http://127.0.0.1:9" },
   });
   m = w.marionette;
   await m.setContext("chrome");

@@ -312,7 +312,7 @@ export interface Kernel {
   direct(): DirectState;
   /** Called at each change of `direct()`; returns a way to unsubscribe. */
   onLive(callback: (e: DirectState) => void): () => void;
-  /** Local AI (Kev, Gemma) given by the browser; null without it. */
+  /** Local AI (the writer, the search model) given by the browser; null without it. */
   ai: LocalAi | null;
   /**
    * The user authorizes the widget to read with their account, in this login profile. The browser checked beforehand that this
@@ -426,7 +426,7 @@ export async function createKernel(o: {
   await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[ressac] forgetting gone actions:", e));
   // Once, before any harvest or run: the owners that exist at the update keep reading what they declare.
   const ai = o.ai ?? null;
-  // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch Kev.
+  // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch the AI.
   const aiAccess = ai?.access() ?? null;
   // A single dispatcher for the widgets and the actions: an action's calls go before those of the widgets.
   const aiDispatcher = aiAccess ? createAiDispatcher(aiAccess) : null;

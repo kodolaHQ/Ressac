@@ -62,7 +62,7 @@ beforeAll(async () => {
   servers = await startActionServers();
   pages = await startServer();
   w = await launchRessac({
-    env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" },
+    env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" },
     prefs: { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 },
   });
   m = w.marionette;

@@ -220,7 +220,7 @@ describe("FileActions", () => {
 
   it("each action has its priority AI access, forgotten at the end", async () => {
     const r = kept();
-    const dispatcher = createAiDispatcher({ kev: async () => ({}), gemma: async () => "ok" } as never);
+    const dispatcher = createAiDispatcher({ gemma: async () => "ok" } as never);
     const keys: { key: string; priority?: boolean }[] = [];
     let forgotten = 0;
     const spy = {

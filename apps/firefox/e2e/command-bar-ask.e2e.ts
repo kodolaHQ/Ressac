@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { agentInput } from "./apps";
-import { listen, tid, uiQueries, type TestServer } from "./actions";
+import { tid, uiQueries } from "./actions";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
@@ -14,7 +14,6 @@ const STORE = "chrome://browser/content/ressac/store.sys.mjs";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let embed: Awaited<ReturnType<typeof startEmbedServer>>;
-let kev: TestServer;
 let w: LaunchedRessac;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
@@ -23,18 +22,16 @@ beforeAll(async () => {
   server = await startServer();
   // « Page A » is the title of /a.html loaded for real, its kept text may replace the seeded one.
   embed = await startEmbedServer([["mascaret", "tidal bore"], ["garonne", "page a"]]);
-  kev = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"data":[]}'));
 });
 afterAll(async () => {
   await server?.close();
   await embed?.close();
-  await kev?.close();
 });
 beforeEach(async () => {
   embed.inputs.length = 0;
   embed.refuse = false;
   w = await launchRessac({
-    env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: kev.url, RESSAC_EMBED_SERVER_URL: embed.url, RESSAC_TEST_INDEX_IDLE_MS: "100", RESSAC_MEMORY_LOOP: "1" },
+    env: { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_EMBED_SERVER_URL: embed.url, RESSAC_TEST_INDEX_IDLE_MS: "100", RESSAC_MEMORY_LOOP: "1" },
   });
   m = w.marionette;
   q = uiQueries(m);

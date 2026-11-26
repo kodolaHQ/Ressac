@@ -3,7 +3,7 @@
   import { fade } from "svelte/transition";
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
   import type { ImportSource, SettingsApi } from "../../shared/api";
-  import { DECISION_MODEL, SEARCH_MODEL, type DockerStatus, type MachineStatus } from "../../shared/settings";
+  import { SEARCH_MODEL, type DockerStatus, type MachineStatus } from "../../shared/settings";
   import { SEARCH_ENGINES, type SearchEngine } from "../../shared/search";
   import { APPEARANCES } from "../../shared/model";
   import { shortcutLabel } from "../../shared/shortcuts";
@@ -87,7 +87,7 @@
     const v = ai?.verification;
     // AI on already starts the missing models' download: shown as started, not offered again.
     pulling = !!running;
-    missing = v && !running ? [!v.decision && DECISION_MODEL, !v.embed && SEARCH_MODEL].filter((n): n is string => !!n) : [];
+    missing = v && !running ? v.embed ? [] : [SEARCH_MODEL] : [];
     models = !!v;
   }
   async function pullInBackground(names = missing) {
@@ -262,7 +262,7 @@
             {:else if pulling}
               {@render status("welcome-models", "ok", t("home-welcome-models-started"))}
             {:else if missing.length}
-              {@render status("welcome-models", "warn", pullError ?? t("home-welcome-models-missing", { missing: missing.length > 1 ? "both" : missing[0] === DECISION_MODEL ? "decision" : "search" }))}
+              {@render status("welcome-models", "warn", pullError ?? t("home-welcome-models-missing"))}
               <button type="button" data-testid="welcome-pull" onclick={() => void pullInBackground()}>{t("home-welcome-models-pull")}</button>
             {:else}
               {@render status("welcome-models", "ok", t("home-welcome-models-ready"))}

@@ -39,7 +39,7 @@ const relieved = () => {
 };
 
 async function start(): Promise<void> {
-  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_SMALL_MAC: "1", RESSAC_TEST_PRESSURE_FILE: pressure, RESSAC_TEST_MACHINE: "running", RESSAC_D1_URL: "http://127.0.0.1:9", RESSAC_EMBED_URL: "http://127.0.0.1:9" } });
+  w = await launchRessac({ dataDir, profile, env: { RESSAC_TEST_SMALL_MAC: "1", RESSAC_TEST_PRESSURE_FILE: pressure, RESSAC_TEST_MACHINE: "running", RESSAC_EMBED_URL: "http://127.0.0.1:9" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -193,7 +193,7 @@ describe("small Mac, essentials kept loaded for notifications", () => {
       dataDir: dir,
       profile: prof,
       prefs: { "network.dns.localDomains": "chat.test", ...actor.prefs },
-      env: { ...actor.env, RESSAC_TEST_LOCAL_ADDRESSES: "1", RESSAC_TEST_SMALL_MAC: "1", RESSAC_TEST_KEEP_LOADED_HOSTS: "chat.test", RESSAC_TEST_MACHINE: "running", RESSAC_D1_URL: "http://127.0.0.1:9", RESSAC_EMBED_URL: "http://127.0.0.1:9" },
+      env: { ...actor.env, RESSAC_TEST_LOCAL_ADDRESSES: "1", RESSAC_TEST_SMALL_MAC: "1", RESSAC_TEST_KEEP_LOADED_HOSTS: "chat.test", RESSAC_TEST_MACHINE: "running", RESSAC_EMBED_URL: "http://127.0.0.1:9" },
     });
     n = x.marionette;
     await n.setContext("chrome");
@@ -321,7 +321,7 @@ describe("small Mac, critical memory pressure", () => {
   beforeAll(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), "ressac-data-"));
     await writeFile(level(), "1");
-    x = await launchRessac({ dataDir: dir, env: { RESSAC_TEST_SMALL_MAC: "1", RESSAC_TEST_PRESSURE_FILE: level(), RESSAC_TEST_MACHINE: "running", RESSAC_D1_URL: "http://127.0.0.1:9", RESSAC_EMBED_URL: "http://127.0.0.1:9" } });
+    x = await launchRessac({ dataDir: dir, env: { RESSAC_TEST_SMALL_MAC: "1", RESSAC_TEST_PRESSURE_FILE: level(), RESSAC_TEST_MACHINE: "running", RESSAC_EMBED_URL: "http://127.0.0.1:9" } });
     n = x.marionette;
     await n.setContext("chrome");
     await waitReady(n);

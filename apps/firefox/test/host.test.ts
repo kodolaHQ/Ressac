@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -56,7 +56,6 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       // A free port: never the real 5279.
       RESSAC_PORT_MCP_EXTERNAL: "0",
       // AI on downloads Ressac's models: never from the real web here (a closed local port fails at once).
-      RESSAC_D1_URL: "http://127.0.0.1:9/d1.gguf",
       RESSAC_EMBED_URL: "http://127.0.0.1:9/embed.gguf",
       ...env,
     },
@@ -310,7 +309,7 @@ describe("agent host", { timeout: 30_000 }, () => {
       });
       expect(await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true })).toEqual({ agent: expect.any(String) });
       const state = (await h.rpc.request("ai.state")) as Record<string, unknown>;
-      expect(state.verification).toEqual({ decision: expect.any(Boolean), embed: expect.any(Boolean) });
+      expect(state.verification).toEqual({ embed: expect.any(Boolean) });
       expect(state).not.toHaveProperty("ollama");
       await expect(h.rpc.request("settings.startOllama")).rejects.toThrow();
       expect(await h.rpc.request("settings.pullModel", { name: "ollama" })).toMatchObject({ ok: false });
@@ -551,6 +550,46 @@ describe("agent host", { timeout: 30_000 }, () => {
     const run = readFileSync(h.log, "utf8").split("\n").find((l) => l.startsWith("run -d"));
     expect(run).toContain("127.0.0.1:5300-5319:5300-5319");
     expect(run).toContain("RESSAC_PORTS=5300-5319");
+  });
+
+  it("AI on downloads only EmbeddingGemma", async () => {
+    const { createServer } = await import("node:http");
+    const paths: string[] = [];
+    const web = createServer((req, res) => (paths.push(req.url ?? ""), res.writeHead(404).end()));
+    await new Promise<void>((r) => web.listen(0, "127.0.0.1", r));
+    try {
+      const base = `http://127.0.0.1:${(web.address() as { port: number }).port}`;
+      // The d1 variables are gone: a set one must change nothing.
+      const h = startHost({ RESSAC_EMBED_URL: `${base}/embed.gguf`, RESSAC_D1_URL: `${base}/d1.gguf` });
+      await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+      await until(() => paths.includes("/embed.gguf"));
+      // The download chain is one model long: nothing else follows the 404.
+      await new Promise((r) => setTimeout(r, 500));
+      expect(paths.every((x) => x === "/embed.gguf")).toBe(true);
+      expect(existsSync(join(h.dataDir, "local-ai", "d1"))).toBe(false);
+    } finally {
+      web.close();
+    }
+  });
+
+  it("the old d1 folder is removed at start; a link in its place is unlinked, never followed", async () => {
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), "ressac-outside-")));
+    writeFileSync(join(outside, "keep.txt"), "mine");
+    const h = startHost({}, (dataDir) => {
+      mkdirSync(join(dataDir, "local-ai", "d1"), { recursive: true });
+      writeFileSync(join(dataDir, "local-ai", "d1", "d1-2B-Q4_K_M.gguf"), "gguf");
+    });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: false });
+    await until(() => !existsSync(join(h.dataDir, "local-ai", "d1")));
+    // The same, restarted on the folder, with a link where d1 was.
+    await h.rpc.request("stop").catch(() => {});
+    await h.exited;
+    symlinkSync(outside, join(h.dataDir, "local-ai", "d1"));
+    const h2 = startHost({}, undefined, { dataDir: h.dataDir });
+    await h2.rpc.request("start", { agentProfile: "claude", aiEnabled: false });
+    await until(() => !existsSync(join(h.dataDir, "local-ai", "d1")));
+    expect(readFileSync(join(outside, "keep.txt"), "utf8")).toBe("mine");
+    rmSync(outside, { recursive: true, force: true });
   });
 
   it("arreter stops sessions, then the process exits 0", async () => {

@@ -108,7 +108,7 @@ beforeAll(async () => {
   const site = servers.site.url;
   w = await launchRessac({
     writer: "claude",
-    env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1", RESSAC_TEST_ACTION_IMAGES: servers.images.url },
+    env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1", RESSAC_TEST_ACTION_IMAGES: servers.images.url },
   });
   m = w.marionette;
   q = uiQueries(m);

@@ -53,7 +53,7 @@ async function launch(prepare: (dataDir: string) => Promise<void>): Promise<void
   kept.push(dataDir);
   await prepare(dataDir);
   // A fake Gemma and Kev: no layout request leaves for a real Ollama.
-  w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_KEV_URL: servers.kev.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
+  w = await launchRessac({ dataDir, env: { RESSAC_OLLAMA_URL: servers.ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");

@@ -6,7 +6,7 @@ import type { BrowserState } from "../shared/model";
 import { afterEach, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
-import { startD1Server, startServer } from "./server";
+import { startModelServer, startServer } from "./server";
 import { listen } from "./actions";
 import { inPage, openTab } from "./actors";
 import type { Marionette } from "./marionette";
@@ -35,8 +35,7 @@ afterEach(async () => {
 
 /** A launch that shows the welcome (unless `welcome` is false: the tests' default, which skips it). Model downloads go to a dead address. */
 async function launch(o: { welcome?: boolean; env?: Record<string, string>; dataDir?: string; firstTimeNotes?: boolean; ai?: boolean } = {}): Promise<void> {
-  // The kernel's own decision-model address: an imposed one (RESSAC_KEV_URL) counts the model as installed.
-  const env = { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_KEV_URL: undefined, RESSAC_D1_URL: "http://127.0.0.1:9" /* never the real 1.1 GB */, RESSAC_EMBED_URL: "http://127.0.0.1:9", ...(o.welcome === false ? {} : { RESSAC_SKIP_WELCOME: "0" }), ...o.env };
+  const env = { RESSAC_OLLAMA_URL: "http://127.0.0.1:9", RESSAC_EMBED_URL: "http://127.0.0.1:9", ...(o.welcome === false ? {} : { RESSAC_SKIP_WELCOME: "0" }), ...o.env };
   w = await launchRessac({ env, prefs: NO_WEB, dataDir: o.dataDir, firstTimeNotes: o.firstTimeNotes, ai: o.ai });
   m = w.marionette;
   await m.setContext("chrome");
@@ -128,7 +127,7 @@ describe("welcome", () => {
 
     await press("welcome-later");
     // The background downloads failed at once (a dead address): the models are offered.
-    await shows("welcome-models", "Il manque les modèles d'IA locale (1,4 Go).");
+    await shows("welcome-models", "Il manque le modèle de recherche EmbeddingGemma (334 Mo).");
     await shown("welcome-pull");
     await press("welcome-later");
     await shown("welcome-7");
@@ -142,20 +141,20 @@ describe("welcome", () => {
   });
 
   it("the models' background download, started by « Oui », shows as under way; the welcome goes on", async () => {
-    const d1 = await startD1Server({ hold: true });
+    const model = await startModelServer({ hold: true });
     try {
-      await launch({ env: d1.env });
+      await launch({ env: model.env });
       await forward(1, 6);
-      await waitFor(m, "return true", () => d1.hits() > 0, 15_000);
+      await waitFor(m, "return true", () => model.hits() > 0, 15_000);
       await shows("welcome-models", "Téléchargement en cours.");
       expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [`${LAYER} [data-testid="welcome-pull"]`])).toBe(false);
       await press("welcome-next");
       await shown("welcome-7");
-      d1.release();
-      // d1, then the search model: Ressac's two models, nothing from Ollama.
-      await waitFor(m, "return true", () => d1.hits() === 2, 15_000);
+      model.release();
+      // The search model is the only download: nothing from Ollama, nothing else.
+      await waitFor(m, "return true", () => model.hits() === 1, 15_000);
     } finally {
-      await d1.close();
+      await model.close();
     }
   });
 
@@ -169,12 +168,11 @@ describe("welcome", () => {
     await shown("welcome-models");
   });
 
-  it("only the decision model missing: the welcome gives its own size", async () => {
-    // A search server imposed by address counts its model as installed.
+  it("a search server imposed by address counts its model as installed: the welcome says the models are in place", async () => {
     await launch({ env: { FAKE_DOCKER_ABSENT: "1", RESSAC_EMBED_SERVER_URL: "http://127.0.0.1:9" } });
     await forward(1, 5);
     await press("welcome-later");
-    await shows("welcome-models", "Il manque le modèle d'IA locale d1-2B (1,1 Go).");
+    await shows("welcome-models", "Les modèles sont installés.");
   });
 
   it("a container app installed but stopped: the welcome offers to start it", async () => {

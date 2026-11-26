@@ -1,4 +1,4 @@
-# Sourced (zsh) by scripts/package.sh and scripts/ui.sh: the llama.cpp llama-server that runs the decision model (d1-2B).
+# Sourced (zsh) by scripts/package.sh and scripts/ui.sh: the llama.cpp llama-server that runs the search model (EmbeddingGemma).
 # The version is also read by scripts/paths.ts (the dev build's path).
 llama_version=b12430
 llama_zip=llama-$llama_version-bin-macos-arm64.tar.gz

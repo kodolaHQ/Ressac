@@ -328,11 +328,6 @@ export async function startActionServers() {
     const content = !prompt.startsWith(LAYOUT_PROMPT) ? "Bonne affaire." : typeof plan === "string" ? plan : JSON.stringify(plan);
     setTimeout(() => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ message: { content } })), settings.gemmaSlownessMs);
   });
-  // Fake Kev (watch.e2e.ts): every item matches.
-  const kev = await listen((req, res) => {
-    if (req.method === "GET") return void res.writeHead(200, { "Content-Type": "application/json" }).end('{"data":[]}');
-    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ answers: { q: { noul: 0.9 } } }));
-  });
   const seen: ImageRequestSeen[] = [];
   const images = await listen((req, res) => {
     const u = new URL(req.url ?? "/", "http://x");
@@ -349,7 +344,6 @@ export async function startActionServers() {
   return {
     site,
     ollama: Object.assign(ollama, { prompts }),
-    kev,
     images: Object.assign(images, { seen }),
     settings,
     /** actions.spec.ts beforeEach. */
@@ -357,6 +351,6 @@ export async function startActionServers() {
       Object.assign(settings, { siteSlownessMs: 0, siteHold: null, gemmaSlownessMs: 0, plan: null, tickets: GITLAB_TICKETS });
       seen.length = 0;
     },
-    close: () => Promise.all([site, ollama, kev, images].map((s) => s.close())),
+    close: () => Promise.all([site, ollama, images].map((s) => s.close())),
   };
 }

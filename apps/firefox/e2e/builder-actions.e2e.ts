@@ -40,7 +40,6 @@ let w: LaunchedRessac;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
 let ollama: TestServer;
-let kev: TestServer;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const visible = (selector: string, ms = 30_000) => waitUi(m, "const e = doc.querySelector(arguments[0]); return !!e && e.getBoundingClientRect().height > 0;", [selector], ms);
@@ -72,10 +71,9 @@ async function openActionBuilder(id: string): Promise<void> {
 }
 
 beforeAll(async () => {
-  // A fake Ollama without Gemma (the fallback layout) and a fake Kev: nothing leaves for a real one.
+  // A fake Ollama without Gemma (the fallback layout) nothing leaves for a real one.
   ollama = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}'));
-  kev = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"data":[]}'));
-  w = await launchRessac({ height: 1400, env: { RESSAC_OLLAMA_URL: ollama.url, RESSAC_KEV_URL: kev.url } });
+  w = await launchRessac({ height: 1400, env: { RESSAC_OLLAMA_URL: ollama.url } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");
@@ -86,7 +84,6 @@ afterAll(async () => {
   expect(await missingApi(m)).toEqual([]);
   await w?.close();
   await ollama?.close();
-  await kev?.close();
 });
 
 describe("the builder of an action", () => {

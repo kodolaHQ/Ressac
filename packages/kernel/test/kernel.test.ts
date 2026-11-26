@@ -250,14 +250,14 @@ test("kernel: arreter() stops the scheduler and the local AI", async () => {
     await original.call(this);
     order.push("planificateur");
   });
-  // The kernel closes its own access to the AI (a late harvest does not restart Kev), not the shared AI.
-  const access = { kev: vi.fn(), gemma: vi.fn(), close: vi.fn(async () => void order.push("ia")) };
-  const ai = { access: () => access, stop: vi.fn() } as unknown as LocalAi;
+  // The kernel closes its own access to the AI (a late harvest does not restart the AI), not the shared AI.
+  const access = { gemma: vi.fn(), close: vi.fn(async () => void order.push("ia")) };
+  const ai = { access: () => access, stopServers: vi.fn() } as unknown as LocalAi;
   const n = await createKernel({ lab: () => true, maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run, ai: ai });
   expect(n.ai).toBe(ai);
   await n.stop();
   expect(order).toEqual(["planificateur", "ia"]);
-  expect(ai.stop).not.toHaveBeenCalled();
+  expect(ai.stopServers).not.toHaveBeenCalled();
   schedule.mockRestore();
 });
 

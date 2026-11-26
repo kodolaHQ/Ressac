@@ -35,7 +35,7 @@ const toClose: { close(): Promise<void> }[] = [];
 const aiToStop: LocalAi[] = [];
 afterEach(async () => {
   await Promise.all(toClose.splice(0).map((s) => s.close()));
-  await Promise.all(aiToStop.splice(0).map((i) => i.stop()));
+  await Promise.all(aiToStop.splice(0).map((i) => i.stopServers()));
 });
 
 /** Small HTTP server: `routes[chemin]` answers. */
@@ -129,7 +129,7 @@ async function prepare(id: string, code: string, sources = { account: [] as stri
 }
 
 async function ai(o: { writer?: Writer } = {}) {
-  const i = new LocalAi({ folder: await tempFolder(), kevUrl: "http://127.0.0.1:9", writer: o.writer });
+  const i = new LocalAi({ folder: await tempFolder(), writer: o.writer });
   aiToStop.push(i);
   return i;
 }
