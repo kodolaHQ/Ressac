@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { isOnMac, remoteHost } from "../shared/settings";
+import { isOnMac, onLan, remoteHost } from "../shared/settings";
 import { checkOwnModel, listOwnModels, ollamaBase, ollamaClient, openAiClient, resetOwnModelCache } from "../host/own-model";
 import { DEFAULT_OWN_ENGINE, type OwnEngine } from "../shared/settings";
 
@@ -43,6 +43,13 @@ describe("remoteHost", () => {
   it("names the host off this Mac only", () => {
     expect(remoteHost("https://api.deepseek.com/v1")).toBe("api.deepseek.com");
     for (const url of ["http://localhost:8080/v1", "http://host.docker.internal:11434", "", "not a url"]) expect(remoteHost(url), url).toBeNull();
+  });
+});
+
+describe("onLan", () => {
+  it("a host on this Mac or the local network: its model is a local one (no fill)", () => {
+    for (const h of ["192.168.1.20", "192.168.1.20:8443", "10.0.0.5", "172.16.0.1", "172.31.255.255", "169.254.3.4", "127.0.0.1:11434", "localhost", "[::1]", "[fd12::1]:443", "[fc00::2]", "nas.local", "NAS.LOCAL:8080", "[fe80::1]"]) expect(onLan(h), h).toBe(true);
+    for (const h of ["ollama.com", "ollama.com:443", "api.deepseek.com", "172.32.0.1", "11.0.0.1", "192.169.0.1", "[2001:db8::1]", "local.example.com", "not a host/"]) expect(onLan(h), h).toBe(false);
   });
 });
 

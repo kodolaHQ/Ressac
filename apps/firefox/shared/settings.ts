@@ -162,6 +162,26 @@ export function remoteHost(url: string): string | null {
 }
 
 /**
+ * True when `host` (as `remoteHost` gives it, port allowed) is this Mac or a local-network address: a model there is a
+ * local one, so it does not fill. « en ligne » still shows for it (its messages do leave the Mac).
+ */
+// shortcut: by name and literal address only; a DNS name that resolves to the LAN is not caught, resolve it if that matters.
+export function onLan(host: string): boolean {
+  let h: string;
+  try {
+    h = new URL(`http://${host}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (LOOPBACK.has(h) || h.endsWith(".local")) return true;
+  if (h.startsWith("[")) return /^\[(f[cd]|fe[89ab])[0-9a-f]{0,2}:/.test(h);
+  const ip = h.split(".").map(Number);
+  if (ip.length !== 4 || ip.some((n) => !Number.isInteger(n) || n < 0 || n > 255) || !/^[\d.]+$/.test(h)) return false;
+  const [a, b] = ip as [number, number];
+  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+}
+
+/**
  * The host an Ollama cloud model sends prompts to: the local Ollama forwards them to its `remote_host` (from `/api/show` or
  * `/api/tags`), « ollama.com » when only `remote_model` marks it. null for a model that runs on this Mac.
  */

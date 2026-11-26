@@ -75,7 +75,7 @@ const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { listOllamaModels, ollamaRelayTarget } = await import("./ollama-models.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
-const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DEFAULT_OWN_ENGINE, OwnEngineSchema, apiUrlProblem, isOnMac, remoteHost, MachineIdleSchema, modelField, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
+const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DEFAULT_OWN_ENGINE, OwnEngineSchema, apiUrlProblem, isOnMac, onLan, remoteHost, MachineIdleSchema, modelField, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
 const {
@@ -1022,7 +1022,7 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
     if (ownOpens.get(o.chatId) === mark) ownOpens.delete(o.chatId);
   };
   let launch: HostLaunch;
-  /** fill_field for the model the next turn uses: only one off this Mac, from the host's own check of it (never the model's word). */
+  /** fill_field for the model the next turn uses: only one off this Mac and the local network, from the host's own check of it (never the model's word). */
   let fill = false;
   try {
     const n = await kernelReady();
@@ -1031,7 +1031,7 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
     // A switch made meanwhile (switchOwnModel) owns the mark: this answer is the old model's.
     if (!mark.next) mark.remote = checked;
     if (signal.aborted) throw new Error("closed");
-    fill = checked !== null;
+    fill = checked !== null && !onLan(checked);
     const raw = await n.openHostSession({ window: win, resume: (o.transcript?.length ?? 0) > 0, agent: hostSay("own-agent-name"), fill });
     // Closed or ended: the view names the current setting again (the next open uses it).
     launch = { ...raw, ended: () => (raw.ended(), forget()), stop: () => (forget(), raw.stop()) };
@@ -1060,7 +1060,7 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
         [current, mark.next, mark.remote] = [client(mark.next), undefined, mark.nextRemote ?? null];
         mark.nextRemote = undefined;
         // Before the turn starts: a model on this Mac loses fill_field from its first step.
-        fill = mark.remote !== null;
+        fill = mark.remote !== null && !onLan(mark.remote);
         launch.setFill(fill);
       }
       prompt(text);
