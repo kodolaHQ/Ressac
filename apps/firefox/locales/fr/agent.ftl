@@ -374,6 +374,7 @@ chat-masked-tel = téléphone masqué
 chat-masked-email = e-mail masqué
 chat-masked-code = code masqué
 chat-masked-id = numéro d'identité masqué
+chat-masked-cle = clé masquée
 chat-masked-secu = numéro de sécu masqué
 chat-masked-motdepasse = mot de passe masqué
 chat-masked-date = date masquée

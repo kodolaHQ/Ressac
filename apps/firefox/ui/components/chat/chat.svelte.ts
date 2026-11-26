@@ -78,6 +78,6 @@ const offStream = api.onChatStream((id, s) => {
 // Hot reload (development): the old module gives its subscription back.
 if (import.meta.hot) import.meta.hot.dispose(() => (off(), offStream(), offRemoved()));
 
-const LABEL_TYPES = new Set(["nom", "adresse", "carte", "iban", "tel", "email", "code", "id", "secu", "motdepasse", "date", "masque"]);
+const LABEL_TYPES = new Set(["nom", "adresse", "carte", "iban", "tel", "email", "code", "id", "cle", "secu", "motdepasse", "date", "masque"]);
 /** A chip's words for a label's kind: « nom masqué », « IBAN masqué »… */
 export const maskedName = (type: string): string => t(LABEL_TYPES.has(type) ? `chat-masked-${type}` : "chat-masked-masque");

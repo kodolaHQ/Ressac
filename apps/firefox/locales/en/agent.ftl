@@ -373,6 +373,7 @@ chat-masked-tel = masked phone
 chat-masked-email = masked email
 chat-masked-code = masked code
 chat-masked-id = masked ID number
+chat-masked-cle = masked key
 chat-masked-secu = masked social security number
 chat-masked-motdepasse = masked password
 chat-masked-date = masked date

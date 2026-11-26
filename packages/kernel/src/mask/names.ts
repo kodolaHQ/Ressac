@@ -1,7 +1,7 @@
 import { say, sayAttribute } from "../i18n.js";
 import type { LabelType, Zone } from "./detectors.js";
 
-const TYPES = ["code", "iban", "carte", "tel", "email", "adresse", "nom", "id", "secu", "motdepasse", "masque", "date"] as const satisfies readonly LabelType[];
+const TYPES = ["code", "iban", "carte", "tel", "email", "adresse", "nom", "id", "cle", "secu", "motdepasse", "masque", "date"] as const satisfies readonly LabelType[];
 // A LabelType missing from TYPES makes this `never` unassignable: tsc fails.
 const _allTypes: [Exclude<LabelType, (typeof TYPES)[number]>] extends [never] ? true : never = true;
 void _allTypes;

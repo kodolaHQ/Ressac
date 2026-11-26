@@ -11,10 +11,10 @@ import {
 import { ascii, fold } from "../outflow/spelled.js";
 import { gaps, originalSpan, projections, type Projection } from "./projections.js";
 
-export type LabelType = "code" | "iban" | "carte" | "tel" | "email" | "adresse" | "nom" | "id" | "secu" | "motdepasse" | "masque" | "date";
+export type LabelType = "code" | "iban" | "carte" | "tel" | "email" | "adresse" | "nom" | "id" | "cle" | "secu" | "motdepasse" | "masque" | "date";
 export type Zone = "sources" | "web";
 /** Masked in both zones; the other types only in the sources. */
-export const HIGH_RISK: ReadonlySet<LabelType> = new Set<LabelType>(["iban", "carte", "secu", "id", "code"]);
+export const HIGH_RISK: ReadonlySet<LabelType> = new Set<LabelType>(["iban", "carte", "secu", "id", "cle", "code"]);
 export type Found = { type: LabelType; start: number; end: number; canonical: string };
 
 type Hit = [start: number, end: number, type: LabelType, canonical: string];
@@ -211,7 +211,8 @@ function checksummed(t: string, gapped: boolean): Hit[] {
 /** Every finding in one projected text `t` (digits already ASCII), in `t`'s offsets. */
 function scan(t: string, zone: Zone): Hit[] {
   const out = checksummed(t, false);
-  for (const re of [API_KEY, PRIVATE_KEY, JWT]) for (const m of t.matchAll(re)) out.push([m.index, m.index + m[0].length, "id", m[0]]);
+  // A secret of a known shape (an API key, a private key, a token): « clé masquée », not an identity number.
+  for (const re of [API_KEY, PRIVATE_KEY, JWT]) for (const m of t.matchAll(re)) out.push([m.index, m.index + m[0].length, "cle", m[0]]);
   for (const token of new Set(randomTokens(t)))
     for (let i = t.indexOf(token); i >= 0; i = t.indexOf(token, i + token.length)) out.push([i, i + token.length, "id", token]);
   for (const m of t.matchAll(IDENTITY)) {

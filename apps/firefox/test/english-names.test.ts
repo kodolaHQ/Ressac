@@ -89,7 +89,7 @@ const KEPT: Record<string, string[]> = {
   "apps/firefox/e2e/actions-scenarios-2.e2e.ts": ["titre"],
   "apps/firefox/e2e/watch.e2e.ts": ["titre"],
   // label type names fixed by the spec (§ 5.3): the agent reads them in « ⟨carte-…⟩ »
-  "packages/kernel/src/mask/mask.ts": ["carte", "nom", "adresse"],
+  "packages/kernel/src/mask/mask.ts": ["carte", "nom", "adresse", "cle"],
   // passport field and kind ids fixed by the design (§ 3.1, § 8.3): the agent passes them as `passport: <kind>`
   "packages/kernel/src/mask/passport-fields.ts": ["nom", "adresse", "nom_famille", "nom_complet", "adresse_voie"],
 };

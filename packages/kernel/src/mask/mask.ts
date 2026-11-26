@@ -104,6 +104,7 @@ export function forms(e: Entry): Forms {
     email: () => ({ digits: [], literals: [] }),
     nom: () => ({ digits: [], literals: [], name: [nameRegex(v), nameRegex(v, true)] }),
     id: () => ({ digits: [], literals: [v] }),
+    cle: () => ({ digits: [], literals: [v] }),
     motdepasse: () => ({ digits: [], literals: [v] }),
     adresse: () => ({ digits: [], literals: [v] }),
     masque: () => ({ digits: [], literals: [v] }),

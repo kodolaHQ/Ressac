@@ -7,11 +7,19 @@ const types = (text: string, zone: "sources" | "web" = "sources") => detect(text
 const found = (text: string, zone: "sources" | "web" = "sources") => detect(text, zone).map((f) => [f.type, text.slice(f.start, f.end), f.canonical]);
 
 describe("detect", () => {
+  it("types API keys, private keys and JWTs as a key, in both zones", () => {
+    const anthropic = "sk-ant-api03-" + "a1B2c3D4e5".repeat(8) + "f6G7h8" + "AA";
+    const github = "ghp" + "_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8";
+    const jwt = "eyJ" + "hbGciOiJIUzI1NiJ9" + ".eyJ" + "zdWIiOiIxMjM0In0" + "." + "dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+    for (const zone of ["sources", "web"] as const)
+      for (const key of [anthropic, github, jwt, "-----BEGIN RSA PRIVATE KEY-----"]) expect(types(`voici ${key} fin`, zone), key).toEqual(["cle"]);
+  });
+
   const samples: [LabelType, string, string, string][] = [
     ["iban", `RIB : ${spaced4(IBAN)} BIC`, spaced4(IBAN), IBAN],
     ["carte", `carte ${spaced4(CARD)} exp`, spaced4(CARD), CARD],
     ["secu", `sécu ${NIR.slice(0, 1)} ${NIR.slice(1, 3)} ${NIR.slice(3, 5)} ${NIR.slice(5, 7)} ${NIR.slice(7, 10)} ${NIR.slice(10, 13)} ${NIR.slice(13)}`, "", NIR],
-    ["id", `ma clé ${API_KEY} merci`, API_KEY, API_KEY],
+    ["cle", `ma clé ${API_KEY} merci`, API_KEY, API_KEY],
     ["id", `jeton ${TOKEN} fin`, TOKEN, TOKEN],
     ["id", `passeport n° ${PASSPORT} délivré`, PASSPORT, PASSPORT],
     ["code", `Votre code de vérification : ${CODE}.`, CODE, CODE],
