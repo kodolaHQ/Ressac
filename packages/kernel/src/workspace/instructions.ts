@@ -40,10 +40,11 @@ const CODEX_SYSTEM_SKILLS = "/home/node/.codex/skills/.system/";
 const CODEX_SYSTEM_SEEN = "\u0000codex-system-seen";
 const CODEX_SYSTEM_MARKER = `${CODEX_SYSTEM_SKILLS}.codex-system-skills.marker`;
 /**
- * The marker (a fingerprint of its bundled skills) each Codex Ressac pins writes: Codex installing them anew rewrites it.
- * Update with the Codex pin (shared/downloads.ts); a version missing here only shows its install on a card once.
+ * The marker (a fingerprint of its bundled skills) the Codex Ressac pins writes when it installs them: update with the pin
+ * (shared/downloads.ts). One value only: with two, an agent switching the marker from one to the other would get its tree taken in.
  */
-export const CODEX_SYSTEM_MARKERS = new Set(["e2e416a9532c044f" /* 0.169.0 */]);
+const CODEX_SYSTEM_PIN = "e2e416a9532c044f"; // Codex 0.169.0
+const CODEX_FINGERPRINT = /^[0-9a-f]{16}$/;
 
 /** Reference key: the home the reference's /home/node entries were taken in. */
 const HOME_ID = "\u0000home";
@@ -139,12 +140,12 @@ export class InstructionReview {
     const changes: InstructionChange[] = [];
     let moved = false;
     const home = await this.io.home();
-    const newHome = ref[HOME_ID] !== home;
-    if (newHome) {
+    // A reference with no home id (first run, older release) only records it: it is the same home.
+    const newHome = HOME_ID in ref && ref[HOME_ID] !== home;
+    if (ref[HOME_ID] !== home) {
       // Another home (created, reinstalled, Docker <-> machine): what it lacks of the old one is no deletion to show. What it
       // holds is compared as ever: a home can be copied over (machine re-import, logins copy) with a planted file in it.
-      // A reference with no home id yet (first run, older release) only records it.
-      if (HOME_ID in ref) {
+      if (newHome) {
         const now = await this.io.read(HOME_WATCHED.files, HOME_WATCHED.trees);
         for (const p of Object.keys(ref)) if (inHome(p) && !(p in now)) delete ref[p];
         // A home with no Codex system skills yet takes Codex's first install there in silently, once.
@@ -156,14 +157,14 @@ export class InstructionReview {
     const snapshot = await this.io.read(WATCHED[kind].files, WATCHED[kind].trees);
     // Codex's first install of its system skills is no change anyone made: taken in silently, watched from then on.
     // Once only: a card that drops the .system keys (deleted, link, too-many) must not re-arm it for a planted skill.
-    // The .system tree is Codex's own, whole, when it carries a pinned marker other than the reference's and either the home
-    // is new in this pass (Codex installed there before any review) or the reference holds another pinned one (an upgrade).
+    // The .system tree is Codex's own, whole, when it carries the pinned marker and either the home is new in this pass (Codex
+    // installed there before any review) or the reference holds an older Codex fingerprint (an upgrade; never the reverse).
     // In the same home a marker missing from the reference stays a change: a kept deletion must not re-arm it.
     // shortcut: a skill planted in the same round as that install passes with it; a per-file manifest of the pinned version would close it.
-    const pinned = (m: string | undefined) => (m === undefined || isMarker(m) ? undefined : CODEX_SYSTEM_MARKERS.has(m.trim()) ? m.trim() : undefined);
-    const marker = pinned(snapshot[CODEX_SYSTEM_MARKER]);
-    const before = ref[CODEX_SYSTEM_MARKER]?.trim();
-    if (marker !== undefined && before !== marker && (newHome || pinned(ref[CODEX_SYSTEM_MARKER]) !== undefined)) {
+    const now = snapshot[CODEX_SYSTEM_MARKER];
+    const before = ref[CODEX_SYSTEM_MARKER];
+    const fingerprint = (m: string | undefined) => (m === undefined || isMarker(m) ? undefined : m.trim());
+    if (fingerprint(now) === CODEX_SYSTEM_PIN && fingerprint(before) !== CODEX_SYSTEM_PIN && (newHome || CODEX_FINGERPRINT.test(fingerprint(before) ?? ""))) {
       for (const p of Object.keys(ref)) if (p.startsWith(CODEX_SYSTEM_SKILLS)) delete ref[p];
       for (const [p, c] of Object.entries(snapshot)) if (p.startsWith(CODEX_SYSTEM_SKILLS)) ref[p] = c;
       ref[CODEX_SYSTEM_SEEN] = "1";

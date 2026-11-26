@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { DEFAULT_TEMPLATES } from "../../src/workspace/initialize.js";
-import { ACCEPTED_AGENTS_IN_CONTAINER, CODEX_SYSTEM_MARKERS, InstructionReview, WATCHED, lineDiff, type InstructionIo, type Snapshot } from "../../src/workspace/instructions.js";
+import { ACCEPTED_AGENTS_IN_CONTAINER, InstructionReview, WATCHED, lineDiff, type InstructionIo, type Snapshot } from "../../src/workspace/instructions.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const AGENTS = "/workspace/AGENTS.md";
@@ -337,19 +337,32 @@ test("in the same home, a padded pinned marker or one rewritten after a kept del
   expect((await review.pending("codex")).changes.map((c) => c.path).sort()).toEqual([MARKER, `${SYSTEM}/evil/SKILL.md`]);
 });
 
-test("a Codex upgrade (the reference holds another pinned marker) takes its new .system tree in", async () => {
+test("a Codex upgrade (the reference's older marker to the current pin) takes its new .system tree in; never the reverse", async () => {
   const MARKER = `${SYSTEM}/.codex-system-skills.marker`;
-  CODEX_SYSTEM_MARKERS.add("1111111111111111");
-  try {
-    const { review, disk } = await setup({ [MARKER]: "1111111111111111", [`${SYSTEM}/a/SKILL.md`]: "a" });
-    await review.keep("codex", (await review.pending("codex")).snapshot);
-    disk.set(MARKER, "e2e416a9532c044f");
-    disk.set(`${SYSTEM}/a/SKILL.md`, "a v2");
-    disk.set(`${SYSTEM}/b/SKILL.md`, "b");
-    expect((await review.pending("codex")).changes).toEqual([]);
-  } finally {
-    CODEX_SYSTEM_MARKERS.delete("1111111111111111");
-  }
+  const { review, disk } = await setup({ [MARKER]: "1111111111111111", [`${SYSTEM}/a/SKILL.md`]: "a" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  disk.set(MARKER, "e2e416a9532c044f");
+  disk.set(`${SYSTEM}/a/SKILL.md`, "a v2");
+  disk.set(`${SYSTEM}/b/SKILL.md`, "b");
+  expect((await review.pending("codex")).changes).toEqual([]);
+  disk.set(MARKER, "1111111111111111");
+  disk.set(`${SYSTEM}/evil/SKILL.md`, "evil");
+  expect((await review.pending("codex")).changes.map((c) => c.path).sort()).toEqual([MARKER, `${SYSTEM}/evil/SKILL.md`]);
+});
+
+test("a reference from before the home id (an update) is the same home: a pending planted .system skill still shows, nothing is dropped", async () => {
+  const MARKER = `${SYSTEM}/.codex-system-skills.marker`;
+  const { review, disk, paths } = await setup({ [`${SYSTEM}/a/SKILL.md`]: "a", [CODEX_HOME]: "accepted" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  const file = join(paths.internal, "instructions", "reference.json");
+  const ref = JSON.parse(await readFile(file, "utf8"));
+  await writeFile(file, JSON.stringify({ files: Object.fromEntries(Object.entries(ref.files).filter(([p]) => !p.startsWith("\u0000home"))) }));
+  disk.delete(CODEX_HOME);
+  disk.set(MARKER, "e2e416a9532c044f");
+  disk.set(`${SYSTEM}/evil/SKILL.md`, "evil");
+  expect((await review.pending("codex")).changes.map((c) => [c.path, c.status]).sort()).toEqual(
+    [[CODEX_HOME, "deleted"], [MARKER, "created"], [`${SYSTEM}/evil/SKILL.md`, "created"]].sort(),
+  );
 });
 
 test("a .system marker Ressac's pinned Codex never writes takes nothing in", async () => {
