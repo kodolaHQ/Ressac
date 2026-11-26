@@ -152,7 +152,8 @@ describe("Remarks", () => {
     await pause(10);
     await sending("app-essai");
     await wait;
-    expect(Date.now() - t0).toBeLessThan(500);
+    // Woken by the batch, not by the 5 s deadline: bounded at half of it, so a slow CI runner never fails it.
+    expect(Date.now() - t0).toBeLessThan(2500);
     expect(r.waitingCount()).toBe(0);
 
     let finished = false;

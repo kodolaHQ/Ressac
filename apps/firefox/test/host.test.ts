@@ -621,7 +621,8 @@ describe("agent host", { timeout: 30_000 }, () => {
     const h = startHost();
     h.rpc.notify("debug.log", { text: "bruit-sur-stdout" });
     expect(await h.rpc.request("access.state")).toEqual({ agent: expect.any(String), tabs: {} });
-    expect(h.stderr()).toContain("bruit-sur-stdout");
+    // stderr is its own pipe: its line may land after the reply on stdout.
+    await until(() => h.stderr().includes("bruit-sur-stdout"));
   });
 
   it("uses its own docker container", async () => {
