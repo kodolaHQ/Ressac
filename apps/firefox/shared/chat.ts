@@ -16,8 +16,8 @@ export type AskReply = { answers: Record<string, string> } | { cancelled: true }
 export type SessionUpdate =
   | { type: "agent_message_chunk"; messageId: string; text: string }
   | { type: "agent_message"; messageId: string; text: string }
-  | { type: "tool_call"; toolCallId: string; title: string; kind: ToolKind; status: "pending" | "in_progress"; /** The tab it acts on (navigate). */ tab?: string }
-  | { type: "tool_call_update"; toolCallId: string; status: "in_progress" | "completed" | "failed"; /** The tab it opened (open_tab). */ tab?: string }
+  | { type: "tool_call"; toolCallId: string; title: string; kind: ToolKind; status: "pending" | "in_progress" }
+  | { type: "tool_call_update"; toolCallId: string; status: "in_progress" | "completed" | "failed"; /** The tab it opened or navigated, once done (open_tab, navigate). */ tab?: string }
   | { type: "request_question"; requestId: string; questions: ChatQuestion[] }
   | { type: "turn_end"; stopReason: "end_turn" | "cancelled" | "refusal" | "max_turns" | "error"; error?: string };
 

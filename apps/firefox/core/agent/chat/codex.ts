@@ -106,7 +106,7 @@ export const codexEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
           if (item.type === "agentMessage" && "text" in item) emit({ type: "agent_message", messageId: item.id, text: item.text });
           else if (TOOL_ITEMS.has(item.type)) {
             const done = "status" in item && item.status === "completed";
-            const tab = done && item.type === "mcpToolCall" && "tool" in item ? openedTab(item.tool, "result" in item ? item.result?.content : undefined) : {};
+            const tab = done && item.type === "mcpToolCall" && "tool" in item ? openedTab(item.tool, item.arguments, "result" in item ? item.result?.content : undefined) : {};
             emit({ type: "tool_call_update", toolCallId: item.id, status: done ? "completed" : "failed", ...tab });
           }
           return;

@@ -432,7 +432,7 @@ export class Chats {
         break;
       }
       case "tool_call":
-        items.push({ kind: "tool", id: u.toolCallId, title: u.title, toolKind: u.kind, status: u.status, ...(u.tab ? { tab: u.tab } : {}) });
+        items.push({ kind: "tool", id: u.toolCallId, title: u.title, toolKind: u.kind, status: u.status });
         break;
       case "tool_call_update": {
         const t = items.find((i) => i.kind === "tool" && i.id === u.toolCallId);

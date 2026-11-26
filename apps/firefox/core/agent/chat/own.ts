@@ -257,7 +257,7 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
           emit({ type: "tool_call_update", toolCallId, status: "failed" });
           throw e;
         }
-        emit({ type: "tool_call_update", toolCallId, status: r.isError ? "failed" : "completed", ...(r.isError ? {} : openedTab(a.action, r.text)) });
+        emit({ type: "tool_call_update", toolCallId, status: r.isError ? "failed" : "completed", ...(r.isError ? {} : openedTab(a.action, a.args, r.text)) });
         const clean = sanitize(r.text);
         const body = clean.length > RESULT_MAX ? `${clean.slice(0, RESULT_MAX)}\n${t.cut}` : clean;
         const msg: ModelMessage = { role: "user", content: `${t.resultOf(a.action)}\n${body}\n${t.end}` };

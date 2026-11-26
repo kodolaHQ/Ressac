@@ -30,7 +30,7 @@ export const claudeEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
     }
 
     const questions = new Map<string, (r: AskReply) => void>();
-    const tools = new Map<string, string>();
+    const tools = new Map<string, { name: string; input: unknown }>();
     let messageId = "";
     let cancelling = false;
     let authFailed = false;
@@ -98,7 +98,7 @@ export const claudeEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
           for (const b of blocks) {
             // The question card stands for AskUserQuestion; no tool line.
             if (b.type !== "tool_use" || b.name === "AskUserQuestion") continue;
-            tools.set(b.id, b.name);
+            tools.set(b.id, { name: b.name, input: b.input });
             emit({ type: "tool_call", toolCallId: b.id, ...toolTitle(b.name, b.input, { tabTitle }), status: "in_progress" });
           }
           return;
@@ -107,10 +107,10 @@ export const claudeEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
           const content = m.message.content;
           if (typeof content === "string") return;
           for (const b of content) {
-            const name = b.type === "tool_result" ? tools.get(b.tool_use_id) : undefined;
-            if (b.type !== "tool_result" || name === undefined) continue;
+            const call = b.type === "tool_result" ? tools.get(b.tool_use_id) : undefined;
+            if (b.type !== "tool_result" || call === undefined) continue;
             tools.delete(b.tool_use_id);
-            emit({ type: "tool_call_update", toolCallId: b.tool_use_id, status: b.is_error ? "failed" : "completed", ...(b.is_error ? {} : openedTab(name, b.content)) });
+            emit({ type: "tool_call_update", toolCallId: b.tool_use_id, status: b.is_error ? "failed" : "completed", ...(b.is_error ? {} : openedTab(call.name, call.input, b.content)) });
           }
           return;
         }
