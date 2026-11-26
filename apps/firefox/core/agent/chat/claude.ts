@@ -6,7 +6,7 @@ import { query, type PermissionResult, type SDKMessage, type SDKUserMessage } fr
 import type { AskReply, ChatQuestion, SessionUpdate } from "../../../shared/chat";
 import { toolTitle, type ChatEngine, type EngineConversation } from "./engine";
 
-const AUTH = /log ?in|auth|401/i;
+const AUTH = /\b(log ?in|not logged in|authenticat\w*|401)\b/i;
 
 export const claudeEngine: ChatEngine = {
   id: "claude",
@@ -36,7 +36,9 @@ export const claudeEngine: ChatEngine = {
     let messageId = "";
     let cancelling = false;
     let authFailed = false;
-    let apiKeySource: string | undefined;
+    // Claude Code reports apiKeySource "none" for subscribers too: only a missing token proves a signed-out CLI.
+    let noToken = false;
+    let running = false;
     let ended = false;
     let stderrTail = "";
 
@@ -89,9 +91,6 @@ export const claudeEngine: ChatEngine = {
 
     const handle = (m: SDKMessage) => {
       switch (m.type) {
-        case "system":
-          if (m.subtype === "init") apiKeySource = m.apiKeySource;
-          return;
         case "stream_event": {
           if (m.parent_tool_use_id) return;
           const e = m.event;
@@ -125,10 +124,10 @@ export const claudeEngine: ChatEngine = {
         case "result": {
           emit({ type: "usage", inputTokens: m.usage?.input_tokens, outputTokens: m.usage?.output_tokens, costUsd: m.total_cost_usd });
           const wasCancel = cancelling;
-          cancelling = false;
+          cancelling = running = false;
           const said = m.subtype === "success" ? m.result : m.errors.join("\n");
           if (wasCancel) emit({ type: "turn_end", stopReason: "cancelled" });
-          else if (m.is_error && (authFailed || ("api_error_status" in m && m.api_error_status === 401) || AUTH.test(said) || apiKeySource === "none"))
+          else if (m.is_error && (authFailed || ("api_error_status" in m && m.api_error_status === 401) || AUTH.test(said) || noToken))
             emit({ type: "turn_end", stopReason: "error", error: "signed-out" });
           else if (m.subtype === "error_max_turns") emit({ type: "turn_end", stopReason: "max_turns" });
           else if (m.is_error) emit({ type: "turn_end", stopReason: "error", ...(said ? { error: said } : {}) });
@@ -140,7 +139,7 @@ export const claudeEngine: ChatEngine = {
     };
 
     try {
-      await q.initializationResult();
+      noToken = (await q.initializationResult()).account?.tokenSource === "none";
     } catch (e) {
       await launch.stop();
       throw e;
@@ -155,10 +154,12 @@ export const claudeEngine: ChatEngine = {
     return {
       engineSessionId,
       prompt(text) {
+        running = true;
         queue.push({ type: "user", message: { role: "user", content: text }, parent_tool_use_id: null });
         push();
       },
       cancel() {
+        if (!running) return;
         cancelling = true;
         q.interrupt().catch(() => {});
       },

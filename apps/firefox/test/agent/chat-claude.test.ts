@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-async function start(o: { resumeId?: string; sessionId?: string } = {}) {
+async function start(o: { resumeId?: string; sessionId?: string } = {}, env: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ressac-chat-claude-"));
   dirs.push(dir);
   const logFile = join(dir, "log.jsonl");
@@ -25,7 +25,7 @@ async function start(o: { resumeId?: string; sessionId?: string } = {}) {
       this.engineArgs = args;
       return [process.execPath, fake, ...args];
     },
-    env: { FAKE_CLAUDE_LOG: logFile },
+    env: { FAKE_CLAUDE_LOG: logFile, ...env },
     ended: vi.fn(),
     stop: vi.fn(async () => {}),
   };
@@ -116,6 +116,25 @@ test("an auth failure ends the turn as signed-out", async () => {
   const { conv, updates } = await start();
   conv.prompt("auth");
   await expect.poll(() => updates.find((u) => u.type === "turn_end")).toEqual({ type: "turn_end", stopReason: "error", error: "signed-out" });
+});
+
+test("an error for a signed-in user stays an error", async () => {
+  const { conv, updates } = await start();
+  conv.prompt("error");
+  await expect.poll(() => updates.find((u) => u.type === "turn_end")).toEqual({ type: "turn_end", stopReason: "error", error: "Overloaded: request not authorized to retry (529)" });
+});
+
+test("an error with no token is signed-out", async () => {
+  const { conv, updates } = await start({}, { FAKE_TOKEN_SOURCE: "none" });
+  conv.prompt("error");
+  await expect.poll(() => updates.find((u) => u.type === "turn_end")).toEqual({ type: "turn_end", stopReason: "error", error: "signed-out" });
+});
+
+test("a cancel with no turn running does not mark the next turn cancelled", async () => {
+  const { conv, updates } = await start();
+  conv.cancel();
+  conv.prompt("hello");
+  await expect.poll(() => updates.find((u) => u.type === "turn_end")).toEqual({ type: "turn_end", stopReason: "end_turn" });
 });
 
 test("process exit calls ended() once and onEnd fires", async () => {

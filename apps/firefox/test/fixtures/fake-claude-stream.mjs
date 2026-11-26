@@ -17,7 +17,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   const m = JSON.parse(line);
   log(m);
   if (m.type === "control_request" && m.request.subtype === "initialize") {
-    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: { commands: [], agents: [], models: [], output_style: "default", available_output_styles: [], account: {} } } });
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: { commands: [], agents: [], models: [], output_style: "default", available_output_styles: [], account: { tokenSource: process.env.FAKE_TOKEN_SOURCE ?? "claude.ai" } } } });
     out({ type: "system", subtype: "init", apiKeySource: "none", tools: [], mcp_servers: [], model: "m", permissionMode: "default" });
   } else if (m.type === "control_request" && m.request.subtype === "interrupt") {
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
@@ -42,6 +42,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       out({ type: "control_request", request_id: askId, request: { subtype: "can_use_tool", tool_name: "AskUserQuestion", input, tool_use_id: "tu_ask", permission_suggestions: [] } });
     } else if (said === "auth") {
       result({ is_error: true, result: "Not logged in · Please run /login", api_error_status: 401 });
+    } else if (said === "error") {
+      result({ is_error: true, result: "Overloaded: request not authorized to retry (529)" });
     } else if (said === "exit") {
       process.exit(3);
     }
