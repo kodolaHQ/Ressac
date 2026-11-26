@@ -75,6 +75,7 @@ kernel-err-workshop-unavailable = Conteneur indisponible ({ $state })
 kernel-err-machine-stopped = La machine de l'atelier n'est pas démarrée : réessayez, ou voyez pourquoi dans Réglages › Atelier.
 kernel-err-lab-off = Cette fonction fait partie du labo, éteint : Réglages › Agent › Niveau d'usage.
 kernel-mcp-lab-off = Cet outil fait partie du labo, que l'utilisateur a éteint : n'insiste pas, dis-lui ce qu'il faudrait activer.
+kernel-mcp-tool-not-allowed = Outil non autorisé pour cet agent.
 kernel-workshop-no-engine = L'atelier n'a pas de moteur : ni sa machine ni Docker ne sont disponibles.
 kernel-workshop-path-unmountable = Ce chemin ne peut pas être monté dans l'atelier : { $path }
 kernel-workshop-not-folder = { $path } n'est pas un vrai dossier (un lien, par exemple) : remplacez-le par un dossier.

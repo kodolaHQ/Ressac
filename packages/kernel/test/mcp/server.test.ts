@@ -3575,3 +3575,35 @@ describe("the lab", () => {
     expect(launched).toEqual([]);
   });
 });
+
+describe("a per-session tool allowlist", () => {
+  async function connect(sessionToken: string) {
+    const c = new Client({ name: "test", version: "0" });
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${sessionToken}` } } }));
+    return c;
+  }
+
+  test("a session with a tool list lists only those tools", async () => {
+    const c = await connect(server.openSession("w", "Votre modèle", "s1", "browser", ["read_tab", "list_tabs"]));
+    expect((await c.listTools()).tools.map((t) => t.name).sort()).toEqual(["list_tabs", "read_tab"]);
+    await c.close();
+  });
+
+  test("a session with a tool list refuses any other tool", async () => {
+    const c = await connect(server.openSession("w", "Votre modèle", "s1", "browser", ["read_tab", "list_tabs"]));
+    const before = bridge.calls.length;
+    const r = await c.callTool({ name: "navigate", arguments: { id: "github", url: "https://exemple.fr/" } });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toBe("Outil non autorisé pour cet agent.");
+    expect(bridge.calls.length).toBe(before);
+    await c.close();
+  });
+
+  test("a session without a list keeps every tool", async () => {
+    const c = await connect(server.openSession("w"));
+    const names = (await c.listTools()).tools.map((t) => t.name);
+    expect(names).toContain("navigate");
+    expect(names).toContain("fill_field");
+    await c.close();
+  });
+});

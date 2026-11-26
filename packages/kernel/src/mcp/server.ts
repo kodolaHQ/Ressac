@@ -600,6 +600,8 @@ export function createToolsServer(
   workspaceLock: WorkspaceLockHook = NO_WORKSPACE_LOCK,
   /** Per tab, the field handles of the last read (`fill_field { field }`); a navigation drops them. Outlives a request's server. */
   listedFields = new Map<string, PageField[]>(),
+  /** The only tools this session may list and call (absent: every tool). */
+  allowed?: ReadonlySet<string>,
 ): McpServer {
   /** A text the user reads (band, card line, activity), in their language. */
   const l10n = (id: string, args?: Record<string, string | number>) => say(locale(), id, args);
@@ -614,7 +616,7 @@ export function createToolsServer(
         ? handler
         : async (...a: unknown[]) => {
             const r = (await handler(...a)) as ListToolsResult;
-            return lab() ? r : { ...r, tools: r.tools.filter((t) => !LAB_TOOLS.has(t.name)) };
+            return { ...r, tools: r.tools.filter((t) => (lab() || !LAB_TOOLS.has(t.name)) && (!allowed || allowed.has(t.name))) };
           }) as never,
     )) as typeof server.server.setRequestHandler;
   const key = win ?? MAIN_WINDOW;
@@ -944,6 +946,7 @@ export function createToolsServer(
     const guarded = async (...a: unknown[]): Promise<Result> => {
       // Read at the call: the lab may have gone off since the agent listed the tools.
       if (LAB_TOOLS.has(name) && !lab()) return text(l10n("kernel-mcp-lab-off"), true);
+      if (allowed && !allowed.has(name)) return text(l10n("kernel-mcp-tool-not-allowed"), true);
       let r: Result;
       try {
         // A tool without input schema gets only `extra`.
@@ -2808,13 +2811,13 @@ function tokenEqual(received: Buffer, expected: Buffer): boolean {
 }
 
 /** The window (and agent name, if the session has its own) of the presented token: window `null` for the main token, `undefined` if the token is not valid. Each token is compared in constant time. */
-type SessionEntry = { token: Buffer; window: string; agent?: string; session: string | null; mode: "browser" | "workshop" };
-type Who = { window: string | null; agent?: string; session: string | null; mode: "browser" | "workshop" };
+type SessionEntry = { token: Buffer; window: string; agent?: string; session: string | null; mode: "browser" | "workshop"; tools?: ReadonlySet<string> };
+type Who = { window: string | null; agent?: string; session: string | null; mode: "browser" | "workshop"; tools?: ReadonlySet<string> };
 
 function tokenWindow(req: IncomingMessage, principal: Buffer, sessions: Map<string, SessionEntry>): Who | undefined {
   const received = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /, ""));
   let found: Who | undefined = tokenEqual(received, principal) ? { window: null, session: null, mode: "browser" } : undefined;
-  for (const s of sessions.values()) if (tokenEqual(received, s.token)) found = { window: s.window, ...(s.agent ? { agent: s.agent } : {}), session: s.session, mode: s.mode };
+  for (const s of sessions.values()) if (tokenEqual(received, s.token)) found = { window: s.window, ...(s.agent ? { agent: s.agent } : {}), session: s.session, mode: s.mode, ...(s.tools ? { tools: s.tools } : {}) };
   return found;
 }
 
@@ -2869,7 +2872,7 @@ export async function startMcpServer(o: {
   workspaceLock?: WorkspaceLockHook;
   /** The lab is on (read at each list and call): off, LAB_TOOLS are unlisted and refused. */
   lab: () => boolean;
-}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string, mode?: "browser" | "workshop"): string; closeSession(token: string): void; tabZone(session: string | null, tab: Pick<TabInfo, "id" | "url" | "site" | "agentReached">): Zone; stop(): Promise<void> }> {
+}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string, mode?: "browser" | "workshop", tools?: readonly string[]): string; closeSession(token: string): void; tabZone(session: string | null, tab: Pick<TabInfo, "id" | "url" | "site" | "agentReached">): Zone; stop(): Promise<void> }> {
   const expected = Buffer.from(o.token);
   // Session tokens: one per window agent. Security note: their config files are readable by the
   // agents in the container; a session token gives nothing more than the main token, otherwise the link to
@@ -2900,7 +2903,7 @@ export async function startMcpServer(o: {
     const named = who.agent ? { ...dev, agent: who.agent } : dev;
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Stateless mode: a new server and transport per request.
-    const server = createToolsServer(o.bridge, o.policy, requests, o.lab, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes && who.mode === "workshop" ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale, who.session, masker, agentSites, o.otherSessions, o.workspaceLock, listedFields);
+    const server = createToolsServer(o.bridge, o.policy, requests, o.lab, o.apps, o.appTabDelayMs, named, widgets && who.agent ? { ...widgets, agent: who.agent } : widgets, win, o.openWorkflow, actions && who.agent ? { ...actions, agent: who.agent } : actions, o.sites, o.heartbeatMs, o.search ? { sessions: o.search, ...(o.notes && who.mode === "workshop" ? { notes: o.notes } : {}), settleMs: o.settleMs ?? 500, emptySpanMs: o.emptySpanMs ?? EMPTY_SPAN_MS, readPageMs: o.readPageMs ?? READ_PAGE_MS, chains, asked } : undefined, listed, seen, o.recaps, o.onActivity, o.outflow, o.locale, who.session, masker, agentSites, o.otherSessions, o.workspaceLock, listedFields, who.tools);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();
@@ -2924,9 +2927,10 @@ export async function startMcpServer(o: {
     port,
     containerUrl: `http://host.docker.internal:${port}/mcp`,
     /** `session`: the conversation's id (`Masker.open`); without it the token masks with the main token's table. */
-    openSession(win, agent, session, mode = "browser") {
+    /** `tools`: the only tools the token may list and call. */
+    openSession(win, agent, session, mode = "browser", tools) {
       const token = generateToken();
-      sessions.set(token, { token: Buffer.from(token), window: win, ...(agent ? { agent: agent } : {}), session: session ?? null, mode });
+      sessions.set(token, { token: Buffer.from(token), window: win, ...(agent ? { agent: agent } : {}), session: session ?? null, mode, ...(tools ? { tools: new Set(tools) } : {}) });
       return token;
     },
     closeSession(token) {

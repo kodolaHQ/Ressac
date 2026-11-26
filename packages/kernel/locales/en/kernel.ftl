@@ -75,6 +75,7 @@ kernel-err-workshop-unavailable = Container unavailable ({ $state })
 kernel-err-machine-stopped = The workshop machine is not running: try again, or see why in Settings › Workshop.
 kernel-err-lab-off = This feature is part of the lab, which is off: Settings › Agent › Usage level.
 kernel-mcp-lab-off = This tool is part of the lab, which the user turned off: do not insist, tell them what they would need to turn on.
+kernel-mcp-tool-not-allowed = This tool is not allowed for this agent.
 kernel-workshop-no-engine = The workshop has no engine: neither its machine nor Docker is available.
 kernel-workshop-path-unmountable = This path cannot be mounted in the workshop: { $path }
 kernel-workshop-not-folder = { $path } is not a real folder (a link, say): replace it with a folder.
