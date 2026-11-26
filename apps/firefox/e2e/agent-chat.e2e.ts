@@ -326,7 +326,7 @@ it("Codex répond dans le chat", async () => {
 });
 
 const menuKeys = () => waitAgent<string[]>("return [...doc.querySelectorAll('[data-testid=\"chat-menu-item\"]')].map((e) => e.dataset.key)");
-const activeKey = () => waitAgent<string>("return doc.querySelector('[data-testid=\"chat-menu-item\"].active')?.dataset.key ?? ''");
+const activeKey = () => waitAgent<string>("return doc.querySelector('[data-testid=\"chat-menu-item\"].active')?.dataset.key ?? 'none'");
 const inputIs = (v: string) => waitAgent("return doc.querySelector('[data-testid=\"chat-input\"]')?.value === arguments[0]", [v]);
 
 it("le menu « / » : filtré à la frappe, au clavier, /modèle ouvre le choix du modèle et Échap rend le focus, /cherche lance la recherche", async () => {
@@ -430,4 +430,80 @@ it("@onglet : une puce dans le message, l'agent lit cet onglet sans carte dans c
   await waitUi(m, "return doc.querySelector(arguments[0])?.textContent.includes('L\\'agent veut lire')", [CARD], 30_000);
   await click(m, `${CARD} button`, { text: "Refuser" });
   expect((await main).text).toContain("Accès refusé");
+});
+
+const chipText = () => waitAgent<string>("return doc.querySelector('[data-testid=\"chat-mode-chip\"]')?.textContent ?? ''");
+/** Runs « /<typed> » from the menu: its single entry, then Entrée. */
+async function command(typed: string, key: string): Promise<void> {
+  await type(`/${typed}`);
+  await expect.poll(menuKeys, { timeout: 10_000 }).toContain(key);
+  while ((await activeKey()) !== key) await pressKeys(m, "ArrowDown");
+  await pressKeys(m, "Enter");
+}
+/** The ids of the menu's entries the UI shows as unavailable. */
+const offKeys = () => waitAgent<string[]>("return [...doc.querySelectorAll('[data-testid=\"chat-menu-item\"][aria-disabled]')].map((e) => e.dataset.key)");
+
+it("/nouvelle ouvre une nouvelle discussion, /mode passe en Atelier (labo actif), /terminal ouvre le Mode avancé sur la même conversation", { timeout: 90_000 }, async () => {
+  await launch({ writer: "claude" });
+  go();
+  await send("Bonjour");
+  await agentSays("Bonjour, Camille.");
+  const [first] = sessionIds();
+  await command("nouv", "new");
+  // A new discussion: an empty thread, a second engine start under another conversation id.
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-user\"]')");
+  await expect.poll(() => sessionIds().length, { timeout: 20_000 }).toBe(2);
+  await inputIs("");
+  // /mode: both modes offered with the lab on; Atelier starts a new discussion in it.
+  await command("mode", "mode");
+  await inputIs("/mode ");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["browser", "workshop"]);
+  expect(await offKeys()).toEqual([]);
+  await typeText(m, "at");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["workshop"]);
+  await pressKeys(m, "Enter");
+  await expect.poll(chipText, { timeout: 20_000 }).toContain("Atelier");
+  await inputIs("");
+  await send("Bonjour");
+  await agentSays("Bonjour, Camille.");
+  const uuid = sessionIds().at(-1)!;
+  expect(uuid).not.toBe(first);
+  // /terminal: the terminal resumes this discussion's conversation.
+  await command("term", "terminal");
+  const args = join(root(), "fake-agent-args.json");
+  await expect.poll(() => (existsSync(args) ? (JSON.parse(readFileSync(args, "utf8")) as string[]) : []), { timeout: 20_000 }).toEqual(expect.arrayContaining(["claude", "--resume", uuid]));
+  await waitAgent("return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')");
+});
+
+it("/mode sans le labo : Atelier est proposé mais indisponible", async () => {
+  w = await launchRessac({ agentView: "chat", writer: "claude", lab: false });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitReady(m);
+  await click(m, '[data-testid="agent-button"]');
+  await command("mode", "mode");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["browser", "workshop"]);
+  await expect.poll(offKeys, { timeout: 10_000 }).toEqual(["workshop"]);
+  expect(await textOf("chat-menu-item")).toContain("Atelier (labo)");
+  // Entrée on it does nothing: the mode stays.
+  await typeText(m, "at");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["workshop"]);
+  await pressKeys(m, "Enter");
+  await inputIs("/mode at");
+  expect(await chipText()).toContain("Navigateur");
+});
+
+it("/agent passe à Codex dans une nouvelle discussion", async () => {
+  await launch({ writer: "codex" });
+  await command("agent", "agent");
+  await inputIs("/agent ");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(expect.arrayContaining(["claude", "codex"]));
+  await typeText(m, "co");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["codex"]);
+  await pressKeys(m, "Enter");
+  await expect.poll(chipText, { timeout: 20_000 }).toContain("Codex");
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-login\"]') && !!doc.querySelector('[data-testid=\"chat-input\"]')");
+  await send("Bonjour");
+  await expect.poll(() => trace("codex").some((l) => l.method === "turn/start" && l.params.input[0].text.includes("Bonjour")), { timeout: 20_000 }).toBe(true);
+  expect(said()).toEqual([]);
 });
