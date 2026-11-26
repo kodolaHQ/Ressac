@@ -1545,10 +1545,11 @@ const rpc = createRpc({
       await logins.stop(p.window);
       const chat = activeChat(p.window);
       if (!chat) return;
-      await chats.pause(chat.id);
+      // Before the pause: its view (advanced) makes the panel attach and start the terminal, which must find the resume set.
       const id = chats.resumeIdOf(chat.id);
       if (id) sessions.resumeNext(p.window, chat.profile, id);
       else void sessions.switchProfile(p.window, chat.profile);
+      await chats.pause(chat.id);
     }),
     "chat.toChat": aiOnly(async (p: { window?: unknown }) => {
       if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));

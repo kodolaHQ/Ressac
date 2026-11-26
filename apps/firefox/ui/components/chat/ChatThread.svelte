@@ -23,11 +23,12 @@
   const svg = (name: IconName, size: number) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TRACES[name].map((d) => `<path d="${d}"/>`).join("")}</svg>`;
   /** A label the agent wrote: a chip that shows its value here only (MaskBubble), never sent. */
+  // The rendered HTML's controls are spans with role="button": this chrome document's innerHTML drops <button> elements.
   /** Labels whose value this discussion no longer knows (a paused one's, R2): plain « masqué », no reveal offered. */
   const unknown = new SvelteSet<string>();
   const chip: Chip = (label, type) =>
-    unknown.has(label) ? `<span class="masked gone">${svg("lock", 11)}${escape(maskedName(type))}</span>` : `<button type="button" class="masked" data-label="${label}" title="${escape(t("chat-reveal"))}">${svg("lock", 11)}${escape(maskedName(type))}</button>`;
-  const copyButton = $derived(`<button type="button" class="copy-code" data-copy aria-label="${escape(t("chat-copy-code"))}" title="${escape(t("chat-copy-code"))}">${svg("copy", 13)}</button>`);
+    unknown.has(label) ? `<span class="masked gone">${svg("lock", 11)}${escape(maskedName(type))}</span>` : `<span role="button" tabindex="0" class="masked" data-label="${label}" title="${escape(t("chat-reveal"))}">${svg("lock", 11)}${escape(maskedName(type))}</span>`;
+  const copyButton = $derived(`<span role="button" tabindex="0" class="copy-code" data-copy aria-label="${escape(t("chat-copy-code"))}" title="${escape(t("chat-copy-code"))}">${svg("copy", 13)}</span>`);
   const markdown = (text: string) => renderMarkdown(text, chip, copyButton);
 
   const READS = new Set<ToolKind>(["read", "search", "fetch"]);
@@ -43,11 +44,11 @@
   }
   const copy = (text: string) => void navigator.clipboard.writeText(text).catch(() => {});
   /** The rendered HTML's buttons and links: chips reveal, code copies, links open in a tab (never in the panel). */
-  function onclick(e: MouseEvent) {
+  function onclick(e: Event) {
     const target = e.target as Element;
-    const masked = target.closest<HTMLElement>("button.masked[data-label]");
+    const masked = target.closest<HTMLElement>(".masked[data-label]");
     if (masked) return void reveal(masked.dataset.label!);
-    const code = target.closest("button[data-copy]");
+    const code = target.closest("[data-copy]");
     if (code) return copy(code.parentElement?.querySelector("code")?.textContent ?? "");
     const link = target.closest<HTMLAnchorElement>("a[href]");
     if (link) {
@@ -55,6 +56,13 @@
       // A new tab of this window; agentReached left out: the agent wrote this address (fail closed).
       if (/^https?:/i.test(link.href)) api.dispatch({ type: "openTab", windowId: api.windowId, url: link.href, activate: true });
     }
+  }
+
+  /** Entrée or Espace on a rendered control (a chip, a copy) acts as its click. */
+  function onkeydown(e: KeyboardEvent) {
+    if ((e.key !== "Enter" && e.key !== " ") || !(e.target as Element).matches('[role="button"]')) return;
+    e.preventDefault();
+    onclick(e);
   }
 
   // Follows the newest line unless the user scrolled up: then a « Nouveaux messages » pill says more came.
@@ -79,7 +87,7 @@
 
 <div class="wrap" bind:this={wrap}>
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions: the clicks land on the buttons and links inside -->
-  <div class="thread" data-testid="chat-thread" role="log" aria-live="polite" bind:this={scroller} {onscroll} {onclick}>
+  <div class="thread" data-testid="chat-thread" role="log" aria-live="polite" bind:this={scroller} {onscroll} {onclick} {onkeydown}>
     {#each view?.items ?? [] as item (item.id)}
       {#if item.kind === "user"}
         <div class="user">
@@ -144,9 +152,9 @@
   .copy:hover, .md :global(.copy-code:hover) { background: var(--bg-hover); color: var(--text); }
   /* A masked value: a lock and its kind, tinted by the space's accent; a click shows it here only. */
   .thread :global(.masked) { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; border: 0; background: var(--notice-bg); color: var(--accent); font: 12px/1.4 var(--font-ui); vertical-align: baseline; cursor: pointer; }
-  .thread :global(button.masked:hover) { text-decoration: underline; }
+  .thread :global(.masked[data-label]:hover) { text-decoration: underline; }
   .thread :global(.masked.gone) { cursor: default; }
-  .thread :global(button:focus-visible), .pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .thread :global(button:focus-visible), .thread :global([role="button"]:focus-visible), .pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .tool { max-width: 92%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--access-act-bg); color: var(--access-act); font-size: 12px; }
   .tool.read { background: var(--access-read-bg); color: var(--access-read); }
   .tool-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
