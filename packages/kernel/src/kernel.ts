@@ -209,7 +209,6 @@ export type PageAction = {
   account: boolean;
 };
 
-/** The actions: launched on demand, in their own queue, results and grants outside the workspace. */
 export type AgentSessionOptions = {
   window?: string;
   /** Profile id; absent: the profile the kernel started with. Read again at each session. */
@@ -251,6 +250,7 @@ export interface LaunchSpec {
   stop(): Promise<void>;
 }
 
+/** The actions: launched on demand, in their own queue, results and grants outside the workspace. */
 export interface KernelActions {
   list(): Promise<ReadAction[]>;
   /** Launches the action (trigger « manuelle » by default); if it is running or waiting already, returns that one (`deja`). */
@@ -945,8 +945,10 @@ export async function createKernel(o: {
         // Pipe, Claude: the SDK's `canUseTool` stands in for `--dangerously-skip-permissions` (the `--settings` deny rules still win first).
         const profileArgs = pipe && program === "claude" ? built.slice(1).filter((a) => a !== "--dangerously-skip-permissions") : built.slice(1);
         const command = [built[0]!, ...language, ...conversationArgs, ...claudeNoShell, ...profileArgs, ...codexNoShell, ...(extra?.args ?? [])];
-        openSessions.add(clean);
-        if (byId) claudeOpen.set(id, conversation!);
+        const register = () => {
+          openSessions.add(clean);
+          if (byId) claudeOpen.set(id, conversation!);
+        };
         let cleaned: Promise<void> | undefined;
         const ended = (): Promise<void> => {
           if (cleaned) return cleaned;
@@ -958,6 +960,7 @@ export async function createKernel(o: {
           let stopping: Promise<void> | undefined;
           // Codex: the lockdown flags are global, so they go before the subcommand (R5).
           const head = program === "codex" ? [...command, "app-server"] : command;
+          register();
           return {
             sessionId: id,
             program: program as LaunchSpec["program"],
@@ -968,6 +971,8 @@ export async function createKernel(o: {
           };
         }
         const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols: opened.cols, rows: opened.rows, env: env, stopRemote: () => workshop.stopSession(id) });
+        // Registered once started: a start that throws leaves no open session behind (the catch only cleans).
+        register();
         session.onEnd(() => void ended());
         return session;
       } catch (e) {

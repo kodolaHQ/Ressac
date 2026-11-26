@@ -1246,6 +1246,24 @@ describe("pipe transport", () => {
     }
   });
 
+  test("a PTY start that throws leaves no open session: the next first session sweeps again", async () => {
+    const n = await createReady();
+    const sweep = vi.spyOn(Workshop.prototype, "stopAgentProcesses");
+    const start = vi.spyOn(SessionAgent, "start").mockImplementationOnce(() => {
+      throw new Error("spawn failed");
+    });
+    try {
+      await expect(n.openAgentSession({ cols: 80, rows: 24, window: "w", profile: "claude" })).rejects.toThrow("spawn failed");
+      const swept = sweep.mock.calls.length;
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "w", profile: "claude" });
+      expect(sweep.mock.calls.length).toBe(swept + 1);
+      await s.stop();
+    } finally {
+      start.mockRestore();
+      sweep.mockRestore();
+    }
+  });
+
   test("login session: a terminal running the CLI's login, no MCP token, no masker session", async () => {
     const n = await createReady();
     const start = vi.spyOn(SessionAgent, "start");

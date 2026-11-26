@@ -29,3 +29,12 @@ it("uncoveredCauseOf reads the session's own cause, not the window's last sessio
   expect(m.uncoveredCauseOf("gone")).toEqual({ resumed: false, passport: [] });
   expect(m.lookupForSession("gone", "anything")).toBeNull();
 });
+
+it("maskTypedFor refuses an unknown or closed session instead of masking into the main table", () => {
+  const m = new Masker();
+  m.open("s1", "w");
+  m.close("s1");
+  expect(() => m.maskTypedFor("s1", "camille.aubrac@example.com")).toThrow();
+  expect(() => m.maskTypedFor("never", "x")).toThrow();
+  expect(m.table(null).touched).toBe(false);
+});

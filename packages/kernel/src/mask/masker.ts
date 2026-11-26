@@ -166,12 +166,21 @@ export class Masker {
 
   /** What the user hands the agent (a paste, the ⌘T request): masked as their own data, with what it hid named for a card. */
   maskTyped(win: string, text: string): { text: string; names: string[] } {
-    return this.maskTypedFor(this.sessionOf(win), text);
+    return this.maskInto(this.table(this.sessionOf(win)), text);
   }
 
-  /** The same, with one session's table (a chat discussion: the window's last session may be another one). */
-  maskTypedFor(session: string | null, text: string): { text: string; names: string[] } {
-    const masked = maskText(text, { table: this.table(session), zone: "sources", origin: null });
+  /**
+   * The same, with one session's table (a chat discussion: the window's last session may be another one). Throws for a
+   * session that is not open (ended, never opened): text for a gone discussion is never masked into the shared main table.
+   */
+  maskTypedFor(session: string, text: string): { text: string; names: string[] } {
+    const table = this.tables.get(session);
+    if (!table) throw new Error(`Masquage : la session ${session} n'est pas ouverte`);
+    return this.maskInto(table, text);
+  }
+
+  private maskInto(table: LabelTable, text: string): { text: string; names: string[] } {
+    const masked = maskText(text, { table, zone: "sources", origin: null });
     const before = new Set(text.match(LABELS) ?? []);
     const names = new Set<string>();
     for (const m of masked.matchAll(LABELS)) if (!before.has(m[0])) names.add(valueName(m[1] as LabelType, "sources", this.locale()));
