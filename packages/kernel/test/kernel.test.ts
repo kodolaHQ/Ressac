@@ -19,7 +19,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { declarationWidget, writeWidget } from "./helpers/home.js";
 import { FakeBridge } from "../src/mcp/fake-bridge.js";
-import { HOST_LOOP_TOOLS } from "../src/mcp/host-agent.js";
+import { HOST_FILL_TOOLS, HOST_LOOP_TOOLS } from "../src/mcp/host-agent.js";
 import { LABELS } from "../src/mask/table.js";
 import { tempFolder } from "./helpers/temp.js";
 import { fakeRunner } from "./helpers/fake-runner.js";
@@ -1311,7 +1311,7 @@ describe("host session", () => {
     const n = await createReady();
     const spies = (["ensureStarted", "secureNetwork", "stopAgentProcesses", "sessionCommand"] as const).map((m) => vi.spyOn(Workshop.prototype, m));
     try {
-      const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+      const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle", fill: false });
       expect(launch.url).toBe(`http://127.0.0.1:${n.mcpPort}/mcp`);
       for (const s of spies) expect(s).not.toHaveBeenCalled();
       await launch.stop();
@@ -1322,13 +1322,13 @@ describe("host session", () => {
 
   test("host session refuses without a window", async () => {
     const n = await createReady();
-    await expect(n.openHostSession({ window: "", resume: false, agent: "Votre modèle" })).rejects.toThrow();
+    await expect(n.openHostSession({ window: "", resume: false, agent: "Votre modèle", fill: false })).rejects.toThrow();
   });
 
   test("host session token lists only HOST_LOOP_TOOLS", async () => {
     // Every tool on: the bridge has history, bookmarks and search, so the scope alone trims the list.
     const n = await createReady(() => "fr", { bridge: new FakeBridge([], { active: null, allow: false, history: { results: [] }, bookmarks: [], search: {} }) });
-    const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+    const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle", fill: false });
     const c = new Client({ name: "test", version: "0" });
     await c.connect(new StreamableHTTPClientTransport(new URL(launch.url), { requestInit: { headers: { Authorization: `Bearer ${launch.token}` } } }));
     try {
@@ -1339,9 +1339,30 @@ describe("host session", () => {
     }
   });
 
+  test("a host session for a model off this Mac also lists fill_field; setFill turns it off and on for the next call", async () => {
+    const n = await createReady(() => "fr", { bridge: new FakeBridge([], { active: null, allow: false, history: { results: [] }, bookmarks: [], search: {} }) });
+    const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle", fill: true });
+    const c = new Client({ name: "test", version: "0" });
+    await c.connect(new StreamableHTTPClientTransport(new URL(launch.url), { requestInit: { headers: { Authorization: `Bearer ${launch.token}` } } }));
+    const names = async () => (await c.listTools()).tools.map((t) => t.name).sort();
+    try {
+      expect(await names()).toEqual([...HOST_LOOP_TOOLS, ...HOST_FILL_TOOLS].sort());
+      launch.setFill(false);
+      expect(await names()).toEqual([...HOST_LOOP_TOOLS].sort());
+      const refused = await c.callTool({ name: "fill_field", arguments: { id: "t1", field: 0, value: "x" } });
+      expect(refused.isError).toBe(true);
+      expect(JSON.stringify(refused.content)).toContain("Outil non autorisé");
+      launch.setFill(true);
+      expect(await names()).toEqual([...HOST_LOOP_TOOLS, ...HOST_FILL_TOOLS].sort());
+    } finally {
+      await c.close();
+      await launch.stop();
+    }
+  });
+
   test("host session masks with its own table", async () => {
     const n = await createReady();
-    const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+    const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle", fill: false });
     const value = "camille.aubrac@example.org";
     const masked = n.masker.maskTypedFor(launch.sessionId, value).text;
     expect(masked).not.toContain(value);
@@ -1355,12 +1376,12 @@ describe("host session", () => {
     const n = await createReady();
     const reset = vi.spyOn(n.policy, "reset");
     const forget = vi.spyOn(n.outflow, "forgetTyped");
-    const a = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+    const a = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle", fill: false });
     expect(reset).toHaveBeenCalledTimes(1);
     expect(forget).toHaveBeenCalledWith("w");
     await a.stop();
     forget.mockClear();
-    const b = await n.openHostSession({ window: "w", resume: true, agent: "Votre modèle" });
+    const b = await n.openHostSession({ window: "w", resume: true, agent: "Votre modèle", fill: false });
     expect(reset).toHaveBeenCalledTimes(2);
     expect(forget).not.toHaveBeenCalled();
     await b.stop();
@@ -1370,7 +1391,7 @@ describe("host session", () => {
     const n = await createReady();
     await mkdir(join(n.paths.internal, "sessions"), { recursive: true });
     await n.workspaceLock.lock({ names: ["votre code"] });
-    const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+    const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle", fill: false });
     // The busy check comes first: an unknown id reaching « not in quarantine » means the host session did not count.
     await expect(n.masking.quarantine.restore("nope")).rejects.toThrow("not in quarantine");
     await n.masking.lift({ choice: "quarantine" });
@@ -1388,7 +1409,7 @@ describe("host session", () => {
     const sweep = vi.spyOn(Workshop.prototype, "stopAgentProcesses").mockResolvedValue();
     try {
       await mkdir(join(n.paths.internal, "sessions"), { recursive: true });
-      const host = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+      const host = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle", fill: false });
       const s = await n.openAgentSession({ cols: 80, rows: 24, window: "F1" });
       expect(sweep).toHaveBeenCalledTimes(1);
       await s.stop();
@@ -1409,7 +1430,7 @@ describe("host session", () => {
     const c = new Client({ name: "test", version: "0" });
     await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${n.mcpPort}/mcp`), { requestInit: { headers: { Authorization: auth } } }));
     const call = async (name: string, args: Record<string, unknown>) => ((await c.callTool({ name, arguments: args })).content as { text: string }[])[0]!.text;
-    const host = await n.openHostSession({ window: "F2", resume: false, agent: "Votre modèle" });
+    const host = await n.openHostSession({ window: "F2", resume: false, agent: "Votre modèle", fill: false });
     try {
       const label = (await call("read_tab", { id: "mail" })).match(/⟨code-[a-z0-9]{8}⟩/)![0];
       expect(await call("reveal_value", { label, reason: "payer" })).toContain(code);
@@ -1427,9 +1448,9 @@ describe("host session", () => {
     });
     const close = vi.spyOn(n.masker, "close");
     try {
-      await expect(n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" })).rejects.toThrow("masker down");
+      await expect(n.openHostSession({ window: "w", resume: false, agent: "Votre modèle", fill: false })).rejects.toThrow("masker down");
       // The next one opens normally and is the only one counted: its stop closes one masking session.
-      const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+      const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle", fill: false });
       await launch.stop();
       expect(close).toHaveBeenCalledTimes(1);
     } finally {

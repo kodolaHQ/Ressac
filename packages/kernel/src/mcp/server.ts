@@ -2906,7 +2906,7 @@ export async function startMcpServer(o: {
   workspaceLock?: WorkspaceLockHook;
   /** The lab is on (read at each list and call): off, LAB_TOOLS are unlisted and refused. */
   lab: () => boolean;
-}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string, mode?: "browser" | "workshop", tools?: readonly string[]): string; closeSession(token: string): void; tabZone(session: string | null, tab: Pick<TabInfo, "id" | "url" | "site" | "agentReached">): Zone; stop(): Promise<void> }> {
+}): Promise<{ port: number; containerUrl: string; openSession(win: string, agent?: string, session?: string, mode?: "browser" | "workshop", tools?: readonly string[]): string; setSessionTools(token: string, tools: readonly string[]): void; closeSession(token: string): void; tabZone(session: string | null, tab: Pick<TabInfo, "id" | "url" | "site" | "agentReached">): Zone; stop(): Promise<void> }> {
   const expected = Buffer.from(o.token);
   // Session tokens: one per window agent. Security note: their config files are readable by the
   // agents in the container; a session token gives nothing more than the main token, otherwise the link to
@@ -2968,6 +2968,11 @@ export async function startMcpServer(o: {
       const token = generateToken();
       sessions.set(token, { token: Buffer.from(token), window: win, ...(agent ? { agent: agent } : {}), session: session ?? null, mode, ...(tools ? { tools: new Set(tools) } : {}) });
       return token;
+    },
+    /** From the token's next request: each request builds its server from the entry. */
+    setSessionTools(token, tools) {
+      const s = sessions.get(token);
+      if (s) s.tools = new Set(tools);
     },
     closeSession(token) {
       sessions.delete(token);
