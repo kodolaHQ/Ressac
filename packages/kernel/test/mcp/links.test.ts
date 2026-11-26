@@ -6,11 +6,16 @@ test("unwrapLink decodes DuckDuckGo and Google result redirects, nothing else", 
   expect(unwrapLink("https://html.duckduckgo.com/l/?uddg=https%3A%2F%2Fex.fr%2Fa")).toBe("https://ex.fr/a");
   expect(unwrapLink("https://www.google.fr/url?q=https%3A%2F%2Fex.fr%2Fb&sa=U")).toBe("https://ex.fr/b");
   expect(unwrapLink("https://google.com/url?q=https%3A%2F%2Fex.fr%2Fb")).toBe("https://ex.fr/b");
+  // Google's current result shape: the target in `url=`, `q=` empty or absent.
+  expect(unwrapLink("https://www.google.com/url?sa=t&q=&url=https%3A%2F%2Fex.fr%2Fc&ved=2ahUKEwj&usg=AOvVaw")).toBe("https://ex.fr/c");
+  expect(unwrapLink("https://www.google.com/url?sa=t&source=web&url=https%3A%2F%2Fex.fr%2Fc")).toBe("https://ex.fr/c");
   for (const u of [
     "https://evil.fr/l/?uddg=https%3A%2F%2Fex.fr",
     "https://duckduckgo.com.evil.fr/l/?uddg=https%3A%2F%2Fex.fr",
     "https://duckduckgo.com/l/?uddg=javascript%3Aalert(1)",
     "https://www.google.fr/search?q=x",
+    "https://www.google.fr/url?url=javascript%3Aalert(1)",
+    "https://www.google.fr/search?url=https%3A%2F%2Fex.fr",
   ])
     expect(unwrapLink(u)).toBe(u);
 });

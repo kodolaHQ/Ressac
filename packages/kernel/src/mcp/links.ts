@@ -2,10 +2,11 @@ import type { PageLink, Zone } from "./bridge.js";
 
 const ZONE_RANK: Record<Zone, number> = { main: 0, other: 1, aside: 2, header: 3, nav: 4, footer: 5, lang: 6 };
 
-/** Engine result redirects: host pattern, path, parameter holding the target. */
-const REDIRECTS: [RegExp, string, string][] = [
-  [/^(.+\.)?duckduckgo\.com$/, "/l/", "uddg"],
-  [/^(www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/, "/url", "q"],
+/** Engine result redirects: host pattern, path, parameters that may hold the target (the first web address wins). */
+const REDIRECTS: [RegExp, string, string[]][] = [
+  [/^(.+\.)?duckduckgo\.com$/, "/l/", ["uddg"]],
+  // Google's current results put the target in `url=`, with `q=` empty or absent.
+  [/^(www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/, "/url", ["q", "url"]],
 ];
 
 /**
@@ -34,10 +35,10 @@ export function withoutTracking(url: string): string {
 export function unwrapLink(url: string): string {
   try {
     const u = new URL(url);
-    for (const [host, path, param] of REDIRECTS) {
+    for (const [host, path, params] of REDIRECTS) {
       if (!host.test(u.hostname) || u.pathname !== path) continue;
-      const target = u.searchParams.get(param) ?? "";
-      return URL.canParse(target) && /^https?:$/.test(new URL(target).protocol) ? withoutTracking(target) : url;
+      const target = params.map((p) => u.searchParams.get(p) ?? "").find((t) => URL.canParse(t) && /^https?:$/.test(new URL(t).protocol));
+      return target ? withoutTracking(target) : url;
     }
   } catch {}
   return withoutTracking(url);

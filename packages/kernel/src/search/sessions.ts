@@ -1,3 +1,5 @@
+import { withoutTracking } from "../mcp/links.js";
+
 export type BandState = "working" | "yours" | "idle";
 export interface Band { state: BandState; text: string; pages: number; startedAt: number }
 export const STOP_TEXT = "L'utilisateur a arrêté la recherche : ne continue pas, dis ce que tu as trouvé.";
@@ -17,17 +19,6 @@ const PATH_MAX = 20;
 export const URL_MAX = 500;
 const FREE_MAX = 10_000;
 /** A parsed http(s) address of at most URL_MAX characters, else undefined. */
-/** Every parameter of `some` (name and value, each repeat counted) is in `all`: nothing added, nothing changed. */
-function subQuery(some: URLSearchParams, all: URLSearchParams): boolean {
-  const left = [...all].map((p) => JSON.stringify(p));
-  for (const [k, v] of some) {
-    const i = left.indexOf(JSON.stringify([k, v]));
-    if (i < 0) return false;
-    left.splice(i, 1);
-  }
-  return true;
-}
-
 function web(u: string): URL | undefined {
   if (u.length > URL_MAX) return undefined;
   try {
@@ -128,8 +119,8 @@ export class SearchSessions {
 
   /**
    * The address to open without a card: `url` (normalised) if it was read as it is, its fragment-less form if only that was
-   * (a fragment the agent adds is dropped: the page's script would read it), its fragment-less form too if a read link has
-   * the same origin and path and every one of its query parameters (tracking dropped: it sends less), else undefined.
+   * (a fragment the agent adds is dropped: the page's script would read it), else undefined. A read link's canonical forms
+   * count as read (`allow`).
    */
   freeAs(tabId: string, url: string): string | undefined {
     const free = this.byTab.get(tabId)?.free;
@@ -137,22 +128,23 @@ export class SearchSessions {
     if (!free || !x) return undefined;
     if (free.has(x.href)) return x.href;
     x.hash = "";
-    if (free.has(x.href)) return x.href;
-    const base = x.origin + x.pathname + "?";
-    for (const u of free) if (u.startsWith(base) && subQuery(x.searchParams, new URL(u).searchParams)) return x.href;
-    return undefined;
+    return free.has(x.href) ? x.href : undefined;
   }
 
   isFree(tabId: string, url: string): boolean {
     return this.freeAs(tabId, url) !== undefined;
   }
 
-  /** Remembers the address as read, and its fragment-less form. */
+  /**
+   * Remembers the address as read, and its canonical forms: without its fragment, without its trackers, without its query.
+   * Only these few: any subset or order the agent picked would carry bits of its choosing.
+   */
   allow(tabId: string, url: string): void {
     const free = this.byTab.get(tabId)?.free;
     const x = web(url);
     if (!free || !x) return;
-    for (const u of [x.href, ((x.hash = ""), x.href)]) if (free.size < FREE_MAX) free.add(u);
+    const forms = [x.href, ((x.hash = ""), x.href), withoutTracking(x.href), ((x.search = ""), x.href)];
+    for (const u of forms) if (free.size < FREE_MAX) free.add(u);
   }
 
   /** A hand is open on this search tab: the page is the user's. */
