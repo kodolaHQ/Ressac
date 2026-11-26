@@ -321,6 +321,9 @@ it("Codex répond dans le chat", async () => {
   await waitAgent("return !doc.querySelector('[data-testid=\"chat-streaming\"]')");
   // Never Claude's pipe: the discussion went to Codex.
   expect(said()).toEqual([]);
+  // Started under masking: its thread is covered, so a resume (a fourth discussion, a restart) is too.
+  const covered = join(w!.dataDir, "masking", "covered.json");
+  await expect.poll(() => (existsSync(covered) ? JSON.parse(readFileSync(covered, "utf8")) : []), { timeout: 20_000 }).toContain("thr_new");
   // The model picker: model/list's visible models; the next turn/start carries the one picked.
   await click(m, '[data-testid="chat-model-chip"]', { frame: "agent" });
   await waitAgent("return !!doc.querySelector('[data-testid=\"chat-model-gpt-5.4\"]') && !doc.querySelector('[data-testid=\"chat-model-old\"]')");

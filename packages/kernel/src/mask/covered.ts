@@ -5,7 +5,7 @@ import { writePrivateJson } from "../design/atomic-write.js";
 const KEPT = 1000;
 
 /**
- * The Claude conversations started under masking (`<maskingFolder>/covered.json`): a later `--resume` of one of them is
+ * The Claude conversations and Codex threads started under masking (`<maskingFolder>/covered.json`): a later `--resume` of one of them is
  * covered, any other resume is not (spec § 9 bis, invariant 2). An unreadable or invalid file covers nothing.
  */
 export class CoveredConversations {

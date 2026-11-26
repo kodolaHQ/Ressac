@@ -1230,6 +1230,33 @@ describe("pipe transport", () => {
     await spec.stop();
   });
 
+  test("covered: a Codex thread started under masking is covered when resumed, in the chat and in Mode avancé; another thread is not", async () => {
+    const n = await createReady();
+    const pipe = (o: { conversation?: string; resume?: boolean } = {}) => n.openAgentSession({ transport: "pipe", window: "w", profile: "codex", ...o });
+    const fresh = await pipe();
+    expect(uncovered(n.masker, "w")).toBe(false);
+    // The adapter learns its thread id once the app-server started it.
+    await fresh.covers("thr-a");
+    await fresh.stop();
+    const again = await pipe({ conversation: "thr-a", resume: true });
+    expect(uncovered(n.masker, "w")).toBe(false);
+    // A resume names its thread from the start: covers() adds nothing.
+    await again.covers("thr-b");
+    await again.stop();
+    const other = await pipe({ conversation: "thr-b", resume: true });
+    expect(uncovered(n.masker, "w")).toBe(true);
+    await other.stop();
+    const terminal = await n.openAgentSession({ cols: 80, rows: 24, window: "w", profile: "codex", conversation: "thr-a", resume: true });
+    expect(uncovered(n.masker, "w")).toBe(false);
+    await terminal.stop();
+    // A session made « non couverte » before its thread is known never covers it.
+    const late = await pipe();
+    n.masker.markUncovered(late.sessionId, [{ profile: "default", id: "x" }]);
+    await late.covers("thr-c");
+    await late.stop();
+    await pipe({ conversation: "thr-c", resume: true }).then(async (s) => (expect(uncovered(n.masker, "w")).toBe(true), await s.stop()));
+  });
+
   test("stop() cleans once", async () => {
     const n = await createReady();
     const stopSession = vi.spyOn(Workshop.prototype, "stopSession");

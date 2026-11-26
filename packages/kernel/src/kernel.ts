@@ -220,7 +220,7 @@ export type AgentSessionOptions = {
   /**
    * Claude: this window's conversation id (a UUID). Started with it (`--session-id`), resumed by it (`--resume`) instead
    * of the workdir's latest, which may be another window's. Codex terminal resume: a chat's thread id (`codex resume <id>`
-   * in place of `--last`).
+   * in place of `--last`). Codex chat resume: its thread id, for the covered set only (the adapter resumes it).
    */
   conversation?: string;
   /** Appended to the command, and passed by name to the container (values go to the local `docker exec` only). */
@@ -249,6 +249,8 @@ export interface LaunchSpec {
   ended(): void;
   /** Kills the agent in the container, then `ended()`. Idempotent; nothing once ended. */
   stop(): Promise<void>;
+  /** Codex: the thread the app-server started for this new session, covered when resumed if the session still is. */
+  covers(thread: string): Promise<void>;
 }
 
 /** A host session (`openHostSession`): the loop runs in the host and reaches the MCP server on the Mac, not the container's address. */
@@ -584,7 +586,7 @@ export async function createKernel(o: {
         await workshop.secureNetwork();
         await o.onLock?.();
         // The revealing conversation is the only one open (a reveal is refused otherwise): resumed later, it reads « non couverte ».
-        for (const c of claudeOpen.values()) await covered.remove(c);
+        for (const c of conversationsOpen.values()) await covered.remove(c);
       },
     },
     // The revealing session is one of them: any second one, open or opening, shares the container (a reveal is refused).
@@ -791,7 +793,7 @@ export async function createKernel(o: {
   // Host sessions (own model): no process in the container, so they never count for the sweep, a reveal, a lift or a restore.
   const hostSessions = new Set<() => Promise<void>>();
   /** The Claude conversation id of each open session, by session (a reveal or a passport addition uncovers it). */
-  const claudeOpen = new Map<string, string>();
+  const conversationsOpen = new Map<string, string>();
   // A lift (or a lock) re-applies the container's network: a lift gives the code and user domains back.
   const offLock = workspaceLock.onChange(() => void workshop.secureNetwork().catch((e) => console.error("[ressac] network after a workspace lock change:", e)));
   // Sessions being opened, and the sweep the first of them started: the others wait for it, never run after it.
@@ -822,7 +824,7 @@ export async function createKernel(o: {
       const touched = masker.touchedSessions();
       for (const s of touched) {
         masker.markUncovered(s, added.map((id) => ({ profile, id })));
-        const c = claudeOpen.get(s);
+        const c = conversationsOpen.get(s);
         // A failed write only makes a later resume of it read as covered: said, never thrown at the save.
         if (c) await covered.remove(c).catch((e) => console.error("[ressac] covered conversations:", (e as Error)?.name));
       }
@@ -931,10 +933,13 @@ export async function createKernel(o: {
         const codexThread = !pipe && program === "codex" && resume === true && conversation !== undefined ? conversation : undefined;
         if (codexThread !== undefined && !/^[0-9A-Za-z][\w-]{0,99}$/.test(codexThread)) throw new Error(`Fil Codex invalide : ${JSON.stringify(codexThread.slice(0, 40))}`);
         const resumed = resume === true && (byId || chosen.resume !== undefined);
+        // Codex's thread id: a plain token (the terminal's argv takes it), else it covers nothing.
+        const thread = (t: string | undefined): t is string => program === "codex" && t !== undefined && /^[0-9A-Za-z][\w-]{0,99}$/.test(t);
+        const named = byId || thread(conversation) ? conversation : undefined;
         if (win !== undefined) {
           sessionToken = server.openSession(win, chosen.name, id, mode);
-          // A resume is covered only if its conversation started under masking: a Codex resume never is (no id).
-          masker.open(id, win, { uncovered: resumed && !(byId && covered.has(conversation!)) });
+          // A resume is covered only if its conversation started under masking (Claude's uuid, Codex's thread): one with no id never is.
+          masker.open(id, win, { uncovered: resumed && !(named !== undefined && covered.has(named)) });
         }
         // A failed write only makes a later resume of it read as not covered.
         if (byId && !resumed) await covered.add(conversation!).catch((e) => console.error("[ressac] covered conversations:", (e as Error).message));
@@ -986,13 +991,13 @@ export async function createKernel(o: {
         const command = [built[0]!, ...language, ...conversationArgs, ...claudeNoShell, ...profileArgs, ...codexNoApps, ...codexNoShell, ...(extra?.args ?? [])];
         const register = () => {
           openSessions.add(clean);
-          if (byId) claudeOpen.set(id, conversation!);
+          if (named !== undefined) conversationsOpen.set(id, named);
         };
         let cleaned: Promise<void> | undefined;
         const ended = (): Promise<void> => {
           if (cleaned) return cleaned;
           openSessions.delete(clean);
-          claudeOpen.delete(id);
+          conversationsOpen.delete(id);
           return (cleaned = clean());
         };
         if (pipe) {
@@ -1007,6 +1012,13 @@ export async function createKernel(o: {
             env,
             ended: () => void ended(),
             stop: () => (stopping ??= cleaned ?? workshop.stopSession(id).catch(() => {}).then(ended)),
+            // Only a new thread of a session still open and covered: a resume named its own thread at the start.
+            async covers(t) {
+              const cause = masker.uncoveredCauseOf(id);
+              if (resumed || !thread(t) || cleaned || conversationsOpen.has(id) || cause.resumed || cause.passport.length) return;
+              conversationsOpen.set(id, t);
+              await covered.add(t).catch((e) => console.error("[ressac] covered conversations:", (e as Error).message));
+            },
           };
         }
         const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols: opened.cols, rows: opened.rows, env: env, stopRemote: () => workshop.stopSession(id) });

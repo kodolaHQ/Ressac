@@ -953,7 +953,7 @@ async function openChat(o: OpenOptions) {
         mode: o.mode,
         resume: o.resumeId !== undefined,
         // Claude by uuid: the covered set and the terminal's resume keep working by id. Codex resumes by thread id in the adapter.
-        ...(o.profile === "claude" ? { conversation: o.resumeId ?? o.sessionId } : {}),
+        ...(o.profile === "claude" ? { conversation: o.resumeId ?? o.sessionId } : o.engine === "codex" && o.resumeId ? { conversation: o.resumeId } : {}),
         extra,
         onBuildProgress,
         review,
@@ -987,6 +987,8 @@ async function openChat(o: OpenOptions) {
           throw o.resumeId && !signal.aborted ? new ResumeError(err) : err;
         });
       if (token) conversation.onEnd(() => relay.closeSession(token));
+      // A new Codex thread under masking: its later resumes are covered too.
+      if (o.engine === "codex" && !o.resumeId) await launch.covers(conversation.engineSessionId);
       // Read once per app run: the chip names the model, the picker opens at once.
       if (onSubscription(o.engine) && !engineModels.has(o.engine))
         conversation.models?.().then(
