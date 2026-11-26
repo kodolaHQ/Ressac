@@ -1,5 +1,6 @@
 import type { ShownSite } from "../shared/sites";
-import type { ChatView } from "../shared/chat";
+import type { ChatModel, ChatView } from "../shared/chat";
+import type { OwnEngine } from "../shared/settings";
 import type { ChangedFile, DiffFile, QuarantinedFile, Action, ApiRessac, LocalAiStateShown, AgentPanelState, ApplicationList, MaskingStatus, ShownWidget } from "../shared/api";
 import type { HomeTheme } from "../../../packages/kernel/src/home/theme.ts";
 import type { FreePlacement } from "../../../packages/kernel/src/home/schemas.ts";
@@ -213,6 +214,16 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       toTerminal: () => host.request("chat.toTerminal", { window: windowId }).then(() => {}),
       toChat: () => host.request("chat.toChat", { window: windowId }).then(() => {}),
       login: () => host.request("chat.login", { window: windowId }).then(() => {}, (e) => failed(errorText(e))),
+      models: () =>
+        host.request<{ ok: true; models: ChatModel[] } | { ok: false; error: string }>("chat.models", { window: windowId }).then(
+          (r) => structuredClone(r),
+          (e) => ({ ok: false as const, error: errorText(e) }),
+        ),
+      setModel: (model) =>
+        host.request<{ ok: true; own?: OwnEngine } | { ok: false; error: string }>("chat.model", { window: windowId, model: String(model) }).then(
+          (r) => structuredClone(r),
+          (e) => ({ ok: false as const, error: errorText(e) }),
+        ),
     },
     onChat: (callback) => untilUnload(host.on("chat.view", (p) => p.window === windowId && callback(structuredClone(p.view)))),
     onChatRemoved: (callback) => untilUnload(host.on("chat.removed", (p) => p.window === windowId && callback(String(p.chatId)))),

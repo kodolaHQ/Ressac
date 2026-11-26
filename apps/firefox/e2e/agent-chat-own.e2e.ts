@@ -350,6 +350,28 @@ it("un modèle cloud d'Ollama se choisit, marqué en ligne ; la discussion dit o
   expect(await textOf("chat-own-warning")).toBe("Votre modèle peut se tromper. Vérifiez les réponses importantes.");
 });
 
+it("le modèle se change dans le chat : la discussion continue sur le nouveau, marqué en ligne, et Réglages le garde", { timeout: 90_000 }, async () => {
+  await launch();
+  await ollamaOnFake();
+  fake.script = [() => ({ action: "answer", text: "Premier." }), () => ({ action: "answer", text: "Second." })];
+  await ownDiscussion();
+  await send("un");
+  await agentSays("Premier.");
+  await click(m, '[data-testid="chat-model-chip"]', { frame: "agent" });
+  // Ollama's own list, its cloud model marked.
+  await waitAgent("return !!doc.querySelector('[data-testid=\"chat-model-gros:cloud\"]')");
+  expect(await waitAgent<string>("return doc.querySelector('[data-testid=\"chat-model-gros:cloud\"]').textContent.replace(/\\s+/g, ' ').trim()")).toBe("gros:cloud · en ligne");
+  await click(m, '[data-testid="chat-model-gros:cloud"]', { frame: "agent" });
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-model-chip\"]')?.textContent.trim() === 'gros:cloud' && !doc.querySelector('[data-testid=\"chat-model-menu\"]')");
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-sent-to\"]')?.textContent === 'Envoyé à ollama.com.'");
+  await ownSaved((e) => e.ollamaModel === "gros:cloud");
+  await send("deux");
+  await agentSays("Second.");
+  // The same discussion went on (no pause), its next step on the new model.
+  expect(loopSteps().map((l) => l.body.model)).toEqual([MODEL, "gros:cloud"]);
+  expect(await textOf("chat-agent")).toContain("Premier.");
+});
+
 it("une clé saisie juste après une nouvelle adresse va à cette adresse", async () => {
   await launch();
   await openSettings();

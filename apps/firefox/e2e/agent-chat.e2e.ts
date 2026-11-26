@@ -221,6 +221,38 @@ it("Mode avancé ouvre le terminal sur la même conversation", async () => {
   await waitAgent("return [...doc.querySelectorAll('[data-testid=\"chat-agent\"]')].filter((e) => e.textContent.includes('Bien reçu.')).length === 1");
 });
 
+it("le sélecteur de modèle : la liste de Claude, un changement dès le message suivant, gardé par le Mode avancé et les nouvelles discussions", async () => {
+  await launch({ writer: "claude" });
+  await send("salut");
+  await agentSays("Bien reçu.");
+  await click(m, '[data-testid="chat-model-chip"]', { frame: "agent" });
+  // The engine's own list, its default first (with what it runs).
+  await waitAgent("return !!doc.querySelector('[data-testid=\"chat-model-sonnet\"]')");
+  expect(await textOf("chat-model-default")).toContain("Par défaut");
+  expect(await textOf("chat-model-default")).toContain("Opus 5.5");
+  await click(m, '[data-testid="chat-model-sonnet"]', { frame: "agent" });
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-model-chip\"]')?.textContent.trim() === 'Sonnet' && !doc.querySelector('[data-testid=\"chat-model-menu\"]')");
+  await send("encore");
+  await waitAgent("return [...doc.querySelectorAll('[data-testid=\"chat-agent\"]')].filter((e) => e.textContent.includes('Bien reçu.')).length === 2");
+  // Same process, set_model before the next message.
+  const order = trace().flatMap((l) => (l.request?.subtype === "set_model" ? [`model:${l.request.model}`] : l.type === "user" ? ["user"] : []));
+  expect(order).toEqual(["user", "model:sonnet", "user"]);
+  expect(trace().filter((l) => l.argv)).toHaveLength(1);
+  // « Mode avancé » goes on with the discussion's model.
+  await click(m, '[data-testid="chat-advanced"]', { frame: "agent" });
+  const args = join(root(), "fake-agent-args.json");
+  await expect.poll(() => (existsSync(args) ? (JSON.parse(readFileSync(args, "utf8")) as string[]) : []), { timeout: 20_000 }).toEqual(expect.arrayContaining(["claude", "--resume", "--model=sonnet"]));
+  await waitAgent("return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')");
+  await click(m, '[data-testid="chat-back"]', { frame: "agent" });
+  await waitAgent("return !!doc.querySelector('[data-testid=\"chat-input\"]')");
+  // A new discussion starts on it: the engine's default for new ones.
+  const before = trace().filter((l) => l.argv).length;
+  await click(m, '[data-testid="chat-new"]', { frame: "agent" });
+  await expect.poll(() => trace().filter((l) => l.argv).length, { timeout: 20_000 }).toBeGreaterThan(before);
+  expect(trace().filter((l) => l.argv).at(-1)!.argv).toContain("--model=sonnet");
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-model-chip\"]')?.textContent.trim() === 'Sonnet'");
+});
+
 it("compte déconnecté : la carte de connexion", async () => {
   await launch();
   await waitAgent("return !!doc.querySelector('[data-testid=\"chat-login\"]')");
@@ -249,4 +281,11 @@ it("Codex répond dans le chat", async () => {
   await waitAgent("return !doc.querySelector('[data-testid=\"chat-streaming\"]')");
   // Never Claude's pipe: the discussion went to Codex.
   expect(said()).toEqual([]);
+  // The model picker: model/list's visible models; the next turn/start carries the one picked.
+  await click(m, '[data-testid="chat-model-chip"]', { frame: "agent" });
+  await waitAgent("return !!doc.querySelector('[data-testid=\"chat-model-gpt-5.4\"]') && !doc.querySelector('[data-testid=\"chat-model-old\"]')");
+  await click(m, '[data-testid="chat-model-gpt-5.4"]', { frame: "agent" });
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-model-chip\"]')?.textContent.trim() === 'GPT-5.4'");
+  await send("encore");
+  await expect.poll(() => trace("codex").filter((l) => l.method === "turn/start").map((l) => l.params.model ?? null), { timeout: 20_000 }).toEqual([null, "gpt-5.4"]);
 });

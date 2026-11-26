@@ -7,7 +7,7 @@ import { APPEARANCES, LANGUAGE_SETTING, NOTICE_IDS, type Decision, type PendingR
 import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile, type InstructionChange, type ChangedFile, type LiftChoice, type QuarantinedFile } from "@ressac/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, MachineIdleSchema, OwnEngineSchema, modelField, type OwnEngine, type DockerStatus, type MachineShown, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
-import type { AskReply, ChatDraft, ChatSummary, ChatView } from "./chat";
+import type { AskReply, ChatDraft, ChatModel, ChatSummary, ChatView } from "./chat";
 import type { PassportEntry, PassportField } from "../../../packages/kernel/src/mask/passport-fields.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
@@ -407,6 +407,10 @@ export interface ApiRessac {
     toChat(): Promise<void>;
     /** The CLI's own sign-in in a small terminal, over `agent.onData` / `agent.write` / `agent.resize`. */
     login(): Promise<void>;
+    /** The model picker's list for the active discussion: its engine's own, or the own model's server's. */
+    models(): Promise<{ ok: true; models: ChatModel[] } | { ok: false; error: string }>;
+    /** The active discussion's model from its next message; `own`: « Votre modèle »'s setting it changed, for the caller to save. */
+    setModel(model: string): Promise<{ ok: true; own?: OwnEngine } | { ok: false; error: string }>;
   };
   /** A discussion of this window changed. */
   onChat(callback: (v: ChatView) => void): () => void;
