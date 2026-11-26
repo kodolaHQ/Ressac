@@ -2,21 +2,36 @@
 // table (R1), and to the outflow as typed or pasted, never before the discussion's kernel session exists.
 import type { Masker } from "../../../packages/kernel/src/index.ts";
 import type { Outflow } from "../../../packages/kernel/src/outflow/outflow.ts";
+import type { TabInfo } from "../../../packages/kernel/src/mcp/bridge.ts";
 import { LABEL_SOURCE } from "../../../packages/kernel/src/mask/table.ts";
+import { referencesText } from "../../../packages/kernel/src/pty/context.ts";
 import type { Chats } from "../core/agent/chats.ts";
-import type { ChatDraft, ChatView } from "../shared/chat.ts";
+import { CHAT_COMMANDS, COMMAND_WITH_TEXT, type ChatCommand, type ChatDraft, type ChatRef, type ChatView } from "../shared/chat.ts";
 
 const LABEL = new RegExp(`^${LABEL_SOURCE}$`);
 const LABELS = new RegExp(LABEL_SOURCE, "g");
 /** A message longer than this is refused: a paste of a whole book is not a chat turn. */
 export const DRAFT_MAX = 100_000;
+/** @ references in one message, and a referenced page's title and address. */
+const REFS_MAX = 10;
+const REF_TITLE_MAX = 300;
+const REF_URL_MAX = 2000;
+const TAB_ID = /^[\w:-]{1,100}$/;
 
 type SendMasker = Pick<Masker, "maskTypedFor" | "lookupForSession">;
 
 /** The UI's draft, checked at the trust boundary: null when unusable. Ranges are clamped to the text, labels must be labels. */
 export function cleanDraft(v: unknown): ChatDraft | null {
   const d = (v ?? {}) as Record<string, unknown>;
-  if (typeof d.text !== "string" || !d.text.trim() || d.text.length > DRAFT_MAX) return null;
+  if (typeof d.text !== "string" || d.text.length > DRAFT_MAX) return null;
+  const command = CHAT_COMMANDS.find((c) => c === d.command);
+  const refs: ChatRef[] = [];
+  for (const r of (Array.isArray(d.refs) ? d.refs : []).slice(0, REFS_MAX) as Record<string, unknown>[]) {
+    if (typeof r?.tab === "string" && TAB_ID.test(r.tab)) refs.push({ tab: r.tab });
+    else if (typeof r?.url === "string" && typeof r.title === "string" && /^https?:\/\//.test(r.url) && r.url.length <= REF_URL_MAX) refs.push({ title: r.title.slice(0, REF_TITLE_MAX), url: r.url });
+  }
+  // Empty text goes only with references or a command that needs none.
+  if (!d.text.trim() && !refs.length && !(command && !COMMAND_WITH_TEXT.has(command))) return null;
   const n = d.text.length;
   const int = (x: unknown) => (typeof x === "number" && Number.isInteger(x) ? Math.min(Math.max(x, 0), n) : null);
   const pasted: [number, number][] = [];
@@ -25,7 +40,7 @@ export function cleanDraft(v: unknown): ChatDraft | null {
     if (a !== null && b !== null && a < b) pasted.push([a, b]);
   }
   const clear = (Array.isArray(d.clear) ? d.clear : []).filter((l): l is string => typeof l === "string" && LABEL.test(l));
-  return { text: d.text, pasted, clear };
+  return { text: d.text, pasted, clear, ...(command ? { command } : {}), ...(refs.length ? { refs } : {}) };
 }
 
 /** The draft cut into its typed and pasted runs, in order. */
@@ -69,6 +84,8 @@ interface Waiting {
   after?: string;
   /** Called as it is sent, after the session's reset (a tab given to the agent). */
   written?: () => void;
+  /** The tabs the user pointed with @, as the host found them: readable by this session from its send. */
+  points?: TabInfo[];
 }
 
 /** Ressac's own text waiting for the window's next message (never typed): the panel's context applies to a first message only. */
@@ -90,7 +107,15 @@ export function createChatSend(o: {
   interacted: (win: string) => void;
   /** The window's new discussion, when it has none (⌘T). */
   create: (win: string) => Promise<ChatView>;
+  /** The tabs the agent can see (none of a private space nor Ressac's own pages): a @ tab must be one of them. */
+  tabs?: () => Promise<TabInfo[]>;
+  /** The user pointed `tab` with @ in a message of session `session` (the kernel lets that session read it with no card). */
+  point?: (session: string, tab: TabInfo) => void;
+  /** The host's texts (the user's language): the command words, the references note, the refusal. */
+  say?: (id: string) => string;
 }) {
+  const say = o.say ?? ((id: string) => id);
+  const commandText = (c: ChatCommand) => `${say(`host-chat-command-${c}`)} `;
   const waiting = new Map<string, Waiting[]>();
   /** Ressac's own text for the window's next message (the panel's context, a site app's or an app's prefix): the last wins. */
   const contexts = new Map<string, Prefix>();
@@ -120,18 +145,35 @@ export function createChatSend(o: {
         return;
       }
       w.written?.();
+      for (const t of w.points ?? []) o.point?.(session, t);
       o.interacted(w.win);
       o.chats.prompt(chatId, r.sent, r.shown);
     }
   }
 
   async function send(win: string, chatId: string, draft: ChatDraft, extra: { before?: string; after?: string; written?: () => void } = {}): Promise<{ ok: true } | { ok: false; error: string }> {
+    // A @ tab must be a real tab the agent can see now: its title and address are the host's, never the composer's.
+    const refs = draft.refs ?? [];
+    const listed = refs.some((r) => "tab" in r) ? ((await o.tabs?.()) ?? []) : [];
+    const points: TabInfo[] = [];
+    const pages: { tab?: string; title: string; url: string }[] = [];
+    for (const r of refs) {
+      if (!("tab" in r)) {
+        pages.push(r);
+        continue;
+      }
+      const t = listed.find((x) => x.id === r.tab);
+      if (!t) return { ok: false, error: say("host-chat-reference-gone") };
+      points.push(t);
+      pages.push({ tab: t.id, title: t.title, url: t.url });
+    }
     const prefix = prefixFor(win, chatId);
     contexts.delete(win);
-    const before = (prefix?.text ?? "") + (extra.before ?? "");
+    const before = (prefix?.text ?? "") + (extra.before ?? "") + (draft.command ? commandText(draft.command) : "");
+    const after = (extra.after ?? "") + referencesText(pages, say("host-chat-references"));
     const written = prefix?.written || extra.written ? () => (prefix?.written?.(), extra.written?.()) : undefined;
     const queue = waiting.get(chatId) ?? [];
-    queue.push({ win, draft, ...(before ? { before } : {}), ...(extra.after ? { after: extra.after } : {}), ...(written ? { written } : {}) });
+    queue.push({ win, draft, ...(before ? { before } : {}), ...(after ? { after } : {}), ...(written ? { written } : {}), ...(points.length ? { points } : {}) });
     waiting.set(chatId, queue);
     if (!o.chats.sessionIdOf(chatId) && !(await o.chats.select(win, chatId))) {
       waiting.delete(chatId);

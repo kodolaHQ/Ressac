@@ -177,3 +177,36 @@ test("a send that fails keeps the window's prefix for the next one", async () =>
   expect(await send.send("w1", "c1", draft("corrige"))).toMatchObject({ ok: false });
   expect(send.prefixOf("w1")).toBe("[application : Lune] ");
 });
+
+test("cleanDraft: a / command and @ references, checked at the boundary", () => {
+  expect(cleanDraft({ text: "chats", pasted: [], clear: [], command: "search" })).toEqual({ text: "chats", pasted: [], clear: [], command: "search" });
+  // A command that takes no text, or references alone, may go with no text.
+  expect(cleanDraft({ text: "", pasted: [], clear: [], command: "read" })).toMatchObject({ text: "", command: "read" });
+  expect(cleanDraft({ text: " ", pasted: [], clear: [], refs: [{ tab: "t1" }] })).toMatchObject({ refs: [{ tab: "t1" }] });
+  expect(cleanDraft({ text: "", pasted: [], clear: [], command: "search" })).toBeNull();
+  expect(cleanDraft({ text: "a", pasted: [], clear: [], command: "rm -rf" })).toEqual({ text: "a", pasted: [], clear: [] });
+  // A page from the history or the bookmarks: a web address and a title; anything else is dropped.
+  const refs = [{ title: "Recette", url: "https://cuisine.example/x" }, { title: "x", url: "javascript:alert(1)" }, { tab: "../etc" }, { tab: 3 }, { title: "x".repeat(5000), url: "https://a.example/" }];
+  expect(cleanDraft({ text: "a", pasted: [], clear: [], refs })?.refs).toEqual([{ title: "Recette", url: "https://cuisine.example/x" }, { title: "x".repeat(300), url: "https://a.example/" }]);
+});
+
+test("a tab pointed with @ is checked against the real tabs, sent as data, and pointed for the discussion's session only", async () => {
+  const f = fakeChats();
+  const mail = { id: "t1", title: `Boîte de ${EMAIL}`, url: "https://mail.example/inbox", space: "perso" };
+  const point = vi.fn();
+  const out = outflow();
+  const send = createChatSend({ chats: f.chats, masker: () => masker(), outflow: () => out, interacted: () => {}, create: async () => f.chats.active("w1"), tabs: async () => [mail], point, say: (id) => (id === "host-chat-references" ? "Pages :" : id === "host-chat-command-search" ? "Cherchez :" : id) });
+  // A tab that is not there (closed, private: not listed) refuses the send: nothing waits, nothing is pointed.
+  expect(await send.send("w1", "c1", draft("lis", { refs: [{ tab: "t9" }] }))).toEqual({ ok: false, error: "host-chat-reference-gone" });
+  expect(send.waiting("c1")).toBe(0);
+  expect(await send.send("w1", "c1", draft("chats", { command: "search", refs: [{ tab: "t1" }, { title: "Recette", url: "https://cuisine.example/x" }] }))).toEqual({ ok: true });
+  expect(point).not.toHaveBeenCalled();
+  f.openSession("s1");
+  send.flush("c1");
+  expect(point).toHaveBeenCalledWith("s1", mail);
+  const sent = f.prompts[0]![1];
+  // The title and address come from the host's tab, masked as any outgoing text; the command's words go before.
+  expect(sent).toMatch(/^Cherchez : chats — Pages : \[\{"tab":"t1","title":"Boîte de ⟨email-\w+⟩@example\.com","url":"https:\/\/mail\.example\/inbox"\},\{"title":"Recette","url":"https:\/\/cuisine\.example\/x"\}\]$/);
+  // Only what the user typed counts as typed.
+  expect(typedText(out)).toBe("chats\r");
+});

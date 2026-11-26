@@ -72,8 +72,21 @@ export interface ChatView {
 }
 
 /** `pasted`: [start, end] ranges of pasted text; `clear`: labels the user chose to send in clear. */
+/** The composer's « / » commands that run a tool through the agent: the host puts their words before the user's text. */
+export const CHAT_COMMANDS = ["search", "read", "tabs", "history", "bookmarks"] as const;
+export type ChatCommand = (typeof CHAT_COMMANDS)[number];
+/** The commands that take the user's text after them (the query). */
+export const COMMAND_WITH_TEXT: ReadonlySet<ChatCommand> = new Set(["search", "history", "bookmarks"]);
+/**
+ * A « @ » reference: an open tab by its id (the host takes its title and address from the real tab, and the agent may read
+ * it in this discussion with no card), or a page of the history or the bookmarks (its title and address, nothing granted).
+ */
+export type ChatRef = { tab: string } | { title: string; url: string };
+
 export interface ChatDraft {
   text: string;
   pasted: [number, number][];
   clear: string[];
+  command?: ChatCommand;
+  refs?: ChatRef[];
 }

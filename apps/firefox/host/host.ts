@@ -1108,6 +1108,10 @@ const chatSend = createChatSend({
   outflow: () => kernel?.outflow ?? null,
   interacted: giveActiveTab,
   create: (win) => createChat(win, {}),
+  // The kernel's own list (`bridge` is set up below, before any send).
+  tabs: () => bridge.listTabs(),
+  point: (session, tab) => kernel?.policy.pointTab(session, tab),
+  say: (id) => hostSay(id),
 });
 
 async function createChat(win: string, c: { profile?: unknown; mode?: unknown; space?: unknown }): Promise<ChatView> {
