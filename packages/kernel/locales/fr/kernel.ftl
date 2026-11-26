@@ -84,6 +84,7 @@ kernel-err-shape-locked = L'atelier doit être recréé : levez d'abord le verro
 kernel-err-host-no-window = Une conversation avec votre modèle s'ouvre dans une fenêtre.
 kernel-err-instructions-changed = Les consignes de l'agent ont changé depuis la dernière session : rouvrez le panneau pour les relire.
 kernel-err-instructions-io = Impossible de lire ou de remettre les consignes de l'agent : { $error }
+kernel-err-home-volume = Impossible de savoir si le dossier personnel de l'agent a changé : le moteur n'a pas répondu ({ $error }). Réessayez dans un instant.
 kernel-replay-not-found = Rejeu impossible : exécution introuvable
 kernel-replay-block-absent = Rejeu impossible : le bloc « { $id } » n'est pas dans le workflow
 kernel-replay-output-missing = Rejeu impossible : la sortie de « { $id } » manque dans cette exécution

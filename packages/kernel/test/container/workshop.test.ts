@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { spacePaths } from "../../src/paths.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Workshop, BUILD_DELAY_MS, parseBuildStep, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript } from "../../src/container/workshop.js";
+import { Workshop, homeInstant, BUILD_DELAY_MS, parseBuildStep, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript } from "../../src/container/workshop.js";
 import { findDocker } from "../../src/container/engine.js";
 import { execFile, spawn, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
@@ -926,11 +926,20 @@ describe("instruction files", () => {
   });
 });
 
-test("homeId is the engine's home volume creation, with the engine kind; a failed inspect throws", async () => {
+test("homeId is the engine kind and the home volume's creation instant; a failed inspect says so", async () => {
   const { run, calls } = fakeRunner([[/ volume inspect /, { code: 0, stdout: "2026-11-27T10:00:00Z\n" }]]);
-  expect(await new Workshop({ paths: paths, docker: "docker", run }).homeId()).toBe("docker:2026-11-27T10:00:00Z");
+  expect(await new Workshop({ paths: paths, docker: "docker", run }).homeId()).toBe(`docker:${Date.UTC(2026, 10, 27, 10)}`);
   expect(calls[0]!.args).toEqual(["volume", "inspect", "--format", "{{.CreatedAt}}", "webaios-home"]);
-  await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ volume inspect /, { code: 1, stderr: "no such volume" }]]).run }).homeId()).rejects.toThrow("no such volume");
+  await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ volume inspect /, { code: 1, stderr: "no such volume" }]]).run }).homeId()).rejects.toThrow(/agent's home.*no such volume/);
+});
+
+test("homeInstant: Docker RFC 3339 and Podman Go times give one instant whatever the zone name", () => {
+  const t = Date.UTC(2026, 10, 27, 9, 30, 5, 123);
+  for (const s of ["2026-11-27T09:30:05.123Z", "2026-11-27T10:30:05.123+01:00", "2026-11-27 10:30:05.123456789 +0100 CET", "2026-11-27 11:30:05.123456789 +0200 CEST", "2026-11-27 09:30:05.123 +0000 UTC", "2026-11-27 10:30:05.123456789 +0100 +0100"])
+    expect(homeInstant(s), s).toBe(String(t));
+  // Unknown shapes are kept as they are (still stable); the fakes' empty output stays empty.
+  expect(homeInstant("someday")).toBe("someday");
+  expect(homeInstant("")).toBe("");
 });
 
 describe("execWrite", () => {

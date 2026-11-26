@@ -27,6 +27,18 @@ const legacyContainer = (): string | null => {
 };
 // Stored format kept across the rename to Ressac: a Docker volume cannot be renamed, and this one holds the agent's logins.
 export const VOLUME_HOME = "webaios-home";
+
+/**
+ * A volume's CreatedAt as epoch ms: Docker prints RFC 3339, Podman a Go time whose zone name follows the machine's zone
+ * (CET, CEST…), so only the offset counts. Another shape is kept as it is.
+ */
+export function homeInstant(out: string): string {
+  const m = /^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d:\d\d)(\.\d+)?\s*(Z|[+-]\d\d:?\d\d)?/.exec(out.trim());
+  if (!m) return out.trim();
+  const offset = !m[4] || m[4] === "Z" ? "Z" : `${m[4].slice(0, 3)}:${m[4].slice(-2)}`;
+  const ms = Date.parse(`${m[1]}T${m[2]}${(m[3] ?? "").slice(0, 4)}${offset}`);
+  return Number.isNaN(ms) ? out.trim() : String(ms);
+}
 /**
  * Ports published by the container, the same on the Mac and inside: 5280-5299 by default, out of Vite's range (5173…).
  * Two containers cannot publish the same ports, so a second app (Firefox build) sets RESSAC_CONTAINER_PORTS (`min-max`).
@@ -466,12 +478,12 @@ export class Workshop {
     return this.instructionScript("reading", readInstructionFiles, { files, trees }, LIMITS);
   }
 
-  /** The home volume's creation time, by the engine (InstructionIo.home): the agent can write in the home, not change this. */
+  /** The home volume's creation instant, by the engine (InstructionIo.home): the agent can write in the home, not change this. */
   async homeId(): Promise<string> {
     if (!this.docker) throw new Error(say(this.locale(), "kernel-workshop-no-engine"));
     const r = await this.launch(["volume", "inspect", "--format", "{{.CreatedAt}}", VOLUME_HOME], PROBE_DELAY_MS);
-    if (r.code !== 0) throw new Error(`home volume: ${tail(r.stderr) || `code ${r.code}`}`);
-    return `${this.engine().kind}:${r.stdout.trim()}`;
+    if (r.code !== 0) throw new Error(say(this.locale(), "kernel-err-home-volume", { error: r.code === CODE_TIMEOUT_EXCEEDED ? "timeout" : tail(r.stderr) || `code ${r.code}` }));
+    return `${this.engine().kind}:${homeInstant(r.stdout)}`;
   }
 
   /** Restores (null deletes) instruction files in the container; throws if any could not be (InstructionIo.write). */

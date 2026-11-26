@@ -84,6 +84,7 @@ kernel-err-shape-locked = The workshop must be recreated: lift the lock first to
 kernel-err-host-no-window = A conversation with your model opens in a window.
 kernel-err-instructions-changed = The agent's instructions changed since the last session: reopen the panel to review them.
 kernel-err-instructions-io = Could not read or restore the agent's instructions: { $error }
+kernel-err-home-volume = Could not tell whether the agent's home changed: the engine did not answer ({ $error }). Try again in a moment.
 kernel-replay-not-found = Replay impossible: run not found
 kernel-replay-block-absent = Replay impossible: block « { $id } » is not in the workflow
 kernel-replay-output-missing = Replay impossible: the output of « { $id } » is missing from this run

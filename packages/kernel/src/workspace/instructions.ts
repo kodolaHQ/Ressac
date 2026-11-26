@@ -134,11 +134,14 @@ export class InstructionReview {
     let moved = false;
     const home = await this.io.home();
     if (ref[HOME_ID] !== home) {
-      // A new home (created, reinstalled, Docker <-> machine) holds none of the old one's files: what it has is the reference,
-      // not changes. A reference with no home id yet (first run, older release) only records it, and is compared as before.
+      // Another home (created, reinstalled, Docker <-> machine): what it lacks of the old one is no deletion to show. What it
+      // holds is compared as ever: a home can be copied over (machine re-import, logins copy) with a planted file in it.
+      // A reference with no home id yet (first run, older release) only records it.
       if (HOME_ID in ref) {
-        for (const p of Object.keys(ref)) if (inHome(p) || p === CODEX_SYSTEM_SEEN) delete ref[p];
-        Object.assign(ref, await this.io.read(HOME_WATCHED.files, HOME_WATCHED.trees));
+        const now = await this.io.read(HOME_WATCHED.files, HOME_WATCHED.trees);
+        for (const p of Object.keys(ref)) if (inHome(p) && !(p in now)) delete ref[p];
+        // A home with no Codex system skills yet takes Codex's first install there in silently, once.
+        if (!Object.keys(now).some((p) => p.startsWith(CODEX_SYSTEM_SKILLS))) delete ref[CODEX_SYSTEM_SEEN];
       }
       ref[HOME_ID] = home;
       moved = true;

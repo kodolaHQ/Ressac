@@ -258,20 +258,36 @@ test("config.toml lines Codex writes itself pass silently; any other key, a quot
     disk.set(config, `model = "gpt-6"\n${bad}\n`), expect((await review.pending("codex")).changes.map((c) => c.path), bad).toEqual([config]);
 });
 
-test("a new home (other volume id) becomes the reference silently: its files are not shown as changes", async () => {
+test("a new, empty home drops the old home's files silently; what appears there is still compared", async () => {
   const CONFIG = "/home/node/.codex/config.toml";
   const { review, disk, home } = await setup({ [CODEX_HOME]: "old home", [CONFIG]: 'mcp_servers = "x"', [`${SYSTEM}/a/SKILL.md`]: "a" });
   await review.keep("codex", (await review.pending("codex")).snapshot);
-  // The new, empty home: nothing of the old one, then Codex's own install there.
   home.id = "volume-2";
   for (const p of [...disk.keys()]) if (p.startsWith("/home/node/")) disk.delete(p);
-  disk.set(CONFIG, "notify = 1");
   expect((await review.pending("codex")).changes).toEqual([]);
-  // Its first .system install is taken in silently again, then a change in that same home shows.
+  // Codex's own lines and its first .system install there pass; anything else shows.
+  disk.set(CONFIG, 'model = "gpt"');
   disk.set(`${SYSTEM}/b/SKILL.md`, "b");
   expect((await review.pending("codex")).changes).toEqual([]);
+  disk.set(CONFIG, "notify = 1");
   disk.set(CODEX_HOME, "planted");
-  expect((await review.pending("codex")).changes).toMatchObject([{ path: CODEX_HOME, status: "created" }]);
+  expect((await review.pending("codex")).changes).toMatchObject([{ path: CONFIG, status: "changed" }, { path: CODEX_HOME, status: "created" }]);
+});
+
+test("a home copied over (Docker to machine, machine re-import) keeps every planted or pending file on the card", async () => {
+  const CONFIG = "/home/node/.codex/config.toml";
+  const { review, disk, home } = await setup({ [CODEX_HOME]: "accepted", [`${SYSTEM}/a/SKILL.md`]: "a" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  // Planted in the old home, then the whole home copied into a new volume.
+  disk.set(CODEX_HOME, "planted");
+  disk.set(CONFIG, "notify = 1");
+  disk.set(`${SYSTEM}/a/SKILL.md`, "planted skill");
+  disk.set(`${SYSTEM}/evil/SKILL.md`, "evil");
+  home.id = "volume-2";
+  const changes = (await review.pending("codex")).changes;
+  expect(changes.map((c) => [c.path, c.status]).sort()).toEqual(
+    [[CODEX_HOME, "changed"], [CONFIG, "created"], [`${SYSTEM}/a/SKILL.md`, "changed"], [`${SYSTEM}/evil/SKILL.md`, "created"]].sort(),
+  );
 });
 
 test("a new home does not hide a workspace change, and a reference with no home id records it and still compares", async () => {
