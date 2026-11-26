@@ -81,6 +81,7 @@ kernel-workshop-path-unmountable = Ce chemin ne peut pas être monté dans l'ate
 kernel-workshop-not-folder = { $path } n'est pas un vrai dossier (un lien, par exemple) : remplacez-le par un dossier.
 kernel-err-custom-profile-browser = Le profil « { $name } » ne tourne qu'en mode Atelier : choisissez Atelier dans le panneau de l'agent.
 kernel-err-shape-locked = L'atelier doit être recréé : levez d'abord le verrou pour ouvrir une conversation.
+kernel-err-host-no-window = Une conversation avec votre modèle s'ouvre dans une fenêtre.
 kernel-err-instructions-changed = Les consignes de l'agent ont changé depuis la dernière session : rouvrez le panneau pour les relire.
 kernel-err-instructions-io = Impossible de lire ou de remettre les consignes de l'agent : { $error }
 kernel-replay-not-found = Rejeu impossible : exécution introuvable

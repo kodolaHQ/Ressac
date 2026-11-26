@@ -81,6 +81,7 @@ kernel-workshop-path-unmountable = This path cannot be mounted in the workshop: 
 kernel-workshop-not-folder = { $path } is not a real folder (a link, say): replace it with a folder.
 kernel-err-custom-profile-browser = The « { $name } » profile only runs in Workshop mode: choose Workshop in the agent panel.
 kernel-err-shape-locked = The workshop must be recreated: lift the lock first to open a conversation.
+kernel-err-host-no-window = A conversation with your model opens in a window.
 kernel-err-instructions-changed = The agent's instructions changed since the last session: reopen the panel to review them.
 kernel-err-instructions-io = Could not read or restore the agent's instructions: { $error }
 kernel-replay-not-found = Replay impossible: run not found

@@ -19,6 +19,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { declarationWidget, writeWidget } from "./helpers/home.js";
 import { FakeBridge } from "../src/mcp/fake-bridge.js";
+import { HOST_AGENT_TOOLS } from "../src/mcp/host-agent.js";
+import { LABELS } from "../src/mask/table.js";
 import { tempFolder } from "./helpers/temp.js";
 import { fakeRunner } from "./helpers/fake-runner.js";
 import type { InstructionChange } from "../src/workspace/instructions.js";
@@ -1301,5 +1303,82 @@ describe("pipe transport", () => {
     } finally {
       start.mockRestore();
     }
+  });
+});
+
+describe("host session", () => {
+  test("host session starts nothing in the workshop", async () => {
+    const n = await createReady();
+    const spies = (["ensureStarted", "secureNetwork", "stopAgentProcesses", "sessionCommand"] as const).map((m) => vi.spyOn(Workshop.prototype, m));
+    try {
+      const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+      expect(launch.url).toBe(`http://127.0.0.1:${n.mcpPort}/mcp`);
+      for (const s of spies) expect(s).not.toHaveBeenCalled();
+      await launch.stop();
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
+  });
+
+  test("host session refuses without a window", async () => {
+    const n = await createReady();
+    await expect(n.openHostSession({ window: "", resume: false, agent: "Votre modèle" })).rejects.toThrow();
+  });
+
+  test("host session token lists only HOST_AGENT_TOOLS", async () => {
+    // Every tool on: the bridge has history, bookmarks and search, so the scope alone trims the list.
+    const n = await createReady(() => "fr", { bridge: new FakeBridge([], { active: null, allow: false, history: { results: [] }, bookmarks: [], search: {} }) });
+    const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+    const c = new Client({ name: "test", version: "0" });
+    await c.connect(new StreamableHTTPClientTransport(new URL(launch.url), { requestInit: { headers: { Authorization: `Bearer ${launch.token}` } } }));
+    try {
+      expect((await c.listTools()).tools.map((t) => t.name).sort()).toEqual([...HOST_AGENT_TOOLS].sort());
+    } finally {
+      await c.close();
+      await launch.stop();
+    }
+  });
+
+  test("host session masks with its own table", async () => {
+    const n = await createReady();
+    const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+    const value = "camille.aubrac@example.org";
+    const masked = n.masker.maskTypedFor(launch.sessionId, value).text;
+    expect(masked).not.toContain(value);
+    const label = [...masked.matchAll(LABELS)][0]![0];
+    expect(masked.replace(label, n.masker.lookupForSession(launch.sessionId, label)!.value)).toBe(value);
+    expect(n.masker.lookupForSession(null, label)).toBeNull();
+    await launch.stop();
+  });
+
+  test("host session resets the policy and forgets typed text unless resuming", async () => {
+    const n = await createReady();
+    const reset = vi.spyOn(n.policy, "reset");
+    const forget = vi.spyOn(n.outflow, "forgetTyped");
+    const a = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(forget).toHaveBeenCalledWith("w");
+    await a.stop();
+    forget.mockClear();
+    const b = await n.openHostSession({ window: "w", resume: true, agent: "Votre modèle" });
+    expect(reset).toHaveBeenCalledTimes(2);
+    expect(forget).not.toHaveBeenCalled();
+    await b.stop();
+  });
+
+  test("a lift is refused while a host session is open; stop() ends it once", async () => {
+    const n = await createReady();
+    await mkdir(join(n.paths.internal, "sessions"), { recursive: true });
+    await n.workspaceLock.lock({ names: ["votre code"] });
+    const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
+    await expect(n.masking.lift({ choice: "quarantine" })).rejects.toThrow("Arrêtez la conversation pour lever le verrou");
+    const close = vi.spyOn(n.masker, "close");
+    await launch.stop();
+    await launch.stop();
+    launch.ended();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect((await fetch(launch.url, { method: "POST", headers: { Authorization: `Bearer ${launch.token}` } })).status).toBe(401);
+    await n.masking.lift({ choice: "quarantine" });
+    expect(n.workspaceLock.locked()).toBe(false);
   });
 });

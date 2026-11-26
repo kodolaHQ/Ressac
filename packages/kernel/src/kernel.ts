@@ -29,6 +29,7 @@ import { changedFileDiff, changedFiles, liftWorkspace, listQuarantine, restoreQu
 import type { DiffFile } from "./review/repo.js";
 import { CoveredConversations } from "./mask/covered.js";
 import { readSites, readTweaks, tweaksHash } from "./sites/read.js";
+import { HOST_AGENT_TOOLS } from "./mcp/host-agent.js";
 import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow, type AgentActivity } from "./mcp/server.js";
 import { createRecaps, type Recaps } from "./recaps/recaps.js";
 import type { ProfileFiles } from "./mcp/devtools.js";
@@ -250,6 +251,19 @@ export interface LaunchSpec {
   stop(): Promise<void>;
 }
 
+/** A host session (`openHostSession`): the loop runs in the host and reaches the MCP server on the Mac, not the container's address. */
+export interface HostLaunch {
+  /** The masking table's key, as `LaunchSpec.sessionId`. */
+  sessionId: string;
+  url: string;
+  /** This session's own token, scoped to HOST_AGENT_TOOLS. */
+  token: string;
+  /** Closes the token and the masking table. Idempotent. */
+  ended(): void;
+  /** = `ended()`: nothing to kill. */
+  stop(): Promise<void>;
+}
+
 /** The actions: launched on demand, in their own queue, results and grants outside the workspace. */
 export interface KernelActions {
   list(): Promise<ReadAction[]>;
@@ -318,6 +332,8 @@ export interface Kernel {
   openAgentSession(o: AgentSessionOptions & { transport: "pipe" }): Promise<LaunchSpec>;
   /** A terminal running the CLI's own login in the workshop: no MCP, no window token, no masking (it runs no model). */
   openLoginSession(o: { cols: number; rows: number; program: "claude" | "codex" }): Promise<SessionAgent>;
+  /** A conversation whose loop runs in the host (« Votre modèle »): a window's token scoped to HOST_AGENT_TOOLS, its own masking, nothing in the workshop. */
+  openHostSession(o: { window: string; resume: boolean; agent: string }): Promise<HostLaunch>;
   /** Widgets of the home page, with their data and state (stored outside the workspace). */
   readHome(): Promise<HomeState>;
   watchHome(callback: () => void): () => Promise<void>;
@@ -993,6 +1009,35 @@ export async function createKernel(o: {
         opening--;
       }
     } as Kernel["openAgentSession"],
+    async openHostSession({ window: win, resume, agent }) {
+      // Never the main token: a host session always speaks for a window.
+      if (!win) throw new Error(say(loc(), "kernel-err-host-no-window"));
+      // The session part of openAgentSession (see its comments), without the workshop: no start, network, sweep, instruction review nor CLI.
+      while (lifting) await lifting.catch(() => {});
+      opening++;
+      try {
+        policy.reset();
+        search.reset();
+        if (!resume) outflow.forgetTyped(win);
+        const id = randomBytes(8).toString("hex");
+        const sessionToken = server.openSession(win, agent, id, "browser", HOST_AGENT_TOOLS);
+        // Covered: the transcript only ever held masked text.
+        masker.open(id, win);
+        let open = true;
+        const ended = () => {
+          if (!open) return;
+          open = false;
+          openSessions.delete(clean);
+          server.closeSession(sessionToken);
+          masker.close(id);
+        };
+        const clean = async () => ended();
+        openSessions.add(clean);
+        return { sessionId: id, url: `http://127.0.0.1:${server.port}/mcp`, token: sessionToken, ended, stop: clean };
+      } finally {
+        opening--;
+      }
+    },
     async openLoginSession({ cols, rows, program }) {
       // After the app's orphan sweep, which would kill it; the login runs no model, so it needs no window, token nor masking.
       const state = await workshopReady.catch(() => null).then(() => workshop.ensureStarted()).catch((e) => {

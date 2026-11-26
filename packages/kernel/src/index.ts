@@ -27,6 +27,7 @@ export * from "./mcp/asks.js";
 export * from "./search/sessions.js";
 export * from "./access/policy.js";
 export * from "./mcp/server.js";
+export { HOST_AGENT_TOOLS } from "./mcp/host-agent.js";
 export { Masker } from "./mask/masker.js";
 export { PassportStore } from "./mask/passport.js";
 export { WorkspaceLock } from "./mask/lock.js";
