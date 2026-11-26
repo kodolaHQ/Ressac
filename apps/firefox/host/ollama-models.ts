@@ -7,8 +7,6 @@ export type OllamaModels = { ok: true; models: { name: string; size?: string; cl
 
 const down = (): OllamaModels => ({ ok: false, error: hostSay("host-ollama-down") });
 
-export { macSideUrl };
-
 /** Where the relay (on the Mac) forwards an Ollama session: Claude Code appends /v1/messages, Codex appends /responses. */
 export const ollamaRelayTarget = (url: string, profile: "claude" | "codex"): string => (profile === "claude" ? withoutV1(macSideUrl(url)).replace(/\/$/, "") : withV1(macSideUrl(url)));
 

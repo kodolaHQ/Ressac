@@ -42,7 +42,7 @@ const { ChatStore } = await import("../core/agent/chat-store.ts");
 const { claudeEngine: claudeChat } = await import("../core/agent/chat/claude.ts");
 const { codexEngine: codexChat } = await import("../core/agent/chat/codex.ts");
 const { ownEngine: ownChat, STEP_MAX } = await import("../core/agent/chat/own.ts");
-const { checkOwnModel, isOnMac, ollamaClient, openAiClient, readOwnKey } = await import("./own-model.ts");
+const { checkOwnModel, ollamaClient, openAiClient, readOwnKey } = await import("./own-model.ts");
 const { cleanDraft, createChatSend, DRAFT_MAX } = await import("./chat-send.ts");
 const { createEngineHistory } = await import("./chat-history.ts");
 const { createLoginTerminals } = await import("./chat-login.ts");
@@ -73,7 +73,7 @@ const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { ollamaRelayTarget } = await import("./ollama-models.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
-const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DEFAULT_OWN_ENGINE, OwnEngineSchema, apiUrlProblem, MachineIdleSchema, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
+const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DEFAULT_OWN_ENGINE, OwnEngineSchema, apiUrlProblem, isOnMac, remoteHost, MachineIdleSchema, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
 const {
@@ -798,8 +798,16 @@ const decorated = (win: string, view: ChatView): ChatView => {
   const remote = view.summary.engine === "own" ? (ownOpens.get(id)?.remote ?? remoteOf(ownSetting)) : null;
   return { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}), ...(prefix ? { prefix } : {}), ...(terminalWindows.has(win) ? { advanced: true as const } : {}), ...(remote ? { remote } : {}) };
 };
-/** The own model's host when it is an API off this Mac (the chip's « en ligne », the composer's line); else null. An Ollama cloud model is known only once checked at open. */
-const remoteOf = (e: OwnEngine): string | null => (e.kind === "api" && e.apiUrl && !isOnMac(e.apiUrl) ? new URL(e.apiUrl).host : null);
+/** The own model's host when it is off this Mac (the chip's « en ligne », the composer's line); else null. An Ollama cloud model is known once checked (open or Réglages). */
+const remoteOf = (e: OwnEngine): string | null => (e.kind === "api" ? remoteHost(e.apiUrl) : checkedCloud?.setting === JSON.stringify(e) ? checkedCloud.host : null);
+/** The last check's Ollama cloud host, for the setting it checked: a paused discussion's chip shows it before the next open. */
+// shortcut: in memory only, a restart forgets it until the next check.
+let checkedCloud: { setting: string; host: string | null } | null = null;
+const checkOwn = async (e: OwnEngine): Promise<string | null> => {
+  const host = await checkOwnModel(e, { key: e.kind === "api" ? await readOwn() : null });
+  if (e.kind === "ollama") checkedCloud = { setting: JSON.stringify(e), host };
+  return host;
+};
 /** Own discussions opening or open, with the host their messages go to (the setting they opened with). */
 const ownOpens = new Map<string, { remote: string | null }>();
 const pushChat = (win: string, view: ChatView) => {
@@ -928,7 +936,7 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
   try {
     const n = await kernelReady();
     // The model may have become a cloud one since Réglages: the view names where its messages go.
-    mark.remote = await checkOwnModel(e, { key: e.kind === "api" ? await readOwn() : null });
+    mark.remote = await checkOwn(e);
     if (signal.aborted) throw new Error("closed");
     const raw = await n.openHostSession({ window: win, resume: (o.transcript?.length ?? 0) > 0, agent: hostSay("own-agent-name") });
     // Closed or ended: the view names the current setting again (the next open uses it).
@@ -1166,7 +1174,7 @@ const rpc = createRpc({
     "settings.ownCheck": aiOnly(async (_p: unknown) => {
       const e = ownSetting;
       try {
-        await checkOwnModel(e, { key: e.kind === "api" ? await readOwn() : null });
+        await checkOwn(e);
         return { ok: true as const, model: e.kind === "api" ? e.apiModel : e.ollamaModel };
       } catch (err) {
         return { ok: false as const, error: (err as Error).message };

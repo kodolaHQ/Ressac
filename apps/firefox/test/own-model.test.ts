@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { checkOwnModel, isOnMac, listOwnModels, ollamaBase, ollamaClient, openAiClient, resetOwnModelCache } from "../host/own-model";
+import { isOnMac, remoteHost } from "../shared/settings";
+import { checkOwnModel, listOwnModels, ollamaBase, ollamaClient, openAiClient, resetOwnModelCache } from "../host/own-model";
 import { DEFAULT_OWN_ENGINE, type OwnEngine } from "../shared/settings";
 
 const REFUSED = "Adresse refusée : pour une adresse hors de votre Mac, choisissez « API compatible OpenAI ».";
@@ -35,6 +36,13 @@ describe("isOnMac", () => {
   it("is true for loopback forms only", () => {
     for (const url of ["http://127.0.0.1:11434", "http://localhost:11434", "http://[::1]:11434", "http://host.docker.internal:11434", "http://localhost:8080/v1"]) expect(isOnMac(url), url).toBe(true);
     for (const url of ["https://api.deepseek.com/v1", "http://127.0.0.1.example.com", "not a url"]) expect(isOnMac(url), url).toBe(false);
+  });
+});
+
+describe("remoteHost", () => {
+  it("names the host off this Mac only", () => {
+    expect(remoteHost("https://api.deepseek.com/v1")).toBe("api.deepseek.com");
+    for (const url of ["http://localhost:8080/v1", "http://host.docker.internal:11434", "", "not a url"]) expect(remoteHost(url), url).toBeNull();
   });
 });
 

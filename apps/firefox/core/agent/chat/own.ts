@@ -18,11 +18,12 @@ const PRUNE_AT = 0.75 * CONTEXT_TOKENS;
 const CHARS_PER_TOKEN = 3.5;
 // Control characters except \t and \n.
 const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
-// No square bracket (nor look-alike, after NFKC) survives in a result: page text can never form a delimiter.
-const OPEN = /[\[⟦〚]/g;
-const CLOSE = /[\]⟧〛]/g;
+// No square bracket (nor look-alike: fullwidth, vertical, white) survives in a result: page text can never form a delimiter.
+// No NFKC: it would turn « 1½ » into « 11⁄2 » and « m² » into « m2 ».
+const OPEN = /[\[⟦〚［﹇]/g;
+const CLOSE = /[\]⟧〛］﹈]/g;
 /** Page-made text the model gets: no control character, no square bracket. */
-const sanitize = (s: string) => s.normalize("NFKC").replace(CONTROL, "").replace(OPEN, "(").replace(CLOSE, ")");
+const sanitize = (s: string) => s.replace(CONTROL, "").replace(OPEN, "(").replace(CLOSE, ")");
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const prompts = Object.values(OWN_PROMPTS);
@@ -157,8 +158,12 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
     }
 
     const messages: ModelMessage[] = [{ role: "system", content: t.system }];
+    /** The user's turns (not the results, also sent as user messages): where an exchange starts, for pruning. */
+    const turns = new WeakSet<ModelMessage>();
+    /** The running turn's question: pruning never goes past it. */
+    let current: ModelMessage | null = null;
     for (const i of transcript ?? []) {
-      if (i.kind === "user" && !i.unsent) messages.push({ role: "user", content: i.text });
+      if (i.kind === "user") turns.add(messages[messages.push({ role: "user", content: i.text }) - 1]!);
       // As the live loop stores its answers: a prose turn would teach the model to leave the format.
       else if (i.kind === "agent") messages.push({ role: "assistant", content: JSON.stringify({ action: "answer", text: i.text }) });
     }
@@ -178,13 +183,23 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
     };
 
     // The last reply's count leaves out the newest result: the 25 % above the threshold holds one (6000 characters).
+    // Old results go first, never the newest (the model must see what it just read); then the oldest whole exchanges,
+    // never the running turn, so a long discussion never overflows num_ctx or a small-context API.
     const prune = () => {
       let used = promptTokens ?? messages.reduce((n, m) => n + m.content.length, 0) / CHARS_PER_TOKEN;
-      while (used > PRUNE_AT && results.length) {
+      while (used > PRUNE_AT && results.length > 1) {
         const { msg, tool } = results.shift()!;
         const removed = t.removed(tool);
         used -= (msg.content.length - removed.length) / CHARS_PER_TOKEN;
         msg.content = removed;
+      }
+      while (used > PRUNE_AT && messages[1] && messages[1] !== current) {
+        do {
+          const m = messages.splice(1, 1)[0]!;
+          used -= m.content.length / CHARS_PER_TOKEN;
+          const r = results.findIndex((x) => x.msg === m);
+          if (r >= 0) results.splice(r, 1);
+        } while (messages[1] && messages[1] !== current && !turns.has(messages[1]));
       }
     };
 
@@ -212,7 +227,9 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
     };
 
     const run = async (text: string, ac: AbortController) => {
-      messages.push({ role: "user", content: (await tabLine(ac.signal)) + text });
+      current = { role: "user", content: (await tabLine(ac.signal)) + text };
+      turns.add(current);
+      messages.push(current);
       for (let step = 0; step < STEP_MAX; step++) {
         const a = await ask(ac.signal, step === STEP_MAX - 1);
         if (!a) return emit({ type: "turn_end", stopReason: "error", error: texts.badFormat });

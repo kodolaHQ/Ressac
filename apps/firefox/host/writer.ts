@@ -1,8 +1,7 @@
 import { CODEX_WRITER_MODEL, WRITER_TIMEOUT_MS, parseWriterJson, say, writerSystemPrompt, type Workshop, type WriterAgent } from "../../../packages/kernel/src/index.ts";
 import type { Writer } from "../../../packages/kernel/src/ai/writer.ts";
-import { apiUrlProblem, type ClaudeEngine, type CodexEngine } from "../shared/settings.ts";
+import { apiUrlProblem, macSideUrl, type ClaudeEngine, type CodexEngine } from "../shared/settings.ts";
 import { withoutV1 } from "./claude-engine.ts";
-import { macSideUrl } from "./ollama-models.ts";
 import { AGENT_ACCOUNTS, startedWithin } from "./settings.ts";
 
 const TTL_MS = 5 * 60_000;

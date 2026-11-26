@@ -1,15 +1,13 @@
 import { withoutV1 } from "./claude-engine.ts";
 import type { Keychain } from "./keychain.ts";
 import { hostSay } from "./locale.ts";
-import { apiUrlProblem, isOnMac, ollamaCloudHost, onMacUrl as onMac, type OwnEngine } from "../shared/settings.ts";
+import { apiUrlProblem, ollamaCloudHost, onMacUrl as onMac, remoteHost, type OwnEngine } from "../shared/settings.ts";
 
 export type ModelMessage = { role: "system" | "user" | "assistant"; content: string };
 /** One model reply for the loop (core/agent/chat/own.ts). `promptTokens`: the reply's own prompt count, null when absent. */
 export interface ModelClient {
   step(messages: ModelMessage[], schema: object, signal: AbortSignal): Promise<{ content: string; promptTokens: number | null }>;
 }
-
-export { isOnMac };
 
 /** The Ollama base for the host's requests: loopback only (`localhost` → 127.0.0.1), no trailing /v1 or slash. */
 export function ollamaBase(url: string): string {
@@ -216,7 +214,7 @@ export async function checkOwnModel(e: OwnEngine, o: { key: OwnKey | null; fetch
     const key = keyOrThrow(apiBase(e.apiUrl), o.key);
     const r = await apiPost(e, key, { model: e.apiModel, messages: [{ role: "user", content: "Reply OK." }] }, AbortSignal.timeout(15_000), o.fetch ?? fetch);
     if (!r.ok) throw r.error;
-    return isOnMac(e.apiUrl) ? null : new URL(e.apiUrl).host;
+    return remoteHost(e.apiUrl);
   }
   const res = await ollamaPost(e, "/api/show", { model: e.ollamaModel }, AbortSignal.timeout(5000), o.fetch ?? fetch);
   const shown = (await res.json().catch(() => null)) as { remote_host?: unknown; remote_model?: unknown } | null;

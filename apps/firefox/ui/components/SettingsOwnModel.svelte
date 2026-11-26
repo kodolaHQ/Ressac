@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { apiUrlProblem, DEFAULT_OWN_ENGINE, isOnMac, OwnEngineSchema, type OwnEngine } from "../../shared/settings";
+  import { apiUrlProblem, DEFAULT_OWN_ENGINE, OwnEngineSchema, remoteHost as remoteOf, type OwnEngine } from "../../shared/settings";
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import OllamaModelPicker from "./OllamaModelPicker.svelte";
@@ -53,7 +53,7 @@
   // The host's rule (shared): anything not on loopback is off this Mac. A saved apiUrl always parses.
   // An Ollama cloud model: the local Ollama forwards its messages to the model's host.
   let ollamaCloud = $state<string | null>(null);
-  const remoteHost = $derived(engine.kind === "api" ? (engine.apiUrl && !isOnMac(engine.apiUrl) ? new URL(engine.apiUrl).host : null) : ollamaCloud);
+  const remoteHost = $derived(engine.kind === "api" ? remoteOf(engine.apiUrl) : ollamaCloud);
 
   let keySaved = $state(false);
   let key = $state("");
