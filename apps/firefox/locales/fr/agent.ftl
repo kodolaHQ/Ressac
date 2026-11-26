@@ -131,10 +131,8 @@ agent-panel-mode-workshop = Atelier
 agent-panel-mode-workshop-title = Peut lancer des commandes : installer et lancer les applis de projet
 agent-panel-mode-workshop-lab = Atelier (labo)
 agent-panel-mode-workshop-lab-title = Demande le labo : Réglages › Agent
-agent-review-title = Les consignes de l'agent ont changé
-agent-review-intro = Depuis la dernière session, ces fichiers ont été modifiés, peut-être par une page que l'agent a lue.
-agent-review-created = nouveau
-agent-review-deleted = supprimé
+agent-review-title = Des réglages de l'agent ont changé
+agent-review-intro = Ces fichiers disent à l'agent comment se comporter. Une page qu'il a lue a pu essayer de les modifier : vérifiez que ce changement vient bien de vous.
 agent-review-too-long = Fichier trop long pour être affiché
 agent-review-too-many = Trop de fichiers pour être affichés
 agent-review-unreadable = Fichier illisible
@@ -145,8 +143,24 @@ agent-review-folded = ⋯ { $count ->
         [one] { $count } ligne
        *[other] { $count } lignes
     }
-agent-review-keep = Garder les changements
-agent-review-revert = Revenir à la version d'avant
+agent-review-keep = C'est moi, garder
+agent-review-revert = Annuler ces changements
+agent-review-keep-hint = Seulement si vous les avez modifiés vous-même.
+agent-review-revert-hint = Remet les fichiers comme avant. Sans risque.
+agent-review-detail-show = Voir le détail
+agent-review-detail-hide = Masquer le détail
+agent-review-files-count = { $count ->
+        [one] { $count } fichier
+       *[other] { $count } fichiers
+    }
+agent-review-name-instructions = Consignes de l'agent
+agent-review-name-override = Consignes prioritaires de l'agent
+agent-review-name-guide = Guide de l'agent
+agent-review-name-codex-instructions = Consignes de Codex
+agent-review-name-codex-config = Réglages de Codex
+agent-review-name-skill = Compétence « { $name } »
+agent-review-name-skills = Dossier des compétences
+agent-review-name-other = Autre fichier de l'agent
 
 ## Relecture
 

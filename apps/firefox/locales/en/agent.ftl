@@ -131,10 +131,8 @@ agent-panel-mode-workshop = Workshop
 agent-panel-mode-workshop-title = Can run commands: install and launch project apps
 agent-panel-mode-workshop-lab = Workshop (lab)
 agent-panel-mode-workshop-lab-title = Needs the lab: Settings › Agent
-agent-review-title = The agent's instructions changed
-agent-review-intro = Since the last session, these files were modified, perhaps by a page the agent read.
-agent-review-created = new
-agent-review-deleted = deleted
+agent-review-title = Some of the agent's settings changed
+agent-review-intro = These files tell the agent how to behave. A page it read may have tried to change them: check that this change really comes from you.
 agent-review-too-long = File too long to show
 agent-review-too-many = Too many files to show
 agent-review-unreadable = Unreadable file
@@ -145,8 +143,24 @@ agent-review-folded = ⋯ { $count ->
         [one] { $count } line
        *[other] { $count } lines
     }
-agent-review-keep = Keep the changes
-agent-review-revert = Go back to the previous version
+agent-review-keep = It was me, keep
+agent-review-revert = Undo these changes
+agent-review-keep-hint = Only if you changed them yourself.
+agent-review-revert-hint = Puts the files back as they were. Safe.
+agent-review-detail-show = See the details
+agent-review-detail-hide = Hide the details
+agent-review-files-count = { $count ->
+        [one] { $count } file
+       *[other] { $count } files
+    }
+agent-review-name-instructions = Agent instructions
+agent-review-name-override = Agent priority instructions
+agent-review-name-guide = Agent guide
+agent-review-name-codex-instructions = Codex instructions
+agent-review-name-codex-config = Codex settings
+agent-review-name-skill = Skill “{ $name }”
+agent-review-name-skills = Skills folder
+agent-review-name-other = Other agent file
 
 ## Review
 

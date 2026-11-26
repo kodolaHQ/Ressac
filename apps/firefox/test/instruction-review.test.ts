@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { foldLines, shownPath } from "../ui/components/instructionReview";
+import { fileName, foldLines, shownPath } from "../ui/components/instructionReview";
 
 const same = (n: number, from = 0) => Array.from({ length: n }, (_, i) => ({ kind: " " as const, text: `l${from + i}` }));
 
@@ -15,4 +15,17 @@ test("shownPath drops /workspace/ and shows the home as ~/", () => {
   expect(shownPath("/workspace/AGENTS.md")).toBe("AGENTS.md");
   expect(shownPath("/home/node/.claude/CLAUDE.md")).toBe("~/.claude/CLAUDE.md");
   expect(shownPath("/etc/x")).toBe("/etc/x");
+});
+
+test("fileName gives each watched file a plain name, the skill its folder name", () => {
+  expect(fileName("/workspace/AGENTS.md")).toEqual({ id: "agent-review-name-instructions" });
+  expect(fileName("/workspace/AGENTS.override.md")).toEqual({ id: "agent-review-name-override" });
+  expect(fileName("/workspace/guides/widgets.md")).toEqual({ id: "agent-review-name-guide" });
+  expect(fileName("/home/node/.codex/AGENTS.md")).toEqual({ id: "agent-review-name-codex-instructions" });
+  expect(fileName("/home/node/.codex/config.toml")).toEqual({ id: "agent-review-name-codex-config" });
+  expect(fileName("/workspace/.codex/config.toml")).toEqual({ id: "agent-review-name-codex-config" });
+  expect(fileName("/home/node/.codex/skills/pdf/scripts/run.py")).toEqual({ id: "agent-review-name-skill", args: { name: "pdf" } });
+  expect(fileName("/home/node/.codex/skills/.system/imagegen/SKILL.md")).toEqual({ id: "agent-review-name-skill", args: { name: "imagegen" } });
+  expect(fileName("/workspace/.agents/skills")).toEqual({ id: "agent-review-name-skills" });
+  expect(fileName("/workspace/.codex/hooks.json")).toEqual({ id: "agent-review-name-other" });
 });

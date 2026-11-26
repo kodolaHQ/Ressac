@@ -465,6 +465,22 @@ it("agent quits → Relancer starts a new one", async () => {
   await waitUi(m, "return !doc.querySelector('[data-testid=\"agent-panel\"]').textContent.includes(\"L'agent s'est arrêté.\")", [], 10_000, "agent");
 });
 
+/** RESSAC_E2E_SHOTS: the window as it looks, light then dark, to a folder (a look, not a check). */
+async function shot(name: string): Promise<void> {
+  const dir = process.env.RESSAC_E2E_SHOTS;
+  if (!dir) return;
+  try {
+    for (const [theme, dark] of [["light", 0], ["dark", 1]] as const) {
+      await m.execute(`Services.prefs.setIntPref('ui.systemUsesDarkTheme', ${dark});`);
+      await new Promise((r) => setTimeout(r, 800));
+      const png = (await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value;
+      writeFileSync(join(dir, `${name}-${theme}.png`), Buffer.from(png, "base64"));
+    }
+  } finally {
+    await m.execute("Services.prefs.clearUserPref('ui.systemUsesDarkTheme');");
+  }
+}
+
 it("a changed AGENTS.md shows the review card; Revenir restores it and the agent starts", async () => {
   await launch();
   await homeAgent();
@@ -476,8 +492,12 @@ it("a changed AGENTS.md shows the review card; Revenir restores it and the agent
   await send("quit");
   await panelShows("L'agent s'est arrêté.", 10_000);
   await click(m, "button", { text: "Relancer", frame: "agent" });
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"agent-review\"]')", [], 20_000, "agent");
+  await waitUi(m, "return doc.querySelector('[data-testid=\"agent-review-row\"]')?.textContent.includes(\"Consignes de l'agent\")", [], 20_000, "agent");
+  await shot("instruction-review");
+  // The diff waits behind « Voir le détail ».
+  await click(m, '[data-testid="agent-review-detail"]', { frame: "agent" });
   await waitUi(m, "return doc.querySelector('[data-testid=\"agent-review\"]').textContent.includes('PLANTED INSTRUCTION')", [], 10_000, "agent");
+  await shot("instruction-review-detail");
   await click(m, '[data-testid="agent-review-revert"]', { frame: "agent" });
   await terminalShows("fake agent ready>");
   expect(read(file)).toBe(before);
