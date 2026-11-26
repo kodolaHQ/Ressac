@@ -42,7 +42,7 @@ export const AGENT_CLIS: Record<
 };
 
 /** The machine image's size in bytes (VM_IMAGE.bytes). */
-export const VM_IMAGE_BYTES = 530054536;
+export const VM_IMAGE_BYTES = 275203713;
 
 /** A download size in MB rounded to tens, as the welcome says it (« environ 170 Mo »). */
 export const aboutMb = (bytes: number): number => Math.round(bytes / 1e7) * 10;

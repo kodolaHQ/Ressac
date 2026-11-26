@@ -313,7 +313,7 @@ describe("the workshop machine", () => {
   });
 
   it("an older guest on the image's Alpine branch and setup is upgraded detached in the guest: the boot never waits for apk nor cuts it", async () => {
-    const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-3fb8195081b7", upgradedTo: "3.24.3-5.8.10-3fb8195081b7" });
+    const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-080782491c00", upgradedTo: "3.24.3-5.8.11-080782491c00" });
     const delays: (number | undefined)[] = [];
     const run: Runner = (cmd, args, o) => (String(o?.input ?? "").includes("apk upgrade") && delays.push(o?.delayMs), w.run(cmd, args, o));
     const m = machine(w, { run });
@@ -322,7 +322,7 @@ describe("the workshop machine", () => {
     const job = w.s.calls.filter((c) => c.args.join(" ") === "shell --workdir / ressac sudo sh" && String(c.input ?? "").includes("apk upgrade"));
     expect(job).toHaveLength(1);
     expect(delays).toEqual([120_000]); // any shell call's default: it only launches the job
-    expect(w.s.guestVersion).toBe("3.24.3-5.8.10-3fb8195081b7"); // the mark as apk left it
+    expect(w.s.guestVersion).toBe("3.24.3-5.8.11-080782491c00"); // the mark as apk left it
     await m.stop();
     await m.wake("user");
     expect(delays).toHaveLength(2); // still short of the image: launched again at the next boot
@@ -331,7 +331,7 @@ describe("the workshop machine", () => {
   it("a guest on another Alpine branch, another setup, or newer than the image is not upgraded: it boots as it is", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      for (const guestVersion of ["3.23.9-5.8.10-3fb8195081b7", "3.24.4-5.8.10-000000000000", "3.24.9-5.9.0-3fb8195081b7"]) {
+      for (const guestVersion of ["3.23.9-5.8.10-080782491c00", "3.24.4-5.8.10-000000000000", "3.24.9-5.9.0-080782491c00"]) {
         const w = world({ instance: { status: "Stopped" }, guestVersion });
         const m = machine(w);
         await m.wake("user");
@@ -844,7 +844,7 @@ describe("the workshop machine", () => {
   it("a Podman that never answers after a cut upgrade is healed once by apk, then the boot goes on", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     try {
-      const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-3fb8195081b7", brokenPodman: true });
+      const w = world({ instance: { status: "Stopped" }, guestVersion: "3.24.0-5.8.0-080782491c00", brokenPodman: true });
       let done = false;
       const p = machine(w).wake("user").finally(() => (done = true));
       while (!done) await vi.advanceTimersByTimeAsync(1000);
