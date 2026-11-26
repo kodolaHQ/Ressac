@@ -21,13 +21,15 @@ afterEach(async () => {
 
 type Reply = string | { content: string; promptTokens: number | null } | (() => Promise<{ content: string; promptTokens: number | null }>);
 
-async function start(o: { replies: Reply[]; results?: (name: string) => string; transcript?: ChatItem[]; call?: McpLike["call"]; activeTab?: () => Promise<{ text: string; isError: boolean }> }) {
+async function start(o: { replies: Reply[]; results?: (name: string) => string; transcript?: ChatItem[]; call?: McpLike["call"]; activeTab?: () => Promise<{ text: string; isError: boolean }>; fills?: () => boolean }) {
   const requests: ModelMessage[][] = [];
+  const schemas: object[] = [];
   const signals: AbortSignal[] = [];
   const replies = [...o.replies];
   const model = {
-    step: vi.fn(async (messages: ModelMessage[], _schema: object, signal: AbortSignal) => {
+    step: vi.fn(async (messages: ModelMessage[], schema: object, signal: AbortSignal) => {
       requests.push(messages.map((m) => ({ ...m })));
+      schemas.push(schema);
       signals.push(signal);
       const r = replies.shift();
       if (r === undefined) throw new Error("no scripted reply");
@@ -44,7 +46,7 @@ async function start(o: { replies: Reply[]; results?: (name: string) => string; 
         : (o.call ?? (async (n, a) => (calls.push({ name: n, args: a }), { text: o.results?.(n) ?? `ok ${n}`, isError: false })))(name, args, signal),
     close: vi.fn(async () => {}),
   };
-  const launch = { sessionId: "s1", url: "", token: "", ended: vi.fn(), stop: vi.fn(async () => {}) };
+  const launch = { sessionId: "s1", url: "", token: "", setFill: vi.fn(), ended: vi.fn(), stop: vi.fn(async () => {}) };
   const conv = await ownEngine.open({
     launch,
     signal: new AbortController().signal,
@@ -53,6 +55,7 @@ async function start(o: { replies: Reply[]; results?: (name: string) => string; 
     locale: "fr",
     texts,
     mcp: async () => mcp,
+    fills: o.fills ?? (() => false),
     ...(o.transcript ? { transcript: o.transcript } : {}),
   });
   open.push(conv);
@@ -63,7 +66,7 @@ async function start(o: { replies: Reply[]; results?: (name: string) => string; 
     await expect.poll(() => turnEnds().length).toBe(n);
     return turnEnds()[n - 1]!;
   };
-  return { conv, model, requests, signals, calls, mcp, launch, updates, turnEnd };
+  return { conv, model, requests, schemas, signals, calls, mcp, launch, updates, turnEnd };
 }
 
 test("a tool step then an answer", async () => {
@@ -118,6 +121,52 @@ test("ids, urls and hand_over's reason or kind are never guessed", () => {
   expect(parseAction('{"action":"read_tab","text":"t1"}')).toEqual({ action: "read_tab", args: {} });
   expect(parseAction('{"action":"open_tab","text":"https://a.test/"}')).toEqual({ action: "open_tab", args: {} });
   expect(parseAction('{"action":"hand_over","id":"s1"}')).toEqual({ action: "hand_over", args: { id: "s1" } });
+});
+
+const enumOf = (schema: object) => (schema as { properties: { action: { enum: string[] } } }).properties.action.enum;
+const FILL = '{"action":"fill_field","id":"t1","field":2,"passport":"email","url":"https://x.test/"}';
+
+test("a model on this Mac gets no fill_field: not in its schema nor its prompt, refused when it writes one", async () => {
+  const s = await start({ replies: [FILL, FILL] });
+  s.conv.prompt("Remplis mon email");
+  expect(await s.turnEnd()).toEqual({ type: "turn_end", stopReason: "error", error: texts.badFormat });
+  expect(s.calls).toEqual([]);
+  expect(enumOf(s.schemas[0]!)).not.toContain("fill_field");
+  expect(s.requests[0]![0]).toEqual({ role: "system", content: fr.system });
+  expect(fr.system).not.toContain("fill_field");
+  expect(parseAction(FILL)).toBeNull();
+});
+
+test("a model off this Mac fills: fill_field in its schema and prompt, only its fields passed, its line titled as Claude's", async () => {
+  const s = await start({ fills: () => true, replies: [FILL, '{"action":"fill_field","id":"t1","field":0,"saved_login":false,"value":"Lyon"}', '{"action":"answer","text":"Rempli."}'] });
+  s.conv.prompt("Remplis mon email");
+  expect(await s.turnEnd()).toEqual({ type: "turn_end", stopReason: "end_turn" });
+  expect(s.calls).toEqual([
+    { name: "fill_field", args: { id: "t1", field: 2, passport: "email" } },
+    // false is no saved login: the kernel takes only true.
+    { name: "fill_field", args: { id: "t1", field: 0, value: "Lyon" } },
+  ]);
+  expect(enumOf(s.schemas[0]!)).toContain("fill_field");
+  expect(s.requests[0]![0]).toEqual({ role: "system", content: fr.systemFill });
+  expect(fr.systemFill).toContain("fill_field");
+  expect(en.systemFill).toContain("fill_field");
+  expect(fr.systemFill).not.toContain("ne remplis rien");
+  expect(s.updates.find((u) => u.type === "tool_call")).toMatchObject({ title: "Remplit le formulaire", kind: "edit" });
+  expect(parseAction('{"action":"fill_field","id":"t1","field":-1,"value":"x"}', true)).toBeNull();
+  expect(parseAction('{"action":"fill_field","id":"t1","field":0,"passport":"mot_de_passe"}', true)).toBeNull();
+});
+
+test("a switch to a model on this Mac takes fill_field away from the next turn", async () => {
+  let fills = true;
+  const s = await start({ fills: () => fills, replies: ['{"action":"answer","text":"un"}', FILL, FILL] });
+  s.conv.prompt("un");
+  await s.turnEnd();
+  fills = false;
+  s.conv.prompt("Remplis mon email");
+  expect(await s.turnEnd(2)).toEqual({ type: "turn_end", stopReason: "error", error: texts.badFormat });
+  expect(s.calls).toEqual([]);
+  expect(enumOf(s.schemas[1]!)).not.toContain("fill_field");
+  expect(s.requests[1]![0]).toEqual({ role: "system", content: fr.system });
 });
 
 test("fields outside the action's table never reach the tool", async () => {
@@ -357,9 +406,9 @@ test("close aborts the turn and stops the launch once", async () => {
 });
 
 test("a failed connection stops the launch and keeps its own error", async () => {
-  const launch = { sessionId: "s", url: "", token: "", ended: vi.fn(), stop: vi.fn(async () => Promise.reject(new Error("stop failed"))) };
+  const launch = { sessionId: "s", url: "", token: "", setFill: vi.fn(), ended: vi.fn(), stop: vi.fn(async () => Promise.reject(new Error("stop failed"))) };
   await expect(
-    ownEngine.open({ launch, signal: new AbortController().signal, model: { step: vi.fn() }, locale: "en", texts, mcp: () => Promise.reject(new Error("refused")) }),
+    ownEngine.open({ launch, signal: new AbortController().signal, model: { step: vi.fn() }, locale: "en", texts, fills: () => false, mcp: () => Promise.reject(new Error("refused")) }),
   ).rejects.toThrow("refused");
   expect(launch.stop).toHaveBeenCalledTimes(1);
 });
@@ -370,7 +419,7 @@ test("connectMcp: the session token, the allowlist, and calls that wait keep ali
   const spy = vi.spyOn(Client.prototype, "callTool");
   try {
     const token = server.openSession("F1", "Votre modèle", "s1", "browser", HOST_AGENT_TOOLS);
-    const launch: HostLaunch = { sessionId: "s1", url: `http://127.0.0.1:${server.port}/mcp`, token, ended() {}, stop: async () => {} };
+    const launch: HostLaunch = { sessionId: "s1", url: `http://127.0.0.1:${server.port}/mcp`, token, setFill() {}, ended() {}, stop: async () => {} };
     const mcp = await connectMcp(launch);
     const ac = new AbortController();
     expect(await mcp.call("list_tabs", {}, ac.signal)).toMatchObject({ isError: false, text: expect.stringContaining("t1 ·") });

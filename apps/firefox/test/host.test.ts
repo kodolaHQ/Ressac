@@ -1323,6 +1323,46 @@ describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
     }
   });
 
+  it("own fill: a cloud model gets fill_field, a switch to a model on this Mac takes it away from the next message", async () => {
+    const { createServer } = await import("node:http");
+    const asked: { model: string; actions: string[]; system: string }[] = [];
+    const ollama = createServer((req, res) => {
+      let body = "";
+      req.on("data", (d) => (body += d)).on("end", () => {
+        if (req.url === "/api/chat") {
+          const b = JSON.parse(body) as { model: string; format: { properties: { action: { enum: string[] } } }; messages: { content: string }[] };
+          asked.push({ model: b.model, actions: b.format.properties.action.enum, system: b.messages[0]!.content });
+        }
+        const reply =
+          req.url === "/api/chat"
+            ? { message: { content: '{"action":"answer","text":"ok"}' } }
+            : req.url === "/api/tags"
+              ? { models: [{ name: "qwen3" }, { name: "gpt-oss:120b-cloud", remote_host: "https://ollama.com:443" }] }
+              : { details: {} };
+        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(reply));
+      });
+    });
+    await new Promise<void>((r) => ollama.listen(0, "127.0.0.1", r));
+    try {
+      const { h, views } = await ownHost();
+      const port = (ollama.address() as { port: number }).port;
+      await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: `http://127.0.0.1:${port}`, ollamaModel: "gpt-oss:120b-cloud" }) });
+      const c = (await h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "own" })) as View;
+      const answers = () => views.filter((v) => v.view.summary.id === c.summary.id).at(-1)?.view.items.filter((i) => i.kind === "agent").length ?? 0;
+      await h.rpc.request("chat.send", { window: "f1", draft: { text: "un" } });
+      await until(() => answers() === 1);
+      expect(await h.rpc.request("chat.model", { window: "f1", model: "qwen3" })).toMatchObject({ ok: true });
+      await h.rpc.request("chat.send", { window: "f1", draft: { text: "deux" } });
+      await until(() => answers() === 2);
+      expect(asked.map((a) => [a.model, a.actions.includes("fill_field"), a.system.includes("fill_field")])).toEqual([
+        ["gpt-oss:120b-cloud", true, true],
+        ["qwen3", false, false],
+      ]);
+    } finally {
+      ollama.close();
+    }
+  });
+
   it("chat model, own: « en ligne » shows wherever a message may go, through a switch during the open or the turn", async () => {
     const { createServer } = await import("node:http");
     const asked: string[] = [];

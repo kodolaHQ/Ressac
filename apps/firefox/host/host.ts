@@ -1022,6 +1022,8 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
     if (ownOpens.get(o.chatId) === mark) ownOpens.delete(o.chatId);
   };
   let launch: HostLaunch;
+  /** fill_field for the model the next turn uses: only one off this Mac, from the host's own check of it (never the model's word). */
+  let fill = false;
   try {
     const n = await kernelReady();
     // The model may have become a cloud one since Réglages: the view names where its messages go.
@@ -1029,7 +1031,8 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
     // A switch made meanwhile (switchOwnModel) owns the mark: this answer is the old model's.
     if (!mark.next) mark.remote = checked;
     if (signal.aborted) throw new Error("closed");
-    const raw = await n.openHostSession({ window: win, resume: (o.transcript?.length ?? 0) > 0, agent: hostSay("own-agent-name") });
+    fill = checked !== null;
+    const raw = await n.openHostSession({ window: win, resume: (o.transcript?.length ?? 0) > 0, agent: hostSay("own-agent-name"), fill });
     // Closed or ended: the view names the current setting again (the next open uses it).
     launch = { ...raw, ended: () => (raw.ended(), forget()), stop: () => (forget(), raw.stop()) };
   } catch (err) {
@@ -1048,6 +1051,7 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
       locale: hostLocale() === "en" ? "en" : "fr",
       ...(o.transcript ? { transcript: o.transcript } : {}),
       texts: { badFormat: hostSay("own-bad-format"), steps: hostSay("own-steps", { count: STEP_MAX }), timeout: hostSay("own-timeout") },
+      fills: () => fill,
     });
     // A model picked in the chat (switchOwnModel): from the next message, the same conversation and history.
     const prompt = conversation.prompt;
@@ -1055,6 +1059,9 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
       if (mark.next) {
         [current, mark.next, mark.remote] = [client(mark.next), undefined, mark.nextRemote ?? null];
         mark.nextRemote = undefined;
+        // Before the turn starts: a model on this Mac loses fill_field from its first step.
+        fill = mark.remote !== null;
+        launch.setFill(fill);
       }
       prompt(text);
     };

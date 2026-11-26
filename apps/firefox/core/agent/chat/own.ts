@@ -1,10 +1,11 @@
 // The « Votre modèle » engine: a loop in the host. The model picks one action per step under a JSON schema; the loop calls
-// that tool on the kernel's MCP server with the session's own token (the server checks it again against HOST_AGENT_TOOLS).
+// that tool on the kernel's MCP server with the session's own token (the server checks it again against HOST_AGENT_TOOLS,
+// plus HOST_FILL_TOOLS while the host says the model runs off this Mac).
 // Model text is never executed: it is parsed as JSON, its action must be in the enum, its fields picked from a table.
 import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { HOST_AGENT_TOOLS, type HostLaunch } from "@ressac/kernel";
+import { HOST_AGENT_TOOLS, HOST_FILL_TOOLS, PASSPORT_KINDS, type HostLaunch } from "@ressac/kernel";
 import type { ChatItem } from "../../../shared/chat";
 import type { ModelClient, ModelMessage } from "../../../host/own-model";
 import { engineEvents, openedTab, toolTitle, type ChatEngine, type EngineConversation } from "./engine";
@@ -60,6 +61,21 @@ export const ACTION_SCHEMA = {
   required: ["action"],
 } as const;
 
+/** ACTION_SCHEMA plus fill_field and its fields (`also` left out: one field per call), for a model off this Mac. */
+export const FILL_SCHEMA = {
+  ...ACTION_SCHEMA,
+  properties: {
+    ...ACTION_SCHEMA.properties,
+    action: { type: "string", enum: [...HOST_AGENT_TOOLS, ...HOST_FILL_TOOLS, "answer"] },
+    field: { type: "integer", minimum: 0 },
+    value: { type: "string" },
+    passport: { type: "string", enum: PASSPORT_KINDS },
+    saved_login: { type: "boolean" },
+    check: { type: "boolean" },
+    option: { type: "integer", minimum: 0 },
+  },
+} as const;
+
 /** The fields each action passes on; anything else the model writes is dropped. */
 const FIELDS: Record<string, string[]> = {
   current_page: [],
@@ -73,18 +89,19 @@ const FIELDS: Record<string, string[]> = {
   search_history: ["query", "limit"],
   read_history: ["url"],
   search_bookmarks: ["query", "limit"],
+  fill_field: ["id", "field", "value", "passport", "saved_login", "check", "option"],
   answer: ["text"],
 };
 
 const fieldOk = (name: string, v: unknown): boolean => {
-  const p = ACTION_SCHEMA.properties[name as keyof typeof ACTION_SCHEMA.properties] as { type: string; enum?: readonly string[]; minimum?: number };
+  const p = FILL_SCHEMA.properties[name as keyof typeof FILL_SCHEMA.properties] as { type: string; enum?: readonly string[]; minimum?: number };
   if (p.type === "integer") return Number.isInteger(v) && (p.minimum === undefined || (v as number) >= p.minimum);
   if (p.type === "array") return Array.isArray(v) && v.every((x) => typeof x === "string");
   return typeof v === p.type && (!p.enum || p.enum.includes(v as string));
 };
 
-/** The action and its arguments, or null when the reply is not exactly one valid JSON action (fences and prose fail). */
-export function parseAction(content: string): { action: string; args: Record<string, unknown> } | null {
+/** The action and its arguments, or null when the reply is not exactly one valid JSON action (fences and prose fail); fill_field only with `fill`. */
+export function parseAction(content: string, fill = false): { action: string; args: Record<string, unknown> } | null {
   let o: unknown;
   try {
     o = JSON.parse(content.trim());
@@ -94,7 +111,7 @@ export function parseAction(content: string): { action: string; args: Record<str
   if (!o || typeof o !== "object" || Array.isArray(o)) return null;
   const r = o as Record<string, unknown>;
   const fields = typeof r.action === "string" && Object.hasOwn(FIELDS, r.action) ? FIELDS[r.action]! : null;
-  if (!fields) return null;
+  if (!fields || (r.action === "fill_field" && !fill)) return null;
   const args: Record<string, unknown> = {};
   for (const f of fields) {
     if (r[f] === undefined || r[f] === null) continue;
@@ -102,6 +119,8 @@ export function parseAction(content: string): { action: string; args: Record<str
     args[f] = r[f];
   }
   if (r.action === "answer" && typeof args.text !== "string") return null;
+  // The kernel takes saved_login: true only; false is no saved login.
+  if (args.saved_login === false) delete args.saved_login;
   // A small model puts the search words in another field: query takes the model's own text (search_web: or its goal).
   // Ids, urls, hand_over's reason and kind are never guessed: the kernel refuses them and the model sees why.
   if (fields.includes("query") && !(typeof args.query === "string" && args.query.trim())) {
@@ -143,12 +162,14 @@ export interface OwnOpen {
   /** Host texts (own-bad-format, own-steps, own-timeout). */
   texts: { badFormat: string; steps: string; timeout: string };
   mcp?: (l: HostLaunch) => Promise<McpLike>;
+  /** Whether the model this turn uses runs off this Mac, read at each turn: the host decides it and sets the token's tools to match. */
+  fills: () => boolean;
 }
 
 export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
   id: "own",
 
-  async open({ launch, signal, tabTitle, model, locale, transcript, texts, mcp: connect }): Promise<EngineConversation> {
+  async open({ launch, signal, tabTitle, model, locale, transcript, texts, mcp: connect, fills }): Promise<EngineConversation> {
     const events = engineEvents(launch);
     const { emit } = events;
     const t = OWN_PROMPTS[locale];
@@ -165,6 +186,8 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
     }
 
     const messages: ModelMessage[] = [{ role: "system", content: t.system }];
+    /** This turn's: fill_field in the schema, the prompt and parseAction only for a model off this Mac. */
+    let fill = false;
     /** The user's turns (not the results, also sent as user messages): where an exchange starts, for pruning. */
     const turns = new WeakSet<ModelMessage>();
     /** The running turn's question: pruning never goes past it. */
@@ -213,16 +236,17 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
     /** One model call, with one correction retry when the reply is not a valid action. */
     const ask = async (s: AbortSignal, last: boolean) => {
       prune();
+      const schema = fill ? FILL_SCHEMA : ACTION_SCHEMA;
       const asked = last ? [...messages.slice(0, -1), { ...messages.at(-1)!, content: `${messages.at(-1)!.content}\n\n${t.lastStep}` }] : messages;
-      const first = await model.step(asked, ACTION_SCHEMA, s);
+      const first = await model.step(asked, schema, s);
       s.throwIfAborted(); // a client that answered after cancel
       promptTokens = first.promptTokens;
-      const a = parseAction(first.content);
+      const a = parseAction(first.content, fill);
       if (a) return { ...a, content: first.content };
-      const again = await model.step([...asked, { role: "assistant", content: first.content }, { role: "user", content: t.correction }], ACTION_SCHEMA, s);
+      const again = await model.step([...asked, { role: "assistant", content: first.content }, { role: "user", content: t.correction }], schema, s);
       s.throwIfAborted();
       promptTokens = again.promptTokens;
-      const b = parseAction(again.content);
+      const b = parseAction(again.content, fill);
       return b && { ...b, content: again.content };
     };
 
@@ -234,6 +258,8 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
     };
 
     const run = async (text: string, ac: AbortController) => {
+      fill = fills();
+      messages[0] = { role: "system", content: fill ? t.systemFill : t.system };
       current = { role: "user", content: (await tabLine(ac.signal)) + text };
       turns.add(current);
       messages.push(current);
