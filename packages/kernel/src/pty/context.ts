@@ -100,3 +100,14 @@ export function handOffText(question: string, shown: { url: string; title: strin
   const pages = shown.map((h) => ({ title: truncate(clean(h.title), DATA_LENGTH), url: truncate(clean(h.url), URL_LENGTH), date: clean(h.lastVisit).slice(0, 10) }));
   return `${q} — ${clean(note)} ${JSON.stringify(pages)}`;
 }
+
+/**
+ * What a chat message adds for the tabs and pages the user pointed with @: the note, then each one as JSON data (titles are
+ * untrusted, never instructions), on the message's last line. `tab`: the id the agent's tab tools take; none for a page of
+ * the history or the bookmarks.
+ */
+export function referencesText(refs: { tab?: string; title: string; url: string }[], note: string): string {
+  if (!refs.length) return "";
+  const data = refs.map((r) => ({ ...(r.tab ? { tab: r.tab } : {}), title: truncate(clean(r.title), TITLE_LENGTH), url: truncate(clean(r.url), URL_LENGTH) }));
+  return ` — ${clean(note)} ${JSON.stringify(data)}`;
+}

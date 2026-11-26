@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { appPrefix, contextPrefix, handOffText, remarksPrefix } from "../../src/pty/context.js";
+import { appPrefix, contextPrefix, handOffText, referencesText, remarksPrefix } from "../../src/pty/context.js";
 import type { Batch } from "../../src/design/remarks.js";
 
 test("exact prefix", () => {
@@ -206,4 +206,11 @@ test("handOffText: a DEL or U+2028 in a URL or a date is cleaned, the URL cut", 
   const [page] = JSON.parse(t.slice("q — n : ".length));
   expect(page.url).toBe(`${`https://x.test/a b c${"u".repeat(400)}`.slice(0, 300)}…`);
   expect(page.date).toBe("2026 -11-1");
+});
+
+test("referencesText: the pages the user pointed with @, after the note, as one line of JSON data", () => {
+  expect(referencesText([], "n :")).toBe("");
+  const t = referencesText([{ tab: "t1", title: "Boîte\u2028 de réception", url: "https://mail.example/" }, { title: "Recette", url: "https://cuisine.example/x" }], "Pages citées :");
+  expect(t).toBe(' — Pages citées : [{"tab":"t1","title":"Boîte de réception","url":"https://mail.example/"},{"title":"Recette","url":"https://cuisine.example/x"}]');
+  expect(t).not.toMatch(/[\n\r]/);
 });
