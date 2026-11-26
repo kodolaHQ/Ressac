@@ -11,8 +11,9 @@
   /**
    * The window's active discussion in the agent panel (the agent view « Discussion »): its thread, the panel's states
    * (`status`: preparing, build step, review card) above the composer, or the login card while its engine is signed out.
+   * `profiles` and `onAdvanced` go to the composer's /agent and /terminal.
    */
-  let { status, openSettings }: { status?: Snippet; openSettings: () => void } = $props();
+  let { status, openSettings, profiles, onAdvanced }: { status?: Snippet; openSettings: () => void; profiles?: { id: string; name: string }[]; onAdvanced?: () => void } = $props();
   let composer = $state<ReturnType<typeof ChatComposer>>();
   const view = $derived(chat.view);
   const phase = $derived(view?.summary.state);
@@ -49,7 +50,7 @@
       <p class="line" role="status" out:fade={{ duration: chat.visible ? 150 : 0 }}>{t("chat-waiting", { count: view.waiting })}</p>
     {/if}
   </div>
-  <ChatComposer bind:this={composer} />
+  <ChatComposer bind:this={composer} {profiles} {onAdvanced} />
 {/if}
 
 <style>

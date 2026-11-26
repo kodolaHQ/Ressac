@@ -444,7 +444,7 @@
     </div>
   {/if}
   {#if chatMode}
-    <ChatView bind:this={chatPane} status={preparing} openSettings={openAgentSettings} />
+    <ChatView bind:this={chatPane} status={preparing} openSettings={openAgentSettings} profiles={chatProfiles} onAdvanced={() => void toTerminal()} />
   {:else if prep}
     {@render preparing()}
   {:else if appState.state === "docker-absent"}

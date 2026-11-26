@@ -35,6 +35,13 @@ async function take(p: Promise<ChatView>): Promise<void> {
 /** Makes `id` the window's active discussion (omitted: the active one, made if none). */
 export const openChat = (id?: string): Promise<void> => take(api.chat.open(id));
 export const newChat = (o?: { profile?: string; mode?: "browser" | "workshop" }): Promise<void> => take(api.chat.create(o));
+/** A new mode or agent starts a new discussion, as switching relaunched the terminal (the header's menu, /mode, /agent). */
+export function switchChat(o: { profile?: string; mode?: "browser" | "workshop" }): Promise<void> {
+  if (o.mode) api.dispatch({ type: "chooseAgentMode", mode: o.mode });
+  const summary = chat.view?.summary;
+  const profile = o.profile ?? summary?.profile;
+  return newChat({ profile, mode: profile === "own" ? "browser" : (o.mode ?? summary?.mode) });
+}
 export const readList = (): Promise<void> => api.chat.list().then((l) => void (chat.list = l), () => {});
 
 /**

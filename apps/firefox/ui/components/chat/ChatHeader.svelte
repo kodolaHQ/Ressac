@@ -1,9 +1,9 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
-  import { api, labOn } from "../../state.svelte";
+  import { labOn } from "../../state.svelte";
   import { t } from "../../i18n.svelte";
   import Icon from "../Icon.svelte";
-  import { chat, chatTitle, newChat, readList } from "./chat.svelte";
+  import { chat, chatTitle, newChat, readList, switchChat } from "./chat.svelte";
 
   /** `profiles`: the agents a discussion can run (Claude Code, Codex); `onAdvanced`: « Mode avancé ». */
   let { profiles, onAdvanced }: { profiles: { id: string; name: string }[]; onAdvanced: () => void } = $props();
@@ -20,12 +20,9 @@
     chat.listOpen = !chat.listOpen;
     if (chat.listOpen) void readList();
   }
-  /** A new mode or agent starts a new discussion, as switching relaunched the terminal. */
   function choose(o: { profile?: string; mode?: "browser" | "workshop" }) {
     menuOpen = false;
-    if (o.mode) api.dispatch({ type: "chooseAgentMode", mode: o.mode });
-    const profile = o.profile ?? summary?.profile;
-    void newChat({ profile, mode: profile === "own" ? "browser" : (o.mode ?? summary?.mode) });
+    void switchChat(o);
   }
   // A press outside the menu or Échap closes it.
   $effect(() => {
