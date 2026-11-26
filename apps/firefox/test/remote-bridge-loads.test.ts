@@ -41,13 +41,17 @@ it("a tab the agent opens carries its discussion, as the host maps the calling s
   await bridge.navigate("t", "https://a.test/", { allow: [] });
   await bridge.search!.open("W", { query: "q" }, undefined);
   await bridge.search!.openBackground("s", "https://a.test/");
+  await bridge.recaps!.open("W", "r1", "Sommets");
   chat = undefined;
   await bridge.openTab("https://a.test/");
+  await bridge.recaps!.open("W", "r1", "Sommets");
   expect(calls.map((c) => [c.method, c.params])).toEqual([
     ["openTab", ["https://a.test/", undefined, { chat: "c1" }]],
     ["navigate", ["t", "https://a.test/", { allow: [], chat: "c1" }]],
     ["search.open", ["W", { query: "q" }, undefined, { chat: "c1" }]],
     ["search.openBackground", ["s", "https://a.test/", { chat: "c1" }]],
+    ["recaps.open", ["W", "r1", "Sommets", { chat: "c1" }]],
     ["openTab", ["https://a.test/"]],
+    ["recaps.open", ["W", "r1", "Sommets"]],
   ]);
 });

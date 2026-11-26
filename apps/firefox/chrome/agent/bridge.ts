@@ -258,12 +258,12 @@ export function bridgeHandlers(
       if (handing) store.dispatch({ type: "activateTab", id });
     },
     // The agent's recap: in its session's window (null: the active one), like its search; "private" when nothing can open.
-    "recaps.open": ([win, id, title]: [WindowId | null, string, string]) => {
+    "recaps.open": ([win, id, title, o]: [WindowId | null, string, string, HostLoad?]) => {
       const state = store.state;
       const f = state.windows.find((x) => x.id === (win ?? windows.active())) ?? state.windows[0];
       if (!f) throw new Error("Aucune fenêtre ouverte");
       if (state.spaces.find((e) => e.id === f.activeSpace)?.private ?? true) return "private";
-      store.dispatch({ type: "openRecap", windowId: f.id, id, title });
+      store.dispatch({ type: "openRecap", windowId: f.id, id, title, ...chatOf(o) });
       return "opened";
     },
     "recaps.close": ([id]: [string]) => {

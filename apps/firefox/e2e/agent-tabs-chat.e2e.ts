@@ -1,8 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import type { OwnEngine } from "../shared/settings";
+import { callMcpTool } from "../test/mcp";
 import { state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
@@ -156,4 +157,25 @@ it("les onglets de l'agent se rangent par discussion : celle du panneau déplié
     { title: "Sans discussion", count: "1", open: false, current: false, tabs: [] },
   ]);
   expect(Object.values((await state(m)).tabs).some((t) => t.title === "Page deux")).toBe(true);
+});
+
+it("un récap montré par une discussion se range dans le groupe de cette discussion", { timeout: 120_000 }, async () => {
+  w = await launchRessac({ agentView: "chat", writer: "claude" });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitReady(m);
+  await click(m, '[data-testid="agent-button"]');
+  const log = join(w.dataDir, "workspace", "fake-chat-claude.jsonl");
+  await expect.poll(() => existsSync(log) && readFileSync(log, "utf8").includes('"argv"'), { timeout: 30_000 }).toBe(true);
+  // The call as the discussion's agent makes it: with its session's token (`.ressac/sessions/<id>.json`).
+  const folder = join(w.dataDir, "workspace", ".ressac", "sessions");
+  const config = readdirSync(folder).find((f) => f.endsWith(".json"))!;
+  const plan = { blocks: [{ component: "highlight", props: { object: "best", label: "Le plus haut", title: "name", value: "height" } }] };
+  const results = { best: { name: "Mont Blanc", height: "4 806 m" } };
+  const r = await callMcpTool(join(w.dataDir, "workspace"), "show_recap", { title: "Sommets", results, plan }, join(folder, config));
+  expect(r.text).toMatch(/Récap \S+ ouvert/);
+  await expect
+    .poll(async () => (await groups()).find((g) => g.tabs.includes("Sommets")), { timeout: 20_000 })
+    .toMatchObject({ open: true, current: true, count: "1" });
+  expect((await groups()).some((g) => g.title === "Sans discussion")).toBe(false);
 });

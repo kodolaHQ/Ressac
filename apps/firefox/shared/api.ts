@@ -172,7 +172,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
    * The agent's recap: activates the tab already showing it (any window, title updated), or opens it active in this
    * window; nothing in a private space.
    */
-  z.object({ type: z.literal("openRecap"), windowId: id, id: z.string().regex(/^[0-9a-f-]{36}$/), title: z.string().max(120) }),
+  z.object({ type: z.literal("openRecap"), windowId: id, id: z.string().regex(/^[0-9a-f-]{36}$/), title: z.string().max(120), chat: id.max(100).optional() }),
   /** Activates this window's « Actions » page, or opens it. */
   z.object({ type: z.literal("openActions"), windowId: id }),
   /** `custom`: the user's own address (https, `%s` for the words); `engine: "custom"` without it reuses the one kept. */

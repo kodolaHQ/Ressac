@@ -158,18 +158,21 @@ function openAction(d: Draft, genId: () => string, a: { windowId: string; id: st
  * Activates the tab already showing recap `id` (any window, outside a private space; never switches space), otherwise
  * opens it in the window's active space; nothing when that space is private. The title follows a republish.
  */
-function openRecap(d: Draft, genId: () => string, a: { windowId: string; id: string; title: string }): boolean {
+function openRecap(d: Draft, genId: () => string, a: { windowId: string; id: string; title: string; chat?: string }): boolean {
   const f = win(d, a.windowId);
   if (!f || d.spaces.find((e) => e.id === f.activeSpace)?.private !== false) return false;
   const existing = Object.values(d.tabs).find((o) => recapOfUrl(o.url) === a.id && !privateTab(d, o));
   const g = existing && win(d, existing.windowId);
   if (existing && g) {
-    if (g.active[existing.spaceId] === existing.id && existing.title === a.title) return false;
+    // Shown again from another discussion: it moves to that one's group; with none known (a live update), it stays.
+    const chat = a.chat ?? existing.chat;
+    if (g.active[existing.spaceId] === existing.id && existing.title === a.title && existing.chat === chat) return false;
     existing.title = a.title;
+    if (chat) existing.chat = chat;
     g.active[existing.spaceId] = existing.id;
     return true;
   }
-  return !!open(d, genId, f, { url: urlRecap(a.id), title: a.title, openedByAgent: true });
+  return !!open(d, genId, f, { url: urlRecap(a.id), title: a.title, openedByAgent: true, ...(a.chat ? { chat: a.chat } : {}) });
 }
 
 /** An essential's tab can be displayed in several spaces: the other spaces release it. */

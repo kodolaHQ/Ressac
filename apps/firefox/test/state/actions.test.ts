@@ -1011,6 +1011,17 @@ test("openRecap opens an active ✦ tab titled with the recap, then reuses it (a
   expect(SchemaAction.safeParse({ type: "openRecap", windowId: F, id: "../x", title: "X" }).success).toBe(false);
 });
 
+test("openRecap tags its tab with the calling discussion; shown again from another one, it moves to that one", () => {
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets", chat: "c1" });
+  const tab = () => Object.values(e.tabs).find((o) => recapOfUrl(o.url) === R1)!;
+  expect(tab().chat).toBe("c1");
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets", chat: "c2" });
+  expect(tab().chat).toBe("c2");
+  // Re-shown with no discussion known (a live update): the tag stays.
+  ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets" });
+  expect(tab().chat).toBe("c2");
+});
+
 test("openRecap opens nothing in a private space, and never reuses a tab moved there", () => {
   ag({ type: "openRecap", windowId: F, id: R1, title: "Sommets" });
   const tab = Object.keys(e.tabs).at(-1)!;

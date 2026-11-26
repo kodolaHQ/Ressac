@@ -181,7 +181,10 @@ export class RemoteBridge implements BrowserBridge {
     band: (tabId: string, band: Band | null) => this.call("search.band", [tabId, band]),
   };
   readonly recaps: NonNullable<BrowserBridge["recaps"]> = {
-    open: (window, id, title) => this.call("recaps.open", [window, id, title]),
+    open: (window, id, title) => {
+      const chat = this.chat();
+      return this.call("recaps.open", chat ? [window, id, title, { chat }] : [window, id, title]);
+    },
     close: (id) => this.call("recaps.close", [id]),
     active: (window) => this.call("recaps.active", [window]),
     visible: () => this.call("recaps.visible", []),
