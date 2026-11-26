@@ -289,6 +289,7 @@ describe("agent host", { timeout: 30_000 }, () => {
       await expect(h.rpc.request("apps.act", { folder: "essai", action: "launch", window: "f1" })).rejects.toThrow("ai-off");
       await expect(h.rpc.request("settings.startDocker")).rejects.toThrow("ai-off");
       await expect(h.rpc.request("settings.pullModel", { name: "gemma" })).rejects.toThrow("ai-off");
+      await expect(h.rpc.request("cli.prepare", { agent: "claude" })).rejects.toThrow("ai-off");
       await new Promise((r) => setTimeout(r, 500));
       expect(requests).toBe(0);
       expect(existsSync(h.log) ? readFileSync(h.log, "utf8") : "").toBe("");

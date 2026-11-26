@@ -150,6 +150,7 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       profiles: () => host.request<{ id: string; name: string }[]>("agent.profiles").then((p) => structuredClone(p), () => []),
       current: () => host.request<string>("agent.current", { window: windowId }).then((p) => (typeof p === "string" ? p : null), () => null),
       switch: (profile) => switchAgent(profile),
+      prepareCli: (profile) => void host.request("cli.prepare", { agent: profile }).catch((e) => console.error("[agent] CLI download not started:", e)),
       relaunch: () => host.request("agent.relaunch", { window: windowId }).then(() => {}, (e) => console.error("[agent] relaunch failed:", e)),
       review: (id, choice) => host.request("agent.review", { window: windowId, id, choice }).then(() => {}, (e) => console.error("[agent] review answer failed:", e)),
       masking: () => ask("agent.masking", { window: windowId }, NO_MASKING),

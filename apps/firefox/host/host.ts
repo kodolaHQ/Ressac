@@ -744,6 +744,10 @@ const rpc = createRpc({
       if (typeof p.profile === "string" && /^[\w-]{1,64}$/.test(p.profile)) await sessions.switchProfile(p.window, p.profile);
     },
     "agent.current": (p: { window: string }) => sessions.profileOf(p.window),
+    // The welcome's « Télécharger en arrière-plan »: the CLI downloads while the user goes on. A custom profile runs no pinned CLI.
+    "cli.prepare": aiOnly((p: { agent?: unknown }) => {
+      if (p?.agent === "claude" || p?.agent === "codex") void cli.ensure(p.agent).catch((e) => console.error("[ressac] the agent CLI did not download:", e));
+    }),
     "agent.mode": (p: { mode: unknown }) => {
       wantedMode = p?.mode === "workshop" ? "workshop" : "browser";
       return applyMode();

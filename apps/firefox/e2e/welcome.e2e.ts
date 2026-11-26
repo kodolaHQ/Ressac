@@ -12,8 +12,8 @@ import { inPage, openTab } from "./actors";
 import type { Marionette } from "./marionette";
 import { click, inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
 
-// Plan 47 Task 2: the first-launch welcome (seven pages since plan 68: page 4 asks « Activer l'IA ? », « Plus tard » skips
-// the Docker and local AI pages) and « Revoir l'accueil » in Settings. Plan 68: the AI setup alone (Docker and local AI pages).
+// Plan 47 Task 2: the first-launch welcome (page 4 chooses Navigateur or IA, Navigateur skips the agent and search pages)
+// and « Revoir l'accueil » in Settings. Plan 68: the AI setup alone (Docker and local AI pages).
 
 // Any https page the test opens fails on a dead proxy: no real web.
 const NO_WEB = { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 };
@@ -46,10 +46,11 @@ const shows = (id: string, wanted: string, ms = 10_000) =>
   waitUi(m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').includes(arguments[1])", [`[data-testid="${id}"]`, wanted], ms);
 /** Clicks a control of the page shown, once it is there. */
 const press = async (id: string) => click(m, `${LAYER} [data-testid="${id}"]`);
-/** From page `from` to page `to` of `pages`, by each page's main button (« Oui » on page 4). */
+/** From page `from` to page `to` of `pages`, by each page's main button (page 4 chooses IA first). */
 async function forward(from: number, to: number, pages = [1, 2, 3, 8, 9, 4, 5, 6, 7]): Promise<void> {
   for (const p of pages.slice(pages.indexOf(from), pages.indexOf(to))) {
     await shown(`welcome-${p}`);
+    if (p === 4) await press("welcome-tier-ai");
     await press("welcome-next");
   }
   await shown(`welcome-${to}`);
@@ -89,7 +90,7 @@ describe("welcome", () => {
     await press("welcome-next");
     await shows("welcome-9", "Claire ou sombre ?");
     await press("welcome-next");
-    await shows("welcome-4", "Activer l'IA ?");
+    await shows("welcome-4", "Comment voulez-vous utiliser Ressac ?");
     // « Retour » goes back a page.
     await press("welcome-back");
     await shown("welcome-9");
@@ -127,7 +128,7 @@ describe("welcome", () => {
 
     await press("welcome-later");
     // The background downloads failed at once (a dead address): the models are offered.
-    await shows("welcome-models", "Il manque le modèle de recherche EmbeddingGemma (334 Mo).");
+    await shows("welcome-models", "Le modèle de recherche et votre agent ne sont pas encore téléchargés.");
     await shown("welcome-pull");
     await press("welcome-later");
     await shown("welcome-7");
@@ -297,13 +298,14 @@ describe("welcome", () => {
     try {
       await launch({ env: { RESSAC_OLLAMA_URL: ollama.url } });
       await forward(1, 4);
-      await shown("welcome-ai");
-      await press("welcome-later");
+      await press("welcome-tier-browser");
+      await press("welcome-next");
       await shown("welcome-7");
-      // « Retour » after « Plus tard » comes back to the question.
+      // « Retour » after Navigateur comes back to the choice, still made.
       await press("welcome-back");
       await shown("welcome-4");
-      await press("welcome-later");
+      expect(await inUi(m, "return doc.querySelector(arguments[0]).checked", [`${LAYER} [data-testid="welcome-tier-browser"]`])).toBe(true);
+      await press("welcome-next");
       await shown("welcome-7");
       await press("welcome-finish");
       await layerGone();
@@ -358,6 +360,7 @@ describe("welcome", () => {
   it("yes shows Docker then local AI, and saves AI on", async () => {
     await launch();
     await forward(1, 4);
+    await press("welcome-tier-ai");
     await press("welcome-next");
     await shown("welcome-docker");
     await press("welcome-next");
@@ -373,8 +376,9 @@ describe("welcome", () => {
     await launch();
     await forward(1, 5);
     await press("welcome-back");
-    await shown("welcome-ai");
-    await press("welcome-later");
+    await shown("welcome-4");
+    await press("welcome-tier-browser");
+    await press("welcome-next");
     await shown("welcome-7");
     await press("welcome-finish");
     await layerGone();
@@ -390,7 +394,7 @@ describe("welcome", () => {
     await w!.close();
     await launch({ dataDir });
     await forward(1, 4);
-    await shown("welcome-ai");
+    await shown("welcome-tier-ai");
   });
 
   it("replay with AI on keeps it on", async () => {
@@ -418,6 +422,60 @@ describe("welcome", () => {
     const s = await state(m);
     expect([s.aiSetup, s.settings.aiEnabled]).toEqual([false, true]);
     expect(await inUi(m, `return !!doc.querySelector('[data-testid="sidebar"]').closest('[inert]')`)).toBe(false);
+  });
+
+  it("page 4 propose Navigateur ou IA, jamais le labo", async () => {
+    await launch();
+    await forward(1, 4);
+    await shows("welcome-tier-browser-card", "Un navigateur calme, sans IA.");
+    await shows("welcome-tier-ai-card", "Il lui faut un compte Claude ou ChatGPT.");
+    await shows("welcome-tier-later", "le labo, s'activent là aussi");
+    // « labo » only in the note that says where it is turned on.
+    const elsewhere = `const s = doc.querySelector(arguments[0]).cloneNode(true); s.querySelector('[data-testid="welcome-tier-later"]').remove(); return /labo/i.test(s.textContent);`;
+    expect(await inUi(m, elsewhere, [`${LAYER} [data-testid="welcome-4"]`])).toBe(false);
+    // A first launch preselects nothing: « Continuer » waits for a choice.
+    const disabled = () => inUi(m, "return doc.querySelector(arguments[0]).disabled", [`${LAYER} [data-testid="welcome-next"]`]);
+    expect(await inUi(m, "return [...doc.querySelectorAll('[name=welcome-tier]')].some((r) => r.checked)")).toBe(false);
+    expect(await disabled()).toBe(true);
+    await press("welcome-tier-ai");
+    await waitUi(m, "return !doc.querySelector(arguments[0]).disabled", [`${LAYER} [data-testid="welcome-next"]`]);
+  });
+
+  it("Navigateur saute les pages de l'IA", async () => {
+    await launch();
+    await forward(1, 4);
+    await press("welcome-tier-browser");
+    await press("welcome-next");
+    await shown("welcome-7");
+    await press("welcome-finish");
+    await layerGone();
+    await saved((s) => s.settings?.onboarded === true && s.settings.aiEnabled === false && s.settings.lab === false);
+  });
+
+  it("IA mène à l'agent puis à la recherche", async () => {
+    // The CLIs' downloads go to a local server (dev overrides of agent-cli.ts): its log tells which one was asked for.
+    const cli = await startServer({ routes: { "/claude.tgz": (_q, res) => res.writeHead(404).end(), "/codex.tgz": (_q, res) => res.writeHead(404).end() } });
+    const sha = "0".repeat(64);
+    try {
+      await launch({ env: { RESSAC_TEST_CLI_PRESENT: "0", RESSAC_CLI_CLAUDE_URL: `${cli.url}/claude.tgz`, RESSAC_CLI_CLAUDE_SHA256: sha, RESSAC_CLI_CODEX_URL: `${cli.url}/codex.tgz`, RESSAC_CLI_CODEX_SHA256: sha } });
+      await forward(1, 4);
+      await shows("welcome-tier-ai-card", "votre agent (environ 170 Mo)");
+      await press("welcome-tier-ai");
+      await press("welcome-next");
+      await shown("welcome-5");
+      await press("welcome-agent-codex");
+      await saved((s) => s.settings?.agentProfile === "codex");
+      await press("welcome-next");
+      await shows("welcome-6", "EmbeddingGemma");
+      expect(await inUi(m, "return /\\bd1\\b/.test(doc.querySelector(arguments[0]).textContent)", [`${LAYER} [data-testid="welcome-6"]`])).toBe(false);
+      // The background search download failed at once (a dead address): the button is offered.
+      await shown("welcome-pull");
+      expect(cli.paths.filter((p) => p === "/codex.tgz")).toEqual([]);
+      await press("welcome-pull");
+      await waitFor(m, "return true", () => cli.paths.includes("/codex.tgz"), 15_000);
+    } finally {
+      await cli.close();
+    }
   });
 
   it("default launch skips it", async () => {

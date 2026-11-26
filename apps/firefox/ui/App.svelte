@@ -71,7 +71,7 @@
   });
   // Finished (here or in another window), once its layer is gone: a later « Revoir l'accueil » starts at the beginning.
   $effect(() => {
-    if (!unfinished && !welcomeLayer) untrack(() => Object.assign(welcomeStep, { page: 1, aside: false, aiAtStart: undefined, engine: undefined }));
+    if (!unfinished && !welcomeLayer) untrack(() => Object.assign(welcomeStep, { page: 1, aside: false, aiAtStart: undefined, engine: undefined, tier: undefined }));
   });
   const activeTab = $derived.by(() => {
     const id = winState?.active[winState.activeSpace];

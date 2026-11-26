@@ -4,6 +4,7 @@
   import { AURA_IDS, AURAS, auraVariables, type AuraId } from "../../shared/aura";
   import type { ImportSource, SettingsApi } from "../../shared/api";
   import { SEARCH_MODEL, type DockerStatus, type MachineStatus } from "../../shared/settings";
+  import { AGENT_CLIS, VM_IMAGE_BYTES, aboutMb } from "../../shared/downloads";
   import { SEARCH_ENGINES, type SearchEngine } from "../../shared/search";
   import { APPEARANCES } from "../../shared/model";
   import { shortcutLabel } from "../../shared/shortcuts";
@@ -17,17 +18,17 @@
 
   /**
    * The first-launch welcome: nine pages on the aura, then the browser. Nothing is saved before « Ouvrir le navigateur »,
-   * except an import from another browser, started on page 2, the appearance (page 9, shown at once), and the answer to « Activer l'IA ? » (page 4): « Oui » turns
-   * AI on at once, since the Docker and local AI pages need the host's AI side.
+   * except an import from another browser, started on page 2, the appearance (page 9, shown at once), and the tier chosen on page 4: « IA » turns
+   * AI on at once, since the agent and search pages need the host's AI side. The welcome never offers the lab.
    * Mode `ai` (the AI setup, from « Activer l'IA »): the Docker and local AI pages alone, ending on « Terminer ».
    * An install link steps it aside (unmounted, its page kept in `step`): coming back checks the page's state again.
    */
   let { window: win, mode = "full" }: { window: WindowState; mode?: "full" | "ai" } = $props();
 
-  // Only a replay: a first welcome left after « Oui » (AI on, nothing finished) asks again at the next launch.
+  // Only a replay: a first welcome left after « IA » (AI on, nothing finished) asks again at the next launch.
   if (step.aiAtStart === undefined) step.aiAtStart = !!appState.value?.welcomeReplay && aiOn();
   /**
-   * Page numbers shown, in order (8 the search engine and 9 the appearance were added after the others): « Plus tard » on page 4, or AI
+   * Page numbers shown, in order (8 the search engine and 9 the appearance were added after the others): « Navigateur » on page 4, or AI
    * already on at a replay, skips the AI pages 5-6.
    */
   const pages = $derived(mode === "ai" ? [5, 6] : step.aiAtStart ? [1, 2, 3, 8, 9, 7] : aiOn() ? [1, 2, 3, 8, 9, 4, 5, 6, 7] : [1, 2, 3, 8, 9, 4, 7]);
@@ -40,6 +41,11 @@
   const space = $derived(appState.value?.spaces.find((s) => s.id === win.activeSpace));
   const label = (id: "command" | "agent") => shortcutLabel(id, appState.value?.settings);
   const profile = $derived(appState.value?.settings.agentProfile);
+  // A replay starts on the tier in use; a first launch on none, so that « Continuer » waits for a choice.
+  step.tier ??= untrack(() => (appState.value?.welcomeReplay ? (aiOn() ? "ai" : "browser") : undefined));
+  const mb = (bytes: number) => t("agent-size-mb", { n: aboutMb(bytes) });
+  // A custom profile shows Claude Code's size: both CLIs weigh about the same.
+  const sizes = $derived({ machine: mb(VM_IMAGE_BYTES), agent: mb(AGENT_CLIS[profile === "codex" ? "codex" : "claude"].bytes) });
   let name = $state(untrack(() => space?.name ?? ""));
   let aura = $state<AuraId>(untrack(() => space?.aura ?? "aube"));
 
@@ -87,10 +93,13 @@
     const v = ai?.verification;
     // AI on already starts the missing models' download: shown as started, not offered again.
     pulling = !!running;
+    // The search model already on its way (AI on starts it): the agent's CLI goes with it.
+    if (running && profile) api.agent.prepareCli(profile);
     missing = v && !running ? v.embed ? [] : [SEARCH_MODEL] : [];
     models = !!v;
   }
   async function pullInBackground(names = missing) {
+    if (profile) api.agent.prepareCli(profile);
     const r = await api.settings.pullInBackground(names);
     pulling = r.ok;
     pullError = r.ok ? null : r.error;
@@ -114,6 +123,7 @@
     if (yes !== aiOn()) api.dispatch({ type: yes ? "enableAi" : "disableAi" });
     step.page = yes ? 5 : 7;
   }
+  const TIERS = [["browser", "home-welcome-tier-browser"], ["ai", "home-welcome-tier-ai"]] as const;
   /** The download page opens in a tab, and the welcome steps aside so that it shows. */
   function install(url: string) {
     api.settings.openUrl(url);
@@ -132,12 +142,12 @@
   }
 </script>
 
-{#snippet actions(label: string, later: boolean, onNext = next, onLater = next)}
+{#snippet actions(label: string, later: boolean, onNext = next, onLater = next, ready = true)}
   <div class="actions">
     {#if at > 0}<button type="button" class="quiet" data-testid="welcome-back" onclick={back}>{t("home-welcome-back")}</button>{/if}
     <span class="grow"></span>
     {#if later}<button type="button" class="quiet" data-testid="welcome-later" onclick={onLater}>{t("home-welcome-later")}</button>{/if}
-    <button type="button" class="primary" data-testid="welcome-next" use:focus onclick={onNext}>{label}</button>
+    <button type="button" class="primary" data-testid="welcome-next" disabled={!ready} use:focus onclick={onNext}>{label}</button>
   </div>
 {/snippet}
 
@@ -204,16 +214,24 @@
           <p class="note">{t("home-welcome-appearance-later")}</p>
           {@render actions(t("home-welcome-next"), false)}
         {:else if page === 4}
-          <h2>{t("home-welcome-ai-ask-title")}</h2>
-          <div class="ask" data-testid="welcome-ai">
-            <p>{t("home-welcome-ai-ask-intro")}</p>
-            <p>{t(machine ? "home-welcome-ai-ask-needs-machine" : "home-welcome-ai-ask-needs")}</p>
-            <p class="note">{t("home-welcome-ai-ask-later")}</p>
+          <h2>{t("home-welcome-tier-title")}</h2>
+          <div class="tiers" role="radiogroup" aria-label={t("home-welcome-tier-title")}>
+            {#each TIERS as [id, key] (id)}
+              <label class="agent tier" data-testid="welcome-tier-{id}-card">
+                <input type="radio" name="welcome-tier" data-testid="welcome-tier-{id}" checked={step.tier === id} onchange={() => (step.tier = id)} />
+                <span class="tier-text">
+                  <b>{t(key)}</b>
+                  <span>{t(`${key}-detail`)}</span>
+                  {#if id === "ai"}<span class="note">{t(machine ? "home-welcome-tier-ai-needs-machine" : "home-welcome-tier-ai-needs", sizes)}</span>{/if}
+                </span>
+              </label>
+            {/each}
           </div>
-          {@render actions(t("home-welcome-yes"), true, () => answer(true), () => answer(false))}
+          <p class="note" data-testid="welcome-tier-later">{t("home-welcome-tier-later")}</p>
+          {@render actions(t("home-welcome-continue"), false, () => answer(step.tier === "ai"), next, !!step.tier)}
         {:else if page === 5}
           <h2>{t("home-welcome-agent-title")}</h2>
-          <p>{t(machine ? "home-welcome-agent-intro-machine" : "home-welcome-agent-intro")}</p>
+          <p>{t(machine ? "home-welcome-agent-intro-machine" : "home-welcome-agent-intro", sizes)}</p>
           <div class="check">
             {#if machine}
               {@render machineLine(machine)}
@@ -246,7 +264,7 @@
         {:else if page === 6}
           <h2>{t("home-welcome-ai-title")}</h2>
           <p>{t("home-welcome-ai-intro")}</p>
-          <p>{t("home-welcome-ai-needs")}</p>
+          <p class="note">{t("home-welcome-ai-triage")}</p>
           <div class="check">
             {#if machine && machine.kind !== "running" && machine.kind !== "stopped"}{@render machineLine(machine)}{/if}
             {#if models === undefined}
@@ -354,7 +372,11 @@
   .brand { margin: 6px 0 0; font: 600 44px/1 var(--font-display); letter-spacing: -0.03em; }
   .lead { max-width: 30ch; color: var(--text-muted); font-size: 15px; }
 
-  .ask { display: flex; flex-direction: column; gap: 10px; }
+  .tiers { display: flex; flex-direction: column; gap: 8px; }
+  .tier { align-items: flex-start; padding: 12px 14px; border-radius: 16px; font-weight: 400; }
+  .tier input { margin-top: 3px; }
+  .tier-text { display: flex; flex-direction: column; gap: 4px; }
+  .tier b { font-weight: 600; }
 
   .sidebar { display: flex; align-items: center; gap: 22px; }
   .sidebar ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
@@ -376,7 +398,7 @@
   .agent:has(:checked) { border-color: var(--accent); }
   .agent:active { transform: scale(0.97); }
   /* macOS draws native radios in the system blue: ours, in the accent. */
-  .agent input { appearance: none; width: 15px; height: 15px; margin: 0; flex: none; border-radius: 50%; border: 1px solid var(--border); background: var(--glass-hi); transition: border-width var(--tap); }
+  .agent input { appearance: none; width: 15px; height: 15px; margin: 0; flex: none; border-radius: 50%; border: 1px solid var(--border); background: var(--glass-hi); transition: border-width var(--spring-d) var(--spring); }
   .agent input:checked { border: 4.5px solid var(--accent); background: var(--accent-ink); }
 
   .label { color: var(--text-muted); font-size: 13px; }
@@ -390,7 +412,8 @@
   .actions { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 10px; }
   button { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 13px var(--font-ui); transition: transform var(--tap), background var(--tap); }
   button:hover { background: var(--bg-active); }
-  button:active { transform: scale(0.97); }
+  button:active:not(:disabled) { transform: scale(0.97); }
+  button:disabled { opacity: 0.5; }
   button.quiet { border-color: transparent; background: none; color: var(--text-muted); }
   button.quiet:hover { background: var(--bg-hover); color: var(--text); }
   button.primary { padding-inline: 18px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }

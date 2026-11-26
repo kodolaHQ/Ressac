@@ -11,13 +11,14 @@ import { createZstdDecompress } from "node:zlib";
 import { HashMismatchError, VOLUME_HOME, createRunner, downloadVerified, sha256File, type ContainerEngine, type RunResult, type Runner, type WakeReason } from "../../../packages/kernel/src/index.ts";
 import { hostLocale, hostSay } from "./locale.ts";
 import { isSmallMac, type MachineStatus } from "../shared/settings.ts";
+import { VM_IMAGE_BYTES } from "../shared/downloads.ts";
 
 /** The machine image, built by scripts/vm/build-image.sh and published by scripts/vm/publish-image.sh. */
 export const VM_IMAGE = {
   version: "3.24.4-5.8.10-3fb8195081b7",
   url: "https://updates.getressac.app/vm/ressac-vm-3.24.4-5.8.10-3fb8195081b7.raw.zst",
   sha256: "efbb383bdb1cd7da4c241b110105ede8bcb7f9247600e29ed51bd82c5a6f4ee2",
-  bytes: 530054536,
+  bytes: VM_IMAGE_BYTES, // in shared/downloads.ts: the welcome shows it
 };
 
 /**
