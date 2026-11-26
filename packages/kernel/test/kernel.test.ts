@@ -815,6 +815,18 @@ describe("openAgentSession with a profile", () => {
     });
   });
 
+  test("codex resume by a chat's thread id replaces --last, a bad id is refused", async () => {
+    await started(async (n, start) => {
+      const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, conversation: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b" });
+      const [command] = start.mock.calls[0]!;
+      const at = command.indexOf("codex");
+      expect(command.slice(at + 3, at + 5)).toEqual(["resume", "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"]);
+      expect(command).not.toContain("--last");
+      await s.stop();
+      await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, conversation: "--last; rm" })).rejects.toThrow();
+    });
+  });
+
   test("codex resume with extra args and env", async () => {
     await started(async (n, start) => {
       const s = await n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, extra: { args: ["-m", "x"], env: { RESSAC_ENGINE_TOKEN: "t" } } });

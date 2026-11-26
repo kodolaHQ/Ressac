@@ -126,3 +126,32 @@ test("the panel's context goes before the first message of the window's new disc
   await send.send("w1", "c1", draft("encore"));
   expect(f.prompts[1]![1]).toBe("encore");
 });
+
+test("a submitted prefill (design remarks) is a message to the active discussion, masked, never typed", async () => {
+  const f = fakeChats();
+  f.openSession("s1");
+  const out = outflow();
+  const written = vi.fn();
+  const send = createChatSend({ chats: f.chats, masker: () => masker(), outflow: () => out, interacted: () => {}, create: async () => f.chats.active("w1") });
+  await send.prefill("w1", `remarque pour ${EMAIL}`, { submit: true, written });
+  expect(f.prompts[0]![1]).toMatch(/^remarque pour ⟨email-\w+⟩@example\.com$/);
+  expect(typedText(out)).toBe("\r");
+  expect(written).toHaveBeenCalled();
+});
+
+test("a draft prefill (a site app's prefix) waits as the window's prefix, shown to the UI, put before the next message", async () => {
+  const f = fakeChats();
+  f.openSession("s1");
+  const out = outflow();
+  const written = vi.fn();
+  const send = createChatSend({ chats: f.chats, masker: () => masker(), outflow: () => out, interacted: () => {}, create: async () => f.chats.active("w1") });
+  await send.prefill("w1", "[application : Lune] ", { written });
+  expect(f.prompts).toEqual([]);
+  expect(send.prefixOf("w1")).toBe("[application : Lune] ");
+  expect(written).not.toHaveBeenCalled();
+  await send.send("w1", "c1", draft("corrige"));
+  expect(f.prompts[0]![1]).toBe("[application : Lune] corrige");
+  expect(typedText(out)).toBe("corrige\r");
+  expect(written).toHaveBeenCalled();
+  expect(send.prefixOf("w1")).toBeNull();
+});

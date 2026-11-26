@@ -205,6 +205,7 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       cancel: () => host.notify("chat.cancel", { window: windowId }),
       answer: (requestId, reply) => host.notify("chat.answer", { window: windowId, requestId: String(requestId), reply: structuredClone(reply) }),
       retry: () => host.notify("chat.retry", { window: windowId }),
+      dropPrefix: () => host.notify("chat.dropPrefix", { window: windowId }),
       review: (id, choice) => host.notify("chat.review", { window: windowId, id, choice }),
       reveal: (label) => host.request<unknown>("chat.reveal", { window: windowId, label: String(label) }).then((v) => (typeof v === "string" ? v : null), () => null),
       toTerminal: () => host.request("chat.toTerminal", { window: windowId }).then(() => {}, (e) => console.error("[chat] to terminal failed:", e)),

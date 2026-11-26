@@ -67,6 +67,15 @@ interface Waiting {
   draft: ChatDraft;
   before?: string;
   after?: string;
+  /** Called as it is sent, after the session's reset (a tab given to the agent). */
+  written?: () => void;
+}
+
+/** Ressac's own text waiting for the window's next message (never typed): the panel's context applies to a first message only. */
+interface Prefix {
+  text: string;
+  firstOnly: boolean;
+  written?: () => void;
 }
 
 /**
@@ -83,8 +92,15 @@ export function createChatSend(o: {
   create: (win: string) => Promise<ChatView>;
 }) {
   const waiting = new Map<string, Waiting[]>();
-  /** The panel's context for the window's next first message. */
-  const contexts = new Map<string, string>();
+  /** Ressac's own text for the window's next message (the panel's context, a site app's or an app's prefix): the last wins. */
+  const contexts = new Map<string, Prefix>();
+  /** The prefix the window's next message to `chatId` would get. */
+  const prefixFor = (win: string, chatId: string | undefined): Prefix | undefined => {
+    const c = contexts.get(win);
+    if (!c?.firstOnly) return c;
+    const view = o.chats.active(win);
+    return view && view.summary.id === (chatId ?? view.summary.id) && !view.items.some((i) => i.kind === "user") ? c : undefined;
+  };
 
   function flush(chatId: string): void {
     const queue = waiting.get(chatId);
@@ -103,18 +119,19 @@ export function createChatSend(o: {
         waiting.set(chatId, [...queue.slice(i), ...(waiting.get(chatId) ?? [])]);
         return;
       }
+      w.written?.();
       o.interacted(w.win);
       o.chats.prompt(chatId, r.sent, r.shown);
     }
   }
 
-  async function send(win: string, chatId: string, draft: ChatDraft, extra: { after?: string } = {}): Promise<{ ok: true } | { ok: false; error: string }> {
-    const view = o.chats.active(win);
-    const first = view?.summary.id === chatId && !view.items.some((i) => i.kind === "user");
-    const before = first ? contexts.get(win) : undefined;
+  async function send(win: string, chatId: string, draft: ChatDraft, extra: { before?: string; after?: string; written?: () => void } = {}): Promise<{ ok: true } | { ok: false; error: string }> {
+    const prefix = prefixFor(win, chatId);
     contexts.delete(win);
+    const before = (prefix?.text ?? "") + (extra.before ?? "");
+    const written = prefix?.written || extra.written ? () => (prefix?.written?.(), extra.written?.()) : undefined;
     const queue = waiting.get(chatId) ?? [];
-    queue.push({ win, draft, ...(before ? { before } : {}), ...(extra.after ? { after: extra.after } : {}) });
+    queue.push({ win, draft, ...(before ? { before } : {}), ...(extra.after ? { after: extra.after } : {}), ...(written ? { written } : {}) });
     waiting.set(chatId, queue);
     if (!o.chats.sessionIdOf(chatId) && !(await o.chats.select(win, chatId))) {
       waiting.delete(chatId);
@@ -135,8 +152,22 @@ export function createChatSend(o: {
     },
     /** The panel opened on a tab: its context goes before the next first message of the window's discussion. */
     panelOpened(win: string, prefix: string): void {
-      contexts.set(win, prefix);
+      contexts.set(win, { text: prefix, firstOnly: true });
     },
+    /**
+     * Ressac's own text for the window's agent (the terminal's prefill), never typed: `submit`, a message to the active
+     * discussion (a new one if none); otherwise it waits as the prefix of the window's next message. `written` runs as it is sent.
+     */
+    async prefill(win: string, text: string, p: { submit?: boolean; written?: () => void } = {}): Promise<void> {
+      if (!p.submit) return void contexts.set(win, { text, firstOnly: false, ...(p.written ? { written: p.written } : {}) });
+      const chatId = (o.chats.active(win) ?? (await o.create(win))).summary.id;
+      const r = await send(win, chatId, { text: "", pasted: [], clear: [] }, { before: text, ...(p.written ? { written: p.written } : {}) });
+      if (!r.ok) throw new Error(r.error);
+    },
+    /** What the window's next message would start with, for the composer to show; null when nothing waits. */
+    prefixOf: (win: string): string | null => prefixFor(win, undefined)?.text ?? null,
+    /** The composer's « × » on the prefix. */
+    dropPrefix: (win: string) => void contexts.delete(win),
     waiting: (chatId: string) => waiting.get(chatId)?.length ?? 0,
     /** « Arrêter »: the drafts waiting for the session go too. */
     drop: (chatId: string) => void waiting.delete(chatId),

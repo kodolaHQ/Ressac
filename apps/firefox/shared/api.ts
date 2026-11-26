@@ -386,6 +386,8 @@ export interface ApiRessac {
     cancel(): void;
     answer(requestId: string, reply: AskReply): void;
     retry(): void;
+    /** The composer's « × » on the waiting prefix (`ChatView.prefix`). */
+    dropPrefix(): void;
     /** The answer on the changed-instructions card of the starting discussion. */
     review(id: number, choice: "keep" | "revert"): void;
     /** The value behind a label of the active discussion, shown here only; null when unknown (another discussion's, a paused one). */

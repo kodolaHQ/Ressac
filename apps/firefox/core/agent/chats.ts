@@ -180,6 +180,16 @@ export class Chats {
     return e?.conv && e.launch ? e.launch.sessionId : null;
   }
 
+  /** A line of Ressac's in the transcript (« Échanges faits dans le terminal »). */
+  async notice(chatId: string, text: string): Promise<void> {
+    const e = this.entries.get(chatId);
+    if (!e) return;
+    e.rec.items.push({ kind: "notice", id: randomUUID(), text });
+    e.rec.updatedAt = this.now();
+    this.push(e);
+    await this.save(e);
+  }
+
   /** The engine's own id once the discussion ran a turn (the terminal resumes it, « Mode avancé »). */
   resumeIdOf(chatId: string): string | undefined {
     return this.entries.get(chatId)?.rec.engineSessionId;

@@ -53,6 +53,8 @@ export interface ChatView {
   preparing?: Extract<AgentPanelState, { state: "preparing" } | { state: "review" }>;
   /** Messages sent before the discussion's session existed: masked and sent once it does. */
   waiting?: number;
+  /** Ressac's text waiting to go before the next message (the page's context, an app's prefix): masked then, never typed. */
+  prefix?: string;
 }
 
 /** `pasted`: [start, end] ranges of pasted text; `clear`: labels the user chose to send in clear. */

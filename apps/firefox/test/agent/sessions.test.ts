@@ -338,6 +338,27 @@ test("a discussion handed to the terminal is resumed by its conversation at the 
   expect(opened[2]!.resume).toBe(false);
 });
 
+test("a Codex discussion handed to the terminal resumes its own thread, kept across a wake, gone with a profile switch", async () => {
+  const opened: { profile: string; resume: boolean; thread?: string }[] = [];
+  const manager = new SessionsAgent({
+    open: async (_f, _t, s) => {
+      opened.push({ profile: s.profile, resume: s.resume, ...(s.thread ? { thread: s.thread } : {}) });
+      return new FakeSession();
+    },
+    send: () => {},
+  });
+  manager.resumeNext("F", "codex", "thread-1");
+  await manager.start("F", size);
+  expect(opened[0]).toEqual({ profile: "codex", resume: true, thread: "thread-1" });
+  await manager.sleepIdle(0);
+  manager.write("F", "x");
+  await new Promise((r) => setTimeout(r, 0));
+  expect(opened[1]).toEqual({ profile: "codex", resume: true, thread: "thread-1" });
+  await manager.switchProfile("F", "claude");
+  await manager.switchProfile("F", "codex");
+  expect(opened.at(-1)).toEqual({ profile: "codex", resume: true });
+});
+
 describe("each window keeps its agent", () => {
   /** `open` notes each call; `fails` lists profiles whose opening rejects; `slow` holds openings until released. */
   function windows(o: { fails?: string[]; slow?: boolean } = {}) {

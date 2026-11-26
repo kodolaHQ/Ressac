@@ -216,8 +216,9 @@ export type AgentSessionOptions = {
   /** Continue the profile's last conversation (when it has a resume command). */
   resume?: boolean;
   /**
-   * Claude only: this window's conversation id (a UUID). Started with it (`--session-id`), resumed by it (`--resume`) instead
-   * of the workdir's latest, which may be another window's.
+   * Claude: this window's conversation id (a UUID). Started with it (`--session-id`), resumed by it (`--resume`) instead
+   * of the workdir's latest, which may be another window's. Codex terminal resume: a chat's thread id (`codex resume <id>`
+   * in place of `--last`).
    */
   conversation?: string;
   /** Appended to the command, and passed by name to the container (values go to the local `docker exec` only). */
@@ -898,6 +899,9 @@ export async function createKernel(o: {
         // What the user typed is theirs to send for this conversation only: a new one forgets it (a profile switch over-blocks, acceptable).
         if (win !== undefined && !resume) outflow.forgetTyped(win);
         const byId = conversation !== undefined && program === "claude" && /^[0-9a-f-]{36}$/.test(conversation);
+        // « Mode avancé » of a chat: its own Codex thread, never the workdir's latest (another discussion's). It goes into argv: a plain token only.
+        const codexThread = !pipe && program === "codex" && resume === true && conversation !== undefined ? conversation : undefined;
+        if (codexThread !== undefined && !/^[\w-]{1,100}$/.test(codexThread)) throw new Error(`Fil Codex invalide : ${JSON.stringify(codexThread.slice(0, 40))}`);
         const resumed = resume === true && (byId || chosen.resume !== undefined);
         if (win !== undefined) {
           sessionToken = server.openSession(win, chosen.name, id, mode);
@@ -921,7 +925,8 @@ export async function createKernel(o: {
         const reply = replyLanguageLine(loc());
         const language = program === "claude" ? ["--append-system-prompt", reply] : program === "codex" ? ["-c", `developer_instructions=${JSON.stringify(reply)}`] : [];
         // Pipe: a Codex resume is the adapter's (`thread/resume` by id), never `codex resume --last`.
-        const built = buildCommand(chosen, resume && chosen.resume && !byId && !(pipe && program === "codex") ? "resume" : "interactive", { mcpConfig: mcpConfig });
+        const resumeMode = resume && chosen.resume && !byId && !(pipe && program === "codex");
+        const built = buildCommand(chosen, resumeMode ? "resume" : "interactive", { mcpConfig: mcpConfig }).map((a) => (resumeMode && codexThread !== undefined && a === "--last" ? codexThread : a));
         const conversationArgs = byId ? [resume ? "--resume" : "--session-id", conversation] : [];
         // Right after the program: the profile's own arguments keep their order (the MCP config stays last).
         // Browser mode, shipped programs only: no shell, and no `launch_app` (it runs `ressac.json`'s command, a shell by another door).

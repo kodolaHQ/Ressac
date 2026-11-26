@@ -18,7 +18,7 @@ export const AGENT_ACCOUNTS: {
   name: string;
   status: string[];
   logout: string[];
-  login: { kind: "terminal"; argv: string[] } | { kind: "device"; argv: string[]; origin: string };
+  login: { kind: "terminal" } | { kind: "device"; argv: string[]; origin: string };
   /** Throws when the output is unreadable. */
   parse(r: { code: number; stdout: string; stderr: string }): { loggedIn: boolean; account?: string };
 }[] = [
@@ -27,8 +27,8 @@ export const AGENT_ACCOUNTS: {
     name: "Claude Code",
     status: ["claude", "auth", "status", "--json"],
     logout: ["claude", "auth", "logout"],
-    // The chat's login card runs it in a small terminal (kernel openLoginSession).
-    login: { kind: "terminal", argv: ["claude", "auth", "login"] },
+    // The chat's login card runs `claude auth login` in a small terminal (kernel openLoginSession).
+    login: { kind: "terminal" },
     // `claude auth status` exits 1 when logged out but still prints its JSON: trust the JSON whatever the code.
     parse({ stdout }) {
       const j = JSON.parse(stdout) as { loggedIn?: unknown; email?: unknown };

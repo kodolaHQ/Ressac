@@ -703,12 +703,12 @@ const sessions = new SessionsAgent({
   mask: maskForAgent,
   // The mode counts as part of the engine: a change offers « Relancer » in the other windows' panels.
   engineOf: (p) => (p === "claude" ? JSON.stringify([claudeEngine, agentMode]) : p === "codex" ? JSON.stringify([engine, agentMode]) : ""),
-  async open(f, t, { profile, resume, conversation, onBuildProgress, review }) {
+  async open(f, t, { profile, resume, conversation, thread, onBuildProgress, review }) {
     const n = await readyToStart(profile, onBuildProgress);
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, mode: agentMode, onBuildProgress, review });
     const { extra, token } = await engineRelay(profile);
     try {
-      const session = await n.openAgentSession({ ...t, window: f, profile, resume, ...(profile === "claude" ? { conversation } : {}), extra, mode: agentMode, onBuildProgress, review });
+      const session = await n.openAgentSession({ ...t, window: f, profile, resume, ...(profile === "claude" ? { conversation } : thread ? { conversation: thread } : {}), extra, mode: agentMode, onBuildProgress, review });
       if (token) session.onEnd(() => relay.closeSession(token));
       return session;
     } catch (err) {
@@ -759,12 +759,17 @@ const signedIn = new Set<"claude" | "codex">();
 const chatStore = new ChatStore(join(dataDir, "chats"));
 void chatStore.sweep(Date.now()).catch((e) => console.error("[ressac] old discussions not removed:", e));
 
-const pushChat = (win: string, view: ChatView) => {
+/** The view with what the host adds: the start's progress, the drafts waiting, the window's prefix. */
+const decorated = (win: string, view: ChatView): ChatView => {
   const id = view.summary.id;
-  chatViews.set(id, { win, view });
   const preparing = chatPrep.get(id);
   const waiting = chatSend.waiting(id);
-  rpc.notify("chat.view", { window: win, view: { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}) } });
+  const prefix = chats.active(win)?.summary.id === id ? chatSend.prefixOf(win) : null;
+  return { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}), ...(prefix ? { prefix } : {}) };
+};
+const pushChat = (win: string, view: ChatView) => {
+  chatViews.set(view.summary.id, { win, view });
+  rpc.notify("chat.view", { window: win, view: decorated(win, view) });
 };
 const repushChat = (id: string) => {
   const v = chatViews.get(id);
@@ -813,6 +818,10 @@ async function openChat(o: OpenOptions) {
   try {
     const n = await readyToStart(o.profile, onBuildProgress);
     if (signal.aborted) throw new Error("closed");
+    // Before the kernel session when the workshop runs: a signed-out retry resets no window's grants. A cold workshop
+    // starts with the session (the kernel's own start order), and is checked right after it.
+    const checked = (await workshop.state().catch(() => null)) === "started";
+    if (checked && !(await accountSignedIn(o.engine))) throw new SignedOutError();
     const { extra, token } = await engineRelay(o.profile);
     let launch: LaunchSpec;
     try {
@@ -834,7 +843,7 @@ async function openChat(o: OpenOptions) {
     }
     try {
       if (signal.aborted) throw new Error("closed");
-      if (!(await accountSignedIn(o.engine))) throw new SignedOutError();
+      if (!checked && !(await accountSignedIn(o.engine))) throw new SignedOutError();
       const conversation = await (o.engine === "claude" ? claudeChat : codexChat).open({
         chatId: o.chatId,
         ...(o.resumeId ? { resumeId: o.resumeId } : {}),
@@ -891,6 +900,28 @@ async function createChat(win: string, c: { profile?: unknown; mode?: unknown; s
   const mode = c.mode === "workshop" || c.mode === "browser" ? c.mode : agentMode;
   if (typeof c.space === "string") windowSpaces.set(win, c.space);
   return chats.create(win, { profile, mode, engine: profile, spaceId: windowSpaces.get(win) ?? "" });
+}
+
+/**
+ * Ressac's own text for the window's agent (a site app's or an app's prefix, design remarks): the terminal's prefill, or in
+ * chat view a message to the active discussion (`submit`) or the prefix of the window's next one, shown in its composer.
+ */
+function prefillAgent(win: string, text: string, written?: () => void, submit = false): void {
+  if (viewOf(win) === "terminal") return sessions.prefill(win, text, written, submit);
+  void chatSend
+    .prefill(win, text, { submit, ...(written ? { written } : {}) })
+    .then(() => {
+      const id = activeChat(win)?.id;
+      if (id) repushChat(id);
+    })
+    .catch((e) => console.error("[ressac] text for the discussion not sent:", e));
+}
+
+/** The panel's context in chat view: before the discussion's first message, shown in its composer meanwhile. */
+function prefillAgentContext(win: string, text: string): void {
+  chatSend.panelOpened(win, text);
+  const id = activeChat(win)?.id;
+  if (id) repushChat(id);
 }
 
 const activeChat = (win: unknown) => (typeof win === "string" ? (chats.active(win)?.summary ?? null) : null);
@@ -1421,7 +1452,7 @@ const rpc = createRpc({
       const share = () => kernel?.policy.userInteraction(p.tab);
       share();
       // Chat: the context goes before the discussion's first message (its send gives the tab again, after the session's reset).
-      if (viewOf(p.window) === "chat") return chatSend.panelOpened(p.window, contextPrefix(p.tab.title, p.tab.url));
+      if (viewOf(p.window) === "chat") return prefillAgentContext(p.window, contextPrefix(p.tab.title, p.tab.url));
       // A session still starting (the panel's first opening) gets the context once active, and the tab again: its start takes the accesses back.
       sessions.prefill(p.window, contextPrefix(p.tab.title, p.tab.url), share);
     },
@@ -1430,7 +1461,7 @@ const rpc = createRpc({
     },
     // The chat (shared/api.ts `chat`): always the window's own discussions; the UI names no other window.
     "chat.list": aiOnly(async (p: { window?: unknown; space?: unknown }) => {
-      if (typeof p?.window !== "string" || typeof p.space !== "string") throw new Error(hostSay("host-invalid-params"));
+      if (typeof p?.window !== "string" || typeof p.space !== "string") return [];
       windowSpaces.set(p.window, p.space);
       return chats.list(p.window, p.space);
     }),
@@ -1440,13 +1471,13 @@ const rpc = createRpc({
       if (typeof p.chatId === "string") {
         const v = await chats.select(p.window, p.chatId);
         if (!v) throw new Error("Cette discussion n'existe plus.");
-        return v;
+        return decorated(p.window, v);
       }
-      return chats.active(p.window) ?? createChat(p.window, p);
+      return decorated(p.window, chats.active(p.window) ?? (await createChat(p.window, p)));
     }),
     "chat.create": aiOnly((p: { window?: unknown; space?: unknown; profile?: unknown; mode?: unknown }) => {
       if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
-      return createChat(p.window, p);
+      return createChat(p.window, p).then((v) => decorated(p.window as string, v));
     }),
     "chat.send": aiOnly(async (p: { window?: unknown; draft?: unknown }) => {
       const draft = cleanDraft(p?.draft);
@@ -1459,7 +1490,7 @@ const rpc = createRpc({
     "chat.preview": (p: { window?: unknown; text?: unknown }) => {
       const chat = activeChat(p?.window);
       const session = chat && chats.sessionIdOf(chat.id);
-      if (!session || !kernel || typeof p.text !== "string" || p.text.length > DRAFT_MAX) return null;
+      if (!session || !kernel || typeof p?.text !== "string" || p.text.length > DRAFT_MAX) return null;
       try {
         return kernel.masker.maskTypedFor(session, p.text);
       } catch {
@@ -1480,6 +1511,12 @@ const rpc = createRpc({
         r.cancelled === true ? { cancelled: true } : answers?.every(([, v]) => typeof v === "string") ? { answers: Object.fromEntries(answers) as Record<string, string> } : null;
       if (chat && typeof p.requestId === "string" && reply) chats.answer(chat.id, p.requestId, reply);
     },
+    "chat.dropPrefix": (p: { window?: unknown }) => {
+      if (typeof p?.window !== "string") return;
+      chatSend.dropPrefix(p.window);
+      const chat = activeChat(p.window);
+      if (chat) repushChat(chat.id);
+    },
     "chat.retry": (p: { window?: unknown }) => {
       const chat = activeChat(p?.window);
       if (chat) void chats.retry(chat.id);
@@ -1497,13 +1534,15 @@ const rpc = createRpc({
     "chat.reveal": (p: { window?: unknown; label?: unknown }) => {
       const chat = activeChat(p?.window);
       const session = chat && chats.sessionIdOf(chat.id);
-      if (!session || typeof p.label !== "string" || !CHAT_LABEL.test(p.label)) return null;
+      if (!session || typeof p?.label !== "string" || !CHAT_LABEL.test(p.label)) return null;
       return kernel?.masker.lookupForSession(session, p.label)?.value ?? null;
     },
     // « Mode avancé »: the discussion pauses, the window's terminal resumes its conversation (Claude by id, Codex its latest).
     "chat.toTerminal": aiOnly(async (p: { window?: unknown }) => {
       if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
       terminalWindows.add(p.window);
+      // A sign-in still running would take the terminal's keys (agent.write goes to it first).
+      await logins.stop(p.window);
       const chat = activeChat(p.window);
       if (!chat) return;
       await chats.pause(chat.id);
@@ -1516,7 +1555,10 @@ const rpc = createRpc({
       terminalWindows.delete(p.window);
       await sessions.closeWindow(p.window);
       const chat = activeChat(p.window);
-      if (chat) await chats.select(p.window, chat.id);
+      if (!chat) return;
+      // The engine has what was said in the terminal; this transcript does not.
+      await chats.notice(chat.id, "Échanges faits dans le terminal");
+      await chats.select(p.window, chat.id);
     }),
     // The login card: the CLI's own sign-in in a small terminal; the window's signed-out discussions retry when it ends.
     "chat.login": aiOnly(async (p: { window?: unknown }) => {
@@ -1614,7 +1656,7 @@ const sites = createSites({
     rpc.notify("sites.change");
     design.sitesChanged();
   },
-  prefill: (f, t) => sessions.prefill(f, t),
+  prefill: (f, t) => prefillAgent(f, t),
   notifyMemory: (id, message) => rpc.notify("sites.memory", { id, message }),
   // The agent loses its dev tools on the closed window; the app's grant holds for the conversation, until « Supprimer »
   // (an app made again under the same id asks for its card again).
@@ -1641,7 +1683,7 @@ const apps = createApplicationsHost({
   },
   // The tab is given to the agent when the text is written, then the panel opens.
   debug: (f, text, access) => {
-    sessions.prefill(
+    prefillAgent(
       f,
       text,
       access &&
@@ -1675,7 +1717,7 @@ const design = createDesignHost({
   // Remarks from the cart and comments from the review: already reviewed by the user, so sent right away.
   // AI off: no agent will read it, nothing is kept for a later session.
   prefill: (f, t) => {
-    if (aiOn) sessions.prefill(f, t, undefined, true);
+    if (aiOn) prefillAgent(f, t, undefined, true);
   },
   chrome: { agentWindow: () => rpc.request("design.agentWindow"), giveAgent: (f) => rpc.notify("design.giveAgent", [f]) },
   notify: notify,

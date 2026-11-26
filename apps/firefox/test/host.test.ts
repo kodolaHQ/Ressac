@@ -372,6 +372,9 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(JSON.stringify(views)).not.toContain(key);
     const list = (await h.rpc.request("chat.list", { window: "f1", space: "perso" })) as { id: string }[];
     expect(list.map((c) => c.id)).toEqual([views[0]!.view.summary.id]);
+    // A window with no active space yet, or no params: nothing, never a throw.
+    expect(await h.rpc.request("chat.list", { window: "f1", space: null })).toEqual([]);
+    expect(await h.rpc.request("chat.preview", undefined)).toBeNull();
     await expect(h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "mon-agent" })).rejects.toThrow("Ce profil s'utilise dans le terminal (Mode avancé).");
   });
 

@@ -386,3 +386,11 @@ test("an open refused as signed out leaves the discussion signed-out, its resume
   await tick();
   expect(opens[2]!.conv.prompts).toEqual(["deux"]);
 });
+
+test("a notice joins the transcript, is pushed and written", async () => {
+  const { chats, onDisk } = prepare();
+  const a = await chats.create("w1", opts);
+  await chats.notice(a.summary.id, "Échanges faits dans le terminal");
+  expect(chats.active("w1")!.items.at(-1)).toMatchObject({ kind: "notice", text: "Échanges faits dans le terminal" });
+  expect(onDisk(a.summary.id).items.at(-1)).toMatchObject({ kind: "notice" });
+});
