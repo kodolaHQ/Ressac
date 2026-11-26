@@ -220,7 +220,11 @@ export async function checkOwnModel(e: OwnEngine, o: { key: OwnKey | null; fetch
   const shown = (await res.json().catch(() => null)) as { remote_host?: unknown; remote_model?: unknown } | null;
   // A cloud model (pulled as `…-cloud`) answers from its remote host behind the loopback address. Ollama's /api/show
   // does not say so (no remote_host there): its /api/tags entry does. Unknown host on a cloud name: off the Mac all the same.
-  return ollamaCloudHost(shown) ?? ollamaCloudHost(await tagsEntry(e, o.fetch ?? fetch)) ?? (/[-:]cloud$/.test(e.ollamaModel) ? "ollama.com" : null);
+  // The name decides only when /api/tags has no entry for it (or failed): a local copy named `…-cloud` has one, with nothing remote.
+  const host = ollamaCloudHost(shown);
+  if (host) return host;
+  const entry = await tagsEntry(e, o.fetch ?? fetch);
+  return entry ? ollamaCloudHost(entry) : /[-:]cloud$/.test(e.ollamaModel) ? "ollama.com" : null;
 }
 
 /** The model's /api/tags entry (`name` is the model with its tag, `:latest` when none was written); null on any failure. */

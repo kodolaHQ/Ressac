@@ -122,6 +122,8 @@ describe("checkOwnModel (Ollama)", () => {
     expect(await checkOwnModel(engine({ ollamaModel: "gros" }), { key: null, fetch: tags([{ ...entry, name: "gros:latest" }]) })).toBe("eu.example.com:8443");
     // No host known (tags down, or the entry gone) on a cloud name: off the Mac, at ollama.com.
     expect(await checkOwnModel(cloud, { key: null, fetch: tags([]) })).toBe("ollama.com");
+    // A local copy named like a cloud model (`ollama cp qwen3 qwen3-cloud`): its entry says nothing remote, so it is local.
+    expect(await checkOwnModel(engine({ ollamaModel: "qwen3-cloud" }), { key: null, fetch: tags([{ name: "qwen3-cloud:latest" }]) })).toBeNull();
     expect(await checkOwnModel(engine({ ollamaModel: "gpt-oss:cloud" }), { key: null, fetch: (async (url: string) => (url.endsWith("/api/tags") ? json({}, 500) : json({}))) as unknown as typeof fetch })).toBe("ollama.com");
     // A local model stays on the Mac, even when another entry is a cloud one.
     expect(await checkOwnModel(engine(), { key: null, fetch: tags([{ name: "qwen3:8b" }, entry]) })).toBeNull();
