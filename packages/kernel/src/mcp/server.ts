@@ -798,14 +798,16 @@ export function createToolsServer(
    * it. Any case and accents, percent-encoded up to three times, `+` read as a space and as itself; a number by its
    * digits only; a name in any of the writings masking knows (surname first, a comma, initials, « . » « _ » « + » between).
    */
-  const carriesRevealed = (text: string, to: string | null) => {
+  const carriesRevealed = (text: string, to: string | null) =>
+    carries(text, masker.revealedValues().filter(({ from }) => from === null || from !== to).map(({ entry }) => entry));
+  /** `text` carries one of `entries`' values, read as `carriesRevealed` reads them. */
+  const carries = (text: string, entries: readonly Entry[]) => {
     const fold = (x: string) => x.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ");
     const decoded = urlDecoded(text);
     const readings = [fold(decoded), fold(decoded.replace(/\+/g, " "))];
     const spaced = readings.map((r) => r.replace(/[._+]/g, " "));
     const digits = decoded.replace(/\D/g, "");
-    return masker.revealedValues().some(({ entry, from }) => {
-      if (from !== null && from === to) return false;
+    return entries.some((entry) => {
       const f = valueForms(entry);
       return (
         [entry.raw, entry.value, ...f.literals].some((l) => fold(l).length > 0 && readings.some((r) => r.includes(fold(l)))) ||
@@ -847,7 +849,7 @@ export function createToolsServer(
     const sent =
       tool === "search_web" ? [{ text: String(a.query), to: l10n("kernel-mask-destination-engine") }]
       : said ? (typed !== undefined ? [{ text: typed, to: l10n(said.to, { id: String(a.id) }) }] : [])
-      : (dests ?? []).filter((d) => d.composed).map((d) => ({ text: d.shown, to: siteOf(d.shown) }));
+      : (dests ?? []).filter((d) => d.composed).map((d) => ({ text: d.shown, to: siteOf(d.shown), origin: originOf(d.shown) }));
     if (!(await labelAlerts(sent, signal))) return LABEL_REFUSED;
     const locks = masker.locks();
     if (dests !== null) {
@@ -871,11 +873,16 @@ export function createToolsServer(
     if (refusal === null && typed !== undefined) outflow?.sent(key, typed);
     return refusal;
   }
-  /** Asks the label alert for each text holding issued labels; false at the first refused. */
-  async function labelAlerts(sent: { text: string; to: string }[], signal?: AbortSignal): Promise<boolean> {
+  /**
+   * Asks the label alert for each text holding issued labels; false at the first refused. A text toward `origin` whose
+   * labels all stand for that site's own values (web, read there) asks nothing: its token goes back to it.
+   */
+  async function labelAlerts(sent: { text: string; to: string; origin?: string | null }[], signal?: AbortSignal): Promise<boolean> {
     for (const x of sent) {
       const names = issuedNames(x.text);
       if (!names.length) continue;
+      const own = (l: string) => { const e = labels.resolve(l); return e?.zone === "web" && e.origins.length === 1 && e.origins[0] === x.origin; };
+      if (x.origin && [...bracketed(x.text).matchAll(LABELS)].every((m) => !labels.issued(m[0]) || own(m[0]))) continue;
       const { name, agreement, de } = named(names);
       const alert = { name, destination: x.to, text: l10n("kernel-mask-label-alert", { agreement, de, destination: x.to }) };
       const ask = bridge.askLabelAlert?.bind(bridge);
@@ -1354,18 +1361,32 @@ export function createToolsServer(
         if (!(e instanceof LoadRefused)) throw e;
         if (masker.locked()) return { refused: l10n("kernel-mask-locked-refused") };
         const to = originOf(e.url);
-        if (!to || !(await hopCard(pin, to, signal))) return { refused: HANDLE_REFUSED };
+        if (!to || !(ownTarget(pin, e.url) || (await hopCard(pin, to, signal)))) return { refused: HANDLE_REFUSED };
         url = e.url;
         o = { allow: [to] };
       }
     }
   }
+  /**
+   * A handle's redirect landing exactly on the address its own `q=` or `url=` parameter names (an engine's result link),
+   * carrying none of the handle's masked values nor the user's: those went only to the handle's origin, which showed them.
+   */
+  const ownTarget = (pin: Pin | undefined, hop: string) => {
+    if (!pin || !URL.canParse(hop) || !URL.canParse(pin.real)) return false;
+    const dest = new URL(hop).href;
+    const params = new URL(pin.real).searchParams;
+    if (!["q", "url"].some((k) => params.getAll(k).some((v) => URL.canParse(v) && new URL(v).href === dest))) return false;
+    // A label that resolves to nothing could stand for anything: the card.
+    const own = [...pin.handle.matchAll(LABELS)].map((m) => labels.resolve(m[0]));
+    return own.every((e) => e !== undefined) && !carries(hop, [...(own as Entry[]), ...labels.entries("sources")]);
+  };
   /** The handle card for a load from `pin` reaching origin `to`, shown by its origin only (its path may carry the value in clear). */
   async function hopCard(pin: Pin | undefined, to: string, signal?: AbortSignal): Promise<boolean> {
     if (!bridge.askAddress) return false;
     const from = (pin && (labels.unhandle(pin.handle)?.origin ?? originOf(pin.real))) || "";
     const danger = l10n("kernel-mask-handle-danger", { ...named(pin ? issuedNames(pin.handle) : []), from: siteOf(from), to: siteOf(to) });
-    const card = { url: to, reason: "", agent: dev?.agent ?? "L'agent", danger };
+    // A handle is a link read on a page: the card never says the agent wrote it.
+    const card = { url: to, reason: "", agent: dev?.agent ?? "L'agent", danger, ...(pin ? { found: true as const } : {}) };
     // Keyed by what it says too: a load from another handle waits for its own card, never shares one naming another value.
     return askAddressCard(bridge, policy, requests, card, `mask:${session}:hop:${pin?.handle ?? ""}:${to}`, win ?? undefined, () => () => {}, signal, { kind: "mask-hop", rule: "handle-hop" });
   }

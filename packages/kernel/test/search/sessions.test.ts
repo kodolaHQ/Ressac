@@ -65,6 +65,21 @@ describe("SearchSessions", () => {
     expect(s.freeAs("t1", "https://c.test/")).toBeUndefined();
   });
 
+  test("freeAs: a read link with the same origin and path and more query parameters frees the address (tracking dropped); an added or changed parameter, or another path, does not", () => {
+    s.start("w", "t1", "g");
+    s.pageRead("t1", "https://shop.test/sch?_nkw=ps5", ["https://shop.test/itm/123456789012?_skw=ps5&hash=item1a2b&itmprp=x"]);
+    expect(s.freeAs("t1", "https://shop.test/itm/123456789012")).toBe("https://shop.test/itm/123456789012");
+    expect(s.freeAs("t1", "https://shop.test/itm/123456789012?hash=item1a2b&_skw=ps5")).toBe("https://shop.test/itm/123456789012?hash=item1a2b&_skw=ps5");
+    expect(s.freeAs("t1", "https://shop.test/itm/123456789012?_skw=ps5#x")).toBe("https://shop.test/itm/123456789012?_skw=ps5");
+    // The exfiltration channel: whatever the agent adds or changes in the query.
+    expect(s.freeAs("t1", "https://shop.test/itm/123456789012?_skw=ps5&extra=1")).toBeUndefined();
+    expect(s.freeAs("t1", "https://shop.test/itm/123456789012?_skw=other")).toBeUndefined();
+    expect(s.freeAs("t1", "https://shop.test/itm/123456789012?_skw=ps5&_skw=ps5x")).toBeUndefined();
+    expect(s.freeAs("t1", "https://shop.test/itm/999999999999")).toBeUndefined();
+    expect(s.freeAs("t1", "https://shop.test/itm/123456789012/more")).toBeUndefined();
+    expect(s.freeAs("t1", "http://shop.test/itm/123456789012")).toBeUndefined();
+  });
+
   test("handing is true while a hand is open; handEnd settles when it ends", async () => {
     s.start("w", "t1", "g");
     expect(s.handing("t1")).toBe(false);

@@ -990,3 +990,88 @@ test("locked: a page of the web printing the value cannot become the site it was
     expect(await line(`${BANK}/conseiller?n=H%C3%A9l%C3%A8ne%20Marceau`)).not.toContain("Conversation verrouillée");
   });
 });
+
+// A search engine's result link: its redirect signatures are masked as identifiers, so the link is a handle on the engine.
+const RESULTS = "https://www.google.test/search?q=ps5";
+const ARTICLE = "https://www.jeux.test/news/ps5-prix.html";
+/** `raw`: the target written as is in `q=`, as Google often does (a value in it is then masked in the link). */
+const redirector = (q: string, raw = false) => `https://www.google.test/url?q=${raw ? q : encodeURIComponent(q)}&sa=U&ved=2ahUKEwjX9fK3qL6KAxVhQ_EDHb5qJ4AQFnoECAkQAQ&usg=AOvVaw3Hk2x9Yq0bZ1Lr5Tn8WcPd`;
+const results: TabInfo = { id: "res", title: "ps5 - Recherche", url: RESULTS, space: "perso", agentReached: true };
+const hopFrom = async (call: Call, bridge: FakeBridge, q: string, to: string, raw = false) => {
+  bridge.pages.set("res", { text: "Résultats", links: [{ text: "Prix PS5", url: redirector(q, raw) }] });
+  const handle = (await call("read_tab", { id: "res", links: true })).text.match(/https:\/\/www\.google\.test\/url\?\S+/)![0];
+  bridge.redirects.set(redirector(q, raw), to);
+  return { handle, r: await call("open_tab", { url: handle }) };
+};
+
+test("a result link whose redirect goes exactly to its own q= target, clean of masked values: no card, the target opens", async () => {
+  await serve({ tabs: [results], bridge: { address: false } }, async ({ call, bridge, cards }) => {
+    const { handle, r } = await hopFrom(call, bridge, ARTICLE, ARTICLE);
+    expect(handle).toContain("⟨");
+    expect(r.isError).toBe(false);
+    expect(cards()).toEqual([]);
+    expect((await bridge.listTabs()).some((t) => t.url === ARTICLE)).toBe(true);
+  });
+});
+
+test("a result link redirecting elsewhere than its q= target asks the hop card, as a found link", async () => {
+  await serve({ tabs: [results], bridge: { address: false } }, async ({ call, bridge, cards }) => {
+    const { r } = await hopFrom(call, bridge, ARTICLE, "https://evil.test/collect");
+    expect(r.text).toBe(HANDLE_REFUSED);
+    expect(cards()).toEqual([expect.objectContaining({ url: "https://evil.test", found: true })]);
+  });
+});
+
+test("a result link whose q= target carries a value masked in the link asks the hop card", async () => {
+  await serve({ tabs: [results], bridge: { address: false } }, async ({ call, bridge, cards }) => {
+    // An identifier the page showed, masked in the link and carried on by its target.
+    const target = "https://www.jeux.test/news?t=Zk3qL6KAxVhQ_EDHb5qJ4AQFnoECAkQAQ9x";
+    const { r, handle } = await hopFrom(call, bridge, target, target, true);
+    expect(handle).toMatch(/q=https:\/\/www\.jeux\.test\/news\?t=⟨id-/);
+    expect(r.text).toBe(HANDLE_REFUSED);
+    expect(cards()).toEqual([expect.objectContaining({ url: "https://www.jeux.test", found: true })]);
+  });
+});
+
+test("a result link whose q= target carries a value masked in the user's sources asks the hop card", async () => {
+  await serve({ tabs: [results], bridge: { address: false } }, async ({ call, bridge, cards, read }) => {
+    await read();
+    const target = `https://www.jeux.test/news?c=${CODE}`;
+    const { r } = await hopFrom(call, bridge, target, target);
+    expect(r.text).toBe(HANDLE_REFUSED);
+    expect(cards()).toEqual([expect.objectContaining({ url: "https://www.jeux.test", found: true })]);
+  });
+});
+
+test("a Google result link in the url= shape (q= empty) redirecting to its own target: no card", async () => {
+  await serve({ tabs: [results], bridge: { address: false } }, async ({ call, bridge, cards }) => {
+    const link = `https://www.google.test/url?sa=t&q=&url=${encodeURIComponent(ARTICLE)}&ved=2ahUKEwjX9fK3qL6KAxVhQ_EDHb5qJ4AQFnoECAkQAQ&usg=AOvVaw3Hk2x9Yq0bZ1Lr5Tn8WcPd`;
+    bridge.pages.set("res", { text: "Résultats", links: [{ text: "Prix PS5", url: link }] });
+    const handle = (await call("read_tab", { id: "res", links: true })).text.match(/https:\/\/www\.google\.test\/url\?\S+/)![0];
+    bridge.redirects.set(link, ARTICLE);
+    expect((await call("open_tab", { url: handle })).isError).toBe(false);
+    expect(cards()).toEqual([]);
+    expect((await bridge.listTabs()).some((t) => t.url === ARTICLE)).toBe(true);
+  });
+});
+
+test("a site's own label sent back to its own origin asks no label alert; to another site, or the user's value's label to its site, it does", async () => {
+  await serve({ tabs: [results], bridge: { labelAlert: false } }, async ({ call, bridge, read }) => {
+    bridge.pages.set("res", { text: "Résultats", links: [{ text: "Prix PS5", url: redirector(ARTICLE) }] });
+    const own = (await call("read_tab", { id: "res", links: true })).text.match(/⟨id-[a-z0-9]{8}⟩/)![0];
+    const alerts = () => bridge.calls.filter((c) => c.method === "askLabelAlert");
+    const back = `https://www.google.test/url?q=${encodeURIComponent(ARTICLE)}&ved=${own}`;
+    expect((await call("open_tab", { url: back, reason: "r" })).isError).toBe(false);
+    expect(alerts()).toEqual([]);
+    expect((await bridge.listTabs()).some((t) => t.url === back)).toBe(true);
+    // Site A's token toward site B: the alert, refused, nothing opens.
+    const r = await call("open_tab", { url: `https://autre.test/?v=${own}`, reason: "r" });
+    expect(r.text).toBe("L'utilisateur a refusé d'envoyer cette étiquette.");
+    expect(alerts()).toHaveLength(1);
+    expect(alerts()[0]!.args[0]).toMatchObject({ destination: "autre.test" });
+    // The user's own value (a source) keeps its alert, even toward the site it was read on.
+    const code = (await read()).match(/⟨code-[a-z0-9]{8}⟩/)![0];
+    await call("open_tab", { url: `${HOST}/?c=${code}`, reason: "r" });
+    expect(alerts()).toHaveLength(2);
+  });
+});

@@ -17,6 +17,17 @@ const PATH_MAX = 20;
 export const URL_MAX = 500;
 const FREE_MAX = 10_000;
 /** A parsed http(s) address of at most URL_MAX characters, else undefined. */
+/** Every parameter of `some` (name and value, each repeat counted) is in `all`: nothing added, nothing changed. */
+function subQuery(some: URLSearchParams, all: URLSearchParams): boolean {
+  const left = [...all].map((p) => JSON.stringify(p));
+  for (const [k, v] of some) {
+    const i = left.indexOf(JSON.stringify([k, v]));
+    if (i < 0) return false;
+    left.splice(i, 1);
+  }
+  return true;
+}
+
 function web(u: string): URL | undefined {
   if (u.length > URL_MAX) return undefined;
   try {
@@ -117,7 +128,8 @@ export class SearchSessions {
 
   /**
    * The address to open without a card: `url` (normalised) if it was read as it is, its fragment-less form if only that was
-   * (a fragment the agent adds is dropped: the page's script would read it), else undefined.
+   * (a fragment the agent adds is dropped: the page's script would read it), its fragment-less form too if a read link has
+   * the same origin and path and every one of its query parameters (tracking dropped: it sends less), else undefined.
    */
   freeAs(tabId: string, url: string): string | undefined {
     const free = this.byTab.get(tabId)?.free;
@@ -125,7 +137,10 @@ export class SearchSessions {
     if (!free || !x) return undefined;
     if (free.has(x.href)) return x.href;
     x.hash = "";
-    return free.has(x.href) ? x.href : undefined;
+    if (free.has(x.href)) return x.href;
+    const base = x.origin + x.pathname + "?";
+    for (const u of free) if (u.startsWith(base) && subQuery(x.searchParams, new URL(u).searchParams)) return x.href;
+    return undefined;
   }
 
   isFree(tabId: string, url: string): boolean {

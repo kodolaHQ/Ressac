@@ -72,7 +72,7 @@ test("a card asked through the MCP server is logged with its tool and its conver
 });
 
 test("an address the agent wrote is logged by its rule, the card never gets the log's code", async () => {
-  const bridge = new FakeBridge([], { address: false });
+  const bridge = new FakeBridge([], { active: null, allow: false, address: false });
   const lines: AskLine[] = [];
   (bridge as BrowserBridge).noteAsk = (l) => lines.push(l);
   const token = generateToken();
