@@ -199,7 +199,7 @@ describe("source.fetch", () => {
 });
 
 describe("ai.sort", () => {
-  const notes: Record<string, unknown> = {
+  const notes: Record<string, number> = {
     "Titre : A\nSource : a.fr": 0.8333,
     "Titre : B\nSource : b.fr": 0.4,
     "Titre : C\nSource : c.fr": 0.95,
@@ -207,30 +207,21 @@ describe("ai.sort", () => {
     "Titre : E\nSource : e.fr": 0.6,
   };
   const elements = ["A", "B", "C", "D", "E"].map((t) => ({ title: t, source: t.toLowerCase() + ".fr" }));
-  const sort = (o: Record<string, unknown> = {}) => ({
+  const sort = (o: Record<string, unknown> = {}, items: unknown[] = elements) => ({
     version: 1,
     blocks: [
-      list(elements).block,
+      list(items).block,
       block("tri", "ai.sort", { question: "Intéresse quelqu'un qui suit : {config.interests} ?", text: "Titre : {title}\nSource : {source}", threshold: 0.6, ...o }),
       output,
     ],
     links: chain("liste", "tri", "sortie"),
   });
+  const reply = (a: Call) => ({ ok: a.a.texts.map((t: string) => notes[t]) });
 
-  it("ia.trier asks one question per element (state = filled text, instructions = filled question), keeps ≥ threshold, sorts, rounds p", async () => {
-    const r = await launch({
-      workflow: sort(),
-      files: list(elements).files,
-      config: { interests: "Rust" },
-      reply: (a) => ({ ok: { q: { type: "noul", noul: notes[a.a.state] } } }),
-    });
-    expect(r.calls).toHaveLength(5);
-    for (const a of r.calls) {
-      expect(a.f).toBe("kev");
-      expect(a.a.questions).toEqual({ q: { type: "noul", instructions: "Intéresse quelqu'un qui suit : Rust ?" } });
-    }
-    expect(r.calls.map((a) => a.a.state).sort()).toEqual(Object.keys(notes).sort());
-    // The threshold applies to Kev's score (0.598 does not pass 0.6); the kept score is rounded.
+  it("ai.sort makes one sort call (question filled once, one text per item), keeps ≥ threshold, sorts, rounds", async () => {
+    const r = await launch({ workflow: sort(), files: list(elements).files, config: { interests: "Rust" }, reply });
+    expect(r.calls.map((a) => [a.f, a.a])).toEqual([["sort", { question: "Intéresse quelqu'un qui suit : Rust ?", texts: Object.keys(notes) }]]);
+    // The threshold applies to the score the kernel returns (0.598 does not pass 0.6); the kept score is rounded.
     expect(r.terminal.data).toEqual([
       { title: "C", source: "c.fr", score: 0.95 },
       { title: "A", source: "a.fr", score: 0.83 },
@@ -239,34 +230,32 @@ describe("ai.sort", () => {
     expect(r.blockEnd("tri").status).toBe("succeeded");
   });
 
-  it("ia.trier: an element that arrives with an old score and whose scoring fails is not kept", async () => {
-    const withOld = [{ title: "A", source: "a.fr", score: 0.9 }, { title: "C", source: "c.fr" }];
-    const r = await launch({
-      workflow: { ...sort(), blocks: [list(withOld).block, ...sort().blocks.slice(1)] },
-      files: list(withOld).files,
-      config: { interests: "Rust" },
-      reply: (a) => (a.a.state.startsWith("Titre : A") ? { error: "Kev ne répond pas" } : { ok: { q: { type: "noul", noul: 0.95 } } }),
-    });
-    expect(r.blockEnd("tri").status).toBe("partial");
+  it("ai.sort: an empty input makes no call", async () => {
+    const r = await launch({ workflow: sort({}, []), files: list([]).files, config: { interests: "Rust" }, reply });
+    expect(r.calls).toEqual([]);
+    expect(r.terminal).toEqual({ t: "end", data: [] });
+  });
+
+  it("ai.sort: an item without a value for the text is not scored nor kept, and an old score never passes", async () => {
+    const items = [{ title: "A", score: 0.9 }, { title: "C", source: "c.fr", score: 0.1 }];
+    const r = await launch({ workflow: sort({}, items), files: list(items).files, config: { interests: "Rust" }, reply });
+    expect(r.calls.map((a) => a.a.texts)).toEqual([["Titre : C\nSource : c.fr"]]);
     expect(r.terminal.data).toEqual([{ title: "C", source: "c.fr", score: 0.95 }]);
+    expect(logOf(r, "tri")).toEqual(["1 élément(s) sans texte (valeur absente : source) : non notés"]);
   });
 
-  it("ia.trier: a non-finite score is an element failure; onError echouer fails the block", async () => {
-    const reply = (a: Call) => ({ ok: { q: { type: "noul", noul: a.a.state.startsWith("Titre : B") ? "beaucoup" : notes[a.a.state] } } });
-    const r = await launch({ workflow: sort({ field: "note" }), files: list(elements).files, config: { interests: "Rust" }, reply: reply });
-    expect(r.blockEnd("tri").status).toBe("partial");
-    expect(logOf(r, "tri")).toEqual(["élément 2 : Kev n'a pas rendu de note"]);
-    expect(r.terminal.data.map((e: any) => [e.title, e.note])).toEqual([["C", 0.95], ["A", 0.83], ["E", 0.6]]);
-
-    const failed = await launch({ workflow: sort({ onError: "fail" }), files: list(elements).files, config: { interests: "Rust" }, reply: reply });
-    expect(failed.blockEnd("tri")).toMatchObject({ status: "failed", error: "Kev n'a pas rendu de note" });
-    expect(failed.terminal).toEqual({ t: "failure", error: "Kev n'a pas rendu de note" });
+  it("ai.sort: a failed sort call fails the block", async () => {
+    const r = await launch({ workflow: sort(), files: list(elements).files, config: { interests: "Rust" }, reply: () => ({ error: "Le modèle n'a pas rendu une note par élément." }) });
+    expect(r.blockEnd("tri")).toMatchObject({ status: "failed", error: "Le modèle n'a pas rendu une note par élément." });
+    expect(r.terminal).toEqual({ t: "failure", error: "Le modèle n'a pas rendu une note par élément." });
   });
 
-  it("ia.trier: Kev scores no element, the sort fails even with sauter", async () => {
-    const r = await launch({ workflow: sort(), files: list(elements).files, config: { interests: "Rust" }, reply: () => ({ ok: {} }) });
-    expect(r.blockEnd("tri")).toMatchObject({ status: "failed", error: "Tous les éléments ont échoué (Kev n'a pas rendu de note)" });
-    expect(r.terminal).toEqual({ t: "failure", error: "Tous les éléments ont échoué (Kev n'a pas rendu de note)" });
+  it("an old ai.sort with onError skip still validates", () => {
+    const d = BLOCK_REGISTRY.get("ai.sort")!;
+    const old = { question: "q", text: "{title}", threshold: 0.6, onError: "skip", budgetSeconds: 60, reuse: "url", keepDays: 7 };
+    expect(d.params.safeParse(old).success).toBe(true);
+    expect(d.perItem).toBe("no");
+    expect(d.fields.map((f) => f.name)).toEqual(["question", "text", "threshold", "field"]);
   });
 });
 

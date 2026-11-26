@@ -200,7 +200,7 @@ function createStep(module, ctx, exposeMemory) {
     failed: new Set(),
     reused,
     // An item without a value this time (failure, not run, absent value) leaves without `field`, even if it had one:
-    // an old value never passes for this block's (ai.sort does not sort on an old score).
+    // an old value never passes for this block's.
     withoutField(item) {
       if (!isObject(item) || !Object.hasOwn(item, field)) return item;
       const { [field]: _old, ...rest } = item;
@@ -345,7 +345,7 @@ async function perItem(module, ctx, { deadline, clock, afterItem, exposeMemory, 
   progress?.finish();
 
   if (step.blockError) throw step.blockError;
-  // For a block that asks for it (ai.sort: with no score at all, its empty output means nothing), among the items
+  // For a block that asks for it (with no value at all, its empty output means nothing), among the items
   // run, none succeeded and at least one failed: the block failed. Items not run (time, refused by the
   // kernel) or without a template value do not count as succeeded. The other blocks (which enrich) let
   // the items through without their field and end "partial".

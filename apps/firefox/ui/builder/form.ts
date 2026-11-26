@@ -3,8 +3,7 @@ import type { BlockCatalogEntry } from "@ressac/kernel";
 export type FormField = BlockCatalogEntry["fields"][number];
 
 /**
- * Fields shown for these parameters: the « per item only » ones wait for `perItem` to be checked. A block that
- * always works item by item (`ai.sort`) has no such mark in the catalog: its fields are always there.
+ * Fields shown for these parameters: the « per item only » ones wait for `perItem` to be checked.
  */
 export function shownFields(c: BlockCatalogEntry, params: Record<string, unknown>): FormField[] {
   return c.fields.filter((f) => !f.perItemOnly || params.perItem === true);

@@ -22,7 +22,6 @@ function fakeAi() {
     running: running,
     max: () => max,
     ai: {
-      kev: (body: { state: unknown; questions: Record<string, unknown> }) => call(`kev ${String(body.state)}`),
       gemma: (o: { prompt: string }) => call(`gemma ${o.prompt}`),
     },
     /** Finishes the oldest in-flight call. */
@@ -60,7 +59,7 @@ test("never more than 4 calls in flight", async () => {
   const f = fakeAi();
   const r = createAiDispatcher(f.ai);
   const calls: Promise<unknown>[] = [];
-  for (const key of ["a", "b", "c"]) for (let i = 0; i < 4; i++) calls.push(r.for(key).kev({ state: `${key}${i}`, questions: {} }));
+  for (const key of ["a", "b", "c"]) for (let i = 0; i < 4; i++) calls.push(r.for(key).gemma({ prompt: `${key}${i}` }));
   await wait();
   expect(f.running).toHaveLength(4);
   while (f.running.length) await f.finishFirst();
@@ -68,7 +67,7 @@ test("never more than 4 calls in flight", async () => {
   expect(f.log).toHaveLength(12);
   expect(f.max()).toBe(4);
   // The four of « a » leave right away; then « b » and « c » are served in turn.
-  expect(f.log.slice(4, 8)).toEqual(["kev b0", "kev c0", "kev b1", "kev c1"]);
+  expect(f.log.slice(4, 8)).toEqual(["gemma b0", "gemma c0", "gemma b1", "gemma c1"]);
 });
 
 test("a failing call does not stop its queue", async () => {
@@ -89,18 +88,17 @@ test("a call that throws right away does not stop its queue", async () => {
   let n = 0;
   const r = createAiDispatcher(
     {
-      kev: () => {
+      gemma: () => {
         n++;
         if (n === 1) throw new Error("tout de suite");
         return Promise.resolve("ok");
       },
-      gemma: async () => "g",
     },
     { concurrent: 1 },
   );
   const ai = r.for("x");
-  await expect(ai.kev({ state: 1, questions: {} })).rejects.toThrow("tout de suite");
-  expect(await ai.kev({ state: 2, questions: {} })).toBe("ok");
+  await expect(ai.gemma({ prompt: "1" })).rejects.toThrow("tout de suite");
+  expect(await ai.gemma({ prompt: "2" })).toBe("ok");
 });
 
 test("oublier: the run's queued calls are refused without leaving, like those that come after", async () => {
@@ -157,14 +155,14 @@ test("two priority actions share the slots in turn", async () => {
   const w = r.for("widget");
   const a = r.for("action:a", { priority: true });
   const b = r.for("action:b", { priority: true });
-  const calls = [w.kev({ state: "w1", questions: {} }), w.kev({ state: "w2", questions: {} })];
+  const calls = [w.gemma({ prompt: "w1" }), w.gemma({ prompt: "w2" })];
   await wait();
-  calls.push(a.kev({ state: "a1", questions: {} }), a.kev({ state: "a2", questions: {} }), b.kev({ state: "b1", questions: {} }), b.kev({ state: "b2", questions: {} }));
+  calls.push(a.gemma({ prompt: "a1" }), a.gemma({ prompt: "a2" }), b.gemma({ prompt: "b1" }), b.gemma({ prompt: "b2" }));
   await wait();
   while (f.running.length) await f.finishFirst();
   await Promise.all(calls);
   // w1 was already in flight: it is never interrupted.
-  expect(f.log).toEqual(["kev w1", "kev a1", "kev b1", "kev a2", "kev b2", "kev w2"]);
+  expect(f.log).toEqual(["gemma w1", "gemma a1", "gemma b1", "gemma a2", "gemma b2", "gemma w2"]);
 });
 
 test("atStartup called at the real start, not when queued", async () => {
@@ -195,7 +193,7 @@ test("signal raised in the queue: AI_ABANDONED refusal, the AI is not called", a
   controller.abort();
   await denial;
   // Already raised: refused right away.
-  await expect(r.for("b").kev({ state: 0, questions: {} }, { signal: controller.signal })).rejects.toThrow(AI_ABANDONED);
+  await expect(r.for("b").gemma({ prompt: "0" }, { signal: controller.signal })).rejects.toThrow(AI_ABANDONED);
   await f.finishFirst();
   await f.finishFirst();
   await Promise.all([first, after]);
@@ -206,11 +204,9 @@ test("signal raised in the queue: AI_ABANDONED refusal, the AI is not called", a
 test("signal raised in flight: passed to the AI", async () => {
   const received: (AbortSignal | undefined)[] = [];
   const r = createAiDispatcher({
-    kev: async (_c: unknown, o?: { signal?: AbortSignal }) => (received.push(o?.signal), "k"),
     gemma: async (g: { prompt: string; signal?: AbortSignal }) => (received.push(g.signal), "g"),
   });
   const controller = new AbortController();
-  await r.for("a").kev({ state: 1, questions: {} }, { signal: controller.signal });
   await r.for("a").gemma({ prompt: "x" }, { signal: controller.signal });
-  expect(received).toEqual([controller.signal, controller.signal]);
+  expect(received).toEqual([controller.signal]);
 });

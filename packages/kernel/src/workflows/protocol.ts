@@ -8,7 +8,7 @@ export const DATA_MAX_SIZE = 2 * 1024 * 1024;
 /** Maximum size of a line of the harvester <-> kernel protocol. */
 export const LINE_MAX_BYTES = 4 * 1024 * 1024;
 
-export const HarvesterFunction = z.enum(["readPage", "fetch", "kev", "gemma", "searchWeb"]);
+export const HarvesterFunction = z.enum(["readPage", "fetch", "sort", "gemma", "searchWeb"]);
 export type HarvesterFunction = z.infer<typeof HarvesterFunction>;
 
 const SentMemory = z.record(z.string(), z.object({ type: z.string(), value: z.unknown() }));
@@ -79,7 +79,8 @@ export type KernelMessage = z.infer<typeof KernelMessage>;
 export const SCROLL_MAX = 20;
 export const ReadPageArgs = z.object({ url: z.string(), account: z.boolean().optional(), scroll: z.number().int().min(0).max(SCROLL_MAX).optional() });
 export const FetchArgs = z.object({ url: z.string(), format: z.enum(["text", "json"]).optional() });
-export const ArgsKev = z.object({ state: z.string(), questions: z.record(z.string(), z.unknown()) });
+/** A list scored against one question by the agent's small model; answer: one score per text, in order. */
+export const ArgsSort = z.object({ question: z.string().max(2000), texts: z.array(z.string().max(4000)).max(2000) });
 /** Web search done by the kernel; answer: `{ title, url, excerpt }[]`, at most `count`. */
 export const SearchWebArgs = z.object({ query: z.string().min(1).max(500), count: z.number().int().min(1).max(20) });
 export const ArgsGemma = z.object({ prompt: z.string(), images: z.array(z.string()).optional(), json: z.boolean().optional() });

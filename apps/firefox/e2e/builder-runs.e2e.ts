@@ -9,18 +9,18 @@ import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inFrame, inUi, missingApi, waitUi } from "./ui";
-import { openBuilder, readWorkflow, widgetDir, writeWidget } from "./workflows";
+import { openBuilder, readWorkflow, sortAnswer, widgetDir, writeWidget } from "./workflows";
 
 // The workflow builder's runs, replays, implicit workflows, a 30-block workflow and web widgets,
 // plus a host restart under an open builder.
 
-/** A workflow shipped by the agent, without positions: a page, its links taken by code, sorted by Kev, then their texts. */
+/** A workflow shipped by the agent, without positions: a page, its links taken by code, sorted, then their texts. */
 const WATCH_WORKFLOW = {
   version: 1,
   blocks: [
     { id: "page", type: "source.page", params: { url: "{config.url}" } },
     { id: "liens", type: "code", name: "Liens de la page", params: { source: "liens.mjs" } },
-    { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{text}", threshold: 0.5 } },
+    { id: "tri", type: "ai.sort", name: "Tri", params: { question: "Parle d'IA ?", text: "{text}", threshold: 0.5 } },
     { id: "textes", type: "code", params: { source: "textes.mjs" } },
     { id: "sortie", type: "output", params: { to: "widget" } },
   ],
@@ -43,7 +43,7 @@ let dataDir: string;
 let w: LaunchedRessac;
 let m: Marionette;
 
-// Local test servers: the site the widgets read, a fake Kev (an « IA » text scores 0.9) and a fake Ollama without Gemma.
+// Local test servers: the site the widgets read and a fake Ollama behind the fake writer (an « IA » text scores 0.9 in the sort).
 type Server = { url: string; close(): Promise<void> };
 async function listen(handle: (req: IncomingMessage, res: ServerResponse) => void): Promise<Server> {
   const server = createServer(handle);
@@ -54,7 +54,6 @@ async function listen(handle: (req: IncomingMessage, res: ServerResponse) => voi
   };
 }
 let site: Server;
-let kev: Server;
 let ollama: Server;
 /** The site's log: pages served, by query (each widget reads `/liens?<its id>`). */
 const reads = new Map<string, number>();
@@ -165,17 +164,15 @@ beforeAll(async () => {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end('<title>Liens</title><a href="https://exemple.invalid/ia">Nouveau modèle IA</a> <a href="https://exemple.invalid/cuisine">Recette de cuisine</a>');
   });
-  kev = await listen((req, res) => {
-    if (req.method === "GET") return void res.writeHead(200, { "Content-Type": "application/json" }).end('{"data":[]}');
+  ollama = await listen((req, res) => {
     let body = "";
     req.on("data", (d) => (body += d));
     req.on("end", () => {
-      const { state } = JSON.parse(body) as { state: string };
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ answers: { q: { noul: /\bIA\b/.test(state) ? 0.9 : 0.1 } } }));
+      const prompt = req.url === "/api/chat" ? String((JSON.parse(body) as { messages: { content: string }[] }).messages[0]?.content) : "";
+      const sorted = sortAnswer(prompt, (t) => (/\bIA\b/.test(t) ? 0.9 : 0.1));
+      res.writeHead(200, { "Content-Type": "application/json" }).end(sorted ? JSON.stringify({ message: { content: sorted } }) : '{"models":[]}');
     });
   });
-  ollama = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}'));
 
   dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-builder-runs-"));
   await writeWatch("lancer", { slow: true });
@@ -256,14 +253,14 @@ beforeAll(async () => {
   });
   await writeWatch("relance", { slow: true });
 
-  w = await launchRessac({ dataDir, height: 1400, env: { RESSAC_KEV_URL: kev.url, RESSAC_OLLAMA_URL: ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
+  w = await launchRessac({ dataDir, height: 1400, writer: "claude", env: { RESSAC_OLLAMA_URL: ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
 });
 afterAll(async () => {
   await w?.close();
-  await Promise.all([site, kev, ollama].map((s) => s?.close()));
+  await Promise.all([site, ollama].map((s) => s?.close()));
   await rm(dataDir, { recursive: true, force: true });
 });
 afterEach(async () => {

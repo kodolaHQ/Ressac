@@ -101,11 +101,11 @@ describe("interpreter (in the container)", () => {
       config: { a: 1 },
       previous: { v: 2 },
       files: {
-        "harvest.mjs": `export default async (w) => ({ cfg: w.config, prev: w.previous, k: await w.kev("etat", { q: { type: "noul" } }) });`,
+        "harvest.mjs": `export default async (w) => ({ cfg: w.config, prev: w.previous, k: await w.gemma("etat") });`,
       },
       reply: () => ({ ok: { q: { type: "noul", noul: 0.5 } } }),
     });
-    expect(r.calls.map((a) => [a.f, a.a])).toEqual([["kev", { state: "etat", questions: { q: { type: "noul" } } }]]);
+    expect(r.calls.map((a) => [a.f, a.a])).toEqual([["gemma", { prompt: "etat" }]]);
     expect(r.terminal).toEqual({ t: "end", data: { cfg: { a: 1 }, prev: { v: 2 }, k: { q: { type: "noul", noul: 0.5 } } } });
   });
 

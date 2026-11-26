@@ -1,27 +1,19 @@
-// ai.sort: Kev scores each item (one question per item, today's `kev` call), then the block keeps
-// those whose score reaches the threshold, sorted by descending score, the score rounded to 2 decimals.
-// The filled-in text (coming from a page) is the state Kev scores, never an instruction.
+// ai.sort: the agent's small model scores the whole list against the question in one `sort` call, then the block keeps
+// the items whose score reaches the threshold, sorted by descending score, the score rounded to 2 decimals.
+// The filled-in texts (coming from a page) are data the model scores, never instructions.
+import { fill } from "../templates.mjs";
 
 export default {
-  perItem: "always",
-  // No score at all (Kev down): the sort fails clearly rather than returning an empty list.
-  failIfAllFail: true,
-  async processItem({ params, fill, ressac }) {
-    const { text: state } = fill(params.text);
-    const { text: instructions } = fill(params.question);
-    const r = await ressac.kev(state, { q: { type: "noul", instructions } });
-    const raw = r?.q?.noul;
-    // Like `Number(...)` today, a number written as text is read; nothing, or anything else, is not a score.
-    const score = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
-    if (!Number.isFinite(score)) throw new Error("Kev n'a pas rendu de note");
-    // The raw score is kept (and reused): the threshold applies to it, as today.
-    return score;
-  },
-  async finalize(list, { params }) {
-    const { field, threshold = 0.5 } = params;
-    const scored = list
-      .filter((e) => typeof e?.[field] === "number" && Number.isFinite(e[field]) && e[field] >= threshold)
-      .sort((a, b) => b[field] - a[field]);
-    return { output: scored.map((e) => ({ ...e, [field]: Math.round(e[field] * 100) / 100 })) };
+  perItem: "no",
+  async run({ input, params, config, userInput, fill: fillInput, ressac, log }) {
+    if (!Array.isArray(input)) throw new Error("liste attendue en entrée");
+    const { field = "score", threshold = 0.5 } = params;
+    const { text: question } = fillInput(params.question);
+    // An item whose text misses a value is not scored and not kept.
+    const filled = input.map((item) => ({ item, r: fill(params.text, { item, config, input: userInput }) }));
+    const missing = filled.filter((x) => "missing" in x.r);
+    if (missing.length) log(`${missing.length} élément(s) sans texte (valeur absente : ${missing[0].r.missing}) : non notés`);
+    const scored = await ressac.sort(filled.filter((x) => "text" in x.r), { question, text: (x) => x.r.text, threshold });
+    return { output: scored.map(({ element, score }) => ({ ...element.item, [field]: Math.round(score * 100) / 100 })) };
   },
 };

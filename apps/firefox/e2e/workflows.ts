@@ -21,6 +21,17 @@ export async function approveFixtureReads(folder: string, id: string, sources: {
   await writeFile(file, JSON.stringify(all));
 }
 
+/**
+ * The fake writer's answer to the kernel's sort prompt: `score(text)` for each numbered item, keyed by its number;
+ * null for any other prompt.
+ */
+export function sortAnswer(prompt: string, score: (text: string) => number): string | null {
+  const at = prompt.indexOf("\nItems:\n");
+  if (!prompt.includes("Score each numbered item") || at < 0) return null;
+  const items = [...prompt.slice(at + "\nItems:\n".length).matchAll(/^(\d+)\. (.*)$/gm)];
+  return JSON.stringify({ scores: Object.fromEntries(items.map((m) => [m[1], score(m[2]!)])) });
+}
+
 /** A display that shows the data it gets by postMessage (`#donnees`). */
 const DISPLAY = `<!doctype html><meta charset="utf-8"><pre id="donnees"></pre>
 <script>

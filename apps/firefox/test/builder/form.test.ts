@@ -13,9 +13,8 @@ test("the « only per item » fields only appear if perItem is ticked", () => {
   expect(names("ai.write", {})).toContain("perItem");
 });
 
-test("ia.trier (always item by item) shows onError, budget, reuse and a field without the perItem box", () => {
-  expect(names("ai.sort", {})).toEqual(expect.arrayContaining(["threshold", "field", "onError", "budgetSeconds", "reuse"]));
-  expect(names("ai.sort", {})).not.toContain("perItem");
+test("ai.sort (one call for the whole list) shows its own fields, no per-item ones", () => {
+  expect(names("ai.sort", {})).toEqual(["question", "text", "threshold", "field"]);
 });
 
 test("a cleared non-required text field removes its key; required, it stays empty", () => {

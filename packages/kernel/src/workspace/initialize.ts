@@ -305,6 +305,9 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
     // Before the caps of the harvest's copy: fr, en.
     "c910bac82910915de8a5195d408ee02f820194ce1a651a34aa042205808d4aa3",
     "252bd9b2eeb4ac280e68b49a833ffcad0ece1bb2f67fb2343d9ff3dffaa6caa7",
+    // Before ai.sort scored a whole list in one call (Kev, one item per question): fr, en.
+    "70e002112b3a9297e99f9f3c4f0d7dcdbdb7a4d0b76023750ac3e12b52b3c6df",
+    "663edce0b36733b24fe6f31bbfd03e69640aff6c7a7be8f79665294e7805626e",
   ]),
   // Before the caps of the harvest's copy: fr, en.
   "guides/actions.md": new Set(["f2e7637484158ec1c8747311bf6c03c303fcf58f9afcfcf67678c29b0bf9f43b", "24cfeffac0bbeada14f8fa7dae02a89db6a89f41ed9ee360baffb8661bd7aa29"]),

@@ -60,23 +60,26 @@ describe("recolteur (implicit workflow of a lone harvest.mjs)", () => {
     });
   });
 
-  it("lirePage and kev go through numbered calls and receive the response", async () => {
+  it("lirePage and gemma go through numbered calls and receive the response", async () => {
     const r = await launch(
       `export default async (w) => {
         const p = await w.readPage("https://a.fr/", { account: true });
-        const k = await w.kev("etat", { q: { type: "noul" } });
-        return { p, k };
+        const g = await w.gemma("résume", { json: true });
+        return { p, g };
       };`,
-      (a) =>
-        a.f === "readPage"
-          ? { ok: { url: a.a.url, title: "T", text: "x", links: [] } }
-          : { ok: { q: { type: "noul", noul: 0.9 } } },
+      (a) => (a.f === "readPage" ? { ok: { url: a.a.url, title: "T", text: "x", links: [] } } : { ok: { r: 1 } }),
     );
-    expect(r.calls.map((a) => [a.n, a.f])).toEqual([[1, "readPage"], [2, "kev"]]);
+    expect(r.calls.map((a) => [a.n, a.f])).toEqual([[1, "readPage"], [2, "gemma"]]);
     expect(r.calls[0]!.a).toEqual({ url: "https://a.fr/", account: true });
-    expect(r.calls[1]!.a).toEqual({ state: "etat", questions: { q: { type: "noul" } } });
-    expect(r.terminal.data.k).toEqual({ q: { type: "noul", noul: 0.9 } });
+    expect(r.calls[1]!.a).toEqual({ prompt: "résume", json: true });
+    expect(r.terminal.data.g).toEqual({ r: 1 });
     expect(r.terminal.data.p.title).toBe("T");
+  });
+
+  it("ressac.kev no longer exists and says to use ressac.sort", async () => {
+    const r = await launch(`export default async (w) => w.kev("etat", {});`);
+    expect(r.calls).toEqual([]);
+    expect(r.terminal).toEqual({ t: "failure", error: expect.stringContaining("ressac.kev n'existe plus : utilise ressac.sort.") });
   });
 
   it("a widget exception gives { t: echec } with the message", async () => {
@@ -121,32 +124,24 @@ describe("recolteur (implicit workflow of a lone harvest.mjs)", () => {
     ]);
   });
 
-  it("trier asks one noul question per element with the element in state, 8 at a time at most, and filters by threshold", async () => {
-    let running = 0;
-    let max = 0;
+  it("ai.sort keeps items at or above the threshold, by score, in one sort call", async () => {
     const r = await launch(
       `export default async (w) => {
         const els = Array.from({ length: 20 }, (_, i) => ({ id: i, t: "el" + i }));
         return await w.sort(els, { question: "intéressant ?", text: (e) => e.t, threshold: 0.5 });
       };`,
-      async (a) => {
-        running++;
-        max = Math.max(max, running);
-        await new Promise((ok) => setTimeout(ok, 15));
-        running--;
-        const i = Number(a.a.state.slice(2));
-        return { ok: { q: { type: "noul", noul: i / 20 } } };
-      },
+      (a) => ({ ok: a.a.texts.map((t: string) => Number(t.slice(2)) / 20) }),
     );
-    expect(r.calls).toHaveLength(20);
-    expect(r.calls.every((a) => a.f === "kev" && /^el\d+$/.test(a.a.state))).toBe(true);
-    expect(Object.values(r.calls[0]!.a.questions)[0]).toEqual({ type: "noul", instructions: "intéressant ?" });
-    expect(JSON.stringify(r.calls[0]!.a.questions)).not.toContain("el0");
-    expect(max).toBeLessThanOrEqual(8);
-    expect(max).toBeGreaterThan(1);
+    expect(r.calls.map((a) => [a.f, a.a])).toEqual([["sort", { question: "intéressant ?", texts: Array.from({ length: 20 }, (_, i) => "el" + i) }]]);
     const res = r.terminal.data as { element: { id: number }; score: number }[];
     expect(res.map((x) => x.element.id)).toEqual([19, 18, 17, 16, 15, 14, 13, 12, 11, 10]);
     expect(res[0]!.score).toBeCloseTo(0.95);
+  });
+
+  it("an empty input makes no call", async () => {
+    const r = await launch(`export default async (w) => w.sort([], { question: "q", text: String });`);
+    expect(r.calls).toEqual([]);
+    expect(r.terminal).toEqual({ t: "end", data: [] });
   });
 
   it("a response over 4 MB rejects the call concerned with a clear error", async () => {

@@ -100,7 +100,7 @@ export interface SchedulerOptions {
   engine: string;
   workshop: Pick<Workshop, "harvestReady" | "stageHarvest" | "harvestCommand" | "deleteHarvest">;
   bridge: BrowserBridge;
-  ai: Pick<LocalAi, "kev" | "gemma"> | null;
+  ai: Pick<LocalAi, "gemma"> | null;
   /** The dispatcher of AI calls, shared with the actions; absent: the scheduler creates its own on `ia`. */
   dispatcher?: ReturnType<typeof createAiDispatcher>;
   clock?: () => Date;

@@ -14,7 +14,9 @@ test("each registry type has a label, a family and a field per key of its schema
     expect(block.family, type).toBeTruthy();
     expect(block.description.length, type).toBeGreaterThan(0);
     expect(block.perItem, type).toBe(definition.perItem);
-    const keys = Object.keys((definition.params as unknown as { shape: object }).shape).sort();
+    // ai.sort still accepts its old per-item keys, ignored: no field for them.
+    const ignored = type === "ai.sort" ? ["onError", "budgetSeconds", "reuse", "keepDays"] : [];
+    const keys = Object.keys((definition.params as unknown as { shape: object }).shape).filter((k) => !ignored.includes(k)).sort();
     expect(block.fields.map((c) => c.name).sort(), type).toEqual(keys);
     for (const c of block.fields) expect(c.label.length, `${type}.${c.name}`).toBeGreaterThan(0);
   }
@@ -52,10 +54,10 @@ test("required parameters have a neutral default to prefill the palette", () => 
   }
 });
 
-test("the common per-element mode fields are marked, except for ai.sort", () => {
+test("the common per-element mode fields are marked; ai.sort has none", () => {
   for (const name of ["onError", "budgetSeconds", "reuse"]) {
     expect(field("source.page", name).perItemOnly).toBe(true);
-    expect(field("ai.sort", name).perItemOnly).toBeUndefined();
+    expect(field("ai.sort", name)).toBeUndefined();
   }
   expect(field("source.page", "perItem").perItemOnly).toBeUndefined();
   expect(field("source.page", "field").perItemOnly).toBeUndefined();
@@ -90,7 +92,7 @@ test("keepDays, live and the budgetSeconds bound in the catalog", () => {
     expect(field(type, "keepDays"), type).toMatchObject({ label: "Garder (jours)", help: "Sans valeur : pour toujours.", required: false, kind: "number", min: 1, max: 365, integer: true, perItemOnly: true });
     expect(field(type, "budgetSeconds"), type).toMatchObject({ max: 3600, help: "170 s au plus, ou la durée maximale de l'exécution" });
   }
-  expect(field("ai.sort", "keepDays").perItemOnly).toBeUndefined();
+  expect(field("ai.sort", "keepDays")).toBeUndefined();
   expect(field("list.new", "keepDays")).toMatchObject({ label: "Oublier après (jours)", required: false, kind: "number", min: 1, max: 365, integer: true });
   expect(field("output", "live")).toMatchObject({ label: "Publier au fil de l'eau", required: false, kind: "checkbox" });
   // Without a default value: the key stays absent until the user ticks it (absent = false).

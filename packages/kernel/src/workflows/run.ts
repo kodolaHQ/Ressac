@@ -6,6 +6,7 @@ import type { Readable, Writable } from "node:stream";
 import { HARVEST_DELAY_S, type Workshop } from "../container/workshop.js";
 import { toolsPath } from "../container/runner.js";
 import type { LocalAi } from "../ai/local-ai.js";
+import { sortScores } from "../ai/sort.js";
 import { ProfileDenied, type BrowserBridge } from "../mcp/bridge.js";
 import {
   MAX_OPEN_READS,
@@ -29,7 +30,7 @@ import { MEMORY_MAX_BYTES, paramsHash, type BlocksMemory } from "./memory.js";
 import {
   SearchWebArgs,
   ArgsGemma,
-  ArgsKev,
+  ArgsSort,
   ReadPageArgs,
   FetchArgs,
   LINE_MAX_BYTES,
@@ -179,8 +180,8 @@ export interface InfraWorkflow {
   engine: string;
   workshop: Pick<Workshop, "stageHarvest" | "harvestCommand" | "deleteHarvest">;
   launch?: ProcessLauncher;
-  /** null: no local AI, `kev` and `gemma` answer with an error. */
-  ai: Pick<LocalAi, "kev" | "gemma"> | null;
+  /** null: no local AI, `sort` and `gemma` answer with an error. */
+  ai: Pick<LocalAi, "gemma"> | null;
   bridge: BrowserBridge;
   clock: () => Date;
   delayMs?: number;
@@ -229,7 +230,7 @@ type RunningTrace = BlockTrace & { started: boolean; done: boolean; cut: number 
 
 /**
  * Runs a validated workflow in a container without network: sends `start` (workflow, config, previous) and the
- * blocks' memory, answers the calls (readPage, fetch, kev, gemma) with the rules of the sources and of the grant,
+ * blocks' memory, answers the calls (readPage, fetch, sort, gemma) with the rules of the sources and of the grant,
  * stores the blocks' traces. Writes nothing: the caller decides what is kept (privacy).
  *
  * Progressive run (not a try, with `maxDurationMinutes` or an as-it-goes output): the memory received along the
@@ -555,11 +556,11 @@ export async function runWorkflow(
       }
       case "searchWeb":
         return searchWeb(a);
-      case "kev": {
-        const body = args(ArgsKev, a, "kev");
+      case "sort": {
+        const body = args(ArgsSort, a, "sort");
         if (!infra.ai) throw new Error("IA locale indisponible");
         // Stop or delay: the in-flight call is abandoned and gives its place back to the shared AI.
-        return infra.ai.kev(body, { signal: runEnd.signal });
+        return sortScores(infra.ai, body, runEnd.signal, locale());
       }
       case "gemma": {
         const g = args(ArgsGemma, a, "gemma");

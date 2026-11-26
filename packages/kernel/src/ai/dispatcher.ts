@@ -7,12 +7,11 @@ export const AI_ABANDONED = "Appel à l'IA abandonné : l'exécution est termin�
 /** A writing call made with `json: true` answered with a text that is not JSON (the layout then retries once). */
 export const WRITER_JSON_INVALID = "L'IA n'a pas rendu du JSON valide";
 
-type AiAccess = Pick<LocalAi, "kev" | "gemma">;
+type AiAccess = Pick<LocalAi, "gemma">;
 /** `auDemarrage`: called when the call really goes to the AI. `signal` raised in the queue: denied without leaving; in flight: forwarded. */
 export type AiCallOptions = { onStartup?: () => void; signal?: AbortSignal };
 /** A run's view; `oublier` (at its end) denies its calls still queued and those that would come after. */
 export type AiAccessRun = {
-  kev(body: Parameters<LocalAi["kev"]>[0], o?: AiCallOptions): ReturnType<LocalAi["kev"]>;
   gemma(g: Parameters<LocalAi["gemma"]>[0], o?: AiCallOptions): ReturnType<LocalAi["gemma"]>;
   forget(): void;
 };
@@ -114,7 +113,6 @@ export function createAiDispatcher(ai: AiAccess, o: { concurrent?: number } = {}
       const invoke = <T>(launch: () => Promise<T>, oa: AiCallOptions = {}): Promise<T> =>
         forgotten ? Promise.reject(new Error(AI_ABANDONED)) : put(key, priority, launch, oa);
       return {
-        kev: (body, oa) => invoke(() => ai.kev(body, oa?.signal ? { signal: oa.signal } : undefined), oa),
         gemma: (g, oa) => invoke(() => ai.gemma(oa?.signal ? { ...g, signal: g.signal ? AbortSignal.any([g.signal, oa.signal]) : oa.signal } : g), oa),
         forget: () => {
           forgotten = true;

@@ -38,7 +38,6 @@ function fakeGemma(response: (o?: { signal?: AbortSignal; onStartup?: () => void
   const calls: string[] = [];
   const ai: AiAccessRun & { calls: string[] } = {
     calls: calls,
-    kev: async () => ({}),
     gemma: async (g, o) => {
       calls.push(g.prompt);
       o?.onStartup?.();

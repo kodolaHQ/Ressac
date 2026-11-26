@@ -45,8 +45,8 @@ export interface HarvestOptions {
   engine: string;
   workshop: Pick<Workshop, "stageHarvest" | "harvestCommand" | "deleteHarvest">;
   launch?: ProcessLauncher;
-  /** null: no local AI, `kev` and `gemma` answer with an error. */
-  ai: Pick<LocalAi, "kev" | "gemma"> | null;
+  /** null: no local AI, `sort` and `gemma` answer with an error. */
+  ai: Pick<LocalAi, "gemma"> | null;
   bridge: BrowserBridge;
   /** The workspace lock's check on the staged copy (runWorkflow's `lockedCode`): what is hashed is what runs. */
   lockedCode?: (staged: string) => Promise<string | null>;

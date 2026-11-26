@@ -9,10 +9,10 @@ import { newWindow, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inFrame, inUi } from "./ui";
-import { writeWidget } from "./workflows";
+import { sortAnswer, writeWidget } from "./workflows";
 
 // The watch end to end: all local. An ad site, a fake DuckDuckGo (the kernel tests'
-// saved pages), a fake Kev and a fake Ollama. No real notification: test mode writes them to a file in the data folder.
+// saved pages) and a fake Ollama behind the fake writer. No real notification: test mode writes them to a file in the data folder.
 // Plus the click on a notification.
 
 const FIXTURES_DDG = path.resolve(import.meta.dirname, "../../../packages/kernel/test/workflows/fixtures/duckduckgo");
@@ -64,7 +64,6 @@ const settings = {
 };
 
 let site: Server;
-let kev: Server;
 let ollama: Server & { prompts: string[] };
 
 beforeAll(async () => {
@@ -86,16 +85,15 @@ beforeAll(async () => {
     if (p === "/court") return html(res, "<title>Court</title>");
     res.writeHead(404).end();
   });
-  // Fake Kev: every ad matches the criteria.
-  kev = await listen((req, res) => {
-    if (req.method === "GET") return void res.writeHead(200, { "Content-Type": "application/json" }).end('{"data":[]}');
-    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ answers: { q: { noul: 0.9 } } }));
-  });
-  // Fake Ollama: Gemma gives a short opinion (after `gemmaDelayMs`) and logs each prompt.
+  // Fake Ollama: every ad matches the criteria in the sort; the writer gives a short opinion (after `gemmaDelayMs`) and
+  // logs each opinion prompt.
   const prompts: string[] = [];
   const ollamaServer = await listen((req, res, body) => {
     if (req.url !== "/api/chat") return void res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}');
-    prompts.push(String((JSON.parse(body) as { messages: { content: string }[] }).messages[0]?.content));
+    const prompt = String((JSON.parse(body) as { messages: { content: string }[] }).messages[0]?.content);
+    const sorted = sortAnswer(prompt, () => 0.9);
+    if (sorted) return void res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ message: { content: sorted } }));
+    prompts.push(prompt);
     setTimeout(
       () => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ message: { content: "Bonne affaire." } })),
       settings.gemmaDelayMs,
@@ -104,7 +102,7 @@ beforeAll(async () => {
   ollama = Object.assign(ollamaServer, { prompts });
 });
 afterAll(async () => {
-  await Promise.all([site, kev, ollama].map((s) => s?.close()));
+  await Promise.all([site, ollama].map((s) => s?.close()));
 });
 
 let dataDir: string;
@@ -134,7 +132,6 @@ async function launchWatch(writer: "claude" | "codex" | null = "claude"): Promis
     ...(writer ? { writer } : {}),
     height: 1400,
     env: {
-      RESSAC_KEV_URL: kev.url,
       RESSAC_OLLAMA_URL: ollama.url,
       RESSAC_TEST_LOCAL_ADDRESSES: "1",
       RESSAC_TEST_DUCKDUCKGO_URL: `${site.url}/ddg/`,
@@ -390,16 +387,17 @@ it("a listing whose page fails comes back at the next run", async () => {
   expect(back[0]!.avis).toBe("Bonne affaire.");
 }, 120_000);
 
-it("without a Claude Code or Codex account the opinions fail with the connect message, and the run is partial", async () => {
+it("without a Claude Code or Codex account the sort fails with the connect message, and so does the run", async () => {
   await writeWatch();
   const m = await launchWatch(null);
   const run = await runWatch(m);
-  expect(run.status).toBe("partial");
+  // The sort goes through the agent's writer too: with none, nothing is scored, nothing is opened.
+  expect(run.status).toBe("failed");
+  expect(blockStatus(run, "tri")).toBe("failed");
   expect(blockStatus(run, "avis")).not.toBe("succeeded");
   expect(JSON.stringify(run)).toContain("Connectez Claude Code ou Codex dans Réglages › Agent pour les résumés");
-  // The widget says it too, in clear, as a warning badge.
+  // The widget says it too, in clear.
   await until(() => widgetText(m, "voitures"), (t) => t.includes("Connectez Claude Code ou Codex dans Réglages › Agent pour les résumés"));
-  expect(watchData()!.every((a) => a.avis === undefined)).toBe(true);
 }, 120_000);
 
 it("with only Codex signed in, the opinions come back through codex exec", async () => {

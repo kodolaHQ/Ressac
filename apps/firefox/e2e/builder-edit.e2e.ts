@@ -8,7 +8,7 @@ import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inFrame, inUi, keyDown, keyUp, missingApi, pressKeys, typeText, waitUi } from "./ui";
-import { nodes, openBuilder, readWorkflow, widgetDir, writeWidget } from "./workflows";
+import { nodes, openBuilder, readWorkflow, sortAnswer, widgetDir, writeWidget } from "./workflows";
 
 // The workflow builder on ressac://workflow/<widget>, opened from the home page's widget menu.
 
@@ -40,7 +40,7 @@ let dataDir: string;
 let w: LaunchedRessac;
 let m: Marionette;
 
-// Local test servers: the site the widgets read, a fake Kev (an « IA » text scores 0.9) and a fake Ollama without Gemma.
+// Local test servers: the site the widgets read and a fake Ollama behind the fake writer (an « IA » text scores 0.9 in the sort).
 type Server = { url: string; close(): Promise<void> };
 async function listen(handle: (req: IncomingMessage, res: ServerResponse) => void): Promise<Server> {
   const server = createServer(handle);
@@ -51,7 +51,6 @@ async function listen(handle: (req: IncomingMessage, res: ServerResponse) => voi
   };
 }
 let site: Server;
-let kev: Server;
 let ollama: Server;
 
 /** The widgets built on WATCH_WORKFLOW, one per test that edits it (a builder keeps its draft per widget for the window). */
@@ -90,17 +89,15 @@ beforeAll(async () => {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end('<title>Liens</title><a href="https://exemple.invalid/ia">Nouveau modèle IA</a> <a href="https://exemple.invalid/cuisine">Recette de cuisine</a>');
   });
-  kev = await listen((req, res) => {
-    if (req.method === "GET") return void res.writeHead(200, { "Content-Type": "application/json" }).end('{"data":[]}');
+  ollama = await listen((req, res) => {
     let body = "";
     req.on("data", (d) => (body += d));
     req.on("end", () => {
-      const { state } = JSON.parse(body) as { state: string };
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ answers: { q: { noul: /\bIA\b/.test(state) ? 0.9 : 0.1 } } }));
+      const prompt = req.url === "/api/chat" ? String((JSON.parse(body) as { messages: { content: string }[] }).messages[0]?.content) : "";
+      const sorted = sortAnswer(prompt, (t) => (/\bIA\b/.test(t) ? 0.9 : 0.1));
+      res.writeHead(200, { "Content-Type": "application/json" }).end(sorted ? JSON.stringify({ message: { content: sorted } }) : '{"models":[]}');
     });
   });
-  ollama = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}'));
 
   dataDir = await mkdtemp(path.join(os.tmpdir(), "ressac-builder-"));
   await writeWidget(dataDir, "veille", {
@@ -143,14 +140,14 @@ beforeAll(async () => {
       ],
     },
   });
-  w = await launchRessac({ dataDir, height: 1400, env: { RESSAC_KEV_URL: kev.url, RESSAC_OLLAMA_URL: ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
+  w = await launchRessac({ dataDir, height: 1400, writer: "claude", env: { RESSAC_OLLAMA_URL: ollama.url, RESSAC_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
 });
 afterAll(async () => {
   await w?.close();
-  await Promise.all([site, kev, ollama].map((s) => s?.close()));
+  await Promise.all([site, ollama].map((s) => s?.close()));
   await rm(dataDir, { recursive: true, force: true });
 });
 afterEach(async () => {
@@ -530,8 +527,8 @@ describe("the workflow builder", () => {
     await waitValue("block-name-field", "Tri par Kev");
     expect(await inUi(m, `return doc.querySelector('[data-testid="block-pane"] [data-testid="block-id"]')?.textContent`)).toBe("tri");
     expect(await value("field-question")).toBe("Parle d'IA ?");
-    // ia.trier always scores item by item: its « per item » fields are there, without a parElement box.
-    expect(await count("field-onError")).toBe(1);
+    // ai.sort scores the whole list in one call: no « per item » field, no perItem box.
+    expect(await count("field-onError")).toBe(0);
     expect(await count("field-perItem")).toBe(0);
     // Selecting writes nothing.
     await sleep(500);

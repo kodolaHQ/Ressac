@@ -109,7 +109,7 @@ test("each registry type has a module and a parameter schema", () => {
   const types = ["source.page", "source.feed", "source.fetch", "web.search", "list.new", "list.dedupe", "list.keep", "ai.sort", "ai.write", "code", "output"];
   expect([...BLOCK_REGISTRY.keys()].sort()).toEqual([...types].sort());
   for (const t of types) expect(typeof BLOCK_REGISTRY.get(t)!.params.safeParse).toBe("function");
-  expect(BLOCK_REGISTRY.get("ai.sort")!.perItem).toBe("always");
+  expect(BLOCK_REGISTRY.get("ai.sort")!.perItem).toBe("no");
 });
 
 test("zod's common messages are worded in French", () => {

@@ -12,7 +12,6 @@ import { Workshop, IMAGE } from "../../src/container/workshop.js";
 import { DeclarationWidget, type WidgetRead } from "../../src/home/schemas.js";
 import { writeData, writeWidgetState, readWidgetState, deleteData } from "../../src/home/data.js";
 import { LocalAi } from "../../src/ai/local-ai.js";
-import { toPplxScale } from "../../src/ai/d1-scale.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { giveGrant, readGrants, removeGrant } from "../../src/widgets/grants.js";
 import { approveReads, codeHash, readReads } from "../../src/widgets/reads.js";
@@ -25,7 +24,6 @@ import { Pacing } from "../../src/workflows/pacing.js";
 import { searchUrl } from "../../src/workflows/duckduckgo.js";
 import { tempFolder } from "../helpers/temp.js";
 import { fakeRunner } from "../helpers/fake-runner.js";
-import { fakeKev, type FakeServer } from "../helpers/fake-ai.js";
 import type { Writer } from "../../src/ai/writer.js";
 
 const ENGINE = join(import.meta.dirname, "..", "..", "docker", "engine");
@@ -130,8 +128,8 @@ async function prepare(id: string, code: string, sources = { account: [] as stri
   return ctx;
 }
 
-async function ai(o: { kev?: FakeServer; writer?: Writer } = {}) {
-  const i = new LocalAi({ folder: await tempFolder(), kevUrl: o.kev?.url ?? "http://127.0.0.1:9", writer: o.writer });
+async function ai(o: { writer?: Writer } = {}) {
+  const i = new LocalAi({ folder: await tempFolder(), kevUrl: "http://127.0.0.1:9", writer: o.writer });
   aiToStop.push(i);
   return i;
 }
@@ -149,7 +147,7 @@ const readBridge = (deny: string[] = [], redirects?: Record<string, string>) =>
 
 const readCalls = (p: FakeBridge) => p.calls.filter((a) => a.method === "readPageInvisible");
 
-async function harvest(ctx: Context, o: { ai?: LocalAi | Pick<LocalAi, "kev" | "gemma">; bridge?: FakeBridge; delayMs?: number; locale?: () => string } = {}) {
+async function harvest(ctx: Context, o: { ai?: LocalAi | Pick<LocalAi, "gemma">; bridge?: FakeBridge; delayMs?: number; locale?: () => string } = {}) {
   return runHarvest({
     id: ctx.widget.id,
     widget: ctx.widget,
@@ -251,14 +249,12 @@ describe("runHarvest", () => {
 
   it("a successful harvest writes data.json and the ok state in widgetsFolder", async () => {
     const web = await webServer({ "/flux.json": (res) => { res.writeHead(200, { "content-type": "application/json" }); res.end('{"x":42}'); } });
-    const kev = await fakeKev({ q: { type: "noul", noul: 0.8 } });
-    toClose.push(kev);
     const ctx = await prepare(
       "meteo",
       `export default async (w) => {
         const j = await w.fetch("${web.url}/flux.json", { format: "json" });
         const p = await w.readPage("https://app.daily.dev/");
-        const k = await w.kev("etat", { q: { type: "noul", instructions: "?" } });
+        const k = await w.sort(["etat"], { question: "?", text: String });
         const g = await w.gemma("salut");
         w.log("trace du widget");
         return { j, title: p.title, k, g, cfg: w.config, prev: w.previous, when: w.now };
@@ -266,12 +262,12 @@ describe("runHarvest", () => {
     );
     await writeData(ctx.widgetsFolder, "meteo", { old: true });
     const bridge = readBridge();
-    const r = await harvest(ctx, { ai: await ai({ kev, writer: async () => "bonjour" }), bridge: bridge });
+    const r = await harvest(ctx, { ai: await ai({ writer: async (o) => (o.json ? { scores: { "1": 0.75 } } : "bonjour") }), bridge: bridge });
 
     const expected = {
       j: { x: 42 },
       title: "Fil",
-      k: toPplxScale({ q: { type: "noul", noul: 0.8 } }), // answers come back on pplx's scale
+      k: [{ element: "etat", score: 0.8 }], // the writer's 0.75, rescaled
       g: "bonjour",
       cfg: { a: 1 },
       prev: { old: true },
@@ -481,14 +477,13 @@ describe("runHarvest, widget with an account", () => {
   it("grant removed during the harvest: the read with an account does not happen, accord-requis", async () => {
     const ctx = await prepare(
       "daily",
-      `export default async (w) => { await w.kev("x", {}); return w.readPage("https://app.daily.dev/", { account: true }); };`,
+      `export default async (w) => { await w.gemma("x"); return w.readPage("https://app.daily.dev/", { account: true }); };`,
       sources,
     );
     await giveGrant(ctx.widgetsFolder, "daily", { domains: ["app.daily.dev"], public: ["127.0.0.1"], profile: "perso" });
     const bridge = readBridge();
     const fake = {
-      kev: async () => { await removeGrant(ctx.widgetsFolder, "daily"); return {}; },
-      gemma: async () => "",
+      gemma: async () => { await removeGrant(ctx.widgetsFolder, "daily"); return ""; },
     };
     const r = await harvest(ctx, { bridge: bridge, ai: fake });
     expect(r.state.status).toBe("grant-required");
@@ -747,7 +742,7 @@ describe("runHarvest, widget with an account", () => {
   it("grant refused during the harvest, after the read with an account: nothing is written, accord-requis", async () => {
     const ctx = await prepare(
       "daily",
-      `export default async (w) => { const p = await w.readPage("https://app.daily.dev/", { account: true }); await w.kev("x", {}); return p.text; };`,
+      `export default async (w) => { const p = await w.readPage("https://app.daily.dev/", { account: true }); await w.gemma("x"); return p.text; };`,
       sources,
     );
     await writeData(ctx.widgetsFolder, "daily", { old: true });
@@ -755,12 +750,11 @@ describe("runHarvest, widget with an account", () => {
     const bridge = readBridge();
     // What refuserAccord does: grant removed, data erased.
     const fake = {
-      kev: async () => {
+      gemma: async () => {
         await removeGrant(ctx.widgetsFolder, "daily");
         await deleteData(ctx.widgetsFolder, "daily");
-        return {};
+        return "";
       },
-      gemma: async () => "",
     };
     const r = await harvest(ctx, { bridge: bridge, ai: fake });
     expect(readCalls(bridge)).toHaveLength(1);
@@ -1121,21 +1115,20 @@ describe("runAttempt", () => {
   it("grant removed during the trial: no run on disk", async () => {
     const ctx = await prepare(
       "daily",
-      `export default async (w) => { const p = await w.readPage("https://app.daily.dev/", { account: true }); await w.kev("x", {}); return p.text; };`,
+      `export default async (w) => { const p = await w.readPage("https://app.daily.dev/", { account: true }); await w.gemma("x"); return p.text; };`,
       sources,
     );
     await giveGrant(ctx.widgetsFolder, "daily", { domains: ["app.daily.dev"], public: ["127.0.0.1"], profile: "perso" });
-    const fake = { kev: async () => ({}), gemma: async () => "" };
+    const fake = { gemma: async () => "" };
     const real = await runHarvest({ ...optionsOf(ctx), ai: fake });
     expect(real.state.status).toBe("ok");
     // What refuserAccord does, during the trial.
     const remove = {
-      kev: async () => {
+      gemma: async () => {
         await removeGrant(ctx.widgetsFolder, "daily");
         await deleteData(ctx.widgetsFolder, "daily");
-        return {};
+        return "";
       },
-      gemma: async () => "",
     };
     const r = await attempt(ctx, real.run!, "harvest", { ai: remove });
     expect(r).toEqual({ ok: false, error: "Accord requis pour lire avec votre compte : app.daily.dev" });

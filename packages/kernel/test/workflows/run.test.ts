@@ -25,7 +25,7 @@ import { SEARCHES_CAP, SEARCHES_STOPPED, TOO_MANY_READS, fetch } from "../../src
 import { SEARCH_DENIED, UNREADABLE_RESULTS, extractResults, searchUrl } from "../../src/workflows/duckduckgo.js";
 import { Pacing } from "../../src/workflows/pacing.js";
 import { WEB_REQUIRED } from "../../src/workflows/validate.js";
-import { LINE_MAX_BYTES, DATA_MAX_SIZE } from "../../src/workflows/protocol.js";
+import { LINE_MAX_BYTES, DATA_MAX_SIZE, readHarvesterMessage } from "../../src/workflows/protocol.js";
 import { DATA_MAX_SIZE as HOME_DATA_MAX_SIZE } from "../../src/home/schemas.js";
 import { REPLAY_TOO_BIG } from "../../src/workflows/replay.js";
 import { workflowBytesHash } from "../../src/workflows/read.js";
@@ -543,16 +543,33 @@ describe("executerWorkflow", () => {
   });
 
   it("timeout exceeded: in-flight AI calls are abandoned", async () => {
-    const b = await bench(chain("a"), { "a.mjs": `export default (e, w) => Promise.all([w.kev("s", {}), w.gemma("p")]);` }, { delayMs: 600 });
+    const b = await bench(chain("a"), { "a.mjs": `export default (e, w) => Promise.all([w.sort([1], { question: "q", text: String }), w.gemma("p")]);` }, { delayMs: 600 });
     const signals: (AbortSignal | undefined)[] = [];
     b.infra.ai = {
-      kev: (_c, o) => (signals.push(o?.signal), new Promise(() => {})),
       gemma: (g) => (signals.push(g.signal), new Promise(() => {})),
     };
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "stop", error: "Délai dépassé" });
     expect(signals).toHaveLength(2);
     expect(signals.every((s) => s?.aborted)).toBe(true);
+  });
+
+  it("a harvester sort call is scored by the writer in one call, rescaled", async () => {
+    const b = await bench(chain("a"), { "a.mjs": `export default (e, w) => w.sort(["x", "y"], { question: "q", text: String, threshold: 0 });` });
+    const prompts: string[] = [];
+    b.infra.ai = { gemma: async (g) => (prompts.push(g.prompt), { scores: { "1": 0.5, "2": 1 } }) };
+    const r = await runWorkflow(b.ctx, b.infra);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("Question: q\nItems:\n1. x\n2. y");
+    expect(r.issue).toMatchObject({ t: "end", output: { value: [{ element: "y", score: 1 }, { element: "x", score: 0.6 }] } });
+  });
+
+  it("a harvester kev call is refused as an unknown function", async () => {
+    // The engine's ressac.kev throws; a raw kev call line is outside the protocol.
+    expect(readHarvesterMessage(JSON.stringify({ t: "call", n: 1, f: "kev", a: { state: "s", questions: {} } }))).toBeNull();
+    const b = await bench(chain("a"), { "a.mjs": `export default (e, w) => w.kev("s", {});` });
+    const r = await runWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "failure", error: expect.stringContaining("ressac.kev n'existe plus : utilise ressac.sort.") });
   });
 
   it("timeout exceeded: « Délai dépassé » stop and container removed", async () => {

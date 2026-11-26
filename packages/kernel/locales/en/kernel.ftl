@@ -100,6 +100,7 @@ kernel-writer-images = Images are not supported by writing
 kernel-writer-failed-badge = AI writing failed: see the widget log
 kernel-writer-failed = The AI could not write: { $reason }
 kernel-writer-key-refused = key refused
+kernel-sort-invalid = The model did not return a score for each item.
 
 # Masking: how a card names a masked value without showing it (your sources, then the rest of the web).
 kernel-mask-name-code = your code

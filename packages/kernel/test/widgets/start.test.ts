@@ -67,6 +67,9 @@ async function launch(
   };
 }
 
+/** The kernel's answer to a `sort` call: one score per text. */
+const scored = (a: Call, score: (text: string) => number) => ({ ok: a.a.texts.map(score) });
+
 const rss = (items: { title: string; url: string }[]) =>
   `<?xml version="1.0"?><rss><channel>${items.map((i) => `<item><title>${i.title}</title><link>${i.url}</link></item>`).join("")}</channel></rss>`;
 
@@ -136,14 +139,15 @@ describe("starter widgets", () => {
     "https://next.ink/feed/": rss([]),
   };
 
-  it("actus-tech dedupes, sorts by Kev, keeps 15 articles, summarizes the first 8 and reuses the summaries from memory", async () => {
+  it("actus-tech dedupes, sorts in one call, keeps 15 articles, summarizes the first 8 and reuses the summaries from memory", async () => {
     const reply: Responder = (a) => {
       if (a.f === "fetch") return stream[a.a.url] !== undefined ? { ok: stream[a.a.url] } : { error: "inconnu" };
-      if (a.f === "kev") {
-        const m = /(?:HN|Lobsters) (\d)/.exec(a.a.state);
-        const n = m ? Number(m[1]) : 0;
-        return { ok: { q: { type: "noul", noul: a.a.state.includes("Lobsters") ? 0.9 - n * 0.01 : 0.8 - n * 0.01 } } };
-      }
+      if (a.f === "sort")
+        return scored(a, (t) => {
+          const m = /(?:HN|Lobsters) (\d)/.exec(t);
+          const n = m ? Number(m[1]) : 0;
+          return t.includes("Lobsters") ? 0.9 - n * 0.01 : 0.8 - n * 0.01;
+        });
       if (a.f === "readPage") return { ok: { url: a.a.url, title: "T", text: "contenu ".repeat(5000), links: [] } };
       if (a.f === "gemma") return { ok: "  Un résumé de " + /Titre : (.*)/.exec(a.a.prompt)![1] + ".  " };
       return { error: "?" };
@@ -158,12 +162,13 @@ describe("starter widgets", () => {
     expect(arts[1]).toMatchObject({ title: "Lobsters 1", score: 0.89 });
     // duplicates: a single « doublon » and « HN 3 » once
     expect(arts.filter((x: any) => x.title === "HN 3")).toHaveLength(1);
-    const kevs = r.calls.filter((a) => a.f === "kev");
-    expect(kevs[0]!.a.questions.q.instructions).toBe(
+    const sorts = r.calls.filter((a) => a.f === "sort");
+    expect(sorts).toHaveLength(1);
+    expect(sorts[0]!.a.question).toBe(
       "Cet article intéresse-t-il quelqu'un qui suit : IA et modèles de langage, IA locale, agents de code, Svelte, Electron, TypeScript, développement web, navigateurs, sécurité informatique ?",
     );
-    expect(kevs[0]!.a.state).toMatch(/^Titre : .+\nSource : .+$/);
-    expect(kevs.filter((a) => a.a.state.includes("Doublon") || a.a.state.includes("Autre titre"))).toHaveLength(1);
+    expect(sorts[0]!.a.texts.every((t: string) => /^Titre : .+\nSource : .+$/.test(t))).toBe(true);
+    expect(sorts[0]!.a.texts.filter((t: string) => t.includes("Doublon") || t.includes("Autre titre"))).toHaveLength(1);
     expect(arts.slice(0, 8).every((x: any) => typeof x.summary === "string")).toBe(true);
     expect(arts.slice(8).every((x: any) => x.summary === undefined)).toBe(true);
     const gemmas = r.calls.filter((a) => a.f === "gemma");
@@ -190,7 +195,7 @@ describe("starter widgets", () => {
       "actus-tech",
       async (a) => {
         if (a.f === "fetch") return stream[a.a.url] !== undefined ? { ok: stream[a.a.url] } : { error: "inconnu" };
-        if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.9 } } };
+        if (a.f === "sort") return scored(a, () => 0.9);
         if (a.f === "readPage") return { ok: { url: a.a.url, title: "T", text: "contenu", links: [] } };
         if (a.f === "gemma") {
           max = Math.max(max, ++inFlight);
@@ -217,7 +222,7 @@ describe("starter widgets", () => {
         if (a.a.url.includes("lobste.rs")) return { error: "hors ligne" };
         return { ok: stream[a.a.url]! };
       }
-      if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.9 } } };
+      if (a.f === "sort") return scored(a, () => 0.9);
       return { error: "pas de page" }; // the summaries fail: skipped
     });
     expect(r.terminal.t).toBe("end");
@@ -237,7 +242,7 @@ describe("starter widgets", () => {
   it("actus-tech: Gemma down, the articles stay, without a summary", async () => {
     const r = await launch("actus-tech", (a) => {
       if (a.f === "fetch") return { ok: stream[a.a.url]! };
-      if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.9 } } };
+      if (a.f === "sort") return scored(a, () => 0.9);
       if (a.f === "readPage") return { ok: { url: a.a.url, title: "T", text: "contenu", links: [] } };
       return { error: "Gemma indisponible" };
     });
@@ -246,26 +251,25 @@ describe("starter widgets", () => {
     expect(r.terminal.data.articles.every((x: any) => x.summary === undefined)).toBe(true);
   });
 
-  it("actus-tech: a missing note from Kev skips the article, not the widget", async () => {
+  it("actus-tech: an article under the threshold is left out, not the widget", async () => {
     const r = await launch("actus-tech", (a) => {
       if (a.f === "fetch") return { ok: stream[a.a.url]! };
-      if (a.f === "kev") return a.a.state.includes("HN 2") ? { ok: {} } : { ok: { q: { type: "noul", noul: 0.9 } } };
+      if (a.f === "sort") return scored(a, (t) => (t.includes("HN 2") ? 0.1 : 0.9));
       if (a.f === "gemma") return { ok: "Résumé." };
       return { ok: { url: a.a.url, title: "T", text: "contenu", links: [] } };
     });
     expect(r.terminal.t).toBe("end");
-    expect(r.blockEnd("tri").status).toBe("partial");
     expect(r.terminal.data.articles).toHaveLength(15);
     expect(r.terminal.data.articles.some((x: any) => x.title === "HN 2")).toBe(false);
   });
 
-  it("actus-tech fails clearly when Kev scores nothing", async () => {
+  it("actus-tech fails clearly when the sort fails", async () => {
     const r = await launch("actus-tech", (a) => {
       if (a.f === "fetch") return { ok: stream[a.a.url]! };
-      if (a.f === "kev") return { ok: {} };
+      if (a.f === "sort") return { error: "Le modèle n'a pas rendu une note par élément." };
       return { error: "?" };
     });
-    expect(r.terminal).toEqual({ t: "failure", error: "Tous les éléments ont échoué (Kev n'a pas rendu de note)" });
+    expect(r.terminal).toEqual({ t: "failure", error: "Le modèle n'a pas rendu une note par élément." });
     expect(r.calls.some((a) => a.f === "readPage" || a.f === "gemma")).toBe(false);
   });
 
@@ -283,7 +287,7 @@ describe("starter widgets", () => {
       // Redirected outside app.daily.dev: the kernel refuses the page (domain rule), like checkPage.
       if (a.f === "readPage" && a.a.url.endsWith("/abc")) return { error: "Page refusée : elle a mené hors des domaines permis (evil.example)" };
       if (a.f === "readPage") return { ok: { url: a.a.url, title: "x", text: "contenu", links: [] } };
-      if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.9 } } };
+      if (a.f === "sort") return scored(a, () => 0.9);
       if (a.f === "gemma") return { ok: "Résumé." };
       return { error: "?" };
     });
@@ -307,7 +311,7 @@ describe("starter widgets", () => {
     const reply: Responder = (a) => {
       if (a.f === "readPage" && a.a.account) return { ok: { url: "https://app.daily.dev/", title: "d", text: "", links: links } };
       if (a.f === "readPage") return { ok: { url: a.a.url, title: "x", text: "contenu", links: [] } };
-      if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.99 - Number(/numéro (\d\d)/.exec(a.a.state)![1]) * 0.01 } } };
+      if (a.f === "sort") return scored(a, (t) => 0.99 - Number(/numéro (\d\d)/.exec(t)![1]) * 0.01);
       if (a.f === "gemma") return { ok: "Résumé." };
       return { error: "?" };
     };
