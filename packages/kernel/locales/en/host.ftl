@@ -66,5 +66,6 @@ own-steps = The agent stopped after { $count } steps without an answer. Rephrase
 own-timeout = The agent stopped after 5 minutes without an answer. Rephrase or clarify your request.
 own-workshop-off = Your model only works in Browser mode.
 own-agent-name = Your model
+own-no-terminal = Your model has no terminal: the chat goes on here.
 own-server-error = { $host } answered with an error: { $error }
 own-key-elsewhere = The saved API key is tied to { $saved }: it is not sent to { $host }. Save your key again for this address.

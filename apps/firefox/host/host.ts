@@ -1,4 +1,4 @@
-import type { BuildProgress, InstructionChange, Kernel, LaunchSpec, TabInfo } from "../../../packages/kernel/src/index.ts";
+import type { BuildProgress, HostLaunch, InstructionChange, Kernel, LaunchSpec, TabInfo } from "../../../packages/kernel/src/index.ts";
 import type { OpenOptions } from "../core/agent/chats.ts";
 import type { AskReply, ChatView } from "../shared/chat.ts";
 import type { FrameBounds } from "../shared/model.ts";
@@ -302,18 +302,24 @@ let claudeEngine = DEFAULT_CLAUDE_ENGINE;
 /** « Votre modèle » (Réglages › Agent), checked by `agent.ownEngine`. */
 let ownSetting: OwnEngine = DEFAULT_OWN_ENGINE;
 const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY), own: keychain(OWN_KEY) };
-const cachedKeys: { codex?: string; claude?: string } = {};
-let cachedOwnKey: OwnKey | undefined;
-// Only a string is kept: a failed read (Keychain locked) is tried again.
-async function readKey(kind: "codex" | "claude"): Promise<string | null> {
-  cachedKeys[kind] ??= (await keys[kind].read()) ?? undefined;
-  return cachedKeys[kind] ?? null;
+const cachedKeys: { codex?: string; claude?: string; own?: OwnKey } = {};
+/** Bumped by forgetKey: a read that started before a key was written or removed is not cached, it reads again. */
+let keysChanged = 0;
+// Only a value is kept: a failed read (Keychain locked) is tried again.
+async function cachedKey<K extends keyof typeof cachedKeys>(kind: K, read: () => Promise<(typeof cachedKeys)[K] | null>): Promise<NonNullable<(typeof cachedKeys)[K]> | null> {
+  for (;;) {
+    const c = cachedKeys[kind];
+    if (c !== undefined) return c!;
+    const before = keysChanged;
+    const v = (await read()) ?? undefined;
+    if (before !== keysChanged) continue;
+    cachedKeys[kind] = v;
+    return v ?? null;
+  }
 }
+const readKey = (kind: "codex" | "claude"): Promise<string | null> => cachedKey(kind, () => keys[kind].read());
 /** The own model's key with the origin it was saved for (never sent elsewhere); null when none. */
-async function readOwn(): Promise<OwnKey | null> {
-  cachedOwnKey ??= (await readOwnKey(keys.own)) ?? undefined;
-  return cachedOwnKey ?? null;
-}
+const readOwn = () => cachedKey("own", () => readOwnKey(keys.own));
 // The profile of windows that have not chosen their agent. One kernel serves every profile: it starts once.
 let defaultProfile = "claude";
 const preferredWriter = (): "claude" | "codex" => profileAgents.get(defaultProfile) ?? (defaultProfile === "codex" ? "codex" : "claude");
@@ -535,8 +541,8 @@ let kernelLaunched = false;
 let relocalized = 0;
 // Called after a key is written or removed (Settings › Agent).
 const forgetKey = (kind: "codex" | "claude" | "own") => {
-  if (kind === "own") cachedOwnKey = undefined;
-  else delete cachedKeys[kind];
+  keysChanged++;
+  delete cachedKeys[kind];
   writerChoice.reset();
 };
 const relay = await startRelay({ readKey });
@@ -789,11 +795,13 @@ const decorated = (win: string, view: ChatView): ChatView => {
   const preparing = chatPrep.get(id);
   const waiting = chatSend.waiting(id);
   const prefix = chats.active(win)?.summary.id === id ? chatSend.prefixOf(win) : null;
-  const remote = view.summary.engine === "own" ? ownRemote() : null;
+  const remote = view.summary.engine === "own" ? (ownOpens.get(id)?.remote ?? remoteOf(ownSetting)) : null;
   return { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}), ...(prefix ? { prefix } : {}), ...(terminalWindows.has(win) ? { advanced: true as const } : {}), ...(remote ? { remote } : {}) };
 };
 /** The own model's host when it is an API off this Mac (the chip's « en ligne », the composer's line); else null. */
-const ownRemote = (): string | null => (ownSetting.kind === "api" && ownSetting.apiUrl && !isOnMac(ownSetting.apiUrl) ? new URL(ownSetting.apiUrl).host : null);
+const remoteOf = (e: OwnEngine): string | null => (e.kind === "api" && e.apiUrl && !isOnMac(e.apiUrl) ? new URL(e.apiUrl).host : null);
+/** Own discussions opening or open, with the host their messages go to (the setting they opened with). */
+const ownOpens = new Map<string, { remote: string | null }>();
 const pushChat = (win: string, view: ChatView) => {
   chatViews.set(view.summary.id, { win, view });
   rpc.notify("chat.view", { window: win, view: decorated(win, view) });
@@ -910,11 +918,24 @@ async function openChat(o: OpenOptions) {
  * Navigateur mode whatever the discussion's mode: the host session has no Atelier tools.
  */
 async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
-  const n = await kernelReady();
-  const e = ownSetting; // one snapshot: the check and the client use the same address and model
-  await checkOwnModel(e, { key: e.kind === "api" ? await readOwn() : null });
-  if (signal.aborted) throw new Error("closed");
-  const launch = await n.openHostSession({ window: win, resume: (o.transcript?.length ?? 0) > 0, agent: hostSay("own-agent-name") });
+  const e = ownSetting; // one snapshot: the check, the client and the view's host use the same address and model
+  const mark = { remote: remoteOf(e) };
+  ownOpens.set(o.chatId, mark);
+  const forget = () => {
+    if (ownOpens.get(o.chatId) === mark) ownOpens.delete(o.chatId);
+  };
+  let launch: HostLaunch;
+  try {
+    const n = await kernelReady();
+    await checkOwnModel(e, { key: e.kind === "api" ? await readOwn() : null });
+    if (signal.aborted) throw new Error("closed");
+    const raw = await n.openHostSession({ window: win, resume: (o.transcript?.length ?? 0) > 0, agent: hostSay("own-agent-name") });
+    // Closed or ended: the view names the current setting again (the next open uses it).
+    launch = { ...raw, ended: () => (raw.ended(), forget()), stop: () => (forget(), raw.stop()) };
+  } catch (err) {
+    forget();
+    throw err;
+  }
   try {
     if (signal.aborted) throw new Error("closed");
     const conversation = await ownChat.open({
@@ -1132,7 +1153,10 @@ const rpc = createRpc({
       if (kind === "ollama" && ollamaUrl && !isOnMac(ollamaUrl)) return { ok: false as const, error: hostSay("own-url-refused") };
       // Credentials in the address would sit in the settings and show in Réglages: the key has its own field.
       if (kind === "api" && apiUrl && (apiUrlProblem(apiUrl) || new URL(apiUrl).username || new URL(apiUrl).password)) return { ok: false as const, error: hostSay("host-engine-url-invalid") };
+      const changed = JSON.stringify(r.data) !== JSON.stringify(ownSetting);
       ownSetting = r.data;
+      // An open discussion keeps the client it opened with: it pauses, so its next message goes where Réglages now says.
+      if (changed) for (const id of [...ownOpens.keys()]) void chats.pause(id).catch((err) => console.error("[chat] own pause:", (err as Error).name));
       return { ok: true as const };
     },
     "settings.ownCheck": aiOnly(async (_p: unknown) => {
@@ -1661,7 +1685,7 @@ const rpc = createRpc({
     // « Mode avancé »: the discussion pauses, the window's terminal resumes its conversation (Claude by id, Codex its latest).
     "chat.toTerminal": aiOnly(async (p: { window?: unknown }) => {
       if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
-      if (activeChat(p.window)?.engine === "own") return; // no terminal for it: the loop runs in the host
+      if (activeChat(p.window)?.engine === "own") throw new Error(hostSay("own-no-terminal")); // the loop runs in the host
       await chatToTerminal(p.window, {
         stopLogin: (w) => logins.stop(w),
         active: activeChat,

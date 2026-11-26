@@ -66,5 +66,6 @@ own-steps = L'agent s'est arrêté après { $count } étapes sans réponse. Refo
 own-timeout = L'agent s'est arrêté au bout de 5 minutes sans réponse. Reformulez ou précisez votre demande.
 own-workshop-off = Votre modèle ne fonctionne qu'en mode Navigateur.
 own-agent-name = Votre modèle
+own-no-terminal = Votre modèle n'a pas de terminal : la discussion continue ici.
 own-server-error = { $host } a répondu par une erreur : { $error }
 own-key-elsewhere = La clé d'API enregistrée est liée à { $saved } : elle n'est pas envoyée à { $host }. Enregistrez votre clé de nouveau pour cette adresse.

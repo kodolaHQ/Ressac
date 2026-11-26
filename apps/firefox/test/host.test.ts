@@ -1171,7 +1171,7 @@ describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
       // No container session, no CLI: the fake docker never ran a session command.
       expect(readFileSync(h.log, "utf8")).not.toContain("ressac-session");
       // « Mode avancé » has no terminal for it: the discussion stays as it is.
-      await h.rpc.request("chat.toTerminal", { window: "f1" });
+      await expect(h.rpc.request("chat.toTerminal", { window: "f1" })).rejects.toThrow("Votre modèle n'a pas de terminal : la discussion continue ici.");
       const after = (await h.rpc.request("chat.open", { window: "f1", space: "perso" })) as View;
       expect(after.advanced).toBeUndefined();
       expect(after.summary.state).not.toBe("paused");
@@ -1179,6 +1179,42 @@ describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
       expect(await h.rpc.request("chat.remove", { window: "f1", chatId: created.summary.id, engineHistory: true })).toEqual({ history: null });
     } finally {
       ollama.close();
+    }
+  });
+
+  it("a setting change pauses the open own discussions: the next message goes to the new address", async () => {
+    const { createServer } = await import("node:http");
+    const fake = (paths: string[]) =>
+      createServer((req, res) => {
+        paths.push(req.url ?? "");
+        req.resume().on("end", () => {
+          const body = req.url === "/api/chat" ? { message: { content: '{"action":"answer","text":"ok"}' } } : { details: {} };
+          res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(body));
+        });
+      });
+    const a: string[] = [];
+    const b: string[] = [];
+    const servers = [fake(a), fake(b)];
+    await Promise.all(servers.map((x) => new Promise<void>((r) => x.listen(0, "127.0.0.1", r))));
+    const [pa, pb] = servers.map((x) => (x.address() as { port: number }).port);
+    try {
+      const { h, views } = await ownHost();
+      await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: `http://127.0.0.1:${pa}`, ollamaModel: "m" }) });
+      const c = (await h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "own" })) as View;
+      const answers = () => views.filter((v) => v.view.summary.id === c.summary.id).at(-1)?.view.items.filter((i) => i.kind === "agent").length ?? 0;
+      await h.rpc.request("chat.send", { window: "f1", draft: { text: "un" } });
+      await until(() => answers() === 1);
+      const seen = views.length;
+      // Told again the same setting (a start): nothing pauses.
+      await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: `http://127.0.0.1:${pa}`, ollamaModel: "m" }) });
+      await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: `http://127.0.0.1:${pb}`, ollamaModel: "m" }) });
+      await until(() => views.slice(seen).some((v) => v.view.summary.id === c.summary.id && v.view.summary.state === "paused"));
+      await h.rpc.request("chat.send", { window: "f1", draft: { text: "deux" } });
+      await until(() => answers() === 2);
+      expect(a).toEqual(["/api/show", "/api/chat"]);
+      expect(b).toEqual(["/api/show", "/api/chat"]);
+    } finally {
+      for (const x of servers) x.close();
     }
   });
 
