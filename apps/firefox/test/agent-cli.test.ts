@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -47,8 +47,8 @@ describe("agent CLI download", () => {
     expect(readFileSync(bin, "utf8")).toContain("echo claude");
     expect(statSync(bin).mode & 0o777).toBe(0o755);
     expect(readFileSync(join(internal, "cli", "claude", "version"), "utf8")).toBe(AGENT_CLIS.claude.version);
-    // One member only, and no archive left behind.
-    expect(existsSync(join(internal, "cli", "claude", "README.md"))).toBe(false);
+    // One member only, and no archive left behind: the folder holds the binary and its version, nothing else.
+    expect(readdirSync(join(internal, "cli", "claude")).sort()).toEqual(["claude", "version"]);
     expect(existsSync(join(internal, "cli", "claude.download"))).toBe(false);
     expect(percents).toContain(50);
     expect(download.mock.calls[0]![0]).toMatchObject({ url: AGENT_CLIS.claude.url, sha256: AGENT_CLIS.claude.sha256, bytes: AGENT_CLIS.claude.bytes });

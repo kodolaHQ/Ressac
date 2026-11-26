@@ -104,7 +104,7 @@ it("the panel runs the real CLI with the session's MCP config", async () => {
     "--setting-sources",
     "",
     "--settings",
-    '{"skipDangerousModePermissionPrompt":true}',
+    '{"skipDangerousModePermissionPrompt":true,"permissions":{"deny":["Read(//home/node/.claude/.credentials.json)","Read(//home/node/.codex/auth.json)","Edit(//home/node/.claude/.credentials.json)","Edit(//home/node/.codex/auth.json)","Read(//home/node/.codex/**)","Edit(//home/node/.codex/**)","Read(//workspace/.ressac/browsing-notes.md)"]}}',
     "--append-system-prompt-file",
     "/workspace/.ressac/instructions/AGENTS.md",
     "--disallowedTools",
