@@ -265,18 +265,14 @@ test("an untouched AGENTS.md of the previous release is replaced", async () => {
       expect(OLD_TEMPLATES[rel]?.has(h), `${rel} ${h}`).toBe(true);
       for (const dir of [FR, EN]) expect(sha256(await readFile(join(dir, rel))), rel).not.toBe(h);
     }
-  // A copy left at one of them is swapped for the current template.
+  // The real fr text of the previous release (git show 926462ec:packages/kernel/templates/fr/AGENTS.md) is swapped.
+  const shipped = await readFile(join(import.meta.dirname, "../fixtures/old-agents/fr-before-tiers.md"));
+  expect(sha256(shipped)).toBe(previous["AGENTS.md"][0]);
   const c = spacePaths(await tempFolder());
   await initSpace(c, "fr");
-  const shipped = "le texte d'avant les niveaux\n";
-  OLD_AGENTS.add(sha256(shipped));
-  try {
-    await writeFile(join(c.root, "AGENTS.md"), shipped);
-    await initSpace(c, "fr");
-    expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(await readFile(join(FR, "AGENTS.md"), "utf8"));
-  } finally {
-    OLD_AGENTS.delete(sha256(shipped));
-  }
+  await writeFile(join(c.root, "AGENTS.md"), shipped);
+  await initSpace(c, "fr");
+  expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(await readFile(join(FR, "AGENTS.md"), "utf8"));
 });
 
 test("the hash of every shipped version is kept: the list only grows", () => {
