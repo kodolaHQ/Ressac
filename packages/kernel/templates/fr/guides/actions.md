@@ -5,6 +5,11 @@ onglet, la page « Actions » de la barre latérale, le constructeur ou toi) et 
 **page** `ressac://action/<id>`. **Crée ou modifie une action seulement quand l'utilisateur te le demande.**
 Les actions n'existent pas dans un espace privé.
 
+**Les actions font partie du labo** (Réglages › Agent › Niveau d'usage). Labo éteint, `launch_action` et
+`action_runs` manquent ou répondent que le labo est éteint : dis à l'utilisateur ce qu'il faudrait activer, sans
+réessayer. En mode Navigateur, `/workspace/actions/` et `/workspace/components/` sont en lecture seule : une action
+se crée ou se modifie en Atelier.
+
 Une action est un dossier `/workspace/actions/<id>/` (`<id>` : minuscules, chiffres et tirets, 60 au plus) :
 `action.json`, `workflow.json` et les `.mjs` de ses blocs `code` (même format que le workflow d'un widget :
 mêmes blocs, mêmes règles, mêmes gabarits, voir « Workflows des widgets » dans `/workspace/guides/widgets.md`).

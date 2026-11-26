@@ -4,6 +4,11 @@ A site app is **a real website wrapped as an app**: its window (a thin bar, then
 or the real site), its sign-in, your tweaks, a memory, video resume and address tracking. It is
 neither a project nor an application (nothing to launch, no Docker). **You only create one if the user asks.**
 
+**Site apps are part of the lab** (Settings › Agent › Usage level). With the lab off, their tools (`list_sites`,
+`open_site`…) are missing or answer that the lab is off: tell the user what they would need to turn on, without
+retrying. In Browser mode, `/workspace/sites/` is read-only: a site app is created, tweaked or fixed in the Workshop,
+and so is a design mode remark on a site app.
+
 **The folder** `/workspace/sites/<id>/` (`~/Ressac/sites/<id>/` for the user; `<id>`: lowercase letters, digits and
 hyphens, 60 at most):
 

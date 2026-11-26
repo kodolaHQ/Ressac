@@ -103,6 +103,9 @@ export const OLD_AGENTS = new Set([
   // With the Extensions section and the extension tools (until 0.1.26): fr, en.
   "db5bfd093244cfc14097afa5bc69ec85cd3076f922c118da1b362da5c85ada11",
   "e078a5edca645e49e1f1021a3114feaff533ed9669124cedf1dd1bc232d41f58",
+  // Before the three tiers (no lab, the notebook in every mode): fr, en.
+  "3c746be1d8f398077a604ce4113ab33e4c62b5723aea9d03fbd090b80f597e1b",
+  "ec25157a83303e77861b9a4c349314fd2db357018b7492c906ffe9b41a28b268",
 ]);
 
 const hash = (content: Buffer) => createHash("sha256").update(content).digest("hex");
@@ -291,8 +294,8 @@ export const OLD_EXTENSIONS_GUIDE = new Set([
   "ab3d59cd7ee04a33e9c29ee43a1bd086d16ca5b038e582b8fb2f756b7135ac9b",
   "bb0ef51c03aaa9bfc5788348376f42aef8555eb35536f429b30ad7cc92844436",
 ]);
-/** The hashes of every old shipped version of the language texts (the other guides: none, only the current ones). */
-const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
+/** The hashes of every old shipped version of the language texts. */
+export const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
   "AGENTS.md": OLD_AGENTS,
   "CLAUDE.md": OLD_CLAUDE_MD,
   // The 12-column layout text, replaced by the free layout one.
@@ -311,9 +314,20 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
     // Before the sort question was said to come from the configuration only: fr, en.
     "563a72038b161807db53bbba484bc5f9c1d4a0edb8fb8f9aa2c3cb4f9d2dcbf3",
     "43de686c6bc518c52d8a8749d2a7c0e7ec76b849bb49a7c016d1263c606ebd4f",
+    // Before the three tiers (watches and code blocks in the lab): fr, en.
+    "499ac89ddc5b67c4da335c206f88ae9b97122416f0f87e0197e7695d13d66d13",
+    "a502baba514f31a4bba9711a17dd13941e6c634e8f7d9014a0cca59d43a11f60",
   ]),
-  // Before the caps of the harvest's copy: fr, en.
-  "guides/actions.md": new Set(["f2e7637484158ec1c8747311bf6c03c303fcf58f9afcfcf67678c29b0bf9f43b", "24cfeffac0bbeada14f8fa7dae02a89db6a89f41ed9ee360baffb8661bd7aa29"]),
+  "guides/actions.md": new Set([
+    // Before the caps of the harvest's copy: fr, en.
+    "f2e7637484158ec1c8747311bf6c03c303fcf58f9afcfcf67678c29b0bf9f43b",
+    "24cfeffac0bbeada14f8fa7dae02a89db6a89f41ed9ee360baffb8661bd7aa29",
+    // Before the three tiers (actions in the lab, read-only in Navigateur): fr, en.
+    "54c4288f8b97886603cb5bc76cd4debb5c03ca5664c132356b089343638d59bd",
+    "b652662ff8149b0f8114b38d84c9504d29e39dd54a53b53ee4f7e7363bdd7d9e",
+  ]),
+  // Before the three tiers (site apps in the lab, read-only in Navigateur): fr, en.
+  "guides/site-apps.md": new Set(["23fcb3a1165577e19e64c450280e9c85eb11ecef75ffcff9dec70a310889c62d", "ef0f563ffe2bb92d4d3a6b0b6bc17d5f48422777ae83e22b907b420e7ce7de6e"]),
   // The starters' code and workflows from earlier releases (from git history): an untouched old copy stays a starter (tier 2).
   "widgets/actus-tech/articles.mjs": new Set(["63188cfa6938f78507d6fdfd71d44ff48ccf6234cb338a424786a46c3e811cef"]),
   "widgets/actus-tech/workflow.json": new Set([

@@ -5,6 +5,12 @@ que tu construis pour l'utilisateur. Le navigateur le surveille : dès que tu mo
 page se met à jour sous les yeux de l'utilisateur. Pour partir d'un exemple, lis les widgets fournis
 (`home/widgets/meteo`, `actus-tech`, `daily-dev`) : copie leur structure.
 
+**Ce qui demande le labo** (Réglages › Agent › Niveau d'usage). Les widgets fournis et ceux que tu composes sans
+code (sources, tri, rédaction) marchent sans lui. Un widget avec un bloc `code` ou un `harvest.mjs`, ou une veille
+(`notify`, `sources.web`, `hours`, `maxDurationMinutes`, un bloc `output` avec `live`), en fait partie : labo éteint,
+il ne se récolte pas et `harvest_widget` répond que le labo est demandé. Dis à l'utilisateur ce qu'il faudrait
+activer, sans réessayer ; ses données restent.
+
 Un widget est un dossier `home/widgets/<id>/` (`<id>` : minuscules, chiffres et tirets) :
 
 - `widget.json` le déclare :

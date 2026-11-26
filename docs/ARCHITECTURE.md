@@ -27,8 +27,9 @@ Ressac is Firefox with a new interface on top and an agent beside it. Firefox do
 
 - **Firefox side** (privileged JavaScript, written in TypeScript and bundled by Vite): the window controller, the store, the UI iframes and the JSWindowActors that read and act in pages.
 - **Node side**: a separate process started by Firefox. It hosts the kernel, which owns everything that is not a browser concern: the agent's container, its sessions, the MCP server the agent talks to, workflows, widgets, recaps.
-- **The agent** runs in a Docker container (`ressac-workshop`), signed in with the user's own Claude or ChatGPT account. It reaches the browser only through the kernel's MCP server, which asks the browser over the same JSON-RPC link.
-- **Local AI**: one small model runs in the `llama-server` shipped with the app: EmbeddingGemma finds pages for ⌘T, on a free `127.0.0.1` port taken at launch. Sorting and writing go to the agent's account. A workflow's web harvest runs in a throwaway container with no network.
+- **The agent** runs in a Docker container (`ressac-workshop`), signed in with the user's own Claude or ChatGPT account; Ressac downloads the pinned Claude Code or Codex into `.ressac/cli` at first use. It reaches the browser only through the kernel's MCP server, which asks the browser over the same JSON-RPC link.
+- **Three usage levels**: Navigateur (no AI), IA, and the lab (the Atelier, workflows and watches, actions, site and agent apps, design mode, the external MCP, `run_js` and the dev tools). The kernel and the host refuse what the lab holds while it is off; the UI only hides it (`apps/firefox/shared/tiers.ts`, `LAB_TOOLS` in `packages/kernel/src/mcp/server.ts`).
+- **Local AI**: one small model runs in the `llama-server` shipped with the app: EmbeddingGemma finds pages for ⌘T, on a free `127.0.0.1` port taken at launch. Sorting and writing go to the agent's writer: its account, an API key or the user's Ollama (`apps/firefox/host/writer.ts`). A workflow's web harvest runs in a throwaway container with no network.
 
 ## Where things live
 

@@ -4,6 +4,11 @@ Une appli de site est **un vrai site web emballé en appli** : sa fenêtre (une 
 ou le vrai site), sa connexion, tes retouches, une mémoire, la reprise des vidéos et le suivi de l'adresse. Ce n'est
 ni un projet ni une application (rien à lancer, pas de Docker). **Tu n'en crées une que si l'utilisateur le demande.**
 
+**Les applis de site font partie du labo** (Réglages › Agent › Niveau d'usage). Labo éteint, leurs outils
+(`list_sites`, `open_site`…) manquent ou répondent que le labo est éteint : dis à l'utilisateur ce qu'il faudrait
+activer, sans réessayer. En mode Navigateur, `/workspace/sites/` est en lecture seule : une appli de site se crée, se
+retouche ou se répare en Atelier, et une remarque du mode design sur une appli de site aussi.
+
 **Le dossier** `/workspace/sites/<id>/` (`~/Ressac/sites/<id>/` pour l'utilisateur ; `<id>` : minuscules, chiffres et
 tirets, 60 au plus) :
 

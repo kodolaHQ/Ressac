@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
-import { initSpace, DEFAULT_TEMPLATES, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_CLAUDE_MD, OLD_EXTENSIONS_GUIDE } from "../../src/workspace/initialize.js";
+import { initSpace, DEFAULT_TEMPLATES, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_CLAUDE_MD, OLD_EXTENSIONS_GUIDE, OLD_TEMPLATES } from "../../src/workspace/initialize.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget } from "../../src/home/schemas.js";
 import { DeclarationSite, checkSiteDeclaration } from "../../src/sites/schemas.js";
@@ -236,8 +236,8 @@ test("the CLAUDE.md and AGENTS.md shipped before the English formats are known o
 });
 
 test("the AGENTS.md templates are pinned: before editing one, add its hash to OLD_AGENTS, then update the pin", async () => {
-  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("3c746be1d8f398077a604ce4113ab33e4c62b5723aea9d03fbd090b80f597e1b");
-  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("ec25157a83303e77861b9a4c349314fd2db357018b7492c906ffe9b41a28b268");
+  expect(sha256(await readFile(join(FR, "AGENTS.md")))).toBe("792f4579ecf6f8d6c3df7518f009bae208f2704944a62b93b9f50de007c8682a");
+  expect(sha256(await readFile(join(EN, "AGENTS.md")))).toBe("f30b7297791e0e4c4574b121636b89a5ab99ad62ea3cc60ae91ddd1265adb6a0");
   expect(OLD_AGENTS.has("db5bfd093244cfc14097afa5bc69ec85cd3076f922c118da1b362da5c85ada11")).toBe(true);
   expect(OLD_AGENTS.has("e078a5edca645e49e1f1021a3114feaff533ed9669124cedf1dd1bc232d41f58")).toBe(true);
   expect(OLD_AGENTS.has("7b028830acee8f891d9258b5b3f5aab9a8934bd50537b70c0508fa27bee4c2eb")).toBe(true);
@@ -250,6 +250,33 @@ test("the AGENTS.md templates are pinned: before editing one, add its hash to OL
   expect(OLD_AGENTS.has("ff0f49e00a04cec590ee023394221e8bbf28dd0439a628e48ea307acaffa0a8e")).toBe(true);
   expect(OLD_AGENTS.has("08de4118ce41e65b76e8b9795595d41e749c9b60d72a4f3f87691d2cbc99e8ab")).toBe(true);
   expect(OLD_AGENTS.has("58be09d0c5a9d6b8a08f055fd4ed62415403b54f0acd4f6596e0473a4b6da875")).toBe(true);
+});
+
+test("an untouched AGENTS.md of the previous release is replaced", async () => {
+  // The texts from before the three tiers (no lab, the notebook in every mode): fr, en.
+  const previous = {
+    "AGENTS.md": ["3c746be1d8f398077a604ce4113ab33e4c62b5723aea9d03fbd090b80f597e1b", "ec25157a83303e77861b9a4c349314fd2db357018b7492c906ffe9b41a28b268"],
+    "guides/actions.md": ["54c4288f8b97886603cb5bc76cd4debb5c03ca5664c132356b089343638d59bd", "b652662ff8149b0f8114b38d84c9504d29e39dd54a53b53ee4f7e7363bdd7d9e"],
+    "guides/site-apps.md": ["23fcb3a1165577e19e64c450280e9c85eb11ecef75ffcff9dec70a310889c62d", "ef0f563ffe2bb92d4d3a6b0b6bc17d5f48422777ae83e22b907b420e7ce7de6e"],
+    "guides/widgets.md": ["499ac89ddc5b67c4da335c206f88ae9b97122416f0f87e0197e7695d13d66d13", "a502baba514f31a4bba9711a17dd13941e6c634e8f7d9014a0cca59d43a11f60"],
+  };
+  for (const [rel, hashes] of Object.entries(previous))
+    for (const h of hashes) {
+      expect(OLD_TEMPLATES[rel]?.has(h), `${rel} ${h}`).toBe(true);
+      for (const dir of [FR, EN]) expect(sha256(await readFile(join(dir, rel))), rel).not.toBe(h);
+    }
+  // A copy left at one of them is swapped for the current template.
+  const c = spacePaths(await tempFolder());
+  await initSpace(c, "fr");
+  const shipped = "le texte d'avant les niveaux\n";
+  OLD_AGENTS.add(sha256(shipped));
+  try {
+    await writeFile(join(c.root, "AGENTS.md"), shipped);
+    await initSpace(c, "fr");
+    expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(await readFile(join(FR, "AGENTS.md"), "utf8"));
+  } finally {
+    OLD_AGENTS.delete(sha256(shipped));
+  }
 });
 
 test("the hash of every shipped version is kept: the list only grows", () => {

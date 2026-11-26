@@ -5,6 +5,11 @@ field, the « Actions » page of the sidebar, the builder or you) and whose resu
 **page** `ressac://action/<id>`. **Only create or change an action when the user asks you to.**
 Actions do not exist in a private space.
 
+**Actions are part of the lab** (Settings › Agent › Usage level). With the lab off, `launch_action` and
+`action_runs` are missing or answer that the lab is off: tell the user what they would need to turn on, without
+retrying. In Browser mode, `/workspace/actions/` and `/workspace/components/` are read-only: an action is created or
+changed in the Workshop.
+
 An action is a `/workspace/actions/<id>/` folder (`<id>`: lowercase letters, digits and hyphens, 60 at most):
 `action.json`, `workflow.json` and the `.mjs` files of its `code` blocks (same format as a widget's workflow:
 same blocks, same rules, same templates, see « Widget workflows » in `/workspace/guides/widgets.md`).

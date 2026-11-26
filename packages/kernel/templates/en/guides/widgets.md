@@ -5,6 +5,12 @@ that you build for the user. The browser watches it: as soon as you change a fil
 page updates before the user's eyes. To start from an example, read the provided widgets
 (`home/widgets/meteo`, `actus-tech`, `daily-dev`): copy their structure.
 
+**What needs the lab** (Settings › Agent › Usage level). The provided widgets and the ones you compose without code
+(sources, sorting, writing) work without it. A widget with a `code` block or a `harvest.mjs`, or a watch (`notify`,
+`sources.web`, `hours`, `maxDurationMinutes`, an `output` block with `live`), is part of it: with the lab off, it is
+not harvested and `harvest_widget` answers that it needs the lab. Tell the user what they would need to turn on,
+without retrying; its data stays.
+
 A widget is a `home/widgets/<id>/` folder (`<id>`: lowercase letters, digits and hyphens):
 
 - `widget.json` declares it:

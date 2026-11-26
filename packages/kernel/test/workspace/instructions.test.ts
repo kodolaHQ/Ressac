@@ -75,6 +75,16 @@ test("a shipped text (any language) is accepted silently", async () => {
   expect(ref.files[AGENTS]).toBe(await template("fr", "AGENTS.md"));
 });
 
+test("the texts initSpace swaps for a new release are accepted silently, and Claude reads the new AGENTS.md", async () => {
+  const texts = ["AGENTS.md", "guides/widgets.md", "guides/actions.md", "guides/site-apps.md"];
+  // The reference holds what the user accepted from the previous release.
+  const { review, disk } = await setup(Object.fromEntries(texts.map((t) => [`/workspace/${t}`, `previous ${t}\n`])), "fr");
+  await review.keep("claude", (await review.pending("claude")).snapshot);
+  for (const t of texts) disk.set(`/workspace/${t}`, await template("fr", t));
+  expect((await review.pending("claude")).changes).toEqual([]);
+  expect(await readFile(await review.acceptedAgents(), "utf8")).toBe(await template("fr", "AGENTS.md"));
+});
+
 test("keep stores only the kind's paths", async () => {
   const { review } = await setup({ [AGENTS]: "mine", [CODEX_HOME]: "x" });
   const p = await review.pending("codex");

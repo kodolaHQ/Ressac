@@ -104,6 +104,7 @@ Published figures such as an attack success rate around 1% for a frontier model 
 - **The agent inside the VM trial.** The macOS test VMs cannot run the agent's own Linux VM (no nested virtualization), so the agent-side fixes were checked by unit and end-to-end tests, and once by hand on a real Mac.
 - **The update path end to end.** The real updater with tampered, foreign or older archives, and a moved feed.
 - **The Docker fallback**, used instead of Ressac's own VM on some setups.
+- **The Navigateur barriers added with the usage levels**, on a real machine: the read-only `actions/`, `sites/` and `components/` on Ressac's own VM (checked on OrbStack only), Claude's deny list against a `Grep` over `~/.claude`, and Codex run without its sandbox helper. Unit tests and fakes cover them; see the tier 2 and tier 3 limits in SECURITY.md.
 - **An outside review.** No independent security review has seen these results yet. It is wanted before any public security claim.
 
 The bench itself (catalogues with their checksums, scripts, per-case results and reports) is in [bench/security](../bench/security/README.md), with what an outsider can rerun and what needs a Mac with a built Ressac. The regression tests for every fix are in the normal test suites.
