@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import type { OwnEngine } from "../shared/settings";
-import { waitFor, waitReady } from "./firefox";
+import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { writePassport } from "./passport-file";
@@ -95,6 +95,9 @@ beforeAll(async () => {
     routes: {
       "/ville": (_req, res) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end("<title>Ville</title><p>La ville est Lyon.</p>"),
       "/formulaire": (_req, res) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(FORM),
+      ...Object.fromEntries(
+        [["/lue", "Page citee"], ["/autre", "Page voisine"], ["/ici", "Page ici"]].map(([path, title]) => [path, (_req: IncomingMessage, res: ServerResponse) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<title>${title}</title><p>Contenu de ${title}</p>`)]),
+      ),
       "/recu": (req, res) => (got.push(new URL(req.url!, "http://x").searchParams.get("v") ?? ""), void res.writeHead(204).end()),
     },
   });
@@ -459,4 +462,74 @@ it("une clé saisie juste après une nouvelle adresse va à cette adresse", asyn
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [`${OWN} [data-testid="own-key-not-sent"]`]);
   expect(to(model).length).toBeGreaterThan(0);
   expect(to(model).every((l) => !l.headers.authorization)).toBe(true);
+});
+
+const menuKeys = () => waitAgent<string[]>("return [...doc.querySelectorAll('[data-testid=\"chat-menu-item\"]')].map((e) => e.dataset.key)");
+const offKeys = () => waitAgent<string[]>("return [...doc.querySelectorAll('[data-testid=\"chat-menu-item\"][aria-disabled]')].map((e) => e.dataset.key)");
+const inputIs = (v: string) => waitAgent("return doc.querySelector('[data-testid=\"chat-input\"]')?.value === arguments[0]", [v]);
+/** Picks `key` in the open menu (↓ until it is the active row), then Entrée. */
+async function pick(key: string): Promise<void> {
+  await expect.poll(menuKeys, { timeout: 10_000 }).toContain(key);
+  while ((await waitAgent<string>("return doc.querySelector('[data-testid=\"chat-menu-item\"].active')?.dataset.key ?? 'none'")) !== key) await pressKeys(m, "ArrowDown");
+  await pressKeys(m, "Enter");
+}
+
+it("/agent passe à Votre modèle (sans /terminal) ; @onglet et @page : l'onglet cité se lit sans carte, un autre demande toujours", { timeout: 120_000 }, async () => {
+  await launch();
+  await ollamaOnFake();
+  // Opened and shown before the panel (a tab shown with the panel open is given to the agent); the user stays on « Page ici ».
+  const win = (await state(m)).windows[0]!.id;
+  const tabOf = async (title: string) => {
+    await expect.poll(async () => Object.values((await state(m)).tabs).some((t) => t.title === title), { timeout: 20_000 }).toBe(true);
+    return Object.values((await state(m)).tabs).find((t) => t.title === title)!.id;
+  };
+  const ids: string[] = [];
+  for (const [path, title] of [["/lue", "Page citee"], ["/autre", "Page voisine"], ["/ici", "Page ici"]] as const) {
+    await dispatch(m, { type: "openTab", windowId: win, url: `${site.url}${path}`, agentReached: false });
+    ids.push(await tabOf(title));
+  }
+  const [cited, other, here] = ids as [string, string, string];
+  await click(m, '[data-testid="agent-button"]');
+  await expect.poll(() => read(join(w!.dataDir, "workspace", "fake-chat-claude.jsonl")).includes('"argv"'), { timeout: 30_000 }).toBe(true);
+  // /agent: « Votre modèle » in a new discussion; it has no terminal, so /terminal is offered but unavailable.
+  await type("/agent ");
+  await pick("own");
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-mode-chip\"]')?.textContent.includes('Votre modèle') && !!doc.querySelector('[data-testid=\"chat-input\"]')");
+  await inputIs("");
+  await typeText(m, "/term");
+  await expect.poll(offKeys, { timeout: 10_000 }).toEqual(["terminal"]);
+  for (let i = 0; i < 5; i++) await pressKeys(m, "Backspace");
+  await inputIs("");
+
+  const seen: string[] = [];
+  fake.script = [
+    () => ({ action: "read_tab", id: cited }),
+    (last) => (seen.push(last), { action: "read_tab", id: other }),
+    (last) => (seen.push(last), { action: "answer", text: "Fin des lectures." }),
+  ];
+  await typeText(m, "@ong");
+  await pick("tab");
+  await inputIs("@onglet ");
+  await typeText(m, "citee");
+  await pick(cited);
+  await typeText(m, "@pa");
+  await pick("page");
+  await inputIs("");
+  expect(await textOf("chat-ref")).toMatch(/Page citee[\s\S]*Page ici/);
+  await typeText(m, "lis");
+  await pressKeys(m, "Enter");
+  await inputIs("");
+  // The pointed tab read with no card: the loop went on to its next step on its own.
+  await expect.poll(() => seen.length, { timeout: 30_000 }).toBe(1);
+  expect(seen[0]).toContain("Contenu de Page citee");
+  // The user's message named both, with their ids.
+  const user = JSON.stringify(loopSteps()[0]!.body.messages.filter((x: { role: string }) => x.role === "user"));
+  expect(user).toContain(`\\"tab\\":\\"${cited}\\"`);
+  expect(user).toContain(`\\"tab\\":\\"${here}\\"`);
+  // The other tab still asks (its card shows on that tab): refused, the model reads the refusal.
+  await dispatch(m, { type: "activateTab", id: other });
+  await waitUi(m, "return doc.querySelector(arguments[0])?.textContent.includes('L\\'agent veut lire')", [CARD], 30_000);
+  await click(m, `${CARD} button`, { text: "Refuser" });
+  await agentSays("Fin des lectures.");
+  expect(seen[1]).toContain("Accès refusé");
 });
