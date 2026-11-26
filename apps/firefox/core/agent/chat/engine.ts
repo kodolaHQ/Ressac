@@ -4,7 +4,6 @@ import type { AskReply, SessionUpdate, ToolKind } from "../../../shared/chat";
 export interface LaunchSpecLike {
   command(engineArgs: string[]): string[];
   env: Record<string, string>;
-  codexConfig?: unknown;
   stop(): Promise<void>;
   ended(): void;
 }
@@ -25,11 +24,9 @@ export interface EngineConversation {
 
 export interface ChatEngine {
   readonly id: "claude" | "codex";
-  readonly capabilities: { partialText: boolean; thinking: boolean; ask: boolean; resumeById: boolean };
   /** Starts or resumes one conversation; resolves once the engine is ready for a prompt. */
   /** `sessionId`: the id the host chose for a new discussion (engines that take one); `tabTitle`: see toolTitle. */
   open(o: {
-    chatId: string;
     resumeId?: string;
     sessionId?: string;
     launch: LaunchSpecLike;
@@ -80,7 +77,6 @@ const FIXED: Record<string, { title: string; kind: ToolKind }> = {
 /** French UI title and kind for a tool call; the same map serves both engines.
  *  `o.tabTitle` resolves a read_tab id to its page title (the input only carries the id). */
 export function toolTitle(
-  _engine: "claude" | "codex",
   name: string,
   input: unknown,
   o?: { tabTitle?: (id: unknown) => string | undefined },

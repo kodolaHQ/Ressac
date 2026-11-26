@@ -3,7 +3,6 @@
 
 export type RpcId = number | string;
 export interface RpcRequest { id: RpcId; method: string; params?: unknown }
-export interface RpcNotification { method: string; params?: unknown }
 export interface RpcResponse { id: RpcId; result?: unknown; error?: { code: number; message: string } }
 
 export interface InitializeParams { clientInfo: { name: string; title?: string; version: string } }
@@ -12,14 +11,11 @@ export interface ThreadStartParams {
   cwd: string;
   approvalPolicy: "never";
   sandbox: "danger-full-access";
-  config?: Record<string, unknown>;
 }
-export interface ThreadResumeParams { threadId: string }
 /** thread/start and thread/resume results. */
 export interface ThreadResponse { thread: { id: string } }
 
 export interface TurnStartParams { threadId: string; input: { type: "text"; text: string }[] }
-export interface TurnInterruptParams { threadId: string; turnId: string }
 
 export type CodexErrorInfo = string | Record<string, unknown>;
 export interface Turn {

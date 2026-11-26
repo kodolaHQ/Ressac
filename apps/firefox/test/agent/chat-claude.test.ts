@@ -29,7 +29,7 @@ async function start(o: { resumeId?: string; sessionId?: string } = {}, env: Rec
     ended: vi.fn(),
     stop: vi.fn(async () => {}),
   };
-  const conv = await claudeEngine.open({ chatId: "c1", launch, signal: new AbortController().signal, ...o });
+  const conv = await claudeEngine.open({ launch, signal: new AbortController().signal, ...o });
   open.push(conv);
   const updates: SessionUpdate[] = [];
   conv.onUpdate((u) => updates.push(u));
@@ -58,13 +58,12 @@ test("streams text then ends the turn", async () => {
   const { conv, updates } = await start();
   conv.prompt("hello");
   await expect.poll(() => updates.some((u) => u.type === "turn_end")).toBe(true);
-  expect(updates.filter((u) => u.type !== "usage")).toEqual([
+  expect(updates).toEqual([
     { type: "agent_message_chunk", messageId: "msg_1", text: "Bon" },
     { type: "agent_message_chunk", messageId: "msg_1", text: "jour" },
     { type: "agent_message", messageId: "msg_1", text: "Bonjour" },
     { type: "turn_end", stopReason: "end_turn" },
   ]);
-  expect(updates).toContainEqual({ type: "usage", inputTokens: 3, outputTokens: 2, costUsd: 0.01 });
 });
 
 test("tool_use becomes a tool line", async () => {

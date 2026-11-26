@@ -17,7 +17,7 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-async function start(o: { resumeId?: string } = {}, codexConfig?: Record<string, unknown>) {
+async function start(o: { resumeId?: string } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ressac-chat-codex-"));
   dirs.push(dir);
   const logFile = join(dir, "log.jsonl");
@@ -28,11 +28,10 @@ async function start(o: { resumeId?: string } = {}, codexConfig?: Record<string,
       return [process.execPath, FAKE];
     },
     env: { FAKE_CODEX_LOG: logFile },
-    codexConfig,
     ended: vi.fn(),
     stop: vi.fn(async () => {}),
   };
-  const conv = await codexEngine.open({ chatId: "c1", launch, signal: new AbortController().signal, tabTitle: (id) => (id === 7 ? "Le Monde" : undefined), ...o });
+  const conv = await codexEngine.open({ launch, signal: new AbortController().signal, tabTitle: (id) => (id === 7 ? "Le Monde" : undefined), ...o });
   open.push(conv);
   const updates: SessionUpdate[] = [];
   conv.onUpdate((u) => updates.push(u));
@@ -42,20 +41,15 @@ async function start(o: { resumeId?: string } = {}, codexConfig?: Record<string,
   return { conv, launch, updates, received, turnEnd };
 }
 
-test("handshake: initialize, initialized, then thread/start with the kernel's settings", async () => {
-  const { conv, launch, received } = await start({}, { "features.x": false });
+test("handshake: initialize, initialized, then thread/start with the thread's policy", async () => {
+  const { conv, launch, received } = await start();
   expect(launch.engineArgs).toEqual([]);
   const r = received();
   expect(r.map((m) => m.method)).toEqual(["initialize", "initialized", "thread/start"]);
   expect(r[0]!.params).toEqual({ clientInfo: { name: "ressac", title: "Ressac", version: expect.any(String) } });
   expect(r[1]!.id).toBeUndefined();
-  expect(r[2]!.params).toEqual({ cwd: "/workspace", approvalPolicy: "never", sandbox: "danger-full-access", config: { "features.x": false } });
+  expect(r[2]!.params).toEqual({ cwd: "/workspace", approvalPolicy: "never", sandbox: "danger-full-access" });
   expect(conv.engineSessionId).toBe("thr_new");
-});
-
-test("no config key when the kernel gives none", async () => {
-  const { received } = await start();
-  expect(received()[2]!.params).toEqual({ cwd: "/workspace", approvalPolicy: "never", sandbox: "danger-full-access" });
 });
 
 test("open({resumeId}) resumes the thread by id", async () => {

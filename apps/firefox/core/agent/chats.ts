@@ -90,7 +90,7 @@ export class Chats {
   }
 
   /** The space's discussions, the most recently updated first. */
-  async list(_windowId: string, spaceId: string): Promise<ChatSummary[]> {
+  async list(spaceId: string): Promise<ChatSummary[]> {
     const out = new Map<string, ChatSummary>();
     for (const r of await this.o.store.list(spaceId)) out.set(r.id, { ...summaryOf(r), state: "paused" });
     for (const e of this.entries.values()) if (e.rec.spaceId === spaceId) out.set(e.rec.id, this.summary(e));
@@ -360,7 +360,7 @@ export class Chats {
         break;
       case "tool_call_update": {
         const t = items.find((i) => i.kind === "tool" && i.id === u.toolCallId);
-        if (t?.kind === "tool") Object.assign(t, { status: u.status }, u.summary !== undefined ? { summary: u.summary } : {});
+        if (t?.kind === "tool") t.status = u.status;
         break;
       }
       case "request_question":

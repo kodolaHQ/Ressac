@@ -101,7 +101,7 @@
           <button class="copy" aria-label={t("chat-copy")} title={t("chat-copy")} onclick={(e) => (e.stopPropagation(), copy(item.text))}><Icon name="copy" size={13} /></button>
         </div>
       {:else if item.kind === "tool"}
-        <div class="tool" class:read={READS.has(item.toolKind)} data-testid="chat-tool" title={item.summary}>
+        <div class="tool" class:read={READS.has(item.toolKind)} data-testid="chat-tool">
           <Icon name={TOOL_ICONS[item.toolKind]} size={13} />
           <span class="tool-title">{item.title}</span>
           <span class="status">

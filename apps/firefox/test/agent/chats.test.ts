@@ -214,7 +214,7 @@ test("chunks fold into streaming then into one agent item; the store is written 
   conv.emit({ type: "agent_message_chunk", messageId: "m1", text: "jour" });
   expect(chats.active("w1")?.streaming).toEqual({ messageId: "m1", text: "Bonjour" });
   conv.emit({ type: "tool_call", toolCallId: "t1", title: "Lit une page", kind: "read", status: "pending" });
-  conv.emit({ type: "tool_call_update", toolCallId: "t1", status: "completed", summary: "3 lignes" });
+  conv.emit({ type: "tool_call_update", toolCallId: "t1", status: "completed" });
   conv.emit({ type: "request_question", requestId: "q1", questions: [{ question: "Laquelle ?", header: "Choix", options: [], multiSelect: false }] });
   expect(chats.active("w1")?.summary.state).toBe("waiting");
   chats.answer(id, "q1", { answers: { "Laquelle ?": "A" } });
@@ -228,7 +228,7 @@ test("chunks fold into streaming then into one agent item; the store is written 
   expect(view.streaming).toBeUndefined();
   expect(view.items).toEqual([
     { kind: "user", id: expect.any(String), text: "un" },
-    { kind: "tool", id: "t1", title: "Lit une page", toolKind: "read", status: "completed", summary: "3 lignes" },
+    { kind: "tool", id: "t1", title: "Lit une page", toolKind: "read", status: "completed" },
     { kind: "question", id: "q1", questions: expect.any(Array), answer: { "Laquelle ?": "A" } },
     { kind: "agent", id: "m1", text: "Bonjour Lucie Ferrand" },
   ]);
@@ -277,7 +277,7 @@ test("closeWindow pauses its discussions, stopAll closes every open conversation
   expect(chats.active("w1")).toBeNull();
   // a close() that ends the process is not a death
   opens[0]!.conv.die(0);
-  expect((await chats.list("w2", "perso")).find((s) => s.id === a.summary.id)?.state).toBe("paused");
+  expect((await chats.list("perso")).find((s) => s.id === a.summary.id)?.state).toBe("paused");
   await chats.stopAll();
   expect(opens[1]!.conv.closed).toBe(true);
   expect(chats.sessionIdOf(b.summary.id)).toBeNull();

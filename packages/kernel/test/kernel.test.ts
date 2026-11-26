@@ -1217,7 +1217,6 @@ describe("pipe transport", () => {
     expect(before).toContain("-m x");
     expect(spec.env.RESSAC_MCP_TOKEN).toMatch(/^[0-9a-f]{64}$/);
     expect(spec.env.RESSAC_ENGINE_TOKEN).toBe("t");
-    expect(spec.codexConfig).toBeUndefined();
     expect(uncovered(n.masker, "w")).toBe(true); // a Codex resume is never covered
     await spec.stop();
   });

@@ -243,8 +243,6 @@ export interface LaunchSpec {
   command(engineArgs: string[]): string[];
   /** To pass to the spawned process; `command` names them only. */
   env: Record<string, string>;
-  /** Settings the Codex adapter passes verbatim in `thread/start` (the kernel owns the values); none today. */
-  codexConfig?: Record<string, unknown>;
   /** The process exited: the session's token, table and config go. Idempotent. */
   ended(): void;
   /** Kills the agent in the container, then `ended()`. Idempotent; nothing once ended. */

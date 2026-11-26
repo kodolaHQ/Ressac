@@ -26,14 +26,13 @@ const CLIENT: InitializeParams = { clientInfo: { name: "ressac", title: "Ressac"
 const TOOL_ITEMS = new Set(["mcpToolCall", "commandExecution", "fileChange"]);
 
 function itemTitle(item: ThreadItem, tabTitle?: (id: unknown) => string | undefined) {
-  if (item.type === "mcpToolCall" && "tool" in item) return toolTitle("codex", item.tool, item.arguments, { tabTitle });
-  if (item.type === "fileChange" && "changes" in item) return toolTitle("codex", "Edit", { file_path: item.changes[0]?.path });
-  return toolTitle("codex", "commandExecution", {});
+  if (item.type === "mcpToolCall" && "tool" in item) return toolTitle(item.tool, item.arguments, { tabTitle });
+  if (item.type === "fileChange" && "changes" in item) return toolTitle("Edit", { file_path: item.changes[0]?.path });
+  return toolTitle("commandExecution", {});
 }
 
 export const codexEngine: ChatEngine = {
   id: "codex",
-  capabilities: { partialText: true, thinking: false, ask: true, resumeById: true },
 
   async open({ resumeId, launch, signal, tabTitle }): Promise<EngineConversation> {
     const updateCbs = new Set<(u: SessionUpdate) => void>();
@@ -151,12 +150,7 @@ export const codexEngine: ChatEngine = {
     try {
       await request("initialize", CLIENT);
       send({ method: "initialized" });
-      const start: ThreadStartParams = {
-        cwd: "/workspace",
-        approvalPolicy: "never",
-        sandbox: "danger-full-access",
-        ...(launch.codexConfig ? { config: launch.codexConfig as Record<string, unknown> } : {}),
-      };
+      const start: ThreadStartParams = { cwd: "/workspace", approvalPolicy: "never", sandbox: "danger-full-access" };
       threadId = (await (resumeId ? request<ThreadResponse>("thread/resume", { threadId: resumeId }) : request<ThreadResponse>("thread/start", start))).thread.id;
     } catch (e) {
       await launch.stop();

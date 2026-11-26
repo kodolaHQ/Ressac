@@ -16,17 +16,15 @@ export type AskReply = { answers: Record<string, string> } | { cancelled: true }
 export type SessionUpdate =
   | { type: "agent_message_chunk"; messageId: string; text: string }
   | { type: "agent_message"; messageId: string; text: string }
-  | { type: "agent_thought_chunk"; text: string }
   | { type: "tool_call"; toolCallId: string; title: string; kind: ToolKind; status: "pending" | "in_progress" }
-  | { type: "tool_call_update"; toolCallId: string; status: "in_progress" | "completed" | "failed"; summary?: string }
+  | { type: "tool_call_update"; toolCallId: string; status: "in_progress" | "completed" | "failed" }
   | { type: "request_question"; requestId: string; questions: ChatQuestion[] }
-  | { type: "turn_end"; stopReason: "end_turn" | "cancelled" | "refusal" | "max_turns" | "error"; error?: string }
-  | { type: "usage"; inputTokens?: number; outputTokens?: number; costUsd?: number };
+  | { type: "turn_end"; stopReason: "end_turn" | "cancelled" | "refusal" | "max_turns" | "error"; error?: string };
 
 export type ChatItem =
   | { kind: "user"; id: string; text: string; /** Never reached the engine (cancelled, or the app quit first). */ unsent?: true }
   | { kind: "agent"; id: string; text: string }
-  | { kind: "tool"; id: string; title: string; toolKind: ToolKind; status: "pending" | "in_progress" | "completed" | "failed"; summary?: string }
+  | { kind: "tool"; id: string; title: string; toolKind: ToolKind; status: "pending" | "in_progress" | "completed" | "failed" }
   | { kind: "question"; id: string; questions: ChatQuestion[]; answer?: Record<string, string> | "cancelled" }
   | { kind: "notice"; id: string; text: string };
 

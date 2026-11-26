@@ -10,7 +10,6 @@ const AUTH = /\b(log ?in|not logged in|authenticat\w*|401)\b/i;
 
 export const claudeEngine: ChatEngine = {
   id: "claude",
-  capabilities: { partialText: true, thinking: true, ask: true, resumeById: true },
 
   async open({ resumeId, sessionId, launch, signal, tabTitle }): Promise<EngineConversation> {
     const engineSessionId = resumeId ?? sessionId ?? randomUUID();
@@ -96,7 +95,6 @@ export const claudeEngine: ChatEngine = {
           const e = m.event;
           if (e.type === "message_start") messageId = e.message.id;
           else if (e.type === "content_block_delta" && e.delta.type === "text_delta") emit({ type: "agent_message_chunk", messageId, text: e.delta.text });
-          else if (e.type === "content_block_delta" && e.delta.type === "thinking_delta") emit({ type: "agent_thought_chunk", text: e.delta.thinking });
           return;
         }
         case "assistant": {
@@ -108,7 +106,7 @@ export const claudeEngine: ChatEngine = {
             // The question card stands for AskUserQuestion; no tool line.
             if (b.type !== "tool_use" || b.name === "AskUserQuestion") continue;
             tools.add(b.id);
-            emit({ type: "tool_call", toolCallId: b.id, ...toolTitle("claude", b.name, b.input, { tabTitle }), status: "in_progress" });
+            emit({ type: "tool_call", toolCallId: b.id, ...toolTitle(b.name, b.input, { tabTitle }), status: "in_progress" });
           }
           return;
         }
@@ -122,7 +120,6 @@ export const claudeEngine: ChatEngine = {
           return;
         }
         case "result": {
-          emit({ type: "usage", inputTokens: m.usage?.input_tokens, outputTokens: m.usage?.output_tokens, costUsd: m.total_cost_usd });
           const wasCancel = cancelling;
           cancelling = running = false;
           const said = m.subtype === "success" ? m.result : m.errors.join("\n");

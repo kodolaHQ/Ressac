@@ -847,7 +847,6 @@ async function openChat(o: OpenOptions) {
       if (!checked && !(await accountSignedIn(o.engine))) throw new SignedOutError();
       const conversation = await (o.engine === "claude" ? claudeChat : codexChat)
         .open({
-          chatId: o.chatId,
           ...(o.resumeId ? { resumeId: o.resumeId } : {}),
           ...(o.sessionId ? { sessionId: o.sessionId } : {}),
           launch,
@@ -1488,7 +1487,7 @@ const rpc = createRpc({
     "chat.list": aiOnly(async (p: { window?: unknown; space?: unknown }) => {
       if (typeof p?.window !== "string" || typeof p.space !== "string") return [];
       windowSpaces.set(p.window, p.space);
-      return chats.list(p.window, p.space);
+      return chats.list(p.space);
     }),
     "chat.open": aiOnly(async (p: { window?: unknown; space?: unknown; chatId?: unknown }) => {
       if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
