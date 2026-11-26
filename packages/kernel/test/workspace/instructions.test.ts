@@ -304,3 +304,28 @@ test("a new home does not hide a workspace change, and a reference with no home 
   disk.set(CODEX_HOME, "planted");
   expect((await review.pending("codex")).changes).toMatchObject([{ path: AGENTS }, { path: CODEX_HOME, status: "changed" }]);
 });
+
+test("Codex's own .system install (the pinned version's marker, newly written) passes even once the first intake is spent; a skill planted beside it later shows", async () => {
+  const MARKER = `${SYSTEM}/.codex-system-skills.marker`;
+  const { review, disk } = await setup({ [`${SYSTEM}/old/SKILL.md`]: "old" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  // The intake is spent (a reference carried from another home, or a card that dropped them): Codex installs its skills.
+  disk.delete(`${SYSTEM}/old/SKILL.md`);
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  disk.set(MARKER, "e2e416a9532c044f");
+  disk.set(`${SYSTEM}/imagegen/SKILL.md`, "imagegen");
+  disk.set(`${SYSTEM}/openai-docs/LICENSE.txt`, "license");
+  expect((await review.pending("codex")).changes).toEqual([]);
+  disk.set(`${SYSTEM}/evil/SKILL.md`, "evil");
+  disk.set(`${SYSTEM}/imagegen/SKILL.md`, "rewritten");
+  expect((await review.pending("codex")).changes.map((c) => c.path).sort()).toEqual([`${SYSTEM}/evil/SKILL.md`, `${SYSTEM}/imagegen/SKILL.md`]);
+});
+
+test("a .system marker Ressac's pinned Codex never writes takes nothing in", async () => {
+  const MARKER = `${SYSTEM}/.codex-system-skills.marker`;
+  const { review, disk } = await setup({ [`${SYSTEM}/old/SKILL.md`]: "old" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  disk.set(MARKER, "0000000000000000");
+  disk.set(`${SYSTEM}/evil/SKILL.md`, "evil");
+  expect((await review.pending("codex")).changes.map((c) => c.path).sort()).toEqual([MARKER, `${SYSTEM}/evil/SKILL.md`]);
+});

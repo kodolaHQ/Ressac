@@ -38,6 +38,12 @@ export const DIFF_LINES_MAX = 2000;
 const CODEX_SYSTEM_SKILLS = "/home/node/.codex/skills/.system/";
 /** Reference key (no path, so no kind owns it and keep() never drops it): Codex's first install was taken in once. */
 const CODEX_SYSTEM_SEEN = "\u0000codex-system-seen";
+const CODEX_SYSTEM_MARKER = `${CODEX_SYSTEM_SKILLS}.codex-system-skills.marker`;
+/**
+ * The marker (a fingerprint of its bundled skills) each Codex Ressac pins writes: Codex installing them anew rewrites it.
+ * Update with the Codex pin (shared/downloads.ts); a version missing here only shows its install on a card once.
+ */
+const CODEX_SYSTEM_MARKERS = new Set(["e2e416a9532c044f" /* 0.169.0 */]);
 
 /** Reference key: the home the reference's /home/node entries were taken in. */
 const HOME_ID = "\u0000home";
@@ -149,6 +155,15 @@ export class InstructionReview {
     const snapshot = await this.io.read(WATCHED[kind].files, WATCHED[kind].trees);
     // Codex's first install of its system skills is no change anyone made: taken in silently, watched from then on.
     // Once only: a card that drops the .system keys (deleted, link, too-many) must not re-arm it for a planted skill.
+    // Codex (re)installing its system skills writes the pinned marker anew: the whole .system tree is its own then.
+    // shortcut: a skill planted in the same round as that install passes with it; a per-file manifest of the pinned version would close it.
+    const marker = snapshot[CODEX_SYSTEM_MARKER];
+    if (marker !== undefined && !isMarker(marker) && CODEX_SYSTEM_MARKERS.has(marker.trim()) && ref[CODEX_SYSTEM_MARKER] !== marker) {
+      for (const p of Object.keys(ref)) if (p.startsWith(CODEX_SYSTEM_SKILLS)) delete ref[p];
+      for (const [p, c] of Object.entries(snapshot)) if (p.startsWith(CODEX_SYSTEM_SKILLS)) ref[p] = c;
+      ref[CODEX_SYSTEM_SEEN] = "1";
+      moved = true;
+    }
     if (!(CODEX_SYSTEM_SEEN in ref))
       for (const [p, c] of Object.entries(snapshot)) if (p.startsWith(CODEX_SYSTEM_SKILLS)) (ref[p] = c), (ref[CODEX_SYSTEM_SEEN] = "1"), (moved = true);
     for (const path of new Set([...Object.keys(snapshot), ...Object.keys(ref).filter((p) => this.inKind(kind, p))])) {
