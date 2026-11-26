@@ -1124,9 +1124,9 @@ createServer((req, res) => {
 
 describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
   type View = { summary: { id: string; state: string; engine: string }; items: { kind: string; text?: string }[]; remote?: string; advanced?: true; error?: string };
-  const ownHost = async () => {
+  const ownHost = async (handlers: Record<string, Handler> = {}) => {
     const views: { window: string; view: View }[] = [];
-    const h = startHost({}, undefined, { handlers: { "chat.view": (p: (typeof views)[number]) => void views.push(p) } });
+    const h = startHost({}, undefined, { handlers: { "chat.view": (p: (typeof views)[number]) => void views.push(p), ...handlers } });
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     h.rpc.notify("settings.agentView", { view: "chat" });
     return { h, views };
@@ -1149,16 +1149,18 @@ describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
   it("an own chat opens no docker session: checked, then answered by the model", async () => {
     const { createServer } = await import("node:http");
     const paths: string[] = [];
+    let chatBody = "";
     const ollama = createServer((req, res) => {
       paths.push(req.url ?? "");
-      req.resume().on("end", () => {
+      req.on("data", (d) => req.url === "/api/chat" && (chatBody += d)).on("end", () => {
         const body = req.url === "/api/chat" ? { message: { content: '{"action":"answer","text":"Lyon"}' }, prompt_eval_count: 10 } : { details: {} };
         res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(body));
       });
     });
     await new Promise<void>((r) => ollama.listen(0, "127.0.0.1", r));
     try {
-      const { h, views } = await ownHost();
+      const key = "ghp_x7Kq9LmN2pRs4TuVw6YzA8bCdEfGhJ1kMn3P";
+      const { h, views } = await ownHost({ activeTab: () => ({ ...tabs[0], title: `Jeton ${key}`, url: `https://un.test/p?token=${key}#x` }) });
       const port = (ollama.address() as { port: number }).port;
       expect(await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: `http://127.0.0.1:${port}`, ollamaModel: "qwen3" }) })).toEqual({ ok: true });
       await expect(h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "own", mode: "workshop" })).rejects.toThrow("Votre modèle ne fonctionne qu'en mode Navigateur.");
@@ -1168,6 +1170,9 @@ describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
       expect(await h.rpc.request("chat.send", { window: "f1", draft: { text: "Quelle ville ?" } })).toMatchObject({ ok: true });
       await until(() => views.some((v) => v.view.summary.id === created.summary.id && v.view.items.some((i) => i.kind === "agent" && i.text === "Lyon")));
       expect(paths).toEqual(["/api/show", "/api/chat"]);
+      // The turn names the window's active tab, masked, its query gone: the key never reaches the model.
+      const user = (JSON.parse(chatBody) as { messages: { role: string; content: string }[] }).messages.at(-1)!.content;
+      expect(user).toMatch(/^Onglet actif : Jeton ⟨[a-z-]+-[a-z0-9]{8}⟩ — https:\/\/un\.test\/p\n\nQuelle ville \?$/);
       // No container session, no CLI: the fake docker never ran a session command.
       expect(readFileSync(h.log, "utf8")).not.toContain("ressac-session");
       // « Mode avancé » has no terminal for it: the discussion stays as it is.

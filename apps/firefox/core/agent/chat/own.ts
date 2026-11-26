@@ -21,6 +21,22 @@ const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
 // No square bracket (nor look-alike, after NFKC) survives in a result: page text can never form a delimiter.
 const OPEN = /[\[⟦〚]/g;
 const CLOSE = /[\]⟧〛]/g;
+/** Page-made text the model gets: no control character, no square bracket. */
+const sanitize = (s: string) => s.normalize("NFKC").replace(CONTROL, "").replace(OPEN, "(").replace(CLOSE, ")");
+
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const prompts = Object.values(OWN_PROMPTS);
+const opens = prompts.map((p) => p.resultOf("\0").split("\n"));
+const HEAD = opens.map(([h]) => escape(h!).replace("\0", "\\S+")).join("|");
+const START = opens.map(([, o]) => escape(o!)).join("|");
+const END = prompts.map((p) => escape(p.end)).join("|");
+const RESULT_BLOCK = new RegExp(`(?:(?:${HEAD})\\s*)?(?:${START})[\\s\\S]*?(?:${END}|$)`, "g");
+const RESULT_MARK = new RegExp(`${HEAD}|${START}|${END}`, "g");
+
+/** The answer without the tool-result frames a model may echo; a frame-only answer keeps its text. */
+export function stripResults(text: string): string {
+  return text.replace(RESULT_BLOCK, "").trim() || text.replace(RESULT_MARK, "").trim();
+}
 
 /** Flat, as the 13 Nov spike measured it: one action from the enum, every argument optional. */
 export const ACTION_SCHEMA = {
@@ -119,12 +135,16 @@ export interface OwnOpen {
   /** Host texts (own-bad-format, own-steps, own-timeout). */
   texts: { badFormat: string; steps: string; timeout: string };
   mcp?: (l: HostLaunch) => Promise<McpLike>;
+  /** The tab the user is on, asked at each turn; its line reaches the model only through `mask`. */
+  activeTab?: () => Promise<{ title: string; url: string } | null>;
+  /** The session's masking of what the user sends. */
+  mask?: (text: string) => string;
 }
 
 export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
   id: "own",
 
-  async open({ launch, signal, tabTitle, model, locale, transcript, texts, mcp: connect }): Promise<EngineConversation> {
+  async open({ launch, signal, tabTitle, model, locale, transcript, texts, mcp: connect, activeTab, mask }): Promise<EngineConversation> {
     const events = engineEvents(launch);
     const { emit } = events;
     const t = OWN_PROMPTS[locale];
@@ -188,14 +208,24 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
       return b && { ...b, content: again.content };
     };
 
+    /** « Onglet actif : … » for a web page: no query nor fragment (tokens), masked as the user's text. */
+    const tabLine = async () => {
+      const tab = activeTab && mask ? await activeTab().catch(() => null) : null;
+      const u = tab && URL.canParse(tab.url) ? new URL(tab.url) : null;
+      if (!tab || !u || (u.protocol !== "https:" && u.protocol !== "http:")) return "";
+      u.search = u.hash = "";
+      const title = sanitize(tab.title).replace(/\s+/g, " ").trim().slice(0, 200);
+      return `${mask!(t.activeTab(title, sanitize(u.href)))}\n\n`;
+    };
+
     const run = async (text: string, ac: AbortController) => {
-      messages.push({ role: "user", content: text });
+      messages.push({ role: "user", content: (await tabLine()) + text });
       for (let step = 0; step < STEP_MAX; step++) {
         const a = await ask(ac.signal, step === STEP_MAX - 1);
         if (!a) return emit({ type: "turn_end", stopReason: "error", error: texts.badFormat });
         if (a.action === "answer") {
           messages.push({ role: "assistant", content: a.content });
-          emit({ type: "agent_message", messageId: randomUUID(), text: a.args.text as string });
+          emit({ type: "agent_message", messageId: randomUUID(), text: stripResults(a.args.text as string) });
           return emit({ type: "turn_end", stopReason: "end_turn" });
         }
         if (step === STEP_MAX - 1) break;
@@ -211,7 +241,7 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
           throw e;
         }
         emit({ type: "tool_call_update", toolCallId, status: r.isError ? "failed" : "completed" });
-        const clean = r.text.normalize("NFKC").replace(CONTROL, "").replace(OPEN, "(").replace(CLOSE, ")");
+        const clean = sanitize(r.text);
         const body = clean.length > RESULT_MAX ? `${clean.slice(0, RESULT_MAX)}\n${t.cut}` : clean;
         const msg: ModelMessage = { role: "user", content: `${t.resultOf(a.action)}\n${body}\n${t.end}` };
         messages.push(msg);
