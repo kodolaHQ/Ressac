@@ -12,6 +12,8 @@ export type DiffLine = { kind: " " | "+" | "-"; text: string };
 /** `marker`: what stands in for unshown content ("too-long", "binary", "other", "unreadable", "too-many" or "link:" + target). */
 export type InstructionChange = { path: string; status: "changed" | "created" | "deleted"; lines: DiffLine[] | null; marker?: string };
 export interface InstructionIo {
+  /** The agent's home as the engine knows it (its volume's creation): another value is another home. Never read from inside the home. */
+  home(): Promise<string>;
   read(files: string[], trees: string[]): Promise<Snapshot>;
   /** null deletes. */
   write(entries: Record<string, string | null>): Promise<void>;
@@ -36,6 +38,11 @@ export const DIFF_LINES_MAX = 2000;
 const CODEX_SYSTEM_SKILLS = "/home/node/.codex/skills/.system/";
 /** Reference key (no path, so no kind owns it and keep() never drops it): Codex's first install was taken in once. */
 const CODEX_SYSTEM_SEEN = "\u0000codex-system-seen";
+
+/** Reference key: the home the reference's /home/node entries were taken in. */
+const HOME_ID = "\u0000home";
+const inHome = (p: string) => p === "/home/node" || p.startsWith("/home/node/");
+const HOME_WATCHED = { files: [...new Set(Object.values(WATCHED).flatMap((w) => w.files))].filter(inHome), trees: [...new Set(Object.values(WATCHED).flatMap((w) => w.trees))].filter(inHome) };
 
 const isMarker = (s: string | undefined) => s?.startsWith("\u0000") ?? false;
 
@@ -123,9 +130,20 @@ export class InstructionReview {
 
   private async compare(kind: InstructionKind): Promise<{ snapshot: Snapshot; changes: InstructionChange[] }> {
     const ref = await this.load();
-    const snapshot = await this.io.read(WATCHED[kind].files, WATCHED[kind].trees);
     const changes: InstructionChange[] = [];
     let moved = false;
+    const home = await this.io.home();
+    if (ref[HOME_ID] !== home) {
+      // A new home (created, reinstalled, Docker <-> machine) holds none of the old one's files: what it has is the reference,
+      // not changes. A reference with no home id yet (first run, older release) only records it, and is compared as before.
+      if (HOME_ID in ref) {
+        for (const p of Object.keys(ref)) if (inHome(p) || p === CODEX_SYSTEM_SEEN) delete ref[p];
+        Object.assign(ref, await this.io.read(HOME_WATCHED.files, HOME_WATCHED.trees));
+      }
+      ref[HOME_ID] = home;
+      moved = true;
+    }
+    const snapshot = await this.io.read(WATCHED[kind].files, WATCHED[kind].trees);
     // Codex's first install of its system skills is no change anyone made: taken in silently, watched from then on.
     // Once only: a card that drops the .system keys (deleted, link, too-many) must not re-arm it for a planted skill.
     if (!(CODEX_SYSTEM_SEEN in ref))

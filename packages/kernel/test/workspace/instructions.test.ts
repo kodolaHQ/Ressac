@@ -18,7 +18,9 @@ async function setup(files: Snapshot = {}, locale = "en") {
   for (const t of ["AGENTS.md", "guides/widgets.md", "guides/actions.md", "guides/site-apps.md"]) disk.set(`/workspace/${t}`, await template(locale, t));
   for (const [p, c] of Object.entries(files)) disk.set(p, c);
   const writes: Record<string, string | null>[] = [];
+  const home = { id: "volume-1" };
   const io: InstructionIo = {
+    home: async () => home.id,
     async read(fs, trees) {
       // Like the real reader: a watched path, anything under a tree, or a link at or above a watched path.
       return Object.fromEntries([...disk].filter(([p]) => [...fs, ...trees].some((w) => w === p || w.startsWith(`${p}/`)) || trees.some((t) => p.startsWith(`${t}/`))));
@@ -28,7 +30,7 @@ async function setup(files: Snapshot = {}, locale = "en") {
       for (const [p, c] of Object.entries(entries)) c === null ? disk.delete(p) : disk.set(p, c);
     },
   };
-  return { disk, writes, review: new InstructionReview(paths, io, DEFAULT_TEMPLATES, () => locale), paths };
+  return { disk, writes, home, review: new InstructionReview(paths, io, DEFAULT_TEMPLATES, () => locale), paths };
 }
 
 test("first run: an AGENTS.md equal to the space language's template shows no change", async () => {
@@ -254,4 +256,35 @@ test("config.toml lines Codex writes itself pass silently; any other key, a quot
   expect((await review.pending("codex")).changes).toEqual([]);
   for (const bad of ['"model_instructions_file" = "/tmp/x"', "[profiles.p]", 'notify = ["sh"]', 'profile = "p"', 'model = "a\\"b"'])
     disk.set(config, `model = "gpt-6"\n${bad}\n`), expect((await review.pending("codex")).changes.map((c) => c.path), bad).toEqual([config]);
+});
+
+test("a new home (other volume id) becomes the reference silently: its files are not shown as changes", async () => {
+  const CONFIG = "/home/node/.codex/config.toml";
+  const { review, disk, home } = await setup({ [CODEX_HOME]: "old home", [CONFIG]: 'mcp_servers = "x"', [`${SYSTEM}/a/SKILL.md`]: "a" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  // The new, empty home: nothing of the old one, then Codex's own install there.
+  home.id = "volume-2";
+  for (const p of [...disk.keys()]) if (p.startsWith("/home/node/")) disk.delete(p);
+  disk.set(CONFIG, "notify = 1");
+  expect((await review.pending("codex")).changes).toEqual([]);
+  // Its first .system install is taken in silently again, then a change in that same home shows.
+  disk.set(`${SYSTEM}/b/SKILL.md`, "b");
+  expect((await review.pending("codex")).changes).toEqual([]);
+  disk.set(CODEX_HOME, "planted");
+  expect((await review.pending("codex")).changes).toMatchObject([{ path: CODEX_HOME, status: "created" }]);
+});
+
+test("a new home does not hide a workspace change, and a reference with no home id records it and still compares", async () => {
+  const { review, disk, home, paths } = await setup({ [CODEX_HOME]: "x" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  home.id = "volume-2";
+  disk.set(AGENTS, "rewritten");
+  expect((await review.pending("codex")).changes).toMatchObject([{ path: AGENTS, status: "changed" }]);
+  // A reference from before the home id: the home is the one it was taken in, its changes show.
+  const file = join(paths.internal, "instructions", "reference.json");
+  const ref = JSON.parse(await readFile(file, "utf8"));
+  await writeFile(file, JSON.stringify({ files: Object.fromEntries(Object.entries(ref.files).filter(([p]) => !p.startsWith("\u0000home"))) }));
+  home.id = "volume-3";
+  disk.set(CODEX_HOME, "planted");
+  expect((await review.pending("codex")).changes).toMatchObject([{ path: AGENTS }, { path: CODEX_HOME, status: "changed" }]);
 });

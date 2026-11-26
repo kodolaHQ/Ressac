@@ -926,6 +926,13 @@ describe("instruction files", () => {
   });
 });
 
+test("homeId is the engine's home volume creation, with the engine kind; a failed inspect throws", async () => {
+  const { run, calls } = fakeRunner([[/ volume inspect /, { code: 0, stdout: "2026-11-27T10:00:00Z\n" }]]);
+  expect(await new Workshop({ paths: paths, docker: "docker", run }).homeId()).toBe("docker:2026-11-27T10:00:00Z");
+  expect(calls[0]!.args).toEqual(["volume", "inspect", "--format", "{{.CreatedAt}}", "webaios-home"]);
+  await expect(new Workshop({ paths: paths, docker: "docker", run: fakeRunner([[/ volume inspect /, { code: 1, stderr: "no such volume" }]]).run }).homeId()).rejects.toThrow("no such volume");
+});
+
 describe("execWrite", () => {
   const ac = () => new AbortController();
   const scriptOf = (args: string[]) => args[args.indexOf("ressac-write") - 1]!;

@@ -44,7 +44,7 @@ log(`kernel up, MCP port ${kernel.mcpPort}, relay ${relay.port}, fake API ${apiP
 t = Date.now();
 const state = await workshop.ensureStarted();
 log(`workshop ${state} in ${((Date.now() - t) / 1000).toFixed(0)} s`);
-const review = new InstructionReview(paths, { read: (f: string[], tr: string[]) => workshop.readInstructions(f, tr), write: (e: Record<string, string | null>) => workshop.writeInstructions(e) }, join(W, "packages/kernel/templates"), () => "fr");
+const review = new InstructionReview(paths, { home: () => workshop.homeId(), read: (f: string[], tr: string[]) => workshop.readInstructions(f, tr), write: (e: Record<string, string | null>) => workshop.writeInstructions(e) }, join(W, "packages/kernel/templates"), () => "fr");
 const sessions: any[] = [];
 const ctx = { k, kernel, workshop, machine, relay, apiSeen, apiPort, KEY, paths, bridge, review, WATCHED, claudeEngineEnv, codexEngineArgs, sessions, root, tmp, tools,
   x: (cmd: string) => workshop.exec(["sh", "-c", cmd]) };

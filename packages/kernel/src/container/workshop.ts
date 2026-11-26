@@ -466,6 +466,14 @@ export class Workshop {
     return this.instructionScript("reading", readInstructionFiles, { files, trees }, LIMITS);
   }
 
+  /** The home volume's creation time, by the engine (InstructionIo.home): the agent can write in the home, not change this. */
+  async homeId(): Promise<string> {
+    if (!this.docker) throw new Error(say(this.locale(), "kernel-workshop-no-engine"));
+    const r = await this.launch(["volume", "inspect", "--format", "{{.CreatedAt}}", VOLUME_HOME], PROBE_DELAY_MS);
+    if (r.code !== 0) throw new Error(`home volume: ${tail(r.stderr) || `code ${r.code}`}`);
+    return `${this.engine().kind}:${r.stdout.trim()}`;
+  }
+
   /** Restores (null deletes) instruction files in the container; throws if any could not be (InstructionIo.write). */
   async writeInstructions(entries: Record<string, string | null>): Promise<void> {
     if ((await this.instructionScript("restoring", writeInstructionFiles, entries)) !== "done") throw new Error("restoring the instruction files failed for some of them");

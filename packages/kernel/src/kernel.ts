@@ -550,7 +550,7 @@ export async function createKernel(o: {
   };
   const instructions = new InstructionReview(
     paths,
-    { read: (files, trees) => workshop.readInstructions(files, trees).catch(instructionsIo), write: (entries) => workshop.writeInstructions(entries).catch(instructionsIo) },
+    { home: () => workshop.homeId().catch(instructionsIo), read: (files, trees) => workshop.readInstructions(files, trees).catch(instructionsIo), write: (entries) => workshop.writeInstructions(entries).catch(instructionsIo) },
     templates ?? DEFAULT_TEMPLATES,
     loc,
   );
