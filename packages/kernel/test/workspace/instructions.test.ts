@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { DEFAULT_TEMPLATES } from "../../src/workspace/initialize.js";
-import { ACCEPTED_AGENTS_IN_CONTAINER, InstructionReview, WATCHED, lineDiff, type InstructionIo, type Snapshot } from "../../src/workspace/instructions.js";
+import { ACCEPTED_AGENTS_IN_CONTAINER, CODEX_SYSTEM_MARKERS, InstructionReview, WATCHED, lineDiff, type InstructionIo, type Snapshot } from "../../src/workspace/instructions.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const AGENTS = "/workspace/AGENTS.md";
@@ -305,13 +305,13 @@ test("a new home does not hide a workspace change, and a reference with no home 
   expect((await review.pending("codex")).changes).toMatchObject([{ path: AGENTS }, { path: CODEX_HOME, status: "changed" }]);
 });
 
-test("Codex's own .system install (the pinned version's marker, newly written) passes even once the first intake is spent; a skill planted beside it later shows", async () => {
+test("a new home whose Codex already installed its .system skills (pinned marker) passes, even with the intake spent; a skill planted later shows", async () => {
   const MARKER = `${SYSTEM}/.codex-system-skills.marker`;
-  const { review, disk } = await setup({ [`${SYSTEM}/old/SKILL.md`]: "old" });
+  const { review, disk, home } = await setup({ [`${SYSTEM}/old/SKILL.md`]: "old" });
   await review.keep("codex", (await review.pending("codex")).snapshot);
-  // The intake is spent (a reference carried from another home, or a card that dropped them): Codex installs its skills.
+  // The new home, Codex already started there (sign-in, Atelier) before any Navigateur session.
+  home.id = "volume-2";
   disk.delete(`${SYSTEM}/old/SKILL.md`);
-  await review.keep("codex", (await review.pending("codex")).snapshot);
   disk.set(MARKER, "e2e416a9532c044f");
   disk.set(`${SYSTEM}/imagegen/SKILL.md`, "imagegen");
   disk.set(`${SYSTEM}/openai-docs/LICENSE.txt`, "license");
@@ -319,6 +319,37 @@ test("Codex's own .system install (the pinned version's marker, newly written) p
   disk.set(`${SYSTEM}/evil/SKILL.md`, "evil");
   disk.set(`${SYSTEM}/imagegen/SKILL.md`, "rewritten");
   expect((await review.pending("codex")).changes.map((c) => c.path).sort()).toEqual([`${SYSTEM}/evil/SKILL.md`, `${SYSTEM}/imagegen/SKILL.md`]);
+});
+
+test("in the same home, a padded pinned marker or one rewritten after a kept deletion takes nothing in", async () => {
+  const MARKER = `${SYSTEM}/.codex-system-skills.marker`;
+  const { review, disk } = await setup({ [MARKER]: "e2e416a9532c044f", [`${SYSTEM}/a/SKILL.md`]: "a" });
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  disk.set(MARKER, "e2e416a9532c044f\n ");
+  disk.set(`${SYSTEM}/evil/SKILL.md`, "evil");
+  expect((await review.pending("codex")).changes.map((c) => c.path).sort()).toEqual([MARKER, `${SYSTEM}/evil/SKILL.md`]);
+  // The user keeps a marker deletion; Codex then writes it back, a skill planted beside it.
+  disk.delete(MARKER);
+  disk.delete(`${SYSTEM}/evil/SKILL.md`);
+  await review.keep("codex", (await review.pending("codex")).snapshot);
+  disk.set(MARKER, "e2e416a9532c044f");
+  disk.set(`${SYSTEM}/evil/SKILL.md`, "evil");
+  expect((await review.pending("codex")).changes.map((c) => c.path).sort()).toEqual([MARKER, `${SYSTEM}/evil/SKILL.md`]);
+});
+
+test("a Codex upgrade (the reference holds another pinned marker) takes its new .system tree in", async () => {
+  const MARKER = `${SYSTEM}/.codex-system-skills.marker`;
+  CODEX_SYSTEM_MARKERS.add("1111111111111111");
+  try {
+    const { review, disk } = await setup({ [MARKER]: "1111111111111111", [`${SYSTEM}/a/SKILL.md`]: "a" });
+    await review.keep("codex", (await review.pending("codex")).snapshot);
+    disk.set(MARKER, "e2e416a9532c044f");
+    disk.set(`${SYSTEM}/a/SKILL.md`, "a v2");
+    disk.set(`${SYSTEM}/b/SKILL.md`, "b");
+    expect((await review.pending("codex")).changes).toEqual([]);
+  } finally {
+    CODEX_SYSTEM_MARKERS.delete("1111111111111111");
+  }
 });
 
 test("a .system marker Ressac's pinned Codex never writes takes nothing in", async () => {
