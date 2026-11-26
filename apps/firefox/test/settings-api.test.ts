@@ -155,6 +155,19 @@ describe("settings api", () => {
     expect(dispatched).toEqual([{ type: "chooseClaudeEngine", engine }]);
   });
 
+  it("the own engine is saved only once the host accepts it", async () => {
+    const ok = { kind: "ollama" as const, ollamaUrl: "http://127.0.0.1:11434", ollamaModel: "m", apiUrl: "", apiModel: "" };
+    const far = { ...ok, ollamaUrl: "http://192.168.1.4:11434" };
+    const { api, dispatched } = setup({ "agent.ownEngine": (p: { engine: typeof ok }) => (p.engine.ollamaUrl === ok.ollamaUrl ? { ok: true } : { ok: false, error: "refusée" }) });
+    expect(await api.chooseOwnEngine(far)).toEqual({ ok: false, error: "refusée" });
+    expect(await api.chooseOwnEngine(ok)).toEqual({ ok: true });
+    expect(dispatched).toEqual([{ type: "chooseOwnEngine", engine: ok }]);
+    // A silent host saves nothing either.
+    const silent = setup();
+    expect(await silent.api.chooseOwnEngine(ok)).toMatchObject({ ok: false });
+    expect(silent.dispatched).toEqual([]);
+  });
+
   it("ollamaModels: the host's list, the unreachable answer when the host is silent", async () => {
     const list = { ok: true, models: [{ name: "a" }] };
     expect(await setup({ "settings.ollamaModels": () => list }).api.ollamaModels("http://h:1")).toEqual(list);

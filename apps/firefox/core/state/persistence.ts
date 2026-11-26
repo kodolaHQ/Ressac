@@ -4,7 +4,7 @@ import { z } from "zod";
 import { APPEARANCES, FAVICON_MAX, LANGUAGE_SETTING, type BrowserState } from "../../shared/model";
 import { AURA_IDS, DEFAULT_AURA } from "../../shared/aura";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "../../shared/search";
-import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, MachineIdleSchema, cleanAgentDomains } from "../../shared/settings";
+import { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DEFAULT_OWN_ENGINE, OwnEngineSchema, MachineIdleSchema, cleanAgentDomains } from "../../shared/settings";
 import { FIRST_TIME, HINT_IDS, type HintId } from "../../shared/hints";
 import { SHORTCUTS, SHORTCUT_IDS, bindingProblem, effectiveBindings, isBinding, pickBinding, type Binding, type ShortcutId } from "../../shared/shortcuts";
 import { initialState } from "./initial-state";
@@ -59,7 +59,7 @@ const SchemaSession = z.object({
       }),
     )
     .min(1),
-  settings: z.object({ engine: z.enum(SEARCH_ENGINE_IDS).catch("google"), customEngine: z.string().max(CUSTOM_ENGINE_MAX).refine((u) => !customEngineError(u)).nullable().catch(null).default(null), agentProfile: z.string().min(1).default("claude"), agentMode: z.enum(["browser", "workshop"]).catch("browser"), agentView: z.enum(["chat", "terminal"]).catch("chat"), agentPanelWidth: z.number().default(420), sidebarWidth: z.number().default(240), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })), claudeEngine: ClaudeEngineSchema.catch(() => ({ ...DEFAULT_CLAUDE_ENGINE })),
+  settings: z.object({ engine: z.enum(SEARCH_ENGINE_IDS).catch("google"), customEngine: z.string().max(CUSTOM_ENGINE_MAX).refine((u) => !customEngineError(u)).nullable().catch(null).default(null), agentProfile: z.string().min(1).default("claude"), agentMode: z.enum(["browser", "workshop"]).catch("browser"), agentView: z.enum(["chat", "terminal"]).catch("chat"), agentPanelWidth: z.number().default(420), sidebarWidth: z.number().default(240), codexEngine: CodexEngineSchema.catch(() => ({ ...DEFAULT_CODEX_ENGINE })), claudeEngine: ClaudeEngineSchema.catch(() => ({ ...DEFAULT_CLAUDE_ENGINE })), ownEngine: OwnEngineSchema.catch(() => ({ ...DEFAULT_OWN_ENGINE })),
     // A session saved before the welcome existed never welcomes.
     onboarded: z.boolean().default(true),
     // A session saved before the release notes existed comes from an older version: its next launch shows them.

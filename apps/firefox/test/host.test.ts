@@ -1121,3 +1121,84 @@ createServer((req, res) => {
     }
   });
 });
+
+describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
+  type View = { summary: { id: string; state: string; engine: string }; items: { kind: string; text?: string }[]; remote?: string; advanced?: true; error?: string };
+  const ownHost = async () => {
+    const views: { window: string; view: View }[] = [];
+    const h = startHost({}, undefined, { handlers: { "chat.view": (p: (typeof views)[number]) => void views.push(p) } });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    h.rpc.notify("settings.agentView", { view: "chat" });
+    return { h, views };
+  };
+  const own = (e: Record<string, string>) => ({ kind: "ollama", ollamaUrl: "http://127.0.0.1:11434", ollamaModel: "", apiUrl: "", apiModel: "", ...e });
+
+  it("agent.ownEngine refuses a remote Ollama but accepts a remote https API", async () => {
+    const { h } = await ownHost();
+    expect(await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: "http://192.168.1.4:11434", ollamaModel: "m" }) })).toEqual({
+      ok: false,
+      error: "Adresse refusée : pour une adresse hors de votre Mac, choisissez « API compatible OpenAI ».",
+    });
+    expect(await h.rpc.request("agent.ownEngine", { engine: own({ kind: "api", apiUrl: "https://api.deepseek.com/v1", apiModel: "deepseek-chat" }) })).toEqual({ ok: true });
+    expect(await h.rpc.request("agent.ownEngine", { engine: own({ kind: "api", apiUrl: "http://192.168.1.4/v1", apiModel: "m" }) })).toMatchObject({ ok: false });
+    // Credentials in the address would be kept in the settings and shown: refused.
+    expect(await h.rpc.request("agent.ownEngine", { engine: own({ kind: "api", apiUrl: "https://u:p@api.deepseek.com/v1", apiModel: "m" }) })).toMatchObject({ ok: false });
+    expect(await h.rpc.request("agent.ownEngine", { engine: { kind: "cloud" } })).toMatchObject({ ok: false });
+  });
+
+  it("an own chat opens no docker session: checked, then answered by the model", async () => {
+    const { createServer } = await import("node:http");
+    const paths: string[] = [];
+    const ollama = createServer((req, res) => {
+      paths.push(req.url ?? "");
+      req.resume().on("end", () => {
+        const body = req.url === "/api/chat" ? { message: { content: '{"action":"answer","text":"Lyon"}' }, prompt_eval_count: 10 } : { details: {} };
+        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(body));
+      });
+    });
+    await new Promise<void>((r) => ollama.listen(0, "127.0.0.1", r));
+    try {
+      const { h, views } = await ownHost();
+      const port = (ollama.address() as { port: number }).port;
+      expect(await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: `http://127.0.0.1:${port}`, ollamaModel: "qwen3" }) })).toEqual({ ok: true });
+      await expect(h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "own", mode: "workshop" })).rejects.toThrow("Votre modèle ne fonctionne qu'en mode Navigateur.");
+      const created = (await h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "own" })) as View;
+      expect(created.summary.engine).toBe("own");
+      expect(created.remote).toBeUndefined();
+      expect(await h.rpc.request("chat.send", { window: "f1", draft: { text: "Quelle ville ?" } })).toMatchObject({ ok: true });
+      await until(() => views.some((v) => v.view.summary.id === created.summary.id && v.view.items.some((i) => i.kind === "agent" && i.text === "Lyon")));
+      expect(paths).toEqual(["/api/show", "/api/chat"]);
+      // No container session, no CLI: the fake docker never ran a session command.
+      expect(readFileSync(h.log, "utf8")).not.toContain("ressac-session");
+      // « Mode avancé » has no terminal for it: the discussion stays as it is.
+      await h.rpc.request("chat.toTerminal", { window: "f1" });
+      const after = (await h.rpc.request("chat.open", { window: "f1", space: "perso" })) as View;
+      expect(after.advanced).toBeUndefined();
+      expect(after.summary.state).not.toBe("paused");
+      // Its history is the transcript only: nothing to erase in an engine.
+      expect(await h.rpc.request("chat.remove", { window: "f1", chatId: created.summary.id, engineHistory: true })).toEqual({ history: null });
+    } finally {
+      ollama.close();
+    }
+  });
+
+  it("a remote API discussion carries its host; a loopback API has none", async () => {
+    const { h, views } = await ownHost();
+    await h.rpc.request("agent.ownEngine", { engine: own({ kind: "api", apiUrl: "https://api.deepseek.com/v1", apiModel: "deepseek-chat" }) });
+    expect(((await h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "own" })) as View).remote).toBe("api.deepseek.com");
+    await h.rpc.request("agent.ownEngine", { engine: own({ kind: "api", apiUrl: "http://127.0.0.1:9/v1", apiModel: "m" }) });
+    const local = (await h.rpc.request("chat.create", { window: "f2", space: "perso", profile: "own" })) as View;
+    expect(local.remote).toBeUndefined();
+    // Checked at open: a server that does not answer is the discussion's error, never a session left open.
+    await h.rpc.request("chat.send", { window: "f2", draft: { text: "Bonjour" } });
+    await until(() => views.some((v) => v.view.summary.id === local.summary.id && v.view.error === "127.0.0.1:9 ne répond pas. Vérifiez l'adresse et que le serveur est lancé."));
+  });
+
+  it("settings.ownCheck names the model, or says why it cannot be used", async () => {
+    const { h } = await ownHost();
+    await h.rpc.request("agent.ownEngine", { engine: own({ ollamaUrl: "http://127.0.0.1:9", ollamaModel: "qwen3" }) });
+    expect(await h.rpc.request("settings.ownCheck", undefined)).toEqual({ ok: false, error: "127.0.0.1:9 ne répond pas. Vérifiez l'adresse et que le serveur est lancé." });
+    h.rpc.notify("ai.enabled", { on: false });
+    await expect.poll(() => h.rpc.request("settings.ownCheck", undefined).then(() => "", (e: Error) => e.message)).toContain("ai-off");
+  });
+});

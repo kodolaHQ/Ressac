@@ -163,6 +163,16 @@ export function createSettingsApi(o: {
     setClaudeKey: (key) => ask<SettingsResult>("settings.claudeKey", { key }, silent()),
     deleteClaudeKey: () => ask<SettingsResult>("settings.claudeKeyDelete", undefined, silent()),
     chooseClaudeEngine: (engine) => o.dispatch({ type: "chooseClaudeEngine", engine }),
+    async chooseOwnEngine(engine) {
+      const r = await ask<SettingsResult>("agent.ownEngine", { engine }, silent());
+      if (r.ok) o.dispatch({ type: "chooseOwnEngine", engine });
+      return r;
+    },
+    ownKeySaved: () => ask<boolean>("settings.ownKeySaved", undefined, false),
+    setOwnKey: (key, url) => ask<SettingsResult>("settings.ownKey", { key, url }, silent()),
+    deleteOwnKey: () => ask<SettingsResult>("settings.ownKeyDelete", undefined, silent()),
+    ownModels: (url) => ask("settings.ownModels", { url }, silent()),
+    ownCheck: () => ask("settings.ownCheck", undefined, silent()),
     pullModel: (name) => ask<SettingsResult>("settings.pullModel", { name }, silent()),
     pullProgress: () => ask<PullProgress | null>("settings.pullProgress", undefined, null),
     docker: () => ask<DockerStatus | null>("settings.docker", undefined, null),

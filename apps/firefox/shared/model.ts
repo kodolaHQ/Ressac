@@ -2,7 +2,7 @@ import type { AuraId } from "./aura";
 import type { HintId } from "./hints";
 import type { DevRight, TabAccessState, Owner } from "@ressac/kernel";
 import type { Binding, ShortcutId } from "./shortcuts";
-import type { ClaudeEngine, CodexEngine, MachineIdleMinutes } from "./settings";
+import type { ClaudeEngine, CodexEngine, MachineIdleMinutes, OwnEngine } from "./settings";
 
 /** The look: the Mac's, light or dark (Réglages and the welcome, in this order). */
 export const APPEARANCES = ["system", "light", "dark"] as const;
@@ -284,6 +284,8 @@ export interface BrowserState {
     /** The engine Codex runs on (account, local Ollama or compatible API). */
     codexEngine: CodexEngine;
     claudeEngine: ClaudeEngine;
+    /** « Votre modèle »: the user's Ollama or OpenAI-compatible API, driven by a loop in the host. */
+    ownEngine: OwnEngine;
     /** False until the first-launch welcome is finished (or skipped). */
     onboarded: boolean;
     /** The Ressac version of the last launch; null before any launch that records it. */

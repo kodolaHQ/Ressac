@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { DEFAULT_AURA } from "../../shared/aura";
-import { DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE } from "../../shared/settings";
+import { DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DEFAULT_OWN_ENGINE } from "../../shared/settings";
 import { DEFAULT_PROFILE, type BrowserState } from "../../shared/model";
 
 export function initialState(genId: () => string = randomUUID): BrowserState {
@@ -24,7 +24,7 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
         frame: null,
       },
     ],
-    settings: { engine: "google", customEngine: null, agentProfile: "claude", agentMode: "browser", agentView: "chat", agentPanelWidth: 420, sidebarWidth: 240, codexEngine: { ...DEFAULT_CODEX_ENGINE }, claudeEngine: { ...DEFAULT_CLAUDE_ENGINE }, onboarded: false, seenVersion: null, hints: { enabled: true, seen: [] }, sidebarSide: "left", shortcuts: {}, vimMode: false, extensionQuarantine: true, startOnHome: true, auraMotion: true, auraMotionChosen: false, saveMemory: false, saveMemoryChosen: false, appearance: "system", language: "system", aiEnabled: false, lab: false, agentDomains: [], machineIdleMinutes: 5 },
+    settings: { engine: "google", customEngine: null, agentProfile: "claude", agentMode: "browser", agentView: "chat", agentPanelWidth: 420, sidebarWidth: 240, codexEngine: { ...DEFAULT_CODEX_ENGINE }, claudeEngine: { ...DEFAULT_CLAUDE_ENGINE }, ownEngine: { ...DEFAULT_OWN_ENGINE }, onboarded: false, seenVersion: null, hints: { enabled: true, seen: [] }, sidebarSide: "left", shortcuts: {}, vimMode: false, extensionQuarantine: true, startOnHome: true, auraMotion: true, auraMotionChosen: false, saveMemory: false, saveMemoryChosen: false, appearance: "system", language: "system", aiEnabled: false, lab: false, agentDomains: [], machineIdleMinutes: 5 },
     update: null,
     notices: [],
     locale: "en",

@@ -621,6 +621,7 @@ async function start(): Promise<RessacStore> {
       sendMirror(store, windows, notify);
       notify("agent.codexEngine", { engine: store.state.settings.codexEngine });
       notify("agent.claudeEngine", { engine: store.state.settings.claudeEngine });
+      notify("agent.ownEngine", { engine: store.state.settings.ownEngine });
       notify("agent.mode", { mode: store.state.settings.agentMode });
       notify("settings.agentView", { view: store.state.settings.agentView });
       notify("settings.locale", { locale: store.state.locale });

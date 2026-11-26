@@ -733,6 +733,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.claudeEngine = a.engine;
       return true;
     }
+    case "chooseOwnEngine": {
+      if (JSON.stringify(d.settings.ownEngine) === JSON.stringify(a.engine)) return false;
+      d.settings.ownEngine = a.engine;
+      return true;
+    }
     case "finishOnboarding": {
       const aiChanged = a.ai !== undefined && d.settings.aiEnabled !== a.ai;
       if (d.settings.onboarded && !aiChanged && !d.aiSetup && !d.welcomeReplay) return false;

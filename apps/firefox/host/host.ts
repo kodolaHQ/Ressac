@@ -2,9 +2,10 @@ import type { BuildProgress, InstructionChange, Kernel, LaunchSpec, TabInfo } fr
 import type { OpenOptions } from "../core/agent/chats.ts";
 import type { AskReply, ChatView } from "../shared/chat.ts";
 import type { FrameBounds } from "../shared/model.ts";
-import type { ClaudeEngine, CodexEngine, DockerStatus } from "../shared/settings.ts";
+import type { ClaudeEngine, CodexEngine, DockerStatus, OwnEngine } from "../shared/settings.ts";
 import type { BuilderSelection, TerminalSize } from "../shared/api.ts";
 import { hostLocale, hostSay, setHostLocale } from "./locale.ts";
+import type { OwnKey } from "./own-model.ts";
 
 // The agent host: Firefox spawns it and talks JSON-RPC over stdin/stdout, one JSON message per line.
 // stdout carries only the RPC: anything else written there would corrupt it, so it goes to stderr.
@@ -40,6 +41,8 @@ const { Chats, ResumeError, SignedOutError } = await import("../core/agent/chats
 const { ChatStore } = await import("../core/agent/chat-store.ts");
 const { claudeEngine: claudeChat } = await import("../core/agent/chat/claude.ts");
 const { codexEngine: codexChat } = await import("../core/agent/chat/codex.ts");
+const { ownEngine: ownChat, STEP_MAX } = await import("../core/agent/chat/own.ts");
+const { checkOwnModel, isOnMac, ollamaClient, openAiClient, readOwnKey } = await import("./own-model.ts");
 const { cleanDraft, createChatSend, DRAFT_MAX } = await import("./chat-send.ts");
 const { createEngineHistory } = await import("./chat-history.ts");
 const { createLoginTerminals } = await import("./chat-login.ts");
@@ -70,7 +73,7 @@ const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { ollamaRelayTarget } = await import("./ollama-models.ts");
 const { claudeEngineEnv, withoutV1 } = await import("./claude-engine.ts");
-const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, MachineIdleSchema, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
+const { ClaudeEngineSchema, CodexEngineSchema, DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, DEFAULT_OWN_ENGINE, OwnEngineSchema, apiUrlProblem, MachineIdleSchema, SEARCH_MODEL, cleanAgentDomains } = await import("../shared/settings.ts");
 const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
 const {
@@ -296,12 +299,20 @@ const cliOfProfile = async (id: string): Promise<"claude" | "codex" | null> => {
 // Codex's and Claude's engines (Settings › Agent) and their API keys: declared before the writer that reads them.
 let engine = DEFAULT_CODEX_ENGINE;
 let claudeEngine = DEFAULT_CLAUDE_ENGINE;
+/** « Votre modèle » (Réglages › Agent), checked by `agent.ownEngine`. */
+let ownSetting: OwnEngine = DEFAULT_OWN_ENGINE;
 const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY), own: keychain(OWN_KEY) };
-const cachedKeys: { codex?: string; claude?: string; own?: string } = {};
+const cachedKeys: { codex?: string; claude?: string } = {};
+let cachedOwnKey: OwnKey | undefined;
 // Only a string is kept: a failed read (Keychain locked) is tried again.
 async function readKey(kind: "codex" | "claude"): Promise<string | null> {
   cachedKeys[kind] ??= (await keys[kind].read()) ?? undefined;
   return cachedKeys[kind] ?? null;
+}
+/** The own model's key with the origin it was saved for (never sent elsewhere); null when none. */
+async function readOwn(): Promise<OwnKey | null> {
+  cachedOwnKey ??= (await readOwnKey(keys.own)) ?? undefined;
+  return cachedOwnKey ?? null;
 }
 // The profile of windows that have not chosen their agent. One kernel serves every profile: it starts once.
 let defaultProfile = "claude";
@@ -524,7 +535,8 @@ let kernelLaunched = false;
 let relocalized = 0;
 // Called after a key is written or removed (Settings › Agent).
 const forgetKey = (kind: "codex" | "claude" | "own") => {
-  delete cachedKeys[kind];
+  if (kind === "own") cachedOwnKey = undefined;
+  else delete cachedKeys[kind];
   writerChoice.reset();
 };
 const relay = await startRelay({ readKey });
@@ -649,11 +661,8 @@ const applyLab = async () => {
   ]);
 };
 
-/**
- * What every agent start needs first, terminal or chat: AI on, the passports, the kernel, the machine awake, the profile's
- * CLI downloaded (its progress through `onBuildProgress`).
- */
-async function readyToStart(profile: string, onBuildProgress?: (p: BuildProgress) => void): Promise<Kernel> {
+/** AI on, the passports, the kernel: what a host session needs (no machine, no CLI). */
+async function kernelReady(): Promise<Kernel> {
   if (!aiOn) throw new Error("ai-off");
   await aiSwitch;
   // Ressac's own texts to the session (prefills, the ⌘T question) are masked as they are written, once it runs: with
@@ -663,6 +672,15 @@ async function readyToStart(profile: string, onBuildProgress?: (p: BuildProgress
   if (!n) throw new Error(error ?? hostSay("host-kernel-not-started"));
   // AI turned off while waiting: no further docker command.
   if (!aiOn) throw new Error("ai-off");
+  return n;
+}
+
+/**
+ * What every agent start needs first, terminal or chat: AI on, the passports, the kernel, the machine awake, the profile's
+ * CLI downloaded (its progress through `onBuildProgress`).
+ */
+async function readyToStart(profile: string, onBuildProgress?: (p: BuildProgress) => void): Promise<Kernel> {
+  const n = await kernelReady();
   // The machine or a container app Ressac is starting (or can start): the panel stays on « Préparation » until it answers.
   await engines.current().wake("user").catch(() => {});
   if (!aiOn) throw new Error("ai-off");
@@ -771,8 +789,11 @@ const decorated = (win: string, view: ChatView): ChatView => {
   const preparing = chatPrep.get(id);
   const waiting = chatSend.waiting(id);
   const prefix = chats.active(win)?.summary.id === id ? chatSend.prefixOf(win) : null;
-  return { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}), ...(prefix ? { prefix } : {}), ...(terminalWindows.has(win) ? { advanced: true as const } : {}) };
+  const remote = view.summary.engine === "own" ? ownRemote() : null;
+  return { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}), ...(prefix ? { prefix } : {}), ...(terminalWindows.has(win) ? { advanced: true as const } : {}), ...(remote ? { remote } : {}) };
 };
+/** The own model's host when it is an API off this Mac (the chip's « en ligne », the composer's line); else null. */
+const ownRemote = (): string | null => (ownSetting.kind === "api" && ownSetting.apiUrl && !isOnMac(ownSetting.apiUrl) ? new URL(ownSetting.apiUrl).host : null);
 const pushChat = (win: string, view: ChatView) => {
   chatViews.set(view.summary.id, { win, view });
   rpc.notify("chat.view", { window: win, view: decorated(win, view) });
@@ -803,9 +824,8 @@ async function accountSignedIn(agent: "claude" | "codex"): Promise<boolean> {
 
 /** Chats' open: the kernel's pipe session, then the engine on it. Any failure once the session exists stops it (its slot blocks a lift). */
 async function openChat(o: OpenOptions) {
-  // shortcut: the own model is not wired here yet (plan task 7).
-  if (o.engine === "own" || (o.profile !== "claude" && o.profile !== "codex")) throw new Error(CHAT_CUSTOM_PROFILE);
   if (o.windowId === null) throw new Error(CHAT_WINDOW_CLOSED);
+  const win = o.windowId;
   const slot: ChatOpen = { abort: new AbortController() };
   const signal = slot.abort.signal;
   chatOpens.set(o.chatId, slot);
@@ -823,6 +843,8 @@ async function openChat(o: OpenOptions) {
       repushChat(o.chatId);
     });
   try {
+    if (o.engine === "own") return await openOwnChat(o, win, signal);
+    if (o.profile !== "claude" && o.profile !== "codex") throw new Error(CHAT_CUSTOM_PROFILE);
     const n = await readyToStart(o.profile, onBuildProgress);
     if (signal.aborted) throw new Error("closed");
     // Before the kernel session when the workshop runs: a signed-out retry resets no window's grants. A cold workshop
@@ -882,6 +904,35 @@ async function openChat(o: OpenOptions) {
   }
 }
 
+/**
+ * « Votre modèle »: a host session (no container, no CLI) and the loop in this process. The model is checked at every open
+ * (the setting or the server may have changed since Réglages); any failure once the session exists stops it. It runs in
+ * Navigateur mode whatever the discussion's mode: the host session has no Atelier tools.
+ */
+async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
+  const n = await kernelReady();
+  const e = ownSetting; // one snapshot: the check and the client use the same address and model
+  await checkOwnModel(e, { key: e.kind === "api" ? await readOwn() : null });
+  if (signal.aborted) throw new Error("closed");
+  const launch = await n.openHostSession({ window: win, resume: (o.transcript?.length ?? 0) > 0, agent: hostSay("own-agent-name") });
+  try {
+    if (signal.aborted) throw new Error("closed");
+    const conversation = await ownChat.open({
+      launch,
+      signal,
+      tabTitle: (id) => (typeof id === "string" ? tabTitles.get(id) : undefined),
+      model: e.kind === "ollama" ? ollamaClient(e) : openAiClient(e, { key: readOwn }),
+      locale: hostLocale() === "en" ? "en" : "fr",
+      ...(o.transcript ? { transcript: o.transcript } : {}),
+      texts: { badFormat: hostSay("own-bad-format"), steps: hostSay("own-steps", { count: STEP_MAX }), timeout: hostSay("own-timeout") },
+    });
+    return { conversation, launch };
+  } catch (err) {
+    await launch.stop();
+    throw err;
+  }
+}
+
 const chats = new Chats({
   store: chatStore,
   open: openChat,
@@ -919,8 +970,9 @@ const chatSend = createChatSend({
 
 async function createChat(win: string, c: { profile?: unknown; mode?: unknown; space?: unknown }): Promise<ChatView> {
   const profile = typeof c.profile === "string" ? c.profile : sessions.profileOf(win);
-  if (profile !== "claude" && profile !== "codex") throw new Error(CHAT_CUSTOM_PROFILE);
-  const mode = c.mode === "workshop" || c.mode === "browser" ? c.mode : agentMode;
+  if (profile !== "claude" && profile !== "codex" && profile !== "own") throw new Error(CHAT_CUSTOM_PROFILE);
+  if (profile === "own" && c.mode === "workshop") throw new Error(hostSay("own-workshop-off"));
+  const mode = profile === "own" ? "browser" : c.mode === "workshop" || c.mode === "browser" ? c.mode : agentMode;
   if (typeof c.space === "string") windowSpaces.set(win, c.space);
   return chats.create(win, { profile, mode, engine: profile, spaceId: windowSpaces.get(win) ?? "" });
 }
@@ -1072,6 +1124,26 @@ const rpc = createRpc({
       if (r.success) claudeEngine = r.data;
       sessions.engineChanged("claude");
     },
+    // Asked by Réglages before saving, and told the saved one at start: an address refused here is never used.
+    "agent.ownEngine": (p: { engine: unknown }) => {
+      const r = OwnEngineSchema.safeParse(p?.engine);
+      if (!r.success) return INVALID_ARGUMENT();
+      const { kind, ollamaUrl, apiUrl } = r.data;
+      if (kind === "ollama" && ollamaUrl && !isOnMac(ollamaUrl)) return { ok: false as const, error: hostSay("own-url-refused") };
+      // Credentials in the address would sit in the settings and show in Réglages: the key has its own field.
+      if (kind === "api" && apiUrl && (apiUrlProblem(apiUrl) || new URL(apiUrl).username || new URL(apiUrl).password)) return { ok: false as const, error: hostSay("host-engine-url-invalid") };
+      ownSetting = r.data;
+      return { ok: true as const };
+    },
+    "settings.ownCheck": aiOnly(async (_p: unknown) => {
+      const e = ownSetting;
+      try {
+        await checkOwnModel(e, { key: e.kind === "api" ? await readOwn() : null });
+        return { ok: true as const, model: e.kind === "api" ? e.apiModel : e.ollamaModel };
+      } catch (err) {
+        return { ok: false as const, error: (err as Error).message };
+      }
+    }),
     "agent.profiles": async () => {
       // After the kernel's start (removeOutdated, initSpace): .ressac/profiles is read once no older container can move .ressac.
       await aiSwitch;
@@ -1589,6 +1661,7 @@ const rpc = createRpc({
     // « Mode avancé »: the discussion pauses, the window's terminal resumes its conversation (Claude by id, Codex its latest).
     "chat.toTerminal": aiOnly(async (p: { window?: unknown }) => {
       if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
+      if (activeChat(p.window)?.engine === "own") return; // no terminal for it: the loop runs in the host
       await chatToTerminal(p.window, {
         stopLogin: (w) => logins.stop(w),
         active: activeChat,
