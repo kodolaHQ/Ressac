@@ -358,6 +358,7 @@ chat-new-messages = Nouveaux messages
 chat-tool-running = en cours
 chat-tool-done = terminé
 chat-tool-failed = échec
+chat-tool-show-tab = Afficher l'onglet
 chat-question = Question de l'agent
 chat-question-validate = Valider
 chat-question-ignored = Question ignorée

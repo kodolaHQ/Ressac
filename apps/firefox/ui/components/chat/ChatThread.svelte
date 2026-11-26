@@ -2,7 +2,7 @@
   import { fade } from "svelte/transition";
   import { SvelteSet } from "svelte/reactivity";
   import type { ToolKind } from "../../../shared/chat";
-  import { api } from "../../state.svelte";
+  import { api, appState } from "../../state.svelte";
   import { t } from "../../i18n.svelte";
   import Icon, { type IconName } from "../Icon.svelte";
   import { TRACES } from "../icons";
@@ -101,7 +101,9 @@
           <button class="copy" aria-label={t("chat-copy")} title={t("chat-copy")} onclick={(e) => (e.stopPropagation(), copy(item.text))}><Icon name="copy" size={13} /></button>
         </div>
       {:else if item.kind === "tool"}
-        <div class="tool" class:read={READS.has(item.toolKind)} data-testid="chat-tool">
+        <!-- The tab it opened or navigated, while it is open: the line shows it. -->
+        {@const tab = item.tab && appState.value?.tabs[item.tab] ? item.tab : null}
+        {#snippet line()}
           <Icon name={TOOL_ICONS[item.toolKind]} size={13} />
           <span class="tool-title">{item.title}</span>
           <span class="status">
@@ -109,7 +111,12 @@
             {:else if item.status === "failed"}{t("chat-tool-failed")}
             {:else}{t("chat-tool-running")}{/if}
           </span>
-        </div>
+        {/snippet}
+        {#if tab}
+          <button class="tool" class:read={READS.has(item.toolKind)} data-testid="chat-tool" title={t("chat-tool-show-tab")} onclick={() => api.dispatch({ type: "activateTab", id: tab })}>{@render line()}</button>
+        {:else}
+          <div class="tool" class:read={READS.has(item.toolKind)} data-testid="chat-tool">{@render line()}</div>
+        {/if}
       {:else if item.kind === "question"}
         <ChatQuestion {item} />
       {:else}
@@ -158,6 +165,11 @@
   .thread :global(button:focus-visible), .thread :global([role="button"]:focus-visible), .pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .tool { max-width: 92%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--access-act-bg); color: var(--access-act); font-size: 12px; }
   .tool.read { background: var(--access-read-bg); color: var(--access-read); }
+  button.tool { all: unset; box-sizing: border-box; max-width: 92%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--access-act-bg); color: var(--access-act); font-size: 12px; cursor: default; transition: transform var(--tap), filter var(--tap); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  button.tool.read { background: var(--access-read-bg); color: var(--access-read); }
+  button.tool:hover { filter: brightness(1.08); }
+  button.tool:active { transform: scale(0.97); }
+  button.tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .tool-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .status { margin-left: auto; flex: none; color: var(--text-muted); }
   .done { display: block; }

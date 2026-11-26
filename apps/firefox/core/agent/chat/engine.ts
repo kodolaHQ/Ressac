@@ -126,13 +126,24 @@ const FIXED: Record<string, { title: string; kind: ToolKind }> = {
   tweak_errors: { title: "Lit les erreurs d'un réglage", kind: "read" },
 };
 
+const TAB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * The tab open_tab opened, from its result (the kernel answers with the tab's id alone): a text, or MCP content blocks
+ * (Claude's tool_result, Codex's result.content). Other tools: none.
+ */
+export function openedTab(name: string, result: unknown): { tab?: string } {
+  const blocks = Array.isArray(result) ? result.map((b) => (b && typeof b === "object" && "text" in b ? str(b.text) : "")).join("") : result;
+  const text = typeof blocks === "string" ? blocks.trim() : "";
+  return name.replace(/^mcp__ressac__/, "") === "open_tab" && TAB_ID.test(text) ? { tab: text } : {};
+}
+
 /** French UI title and kind for a tool call; the same map serves both engines.
  *  `o.tabTitle` resolves a read_tab id to its page title (the input only carries the id). */
 export function toolTitle(
   name: string,
   input: unknown,
   o?: { tabTitle?: (id: unknown) => string | undefined },
-): { title: string; kind: ToolKind } {
+): { title: string; kind: ToolKind; tab?: string } {
   const bare = name.replace(/^mcp__ressac__/, "");
   const i = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   switch (bare) {
@@ -141,8 +152,10 @@ export function toolTitle(
       return { title: t ? `Lit la page « ${t} »` : "Lit une page", kind: "read" };
     }
     case "navigate":
-    case "open_tab":
-      return { title: `Ouvre ${hostOf(str(i.url)) || "une page"}`, kind: "fetch" };
+    case "open_tab": {
+      const tab = bare === "navigate" && str(i.id) ? { tab: str(i.id) } : {};
+      return { title: `Ouvre ${hostOf(str(i.url)) || "une page"}`, kind: "fetch", ...tab };
+    }
     case "search_web":
       return { title: `Cherche « ${str(i.query)} »`, kind: "search" };
     case "Read":

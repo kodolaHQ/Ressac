@@ -20,7 +20,7 @@ import type {
   TurnHolder,
   TurnStartParams,
 } from "./codex-protocol";
-import { engineEvents, toolTitle, type ChatEngine, type EngineConversation, type EngineModel, type LaunchSpecLike, type ModelOption } from "./engine";
+import { engineEvents, openedTab, toolTitle, type ChatEngine, type EngineConversation, type EngineModel, type LaunchSpecLike, type ModelOption } from "./engine";
 
 const AUTH = /\b(log ?in|not logged in|authenticat\w*|unauthori[sz]ed|401)\b/i;
 // The app-server only shows it in its user agent.
@@ -104,7 +104,11 @@ export const codexEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
         case "item/completed": {
           const { item } = params as ItemNotification;
           if (item.type === "agentMessage" && "text" in item) emit({ type: "agent_message", messageId: item.id, text: item.text });
-          else if (TOOL_ITEMS.has(item.type)) emit({ type: "tool_call_update", toolCallId: item.id, status: "status" in item && item.status === "completed" ? "completed" : "failed" });
+          else if (TOOL_ITEMS.has(item.type)) {
+            const done = "status" in item && item.status === "completed";
+            const tab = done && item.type === "mcpToolCall" && "tool" in item ? openedTab(item.tool, "result" in item ? item.result?.content : undefined) : {};
+            emit({ type: "tool_call_update", toolCallId: item.id, status: done ? "completed" : "failed", ...tab });
+          }
           return;
         }
         case "turn/completed": {

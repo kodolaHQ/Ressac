@@ -76,6 +76,13 @@ test("tool_use becomes a tool line", async () => {
   ]);
 });
 
+test("open_tab's line names the tab its result gives", async () => {
+  const { conv, updates } = await start();
+  conv.prompt("open");
+  await expect.poll(() => updates.some((u) => u.type === "turn_end")).toBe(true);
+  expect(updates.filter((u) => u.type === "tool_call_update")).toEqual([{ type: "tool_call_update", toolCallId: "tu_2", status: "completed", tab: "0f8e2c1a-1b2c-4d3e-8f90-a1b2c3d4e5f6" }]);
+});
+
 test("AskUserQuestion becomes a question card and the answer goes back", async () => {
   const { conv, updates, received } = await start();
   conv.prompt("ask");

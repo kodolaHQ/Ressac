@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { query, type PermissionResult, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AskReply, ChatQuestion } from "../../../shared/chat";
-import { engineEvents, toolTitle, type ChatEngine, type EngineConversation, type EngineModel, type LaunchSpecLike, type ModelOption } from "./engine";
+import { engineEvents, openedTab, toolTitle, type ChatEngine, type EngineConversation, type EngineModel, type LaunchSpecLike, type ModelOption } from "./engine";
 
 const AUTH = /\b(log ?in|not logged in|authenticat\w*|401)\b/i;
 
@@ -30,7 +30,7 @@ export const claudeEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
     }
 
     const questions = new Map<string, (r: AskReply) => void>();
-    const tools = new Set<string>();
+    const tools = new Map<string, string>();
     let messageId = "";
     let cancelling = false;
     let authFailed = false;
@@ -98,7 +98,7 @@ export const claudeEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
           for (const b of blocks) {
             // The question card stands for AskUserQuestion; no tool line.
             if (b.type !== "tool_use" || b.name === "AskUserQuestion") continue;
-            tools.add(b.id);
+            tools.set(b.id, b.name);
             emit({ type: "tool_call", toolCallId: b.id, ...toolTitle(b.name, b.input, { tabTitle }), status: "in_progress" });
           }
           return;
@@ -107,8 +107,10 @@ export const claudeEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
           const content = m.message.content;
           if (typeof content === "string") return;
           for (const b of content) {
-            if (b.type !== "tool_result" || !tools.delete(b.tool_use_id)) continue;
-            emit({ type: "tool_call_update", toolCallId: b.tool_use_id, status: b.is_error ? "failed" : "completed" });
+            const name = b.type === "tool_result" ? tools.get(b.tool_use_id) : undefined;
+            if (b.type !== "tool_result" || name === undefined) continue;
+            tools.delete(b.tool_use_id);
+            emit({ type: "tool_call_update", toolCallId: b.tool_use_id, status: b.is_error ? "failed" : "completed", ...(b.is_error ? {} : openedTab(name, b.content)) });
           }
           return;
         }

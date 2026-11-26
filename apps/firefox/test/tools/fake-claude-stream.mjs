@@ -55,6 +55,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       out({ type: "assistant", parent_tool_use_id: null, message: { id: "msg_2", role: "assistant", content: [{ type: "tool_use", id: "tu_1", name: "mcp__ressac__read_tab", input: { id: "t1" } }] } });
       out({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu_1", content: "page" }] } });
       result({});
+    } else if (said === "open") {
+      out({ type: "assistant", parent_tool_use_id: null, message: { id: "msg_3", role: "assistant", content: [{ type: "tool_use", id: "tu_2", name: "mcp__ressac__open_tab", input: { url: "https://example.com/" } }] } });
+      out({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu_2", content: [{ type: "text", text: "0f8e2c1a-1b2c-4d3e-8f90-a1b2c3d4e5f6" }] }] } });
+      result({});
     } else if (said === "ask") {
       askId = `ask_${++n}`;
       const input = { questions: [{ question: "Quel train ?", header: "Train", options: [{ label: "8 h 04", description: "" }, { label: "9 h 12", description: "" }], multiSelect: false }] };

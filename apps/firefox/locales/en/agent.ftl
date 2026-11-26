@@ -357,6 +357,7 @@ chat-new-messages = New messages
 chat-tool-running = running
 chat-tool-done = done
 chat-tool-failed = failed
+chat-tool-show-tab = Show the tab
 chat-question = The agent's question
 chat-question-validate = Confirm
 chat-question-ignored = Question skipped

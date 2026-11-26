@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { toolTitle } from "../../core/agent/chat/engine";
+import { openedTab, toolTitle } from "../../core/agent/chat/engine";
 
 test("maps tool names to French titles and kinds", () => {
   expect(toolTitle("mcp__ressac__read_tab", { title: "Réserver un train" })).toEqual({ title: "Lit la page « Réserver un train »", kind: "read" });
@@ -13,4 +13,13 @@ test("maps tool names to French titles and kinds", () => {
   expect(toolTitle("mcp__ressac__navigate", { url: "https://example.com/x" })).toEqual({ title: "Ouvre example.com", kind: "fetch" });
   expect(toolTitle("commandExecution", {})).toEqual({ title: "Lance une commande", kind: "execute" });
   expect(toolTitle("mcp__ressac__unknown_x", {})).toEqual({ title: "unknown_x", kind: "other" });
+});
+
+test("a navigate line names its tab; open_tab's names the tab its result gives", () => {
+  expect(toolTitle("mcp__ressac__navigate", { id: "t1", url: "https://example.com/" })).toEqual({ title: "Ouvre example.com", kind: "fetch", tab: "t1" });
+  const id = "0f8e2c1a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
+  expect(openedTab("mcp__ressac__open_tab", ` ${id}\n`)).toEqual({ tab: id });
+  expect(openedTab("open_tab", [{ type: "text", text: id }])).toEqual({ tab: id });
+  expect(openedTab("open_tab", "URL refusée (http ou https uniquement) : x")).toEqual({});
+  expect(openedTab("read_tab", id)).toEqual({});
 });

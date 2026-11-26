@@ -37,7 +37,7 @@ export interface TurnHolder { turn: Turn }
 
 export type ThreadItem =
   | { type: "agentMessage"; id: string; text: string }
-  | { type: "mcpToolCall"; id: string; server: string; tool: string; arguments: unknown; status: "inProgress" | "completed" | "failed" }
+  | { type: "mcpToolCall"; id: string; server: string; tool: string; arguments: unknown; status: "inProgress" | "completed" | "failed"; result?: { content?: unknown } | null }
   | { type: "commandExecution"; id: string; command: string; status: "inProgress" | "completed" | "failed" | "declined" }
   | { type: "fileChange"; id: string; changes: { path: string }[]; status: "inProgress" | "completed" | "failed" | "declined" }
   | { type: string; id: string; status?: string };
