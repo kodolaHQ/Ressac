@@ -16,9 +16,11 @@ export const RESULT_MAX = 6000;
 export const CONTEXT_TOKENS = 16384;
 const PRUNE_AT = 0.75 * CONTEXT_TOKENS;
 const CHARS_PER_TOKEN = 3.5;
-// Control characters except \t and \n; a page that writes a delimiter would close its own result early.
+// Control characters except \t and \n.
 const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
-const DELIMITERS = /\[(?:DÉBUT|FIN) DU RÉSULTAT\]|\[RESULT (?:START|END)\]/gi;
+// No square bracket (nor look-alike, after NFKC) survives in a result: page text can never form a delimiter.
+const OPEN = /[\[⟦〚]/g;
+const CLOSE = /[\]⟧〛]/g;
 
 /** Flat, as the 13 Nov spike measured it: one action from the enum, every argument optional. */
 export const ACTION_SCHEMA = {
@@ -209,7 +211,7 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
           throw e;
         }
         emit({ type: "tool_call_update", toolCallId, status: r.isError ? "failed" : "completed" });
-        const clean = r.text.replace(CONTROL, "").replace(DELIMITERS, "");
+        const clean = r.text.normalize("NFKC").replace(CONTROL, "").replace(OPEN, "(").replace(CLOSE, ")");
         const body = clean.length > RESULT_MAX ? `${clean.slice(0, RESULT_MAX)}\n${t.cut}` : clean;
         const msg: ModelMessage = { role: "user", content: `${t.resultOf(a.action)}\n${body}\n${t.end}` };
         messages.push(msg);
