@@ -104,7 +104,7 @@ it("the panel runs the real CLI with the session's MCP config", async () => {
     "--setting-sources",
     "",
     "--settings",
-    '{"skipDangerousModePermissionPrompt":true,"permissions":{"deny":["Read(//home/node/.claude/.credentials.json)","Read(//home/node/.codex/auth.json)","Edit(//home/node/.claude/.credentials.json)","Edit(//home/node/.codex/auth.json)","Read(//home/node/.codex/**)","Edit(//home/node/.codex/**)","Read(//workspace/.ressac/browsing-notes.md)","Read(//home/node/.claude/**/*.jsonl)","Read(//home/node/.claude/paste-cache/**)","Read(//home/node/.claude/file-history/**)","Read(//home/node/.claude/sessions/**)"]}}',
+    '{"skipDangerousModePermissionPrompt":true,"permissions":{"deny":["Read(//home/node/.claude/.credentials.json)","Read(//home/node/.codex/auth.json)","Edit(//home/node/.claude/.credentials.json)","Edit(//home/node/.codex/auth.json)","Read(//home/node/.codex/**)","Edit(//home/node/.codex/**)","Read(//workspace/.ressac/browsing-notes.md)","Read(//home/node/.claude/**/*.jsonl)","Read(//home/node/.claude/paste-cache/**)","Read(//home/node/.claude/file-history/**)","Read(//home/node/.claude/sessions/**)","Read(//home/node/.claude/projects/*/memory/**)","Read(//home/node/.claude/shell-snapshots/**)","Read(//home/node/.claude/todos/**)","Read(//home/node/.claude/plans/**)","Read(//home/node/.claude/backups/**)","Read(//home/node/.claude.json)","Edit(//home/node/.claude/**)","Edit(//home/node/.claude.json)"]}}',
     "--append-system-prompt-file",
     "/workspace/.ressac/instructions/AGENTS.md",
     "--disallowedTools",

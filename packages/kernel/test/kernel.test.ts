@@ -873,6 +873,11 @@ describe("openAgentSession with a profile", () => {
             // Other conversations' transcripts (an Atelier one is unmasked), the prompt history, pastes, edit backups, live session keys.
             // Read rules cover Grep and Glob too; tool-results/ stays readable (oversized results the model reads back).
             "Read(//home/node/.claude/**/*.jsonl)", "Read(//home/node/.claude/paste-cache/**)", "Read(//home/node/.claude/file-history/**)", "Read(//home/node/.claude/sessions/**)",
+            // Auto-memory (off), shell snapshots, todos, plans, config backups and ~/.claude.json: nothing a Navigateur session reads.
+            "Read(//home/node/.claude/projects/*/memory/**)", "Read(//home/node/.claude/shell-snapshots/**)", "Read(//home/node/.claude/todos/**)", "Read(//home/node/.claude/plans/**)",
+            "Read(//home/node/.claude/backups/**)", "Read(//home/node/.claude.json)",
+            // Never written through the tools (Claude Code writes its own files outside them): no line planted in an Atelier transcript.
+            "Edit(//home/node/.claude/**)", "Edit(//home/node/.claude.json)",
           ],
         },
       });
