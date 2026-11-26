@@ -1,3 +1,5 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import { createHostWriter, createWriterChoice, type CliState } from "../host/writer";
 import { CODEX_WRITER_MODEL, SYSTEM_PROMPT, say } from "../../../packages/kernel/src/index.ts";
@@ -305,6 +307,29 @@ describe("host writer", () => {
     expect(await hostWriter({ preferred: "codex", codex: { kind: "ollama", ollamaModel: "gemma" } }).w.via()).toEqual({ agent: "codex", via: "ollama" });
     expect(await hostWriter({ clis: { claude: "signed-in" } }).w.via()).toEqual({ agent: "claude", via: "subscription" });
     expect(await hostWriter({}).w.via()).toBeNull();
+  });
+  it("never follows a redirect: a 307 to another host does not carry the key", async () => {
+    const seen: (string | undefined)[] = [];
+    const listen = (h: Parameters<typeof createServer>[1]) => new Promise<Server>((ok) => { const s = createServer(h); s.listen(0, "127.0.0.1", () => ok(s)); });
+    const port = (s: Server) => (s.address() as AddressInfo).port;
+    const other = await listen((req, res) => { seen.push(req.headers["x-api-key"] as string | undefined); res.end("{}"); });
+    // localhost vs 127.0.0.1: another origin for fetch.
+    const first = await listen((_req, res) => res.writeHead(307, { location: `http://localhost:${port(other)}/v1/messages` }).end());
+    try {
+      const w = createHostWriter({
+        preferred: () => "claude",
+        engine: () => ({ ...DEFAULT_CLAUDE_ENGINE, kind: "api", apiUrl: `http://127.0.0.1:${port(first)}`, apiModel: "m" }),
+        readKey: async () => KEY,
+        cli: () => async () => "",
+        cliUsable: async () => "signed-out",
+        locale: () => "fr",
+      });
+      await expect(w({ prompt: "P" })).rejects.toBeTruthy();
+      expect(seen).toEqual([]);
+    } finally {
+      first.close();
+      other.close();
+    }
   });
   it("honours the caller's signal", async () => {
     const ctl = new AbortController();

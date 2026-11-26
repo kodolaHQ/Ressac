@@ -130,7 +130,8 @@ export function createHostWriter(o: {
     let raw = "";
     let out: { content?: { text?: string }[]; output_text?: string; output?: { content?: { text?: string }[] }[]; message?: { content?: string } } = {};
     try {
-      const res = await (o.fetch ?? fetch)(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body), signal });
+      // No redirect: fetch keeps a custom header (x-api-key) on a cross-origin hop.
+      const res = await (o.fetch ?? fetch)(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body), redirect: "error", signal });
       status = res.status;
       if (res.ok) out = await res.json();
       else raw = await res.text();
