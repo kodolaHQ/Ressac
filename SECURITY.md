@@ -278,7 +278,7 @@ The lab (Réglages › Agent › Niveau d'usage) adds the Atelier, workflows and
 - `run_js` code holding something read on another origin gets a red card, even when the script is honest. Not measured.
 - One read of a value on the origin the script's tab shows exempts it from the `run_js` card, even if the same value was also read elsewhere. The value must already be shown on that origin, which only an earlier outflow (one that asks a card) could do.
 - `run_js` scripts that differ only by small numbers (`#item-1`, `#item-2`, …) join the search series and can be paused as one. Not measured.
-- Under the reveal lock, a container made for Atelier (with `actions/`, `sites/` and `components/` writable) is kept until you lift the lock, even if you switch to Navigateur meanwhile: those folders stay writable in it, and a new conversation is refused until the lift (« L'atelier doit être recréé… »).
+- Under the reveal lock, a container made for Atelier (with `actions/`, `sites/` and `components/` writable) is kept until you lift the lock or until an image update recreates it, even if you switch to Navigateur meanwhile: those folders stay writable in it, and a new conversation is refused until the lift (« L'atelier doit être recréé… »).
 - A hard link planted from Atelier elsewhere in the workspace, to a file of `actions/`, `sites/` or `components/`, stays writable from Navigateur through that other name: the read-only mounts cover the folders, not every name of their files.
 - A design-mode remark on a site app cannot be applied in Navigateur, since `sites/` is read-only there: switch to Atelier to apply it.
 

@@ -50,6 +50,8 @@ export function createApplicationsHost(o: {
   debug(win: WindowId, text: string, access?: () => TabInfo | undefined): void;
   policy(): { tabClosed(id: string): void; tabNavigated(id: string, url: string): void; built(o: TabInfo): void } | null;
   broadcast(): void;
+  /** The effective lab (tier 3): off, no app the sweep stopped starts again. */
+  lab(): boolean;
   /** After « Supprimer »: the app's remarks and review go too. */
   erased?(folder: string): void;
 }): ApplicationsHost {
@@ -259,8 +261,8 @@ export function createApplicationsHost(o: {
       })();
       sweeping = sweep.catch(() => {});
       await sweep;
-      // Through the host's own launch: the window opens again on the new port.
-      for (const f of was) void manager.launch(f).catch(report(f, "relaunched"));
+      // Through the host's own launch: the window opens again on the new port. The lab went off meanwhile: they stay stopped.
+      if (o.lab()) for (const f of was) void manager.launch(f).catch(report(f, "relaunched"));
     },
     async stop() {
       docker = undefined;

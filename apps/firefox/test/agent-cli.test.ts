@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HashMismatchError } from "../../../packages/kernel/src/index.ts";
-import { AGENT_CLIS, createAgentCli } from "../host/agent-cli";
+import { AGENT_CLIS, createAgentCli, profileCli } from "../host/agent-cli";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -171,5 +171,14 @@ describe("agent CLI download", () => {
     const dockerfile = readFileSync(join(__dirname, "../../../packages/kernel/docker/workshop.Dockerfile"), "utf8");
     expect(dockerfile).not.toContain("@anthropic-ai/claude-code");
     expect(dockerfile).not.toContain("@openai/codex");
+  });
+});
+
+describe("profileCli", () => {
+  it("a custom profile needs the CLI its command runs, else its MCP config's", () => {
+    expect(profileCli({ interactive: ["codex", "--yolo"], mcpConfig: "claude-json" })).toBe("codex");
+    expect(profileCli({ interactive: ["/workspace/.ressac/cli/claude/claude"], mcpConfig: "codex-toml" })).toBe("claude");
+    expect(profileCli({ interactive: ["sh", "-c", "codex"], mcpConfig: "codex-toml" })).toBe("codex");
+    expect(profileCli({ interactive: ["sh", "-c", "claude"], mcpConfig: "claude-json" })).toBe("claude");
   });
 });

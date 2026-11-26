@@ -46,7 +46,7 @@ const { createPageIndexer, llamaEmbed } = await import("./page-indexer.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createHostWriter, createWriterChoice } = await import("./writer.ts");
-const { createAgentCli, NAMES: AGENT_NAMES } = await import("./agent-cli.ts");
+const { createAgentCli, NAMES: AGENT_NAMES, profileCli } = await import("./agent-cli.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
 const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, createWakeGrace, memoryAllows, memoryLevel, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
@@ -274,7 +274,13 @@ const broadcastAccess = () => {
 // The agent that writes (host/writer.ts): the default profile's, else the other, by its API key, its Ollama or its signed-in CLI.
 const profileAgents = new Map<string, "claude" | "codex">();
 // Best effort (the space may not exist yet): a profile read late leaves the default "claude" until agent.profiles runs.
-const refreshProfileAgents = () => void loadProfiles(paths).then(({ profiles }) => { for (const x of profiles) profileAgents.set(x.id, x.mcpConfig === "codex-toml" ? "codex" : "claude"); }, () => {});
+const refreshProfileAgents = () => void loadProfiles(paths).then(({ profiles }) => { for (const x of profiles) profileAgents.set(x.id, profileCli(x)); }, () => {});
+/** The CLI a profile needs downloaded: a shipped one's, a custom one's by its command; null for a profile that is gone. */
+const cliOfProfile = async (id: string): Promise<"claude" | "codex" | null> => {
+  if (id === "claude" || id === "codex") return id;
+  const p = (await loadProfiles(paths)).profiles.find((x) => x.id === id);
+  return p ? profileCli(p) : null;
+};
 // Codex's and Claude's engines (Settings › Agent) and their API keys: declared before the writer that reads them.
 let engine = DEFAULT_CODEX_ENGINE;
 let claudeEngine = DEFAULT_CLAUDE_ENGINE;
@@ -605,11 +611,11 @@ const applyMode = () => {
   sessions.engineChanged("codex");
 };
 /** `labWanted` or `aiOn` changed: the effective lab follows; off, no agent app keeps running agent-written code (site app windows: the chrome closes them). */
-const relab = () => {
+const relab = (force = false) => {
   const was = labOn;
   labOn = labWanted && aiOn;
-  if (was === labOn) return;
-  if (!labOn) void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
+  if (was === labOn && !force) return;
+  if (was && !labOn) void apps.manager.stopAll().catch((e) => console.error("[ressac] the apps did not stop:", e));
   return applyLab();
 };
 /** Brings the lab's parts to `labOn`: the kernel's gate, the external MCP, the actions watch and the agent's mode. */
@@ -648,14 +654,18 @@ const sessions = new SessionsAgent({
     // The machine or a container app Ressac is starting (or can start): the panel stays on « Préparation » until it answers.
     await engines.current().wake("user").catch(() => {});
     if (!aiOn) throw new Error("ai-off");
+    // A custom profile runs a pinned CLI too (by its command): the image carries none. A profile gone: the kernel says so.
+    const needs = await cliOfProfile(profile);
+    if (needs) {
+      // The kernel refuses this anyway: before a download nobody can use yet.
+      if (workspaceLock.locked() && (await workshop.shapeChanged())) throw new Error(hostSay("kernel-err-shape-locked"));
+      const since = Date.now();
+      const agent = AGENT_NAMES[needs];
+      const label = (p: number | null) => (p === null ? hostSay("host-cli-downloading-size", { agent }) : hostSay("host-cli-downloading", { agent, percent: p }));
+      await cli.ensure(needs, (p) => onBuildProgress?.({ step: 1, of: 1, label: label(p), since }));
+      if (!aiOn) throw new Error("ai-off");
+    }
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, mode: agentMode, onBuildProgress, review });
-    // The kernel refuses this anyway: before a download nobody can use yet.
-    if (workspaceLock.locked() && (await workshop.shapeChanged())) throw new Error(hostSay("kernel-err-shape-locked"));
-    const since = Date.now();
-    const agent = AGENT_NAMES[profile];
-    const label = (p: number | null) => (p === null ? hostSay("host-cli-downloading-size", { agent }) : hostSay("host-cli-downloading", { agent, percent: p }));
-    await cli.ensure(profile, (p) => onBuildProgress?.({ step: 1, of: 1, label: label(p), since }));
-    if (!aiOn) throw new Error("ai-off");
     const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
     const claude = profile === "claude";
     // Ollama is relayed without a key: the agent reaches inference paths only, never /api/pull. Codex's target ends in /v1.
@@ -707,8 +717,8 @@ const rpc = createRpc({
       if (typeof p.locale === "string") setHostLocale(p.locale);
       aiOn = p.aiEnabled === true;
       labWanted = p.lab === true;
-      labOn = labWanted && aiOn;
-      void applyLab().catch((e) => console.error("[ressac] lab at start failed:", e));
+      // Forced: a first start brings every part to the lab; a later one that turns it off stops the apps too.
+      void relab(true)?.catch((e) => console.error("[ressac] lab at start failed:", e));
       return serialAi(async () => {
         await applyAi();
         return aiOn ? start() : null;
@@ -744,9 +754,12 @@ const rpc = createRpc({
       if (typeof p.profile === "string" && /^[\w-]{1,64}$/.test(p.profile)) await sessions.switchProfile(p.window, p.profile);
     },
     "agent.current": (p: { window: string }) => sessions.profileOf(p.window),
-    // The welcome's « Télécharger en arrière-plan »: the CLI downloads while the user goes on. A custom profile runs no pinned CLI.
+    // The welcome's « Télécharger en arrière-plan »: the profile's CLI downloads while the user goes on (a custom one's by its command).
     "cli.prepare": aiOnly((p: { agent?: unknown }) => {
-      if (p?.agent === "claude" || p?.agent === "codex") void cli.ensure(p.agent).catch((e) => console.error("[ressac] the agent CLI did not download:", e));
+      if (typeof p?.agent !== "string") return;
+      void cliOfProfile(p.agent)
+        .then((a) => a && cli.ensure(a))
+        .catch((e) => console.error("[ressac] the agent CLI did not download:", e));
     }),
     "agent.mode": (p: { mode: unknown }) => {
       wantedMode = p?.mode === "workshop" ? "workshop" : "browser";
@@ -1308,6 +1321,7 @@ const apps = createApplicationsHost({
     rpc.notify("design.giveAgent", [f]);
   },
   policy: () => kernel?.policy ?? null,
+  lab: () => labOn,
   // Its remarks, review repository and comments go with it.
   erased: (folder) => design.appDeleted(folder),
   // The Applications page reads the list again; design mode too (the running apps' ports may have changed); the review

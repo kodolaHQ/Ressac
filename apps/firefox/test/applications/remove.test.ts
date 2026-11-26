@@ -23,7 +23,7 @@ function host() {
   const h = createApplicationsHost({
     paths, dataDir: join(root, "data"), workshop: {} as Workshop,
     chrome: { open: async () => {}, close: async () => {}, show: async () => true, erase: async () => {} },
-    debug: () => {}, policy: () => null, broadcast: () => {},
+    debug: () => {}, policy: () => null, broadcast: () => {}, lab: () => true,
     erased: (f) => (erased(f), settle("erased")),
   });
   const remove = (folder: string) => (h.handlers["apps.act"]!({ folder, action: "delete", window: "w" }), done);
@@ -55,7 +55,7 @@ test("during the sweep an agent launch is refused, a user's click waits for it, 
   const h = createApplicationsHost({
     paths: spacePaths(join(root, "data", "workspace")), dataDir: join(root, "data"), workshop: {} as Workshop,
     chrome: { open: async () => {}, close: async () => {}, show: async () => true, erase: async () => {} },
-    debug: () => {}, policy: () => null, broadcast: () => {},
+    debug: () => {}, policy: () => null, broadcast: () => {}, lab: () => true,
   });
   const stopAll = vi.spyOn(h.manager, "stopAll").mockResolvedValue();
   const launched = vi.spyOn(ApplicationManager.prototype, "launch").mockResolvedValue({ folder: "essai", state: "running", port: 15280 } as never);
@@ -78,7 +78,7 @@ test("apps running before the sweep start again after it, their window on the ne
   const h = createApplicationsHost({
     paths: spacePaths(join(root, "data", "workspace")), dataDir: join(root, "data"), workshop: {} as Workshop,
     chrome: { open: async (a) => void opened.push({ folder: a.folder, port: a.port }), close: async () => {}, show: async () => true, erase: async () => {} },
-    debug: () => {}, policy: () => null, broadcast: () => {},
+    debug: () => {}, policy: () => null, broadcast: () => {}, lab: () => true,
   });
   vi.spyOn(h.manager, "list").mockResolvedValue([{ folder: "essai", state: "running", port: 15280 }, { folder: "vieux", state: "stopped" }] as never);
   vi.spyOn(h.manager, "stopAll").mockResolvedValue();
@@ -87,4 +87,20 @@ test("apps running before the sweep start again after it, their window on the ne
   await vi.waitFor(() => expect(opened).toEqual([{ folder: "essai", port: 15281 }]));
   expect(launched).toHaveBeenCalledTimes(1);
   expect(launched).toHaveBeenCalledWith("essai");
+});
+
+test("the lab went off during the sweep: the apps it stopped stay stopped", async () => {
+  root = realpathSync(mkdtempSync(join(tmpdir(), "ressac-app-sweep-")));
+  let lab = true;
+  const h = createApplicationsHost({
+    paths: spacePaths(join(root, "data", "workspace")), dataDir: join(root, "data"), workshop: {} as Workshop,
+    chrome: { open: async () => {}, close: async () => {}, show: async () => true, erase: async () => {} },
+    debug: () => {}, policy: () => null, broadcast: () => {}, lab: () => lab,
+  });
+  vi.spyOn(h.manager, "list").mockResolvedValue([{ folder: "essai", state: "running", port: 15280 }] as never);
+  vi.spyOn(h.manager, "stopAll").mockResolvedValue();
+  const launched = vi.spyOn(ApplicationManager.prototype, "launch").mockResolvedValue({ folder: "essai", state: "running", port: 15281 } as never);
+  await h.whileStopped(async () => void (lab = false));
+  // whileStopped starts its relaunches synchronously after the sweep: none was asked for.
+  expect(launched).not.toHaveBeenCalled();
 });

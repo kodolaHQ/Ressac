@@ -164,7 +164,8 @@
   const profileChoice = $derived(profiles.length >= 2);
   // Every profile: Navigateur runs only Claude Code and Codex, a custom profile asks for Atelier (the kernel says so).
   const modeChoice = $derived(current !== null);
-  const mode = $derived(browserState.value?.settings.agentMode ?? "browser");
+  // The effective mode, as the host runs it: Atelier saved while the lab is off (or undecided) runs Navigateur.
+  const mode = $derived(labOn() ? (browserState.value?.settings.agentMode ?? "browser") : "browser");
   function chooseMode(m: "browser" | "workshop") {
     if (m === mode) return;
     // Dispatch is synchronous: the host gets the new mode before the relaunch request.

@@ -38,8 +38,9 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
         if (!(await o.installed(a))) absent.push(a);
         else if (await signedIn(a)) return a;
       }
-      // Sign-in unknown: tried after the signed-in ones; a signed-out answer excludes it like a dead token.
-      return absent[0] ?? null;
+      // Sign-in unknown: tried after the signed-in ones; a signed-out answer excludes it like a dead token. Only the
+      // preferred agent's CLI downloads for a write: never ~170 MB for the other one, maybe signed in nowhere.
+      return absent.includes(first) ? first : null;
     },
     async wakeAgent(exclude?: ReadonlySet<WriterAgent>): Promise<WriterAgent | "workshop-stopped" | null> {
       // A machine the user removed, or one failing, waits for them: a background write (a watch) never installs or boots it.
@@ -49,7 +50,10 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
     /** For the host writer, without starting anything: signed in, unknown but the machine can wake for a write, or why not. */
     async usable(a: WriterAgent): Promise<CliState> {
       const s = await o.workshop.state();
-      if (s === "started" && !(await o.installed(a))) return "wakeable"; // sign-in unknown, the write downloads it
+      const installed = await o.installed(a);
+      // Not downloaded: only the preferred agent's CLI downloads for a write (see `agent`).
+      if (!installed && a !== o.preferred()) return "signed-out";
+      if (s === "started" && !installed) return "wakeable"; // sign-in unknown, the write downloads it
       if (s === "started") return (await signedIn(a)) ? "signed-in" : "signed-out";
       return s === "machine-stopped" && (await o.workshop.harvestReady()) ? "wakeable" : "stopped";
     },

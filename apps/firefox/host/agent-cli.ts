@@ -9,6 +9,11 @@ import { AGENT_CLIS, type Agent } from "../shared/downloads.ts";
 export { AGENT_CLIS };
 
 export const NAMES: Record<Agent, string> = { claude: "Claude Code", codex: "Codex" };
+/** The pinned CLI a profile runs (the image carries none): its command's when it is one, else by its MCP config. */
+export const profileCli = (p: { interactive: readonly string[]; mcpConfig: string }): Agent => {
+  const bin = basename(p.interactive[0] ?? "");
+  return bin === "claude" || bin === "codex" ? bin : p.mcpConfig === "codex-toml" ? "codex" : "claude";
+};
 const tar = promisify(execFile);
 
 /** `p` as a real folder: a link (never followed) or a file in its place is removed first. */

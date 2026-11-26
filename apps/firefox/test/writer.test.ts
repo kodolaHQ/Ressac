@@ -49,8 +49,14 @@ describe("writer choice", () => {
     expect(s.calls).toEqual(["codex"]);
     const none = setup("started", {}, "claude", true, []);
     expect(await none.choice.agent()).toBe("claude");
-    expect(await none.choice.agent(new Set(["claude"]))).toBe("codex");
+    expect(await none.choice.agent(new Set(["claude"]))).toBeNull(); // the other agent's CLI is never downloaded
     expect(none.calls).toEqual([]);
+  });
+  it("only the preferred agent's CLI counts when not downloaded", async () => {
+    const s = setup("started", { claude: false }, "claude", true, ["claude"]);
+    expect(await s.choice.usable("codex")).toBe("signed-out");
+    expect(await s.choice.agent()).toBeNull();
+    expect(await setup("machine-stopped", {}, "claude", true, []).choice.usable("codex")).toBe("signed-out");
   });
   it("a CLI not downloaded: wakeable when the machine can wake, else stopped", async () => {
     const m = setup("machine-stopped", {}, "claude", true, []);
@@ -180,6 +186,14 @@ describe("host writer", () => {
       }
       expect(calls.filter((c) => c !== "ensureStarted")).toEqual([]); // no status exec of a missing binary
     }
+  });
+  it("never downloads the other agent's CLI: preferred signed out, other not downloaded", async () => {
+    const { choice } = setup("started", { claude: false }, "claude", true, ["claude"]);
+    const cli = vi.fn(() => async () => "ok");
+    const w = createHostWriter({ preferred: () => "claude", engine: (a) => (a === "claude" ? DEFAULT_CLAUDE_ENGINE : DEFAULT_CODEX_ENGINE), readKey: async () => null, cli, cliUsable: choice.usable, locale: () => "fr" });
+    expect(await w.via()).toBeNull();
+    await expect(w({ prompt: "P" })).rejects.toThrow(say("fr", "kernel-writer-none"));
+    expect(cli).not.toHaveBeenCalled();
   });
   it("Claude API uses Haiku on Anthropic and the user's model elsewhere", async () => {
     const answer = () => Response.json({ content: [{ type: "text", text: "Bon" }, { type: "text", text: "jour" }] });
