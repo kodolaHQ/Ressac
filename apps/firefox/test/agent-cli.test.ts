@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -7,7 +8,11 @@ import { HashMismatchError } from "../../../packages/kernel/src/index.ts";
 import { AGENT_CLIS, createAgentCli, profileCli } from "../host/agent-cli";
 
 const dirs: string[] = [];
-afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
+const codexExtras = AGENT_CLIS.codex.extras;
+afterEach(() => {
+  dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
+  AGENT_CLIS.codex.extras = codexExtras;
+});
 const temp = () => {
   const d = mkdtempSync(join(tmpdir(), "agent-cli-"));
   dirs.push(d);
@@ -20,6 +25,7 @@ function fixture(agent: "claude" | "codex", text = `#!/bin/sh\necho ${agent}\n`)
   const member = join(d, AGENT_CLIS[agent].member);
   mkdirSync(dirname(member), { recursive: true });
   writeFileSync(member, text);
+  for (const x of AGENT_CLIS[agent].extras ?? []) writeFileSync(join(d, x.member), `extra ${x.binary}`);
   writeFileSync(join(d, "package", "README.md"), "readme");
   execFileSync("tar", ["-czf", join(d, "a.tgz"), "-C", d, "package"]);
   return join(d, "a.tgz");
@@ -98,11 +104,43 @@ describe("agent CLI download", () => {
     expect(await cli.installed("codex")).toBe(false);
   });
 
-  it("codex installs its native binary from the vendor path", async () => {
+  it("codex installs its native binary and its code-mode host from the vendor path", async () => {
+    expect(AGENT_CLIS.codex.extras?.map((x) => x.binary)).toEqual(["codex-code-mode-host"]);
+    // The fixture's host is not the real one: pin its hash for this test.
+    AGENT_CLIS.codex.extras = codexExtras!.map((x) => ({ ...x, sha256: createHash("sha256").update(`extra ${x.binary}`).digest("hex") }));
     const internal = temp();
     const cli = createAgentCli({ internal, download: fakeDownload(fixture("codex")) as any, env: {} });
     await cli.ensure("codex");
-    expect(readFileSync(join(internal, "cli", "codex", "codex"), "utf8")).toContain("echo codex");
+    const dir = join(internal, "cli", "codex");
+    expect(readFileSync(join(dir, "codex"), "utf8")).toContain("echo codex");
+    expect(readFileSync(join(dir, "codex-code-mode-host"), "utf8")).toBe("extra codex-code-mode-host");
+    expect(statSync(join(dir, "codex-code-mode-host")).mode & 0o777).toBe(0o755);
+    expect(readdirSync(dir).sort()).toEqual(["codex", "codex-code-mode-host", "version"]);
+    expect(await cli.installed("codex")).toBe(true);
+  });
+
+  it("a code-mode host that does not match its hash leaves nothing on PATH", async () => {
+    const internal = temp();
+    const cli = createAgentCli({ internal, download: fakeDownload(fixture("codex")) as any, env: {} });
+    await expect(cli.ensure("codex")).rejects.toThrow(/ne correspond pas|does not match/);
+    expect(existsSync(join(internal, "cli", "codex"))).toBe(false);
+    expect(existsSync(join(internal, "cli", "codex.download"))).toBe(false);
+  });
+
+  it("an install at the pinned version but without the code-mode host installs again", async () => {
+    AGENT_CLIS.codex.extras = codexExtras!.map((x) => ({ ...x, sha256: createHash("sha256").update(`extra ${x.binary}`).digest("hex") }));
+    const internal = temp();
+    const dir = join(internal, "cli", "codex");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "codex"), "old");
+    writeFileSync(join(dir, "version"), AGENT_CLIS.codex.version);
+    const download = fakeDownload(fixture("codex"));
+    const cli = createAgentCli({ internal, download: download as any, env: {} });
+    expect(await cli.installed("codex")).toBe(false);
+    await cli.ensure("codex");
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(dir, "codex-code-mode-host"))).toBe(true);
+    expect(await cli.installed("codex")).toBe(true);
   });
 
   it("two ensure calls share one download", async () => {

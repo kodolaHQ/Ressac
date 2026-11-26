@@ -8,9 +8,13 @@ export type Agent = "claude" | "codex";
  * The agents' linux-arm64 CLIs (the workshop image carries none): npm's platform packages, one native binary each
  * (`member`, whose file name is `binary`). Claude's is the glibc build the bookworm image needs; Codex's is static (musl).
  * Pinned: every tester runs the same agents, and a new download never picks up a broken or compromised release. A bump
- * changes `version`, so each Mac downloads the new CLI once.
+ * changes `version`, so each Mac downloads the new CLI once. `extras`: more members the CLI needs next to its binary, each
+ * checked against its own SHA-256 (an install missing one is downloaded again).
  */
-export const AGENT_CLIS: Record<Agent, { version: string; url: string; sha256: string; bytes: number; member: string; binary: string }> = {
+export const AGENT_CLIS: Record<
+  Agent,
+  { version: string; url: string; sha256: string; bytes: number; member: string; binary: string; extras?: readonly { member: string; binary: string; sha256: string }[] }
+> = {
   claude: {
     version: "2.1.325",
     url: "https://registry.npmjs.org/@anthropic-ai/claude-code-linux-arm64/-/claude-code-linux-arm64-2.1.325.tgz",
@@ -26,6 +30,14 @@ export const AGENT_CLIS: Record<Agent, { version: string; url: string; sha256: s
     bytes: 171743625,
     member: "package/vendor/aarch64-unknown-linux-musl/bin/codex",
     binary: "codex",
+    // Code mode (ChatGPT accounts) runs every tool, Ressac's MCP ones included, through this sibling binary.
+    extras: [
+      {
+        member: "package/vendor/aarch64-unknown-linux-musl/bin/codex-code-mode-host",
+        binary: "codex-code-mode-host",
+        sha256: "66874c7881c4004f1c155584e1325cad17795bdd91b886995ad8a043809c1019",
+      },
+    ],
   },
 };
 

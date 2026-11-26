@@ -883,6 +883,9 @@ describe("openAgentSession with a profile", () => {
       // Codex's interactive TUI (0.169) refuses --ignore-user-config: only `codex exec` takes it.
       expect(codex).not.toContain("--ignore-user-config");
       expect(codexWorkshop).not.toMatch(/shell_tool|launch_app|notify|model_provider/);
+      // ChatGPT apps and plugins are off in both modes.
+      expect(codex).toContain("--disable apps --disable plugins --disable shell_tool");
+      expect(codexWorkshop).toContain("--disable apps --disable plugins");
       for (const s of opened) await s.stop();
     });
   });
@@ -1211,6 +1214,7 @@ describe("pipe transport", () => {
     expect(argv).not.toContain("resume");
     const before = argv.slice(argv.indexOf("codex"), server).join(" ");
     expect(before).toContain("--disable shell_tool");
+    expect(before).toContain("--disable apps --disable plugins");
     expect(before).toContain("-c notify=[]");
     expect(before).toContain('-c mcp_servers.ressac.disabled_tools=["launch_app"]');
     expect(before).toMatch(/-c mcp_servers\.ressac=\{url=/);

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
@@ -39,12 +40,18 @@ export function createAgentCli(o: { internal: string; download?: typeof download
     const url = env[`${k}_URL`];
     const sha256 = env[`${k}_SHA256`];
     if (!dev || !url || !sha256) return pin;
-    return { ...pin, url, sha256, bytes: Number(env[`${k}_BYTES`]) || pin.bytes };
+    // shortcut: an overridden archive installs its binary only (the extras' hashes are the pin's), add _EXTRAS if a dev build needs them.
+    return { ...pin, url, sha256, bytes: Number(env[`${k}_BYTES`]) || pin.bytes, extras: [] };
   }
 
   async function installed(a: Agent): Promise<boolean> {
     if (dev && env.RESSAC_TEST_CLI_PRESENT === "1") return true;
-    return (await readFile(join(o.internal, "cli", a, "version"), "utf8").catch(() => "")) === AGENT_CLIS[a].version;
+    const pin = pinned(a);
+    const dir = join(o.internal, "cli", a);
+    if ((await readFile(join(dir, "version"), "utf8").catch(() => "")) !== pin.version) return false;
+    // An install from before an extra was pinned has the version but not the extra: it installs again.
+    for (const x of pin.extras ?? []) if (!(await lstat(join(dir, x.binary)).catch(() => null))?.isFile()) return false;
+    return true;
   }
 
   async function install(a: Agent, onPercent: (p: number | null) => void): Promise<void> {
@@ -63,10 +70,16 @@ export function createAgentCli(o: { internal: string; download?: typeof download
       await rm(work, { recursive: true, force: true });
       throw new Error(hostSay("host-cli-hash", { agent: NAMES[a] }));
     }
-    // One named member only (bsdtar), flattened: the binary lands at <work>/<binary>.
-    await tar("/usr/bin/tar", ["-xzf", archive, "-C", work, "--strip-components", String(pin.member.split("/").length - 1), pin.member]);
+    // Named members only (bsdtar), flattened: each binary lands at <work>/<binary>.
+    const files = [{ member: pin.member, binary: pin.binary }, ...(pin.extras ?? [])];
+    for (const f of files) await tar("/usr/bin/tar", ["-xzf", archive, "-C", work, "--strip-components", String(f.member.split("/").length - 1), f.member]);
     await rm(archive);
-    await chmod(join(work, pin.binary), 0o755);
+    for (const x of pin.extras ?? []) {
+      if (createHash("sha256").update(await readFile(join(work, x.binary))).digest("hex") === x.sha256) continue;
+      await rm(work, { recursive: true, force: true });
+      throw new Error(hostSay("host-cli-hash", { agent: NAMES[a] }));
+    }
+    for (const f of files) await chmod(join(work, f.binary), 0o755);
     await writeFile(join(work, "version"), pin.version);
     await rm(final, { recursive: true, force: true });
     await rename(work, final);

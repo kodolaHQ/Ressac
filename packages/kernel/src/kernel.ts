@@ -946,10 +946,13 @@ export async function createKernel(o: {
             : [];
         // Claude's auto-memory (~/.claude/projects/*/memory) loads as instructions the gate never sees and the agent can write.
         if (browser && program === "claude") env = { ...env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" };
+        // Every Codex session, both modes: no ChatGPT apps (the codex_apps MCP, OpenAI's server-side search among them) and no
+        // plugins (they bring their own MCP servers and hosted connectors). Browsing goes through Ressac only.
+        const codexNoApps = program === "codex" ? ["--disable", "apps", "--disable", "plugins"] : [];
         const codexNoShell = browser && program === "codex" ? ["--disable", "shell_tool", "-c", 'mcp_servers.ressac.disabled_tools=["launch_app"]', "-c", "notify=[]", "-c", 'model_provider="openai"'] : [];
         // Pipe, Claude: the SDK's `canUseTool` stands in for `--dangerously-skip-permissions` (the `--settings` deny rules still win first).
         const profileArgs = pipe && program === "claude" ? built.slice(1).filter((a) => a !== "--dangerously-skip-permissions") : built.slice(1);
-        const command = [built[0]!, ...language, ...conversationArgs, ...claudeNoShell, ...profileArgs, ...codexNoShell, ...(extra?.args ?? [])];
+        const command = [built[0]!, ...language, ...conversationArgs, ...claudeNoShell, ...profileArgs, ...codexNoApps, ...codexNoShell, ...(extra?.args ?? [])];
         const register = () => {
           openSessions.add(clean);
           if (byId) claudeOpen.set(id, conversation!);
