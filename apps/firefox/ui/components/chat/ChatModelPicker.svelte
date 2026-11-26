@@ -1,17 +1,24 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { fade } from "svelte/transition";
   import type { ChatModel } from "../../../shared/chat";
   import { api } from "../../state.svelte";
   import { t } from "../../i18n.svelte";
   import { chat } from "./chat.svelte";
+  import { nextIndex } from "./commands";
 
   /**
    * The model picker in the composer's bottom row: the engine's own list read from the host when it opens (loading, then
    * the list or a quiet error line). A pick applies from the next message and becomes the engine's default for new
-   * discussions. Shown only when the view carries a model (Réglages' model applies otherwise).
+   * discussions. Shown only when the view carries a model (Réglages' model applies otherwise). The keyboard: the menu takes
+   * focus on the current model, ↑ ↓ move, Entrée picks, Échap closes, and focus goes back to what opened it.
    */
   let open = $state(false);
   let wrap = $state<HTMLElement>();
+  let chip = $state<HTMLButtonElement>();
+  let menu = $state<HTMLElement>();
+  /** Where focus goes back when the menu closes (the composer for /modèle); the chip otherwise. */
+  let returnTo: HTMLElement | null = null;
   let models = $state<ChatModel[] | null>(null);
   let error = $state<string | null>(null);
   let picking = $state<string | null>(null);
@@ -19,9 +26,20 @@
   const nameOf = (m: { value: string; name: string }) => m.name || t("chat-model-default");
   /** Only the latest read applies: an older answer never replaces a newer one. */
   let reads = 0;
+  function close(restore = true) {
+    open = false;
+    const to = returnTo;
+    returnTo = null;
+    if (restore) void tick().then(() => (to?.isConnected ? to : chip)?.focus());
+  }
+  /** Opens the menu from elsewhere (/modèle): focus comes back to `from` once it closes. */
+  export function show(from?: HTMLElement): void {
+    returnTo = from ?? null;
+    if (!open) void toggle();
+  }
   async function toggle() {
-    open = !open;
-    if (!open) return;
+    if (open) return close();
+    open = true;
     const n = ++reads;
     models = error = null;
     const r = await api.chat.models();
@@ -35,7 +53,7 @@
     const r = await api.chat.setModel(value);
     picking = null;
     if (!r.ok) return void (error = r.error);
-    open = false;
+    close();
     if (r.own) api.dispatch({ type: "chooseOwnEngine", engine: r.own });
     else if (engine === "claude" || engine === "codex") api.dispatch({ type: "chooseChatModel", engine, model: value });
   }
@@ -45,11 +63,26 @@
     void id;
     open = false;
   });
-  // A press outside the menu or Échap closes it.
+  // The list read: focus on the current model (or the first).
+  $effect(() => {
+    if (open && models) void tick().then(() => (menu?.querySelector<HTMLElement>('[aria-checked="true"]:not(:disabled)') ?? menu?.querySelector<HTMLElement>("button:not(:disabled)"))?.focus());
+  });
+  function keys(e: KeyboardEvent) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key) || !menu) return;
+    e.preventDefault();
+    const list = [...menu.querySelectorAll<HTMLElement>("button:not(:disabled)")];
+    const i = list.indexOf(document.activeElement as HTMLElement);
+    list[i < 0 ? (e.key === "ArrowUp" || e.key === "End" ? list.length - 1 : 0) : nextIndex(i, list.length, e.key)]?.focus();
+  }
+  // A press outside the menu closes it where it is; Échap closes it and gives focus back.
   $effect(() => {
     if (!open) return;
-    const away = (e: PointerEvent) => !wrap?.contains(e.target as Node) && (open = false);
-    const key = (e: KeyboardEvent) => e.key === "Escape" && (open = false);
+    const away = (e: PointerEvent) => !wrap?.contains(e.target as Node) && close(false);
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      close();
+    };
     window.addEventListener("pointerdown", away, true);
     window.addEventListener("keydown", key);
     return () => {
@@ -61,11 +94,11 @@
 
 {#if current}
   <div class="wrap" bind:this={wrap}>
-    <button type="button" class="chip" data-testid="chat-model-chip" aria-haspopup="menu" aria-expanded={open} aria-label={`${t("chat-model")} : ${nameOf(current)}`} title={nameOf(current)} onclick={() => void toggle()}>
+    <button type="button" class="chip" bind:this={chip} data-testid="chat-model-chip" aria-haspopup="menu" aria-expanded={open} aria-label={`${t("chat-model")} : ${nameOf(current)}`} title={nameOf(current)} onclick={() => void toggle()}>
       <span class="name">{nameOf(current)}</span>
     </button>
     {#if open}
-      <div class="menu" role="menu" aria-label={t("chat-model")} data-testid="chat-model-menu" out:fade={{ duration: chat.visible ? 150 : 0 }}>
+      <div class="menu" role="menu" tabindex="-1" bind:this={menu} onkeydown={keys} aria-label={t("chat-model")} data-testid="chat-model-menu" out:fade={{ duration: chat.visible ? 150 : 0 }}>
         {#if models}
           {#each models as m (m.value)}
             <button type="button" role="menuitemradio" aria-checked={current.value === m.value} data-testid="chat-model-{m.value || 'default'}" disabled={picking !== null} onclick={() => void pick(m.value)}>
