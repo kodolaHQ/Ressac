@@ -84,8 +84,8 @@ interface Waiting {
   after?: string;
   /** Called as it is sent, after the session's reset (a tab given to the agent). */
   written?: () => void;
-  /** The tabs the user pointed with @, as the host found them: readable by this session from its send. */
-  points?: TabInfo[];
+  /** The tabs the user pointed with @, as the host found them, and their « couper » count then: readable by this session from its send. */
+  points?: { tab: TabInfo; cuts: number }[];
 }
 
 /** Ressac's own text waiting for the window's next message (never typed): the panel's context applies to a first message only. */
@@ -111,6 +111,8 @@ export function createChatSend(o: {
   tabs?: () => Promise<TabInfo[]>;
   /** The user pointed `tab` with @ in a message of session `session` (the kernel lets that session read it with no card). */
   point?: (session: string, tab: TabInfo) => void;
+  /** How many times the user cut the tab's whole access (« couper »). */
+  cuts?: (tabId: string) => number;
   /** The host's texts (the user's language): the command words, the references note, the refusal. */
   say?: (id: string) => string;
 }) {
@@ -145,7 +147,8 @@ export function createChatSend(o: {
         return;
       }
       w.written?.();
-      for (const t of w.points ?? []) o.point?.(session, t);
+      // A tab cut since the send stays cut: the user took it back before the agent got it.
+      for (const p of w.points ?? []) if ((o.cuts?.(p.tab.id) ?? 0) === p.cuts) o.point?.(session, p.tab);
       o.interacted(w.win);
       o.chats.prompt(chatId, r.sent, r.shown);
     }
@@ -155,16 +158,17 @@ export function createChatSend(o: {
     // A @ tab must be a real tab the agent can see now: its title and address are the host's, never the composer's.
     const refs = draft.refs ?? [];
     const listed = refs.some((r) => "tab" in r) ? ((await o.tabs?.()) ?? []) : [];
-    const points: TabInfo[] = [];
+    const points: { tab: TabInfo; cuts: number }[] = [];
     const pages: { tab?: string; title: string; url: string }[] = [];
     for (const r of refs) {
       if (!("tab" in r)) {
         pages.push(r);
         continue;
       }
-      const t = listed.find((x) => x.id === r.tab);
+      // A site app window reads only through its app's card: never pointed (the composer never offers one).
+      const t = listed.find((x) => x.id === r.tab && x.site === undefined);
       if (!t) return { ok: false, error: say("host-chat-reference-gone") };
-      points.push(t);
+      points.push({ tab: t, cuts: o.cuts?.(t.id) ?? 0 });
       pages.push({ tab: t.id, title: t.title, url: t.url });
     }
     const prefix = prefixFor(win, chatId);

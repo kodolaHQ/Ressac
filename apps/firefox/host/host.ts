@@ -1111,6 +1111,7 @@ const chatSend = createChatSend({
   // The kernel's own list (`bridge` is set up below, before any send).
   tabs: () => bridge.listTabs(),
   point: (session, tab) => kernel?.policy.pointTab(session, tab),
+  cuts: (id) => kernel?.policy.readCuts(id) ?? 0,
   say: (id) => hostSay(id),
 });
 

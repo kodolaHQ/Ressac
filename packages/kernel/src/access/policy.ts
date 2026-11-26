@@ -85,6 +85,8 @@ export class AccessPolicy {
    * session only, on that origin; it outlives `reset()` (another session's start), never the session itself.
    */
   private readonly pointedTabs = new Map<string, Map<string, string>>();
+  /** tab id → number of « couper » of its whole access: a @ queued before one of them grants nothing. Kept until closed. */
+  private readonly wholeCuts = new Map<string, number>();
   private readonly listeners = new Set<() => void>();
   private conversationNumber = 0;
   private readonly portBuilt: (port: number) => boolean;
@@ -203,6 +205,7 @@ export class AccessPolicy {
     }
     if (!d) {
       this.permissions.delete(id);
+      this.wholeCuts.set(id, (this.wholeCuts.get(id) ?? 0) + 1);
       for (const tabs of this.pointedTabs.values()) tabs.delete(id);
     }
     this.change();
@@ -308,6 +311,11 @@ export class AccessPolicy {
     return o.site === undefined && org !== null && this.pointedTabs.get(session)?.get(o.id) === org;
   }
 
+  /** How many times the user cut this tab's whole access (« couper »). */
+  readCuts(id: string): number {
+    return this.wholeCuts.get(id) ?? 0;
+  }
+
   /** The session closed: what was pointed in it goes. */
   dropSession(session: string): void {
     if (this.pointedTabs.delete(session)) this.change();
@@ -321,6 +329,7 @@ export class AccessPolicy {
 
   tabClosed(id: string): void {
     this.shared.delete(id);
+    this.wholeCuts.delete(id);
     this.forget(id);
     this.change();
   }

@@ -464,3 +464,14 @@ test("a pointed tab shows as readable (badge, « couper ») and its changes are 
   expect(told).toHaveBeenCalledTimes(1);
   expect(p.state()[gmail.id]).toBeUndefined();
 });
+
+test("readCuts counts the user's « couper » of a tab's whole access", () => {
+  expect(p.readCuts(gmail.id)).toBe(0);
+  p.cut(gmail.id, "console");
+  expect(p.readCuts(gmail.id)).toBe(0);
+  p.cut(gmail.id);
+  expect(p.readCuts(gmail.id)).toBe(1);
+  // New conversations keep it: a send queued before the cut is judged against it.
+  p.reset();
+  expect(p.readCuts(gmail.id)).toBe(1);
+});

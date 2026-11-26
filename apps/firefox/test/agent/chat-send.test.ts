@@ -210,3 +210,20 @@ test("a tab pointed with @ is checked against the real tabs, sent as data, and p
   // Only what the user typed counts as typed.
   expect(typedText(out)).toBe("chats\r");
 });
+
+test("a @ tab cut between the send and the session's start is not pointed; a site app window is refused", async () => {
+  const f = fakeChats();
+  const mail = { id: "t1", title: "Boîte", url: "https://mail.example/", space: "perso" };
+  const app = { id: "site:x", title: "App", url: "https://app.example/", space: "perso", site: "x" };
+  const point = vi.fn();
+  let cuts = 0;
+  const send = createChatSend({ chats: f.chats, masker: () => masker(), outflow: () => outflow(), interacted: () => {}, create: async () => f.chats.active("w1"), tabs: async () => [mail, app], point, cuts: () => cuts });
+  expect(await send.send("w1", "c1", draft("lis", { refs: [{ tab: "site:x" }] }))).toEqual({ ok: false, error: "host-chat-reference-gone" });
+  expect(await send.send("w1", "c1", draft("lis", { refs: [{ tab: "t1" }] }))).toEqual({ ok: true });
+  cuts++;
+  f.openSession("s1");
+  send.flush("c1");
+  expect(point).not.toHaveBeenCalled();
+  // Still sent, as data: the user pointed it.
+  expect(f.prompts[0]![1]).toContain('"tab":"t1"');
+});
