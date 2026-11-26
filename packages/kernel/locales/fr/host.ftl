@@ -64,3 +64,4 @@ own-models-failed = La liste des modèles n'a pas pu être lue : saisissez le no
 own-bad-format = Le modèle n'a pas répondu dans le format attendu.
 own-steps = L'agent s'est arrêté après { $count } étapes sans réponse. Reformulez ou précisez votre demande.
 own-workshop-off = Votre modèle ne fonctionne qu'en mode Navigateur.
+own-server-error = { $host } a répondu par une erreur : { $error }

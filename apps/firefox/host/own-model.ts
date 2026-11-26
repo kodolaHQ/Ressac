@@ -44,8 +44,12 @@ async function ollamaPost(e: OwnEngine, path: string, body: object, signal: Abor
     throw new Error(hostSay("own-unreachable", { host }));
   }
   if (res.status === 404) throw new Error(hostSay("own-model-missing", { model: e.ollamaModel, host }));
-  // shortcut: any other error status reads as unreachable; upgrade if Ollama's own error text proves useful to show.
-  if (!res.ok) throw new Error(hostSay("own-unreachable", { host }));
+  if (!res.ok) {
+    // Ollama answers e.g. 500 « model requires more system memory »: it runs, so say what it said (cleaned, capped).
+    const said = ((await res.json().catch(() => null)) as { error?: unknown } | null)?.error;
+    const error = typeof said === "string" ? said.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim().slice(0, 200) : "";
+    throw new Error(error ? hostSay("own-server-error", { host, error }) : hostSay("own-unreachable", { host }));
+  }
   return res;
 }
 
@@ -53,11 +57,17 @@ async function ollamaPost(e: OwnEngine, path: string, body: object, signal: Abor
 export function ollamaClient(e: OwnEngine, o: { fetch?: typeof fetch } = {}): ModelClient {
   return {
     async step(messages, schema, signal) {
-      const body = { model: e.ollamaModel, stream: false, think: false, keep_alive: "1m", format: schema, options: { temperature: 0, num_ctx: 16384, num_predict: 2048 }, messages };
-      const res = await ollamaPost(e, "/api/chat", body, signal, o.fetch ?? fetch);
-      const reply = (await res.json().catch(() => null)) as { message?: { content?: unknown }; prompt_eval_count?: unknown } | null;
-      if (typeof reply?.message?.content !== "string") throw new Error(hostSay("own-bad-format"));
-      return { content: reply.message.content, promptTokens: typeof reply.prompt_eval_count === "number" ? reply.prompt_eval_count : null };
+      try {
+        const body = { model: e.ollamaModel, stream: false, think: false, keep_alive: "1m", format: schema, options: { temperature: 0, num_ctx: 16384, num_predict: 2048 }, messages };
+        const res = await ollamaPost(e, "/api/chat", body, signal, o.fetch ?? fetch);
+        const reply = (await res.json().catch(() => null)) as { message?: { content?: unknown }; prompt_eval_count?: unknown } | null;
+        if (typeof reply?.message?.content !== "string") throw new Error(hostSay("own-bad-format"));
+        return { content: reply.message.content, promptTokens: typeof reply.prompt_eval_count === "number" ? reply.prompt_eval_count : null };
+      } catch (err) {
+        // A cancelled turn is an abort, never a connection or format error.
+        if (signal.aborted) throw signal.reason;
+        throw err;
+      }
     },
   };
 }

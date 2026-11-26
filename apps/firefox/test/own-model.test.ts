@@ -63,6 +63,16 @@ describe("ollamaClient", () => {
     await expect(step(async () => json({ error: "model not found" }, 404))).rejects.toThrow("Le modèle « qwen3:8b » est introuvable sur 127.0.0.1:11434.");
     await expect(step(async () => new Response("<html>"))).rejects.toThrow("Le modèle n'a pas répondu dans le format attendu.");
     await expect(step(async () => json({ message: {} }))).rejects.toThrow("Le modèle n'a pas répondu dans le format attendu.");
+    await expect(step(async () => json({ error: "model requires more system memory\n(9.1 GiB)" }, 500))).rejects.toThrow("127.0.0.1:11434 a répondu par une erreur : model requires more system memory (9.1 GiB)");
+    await expect(step(async () => json({ error: "x".repeat(500) }, 500))).rejects.toThrow(/erreur : x{200}$/);
+    await expect(step(async () => new Response("oops", { status: 500 }))).rejects.toThrow("127.0.0.1:11434 ne répond pas.");
+  });
+  it("an aborted step is an abort, whatever failed", async () => {
+    const c = new AbortController();
+    const f = (() => (c.abort(), Promise.reject(new TypeError("fetch failed")))) as unknown as typeof fetch;
+    await expect(ollamaClient(engine(), { fetch: f }).step(MESSAGES, SCHEMA, c.signal)).rejects.toMatchObject({ name: "AbortError" });
+    const g = (() => (c.abort(), Promise.resolve(new Response("<html>")))) as unknown as typeof fetch;
+    await expect(ollamaClient(engine(), { fetch: g }).step(MESSAGES, SCHEMA, c.signal)).rejects.toMatchObject({ name: "AbortError" });
   });
   it("ollama step passes the abort signal", async () => {
     const hang = ((_u: string, i: RequestInit) => new Promise((_, rej) => i.signal!.addEventListener("abort", () => rej(i.signal!.reason)))) as unknown as typeof fetch;
