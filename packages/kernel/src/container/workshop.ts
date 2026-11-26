@@ -781,10 +781,11 @@ export class Workshop {
   /**
    * Interactive agent session: the shell notes its PID in the container before becoming the agent (exec), so
    * that `stopSession` can kill it there. Killing the local `docker exec` client would leave the agent running.
+   * `interactive: false`: a pipe session (the chat's engines), stdin kept open without a terminal.
    */
-  sessionCommand(id: string, argv: string[], passEnv: string[] = []): string[] {
+  sessionCommand(id: string, argv: string[], passEnv: string[] = [], o: { interactive?: boolean } = {}): string[] {
     const f = sessionFile(id);
-    return this.execCommand(["sh", "-c", `echo $$ > ${f}; exec "$@"`, "ressac-session", ...argv], { interactive: true, env: { [VARIABLE_SESSION]: id }, passEnv: passEnv });
+    return this.execCommand(["sh", "-c", `echo $$ > ${f}; exec "$@"`, "ressac-session", ...argv], { interactive: o.interactive === false ? "stdin" : true, env: { [VARIABLE_SESSION]: id }, passEnv: passEnv });
   }
 
   async stopSession(id: string): Promise<void> {
@@ -861,10 +862,10 @@ export class Workshop {
   }
 
   /** `passEnv`: names only (`-e NAME`), the value comes from the caller's environment, so a token never shows in the arguments. */
-  execCommand(argv: string[], o: { interactive: boolean; env?: Record<string, string>; passEnv?: string[]; folder?: string }): string[] {
+  execCommand(argv: string[], o: { interactive: boolean | "stdin"; env?: Record<string, string>; passEnv?: string[]; folder?: string }): string[] {
     const e = this.engine();
     if (!e.binary()) throw new Error(say(this.locale(), "kernel-workshop-no-engine"));
     const env = Object.entries(o.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]).concat((o.passEnv ?? []).flatMap((k) => ["-e", k]));
-    return [e.binary()!, ...e.args(), "exec", ...(o.interactive ? ["-it"] : []), ...env, "-w", o.folder ?? CONTAINER_PATH, containerName(), ...argv];
+    return [e.binary()!, ...e.args(), "exec", ...(o.interactive === true ? ["-it"] : o.interactive === "stdin" ? ["-i"] : []), ...env, "-w", o.folder ?? CONTAINER_PATH, containerName(), ...argv];
   }
 }

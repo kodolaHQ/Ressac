@@ -258,6 +258,11 @@ test("interactive session: its PID is noted in the container, and stopping it ki
   expect(() => a.sessionCommand("../x", ["claude"])).toThrow();
 });
 
+test("a pipe session keeps stdin open without a terminal: -i, no -t", () => {
+  const a = new Workshop({ paths: paths, docker: "/opt/homebrew/bin/docker", run: fakeRunner([]).run });
+  expect(a.sessionCommand("ab12", ["claude"], ["T"], { interactive: false }).slice(0, 7)).toEqual(["/opt/homebrew/bin/docker", "exec", "-i", "-e", "RESSAC_SESSION=ab12", "-e", "T"]);
+});
+
 test("two starts at the same time: a single image build and a single container", async () => {
   let finishBuild!: () => void;
   let launched = false;

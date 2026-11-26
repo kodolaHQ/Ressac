@@ -210,6 +210,47 @@ export type PageAction = {
 };
 
 /** The actions: launched on demand, in their own queue, results and grants outside the workspace. */
+export type AgentSessionOptions = {
+  window?: string;
+  /** Profile id; absent: the profile the kernel started with. Read again at each session. */
+  profile?: string;
+  /** Continue the profile's last conversation (when it has a resume command). */
+  resume?: boolean;
+  /**
+   * Claude only: this window's conversation id (a UUID). Started with it (`--session-id`), resumed by it (`--resume`) instead
+   * of the workdir's latest, which may be another window's.
+   */
+  conversation?: string;
+  /** Appended to the command, and passed by name to the container (values go to the local `docker exec` only). */
+  extra?: { args: string[]; env: Record<string, string> };
+  /** « browser » (default): Claude and Codex run without their shell nor `launch_app` (the command of `ressac.json`). */
+  mode?: "browser" | "workshop";
+  /**
+   * Browser mode: the instruction files changed since the accepted reference; a rejection aborts the open. It must settle:
+   * the host rejects it when its window or panel closes, else the open never ends and no later first session sweeps.
+   */
+  review?: (changes: InstructionChange[]) => Promise<"keep" | "revert">;
+  /** The first image build's steps, while this call waits for the shared start. */
+  onBuildProgress?: (p: BuildProgress) => void;
+};
+
+/** An agent session the host runs over pipes (the chat's engines). */
+export interface LaunchSpec {
+  /** The kernel session id: the key of its masking table (`maskTypedFor`, `lookupForSession`, `uncoveredCauseOf`). */
+  sessionId: string;
+  program: "claude" | "codex";
+  /** The full host argv (`docker exec -i …`), the engine's own arguments last (Codex: after `app-server`). */
+  command(engineArgs: string[]): string[];
+  /** To pass to the spawned process; `command` names them only. */
+  env: Record<string, string>;
+  /** Settings the Codex adapter passes verbatim in `thread/start` (the kernel owns the values); none today. */
+  codexConfig?: Record<string, unknown>;
+  /** The process exited: the session's token, table and config go. Idempotent. */
+  ended(): void;
+  /** Kills the agent in the container, then `ended()`. Idempotent; nothing once ended. */
+  stop(): Promise<void>;
+}
+
 export interface KernelActions {
   list(): Promise<ReadAction[]>;
   /** Launches the action (trigger « manuelle » by default); if it is running or waiting already, returns that one (`deja`). */
@@ -272,31 +313,11 @@ export interface Kernel {
   /** The language changed: the agent's templates and starter widgets left untouched switch to it. */
   relocalize(): Promise<void>;
   /** New conversation: erases the authorizations. Signal the current tab (interactionUtilisateur) afterwards. */
-  openAgentSession(o: {
-    cols: number;
-    rows: number;
-    window?: string;
-    /** Profile id; absent: the profile the kernel started with. Read again at each session. */
-    profile?: string;
-    /** Continue the profile's last conversation (when it has a resume command). */
-    resume?: boolean;
-    /**
-     * Claude only: this window's conversation id (a UUID). Started with it (`--session-id`), resumed by it (`--resume`) instead
-     * of the workdir's latest, which may be another window's.
-     */
-    conversation?: string;
-    /** Appended to the command, and passed by name to the container (values go to the local `docker exec` only). */
-    extra?: { args: string[]; env: Record<string, string> };
-    /** « browser » (default): Claude and Codex run without their shell nor `launch_app` (the command of `ressac.json`). */
-    mode?: "browser" | "workshop";
-    /**
-     * Browser mode: the instruction files changed since the accepted reference; a rejection aborts the open. It must settle:
-     * the host rejects it when its window or panel closes, else the open never ends and no later first session sweeps.
-     */
-    review?: (changes: InstructionChange[]) => Promise<"keep" | "revert">;
-    /** The first image build's steps, while this call waits for the shared start. */
-    onBuildProgress?: (p: BuildProgress) => void;
-  }): Promise<SessionAgent>;
+  openAgentSession(o: AgentSessionOptions & { cols: number; rows: number; transport?: "pty" }): Promise<SessionAgent>;
+  /** The same conversation over pipes (the chat): nothing starts, the host spawns `command(…)` itself. */
+  openAgentSession(o: AgentSessionOptions & { transport: "pipe" }): Promise<LaunchSpec>;
+  /** A terminal running the CLI's own login in the workshop: no MCP, no window token, no masking (it runs no model). */
+  openLoginSession(o: { cols: number; rows: number; program: "claude" | "codex" }): Promise<SessionAgent>;
   /** Widgets of the home page, with their data and state (stored outside the workspace). */
   readHome(): Promise<HomeState>;
   watchHome(callback: () => void): () => Promise<void>;
@@ -806,10 +827,16 @@ export async function createKernel(o: {
     locale: loc,
     // Serialized: two quick changes never run two swaps at once (each run reads loc() when it starts, the last one wins).
     relocalize: () => (relocalizing = relocalizing.catch(() => {}).then(() => initSpace(paths, loc(), templates)).then(() => {})),
-    async openAgentSession({ cols, rows, window: win, profile: profileChoice, resume, conversation, extra, mode = "browser", review, onBuildProgress }) {
+    openAgentSession: async function (
+      opened: AgentSessionOptions & ({ cols: number; rows: number; transport?: "pty" } | { transport: "pipe" }),
+    ): Promise<SessionAgent | LaunchSpec> {
+      const { window: win, profile: profileChoice, resume, conversation, extra, mode = "browser", review, onBuildProgress } = opened;
+      const pipe = opened.transport === "pipe";
       if (mode === "workshop" && !o.lab()) throw new Error(say(loc(), "kernel-err-lab-off"));
       const chosen = profileChoice === undefined ? profile : (await loadProfiles(paths, templates)).profiles.find((p) => p.id === profileChoice);
       if (!chosen) throw new Error(`Profil d'agent inconnu : ${profileChoice}`);
+      // The chat speaks the shipped CLIs' protocols only.
+      if (pipe && chosen.interactive[0] !== "claude" && chosen.interactive[0] !== "codex") throw new Error(`Profil ${chosen.id} : pas de transport pipe`);
       // A custom profile's command is not held to Navigateur's limits, and one may have been planted while `.ressac` was writable.
       if (mode === "browser" && !(chosen.id in SHIPPED_PROFILES)) throw new Error(say(loc(), "kernel-err-custom-profile-browser", { name: chosen.name }));
       // Before the start, which would recreate the container for the new mode and lose the reveal stamp it holds.
@@ -893,7 +920,8 @@ export async function createKernel(o: {
         // Reply language, for the shipped programs only (a custom profile command is the user's). Read now: an open session keeps its language.
         const reply = replyLanguageLine(loc());
         const language = program === "claude" ? ["--append-system-prompt", reply] : program === "codex" ? ["-c", `developer_instructions=${JSON.stringify(reply)}`] : [];
-        const built = buildCommand(chosen, resume && chosen.resume && !byId ? "resume" : "interactive", { mcpConfig: mcpConfig });
+        // Pipe: a Codex resume is the adapter's (`thread/resume` by id), never `codex resume --last`.
+        const built = buildCommand(chosen, resume && chosen.resume && !byId && !(pipe && program === "codex") ? "resume" : "interactive", { mcpConfig: mcpConfig });
         const conversationArgs = byId ? [resume ? "--resume" : "--session-id", conversation] : [];
         // Right after the program: the profile's own arguments keep their order (the MCP config stays last).
         // Browser mode, shipped programs only: no shell, and no `launch_app` (it runs `ressac.json`'s command, a shell by another door).
@@ -914,15 +942,33 @@ export async function createKernel(o: {
         // Claude's auto-memory (~/.claude/projects/*/memory) loads as instructions the gate never sees and the agent can write.
         if (browser && program === "claude") env = { ...env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" };
         const codexNoShell = browser && program === "codex" ? ["--disable", "shell_tool", "-c", 'mcp_servers.ressac.disabled_tools=["launch_app"]', "-c", "notify=[]", "-c", 'model_provider="openai"'] : [];
-        const command = [built[0]!, ...language, ...conversationArgs, ...claudeNoShell, ...built.slice(1), ...codexNoShell, ...(extra?.args ?? [])];
-        const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols, rows, env: env, stopRemote: () => workshop.stopSession(id) });
+        // Pipe, Claude: the SDK's `canUseTool` stands in for `--dangerously-skip-permissions` (the `--settings` deny rules still win first).
+        const profileArgs = pipe && program === "claude" ? built.slice(1).filter((a) => a !== "--dangerously-skip-permissions") : built.slice(1);
+        const command = [built[0]!, ...language, ...conversationArgs, ...claudeNoShell, ...profileArgs, ...codexNoShell, ...(extra?.args ?? [])];
         openSessions.add(clean);
         if (byId) claudeOpen.set(id, conversation!);
-        session.onEnd(() => {
+        let cleaned: Promise<void> | undefined;
+        const ended = (): Promise<void> => {
+          if (cleaned) return cleaned;
           openSessions.delete(clean);
           claudeOpen.delete(id);
-          void clean();
-        });
+          return (cleaned = clean());
+        };
+        if (pipe) {
+          let stopping: Promise<void> | undefined;
+          // Codex: the lockdown flags are global, so they go before the subcommand (R5).
+          const head = program === "codex" ? [...command, "app-server"] : command;
+          return {
+            sessionId: id,
+            program: program as LaunchSpec["program"],
+            command: (engineArgs) => workshop.sessionCommand(id, [...head, ...engineArgs], Object.keys(env), { interactive: false }),
+            env,
+            ended: () => void ended(),
+            stop: () => (stopping ??= cleaned ?? workshop.stopSession(id).catch(() => {}).then(ended)),
+          };
+        }
+        const session = SessionAgent.start(workshop.sessionCommand(id, command, Object.keys(env)), { cols: opened.cols, rows: opened.rows, env: env, stopRemote: () => workshop.stopSession(id) });
+        session.onEnd(() => void ended());
         return session;
       } catch (e) {
         await clean();
@@ -930,6 +976,22 @@ export async function createKernel(o: {
       } finally {
         opening--;
       }
+    } as Kernel["openAgentSession"],
+    async openLoginSession({ cols, rows, program }) {
+      // After the app's orphan sweep, which would kill it; the login runs no model, so it needs no window, token nor masking.
+      const state = await workshopReady.catch(() => null).then(() => workshop.ensureStarted()).catch((e) => {
+        throw new WorkshopError("absent", (e as Error).message);
+      });
+      if (state !== "started") throw new WorkshopError(state, state === "machine-stopped" ? say(loc(), "kernel-err-machine-stopped") : say(loc(), "kernel-err-workshop-unavailable", { state }));
+      // The same firewall as an agent session: the CLI reaches its sign-in hosts only.
+      try {
+        await workshop.secureNetwork();
+      } catch (e) {
+        throw new WorkshopError("started", (e as Error).message);
+      }
+      const id = randomBytes(8).toString("hex");
+      const argv = program === "claude" ? ["claude", "auth", "login"] : ["codex", "login", "--device-auth"];
+      return SessionAgent.start(workshop.sessionCommand(id, argv), { cols, rows, stopRemote: () => workshop.stopSession(id) });
     },
     readHome: () => readHome(paths, widgetsFolder, loc()),
     watchHome: (callback) => watchHome(paths, callback),

@@ -1153,3 +1153,118 @@ describe("the lab", () => {
     }
   });
 });
+
+describe("pipe transport", () => {
+  const conversation = "11111111-2222-3333-4444-555555555555";
+
+  test("pipe transport returns a LaunchSpec with the Navigateur lockdown once", async () => {
+    const n = await createReady();
+    const start = vi.spyOn(SessionAgent, "start");
+    try {
+      const spec = await n.openAgentSession({ transport: "pipe", window: "w", mode: "browser", profile: "claude", conversation });
+      expect(start).not.toHaveBeenCalled();
+      expect(spec.program).toBe("claude");
+      const argv = spec.command(["--output-format", "stream-json"]);
+      const exec = argv.indexOf("exec");
+      expect(exec).toBeGreaterThan(-1);
+      expect(argv[exec + 1]).toBe("-i");
+      expect(argv).not.toContain("-it");
+      expect(argv).not.toContain("-t");
+      const once = (flag: string) => argv.filter((a) => a === flag).length;
+      expect(argv.join(" ")).toContain("--tools Read,Glob,Grep,Write,Edit");
+      expect([once("--tools"), once("--strict-mcp-config"), once("--settings"), once("--mcp-config")]).toEqual([1, 1, 1, 1]);
+      expect(argv).not.toContain("--dangerously-skip-permissions");
+      expect(argv.slice(argv.indexOf("--session-id"), argv.indexOf("--session-id") + 2)).toEqual(["--session-id", conversation]);
+      expect(argv.slice(-2)).toEqual(["--output-format", "stream-json"]);
+      expect(spec.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe("1");
+      expect(argv).toContain("CLAUDE_CODE_DISABLE_AUTO_MEMORY"); // passed by name
+      // The masker keys the discussion by the kernel session id.
+      expect(n.masker.table(spec.sessionId)).not.toBe(n.masker.table(null));
+      await spec.stop();
+    } finally {
+      start.mockRestore();
+    }
+  });
+
+  test("codex pipe argv puts lockdown flags before app-server", async () => {
+    const n = await createReady();
+    const spec = await n.openAgentSession({ transport: "pipe", window: "w", profile: "codex", resume: true, extra: { args: ["-m", "x"], env: { RESSAC_ENGINE_TOKEN: "t" } } });
+    const argv = spec.command([]);
+    const server = argv.indexOf("app-server");
+    expect(server).toBe(argv.length - 1);
+    expect(argv.indexOf("codex")).toBeLessThan(server);
+    // Resume is the adapter's (thread/resume): never `codex resume --last`.
+    expect(argv).not.toContain("resume");
+    const before = argv.slice(argv.indexOf("codex"), server).join(" ");
+    expect(before).toContain("--disable shell_tool");
+    expect(before).toContain("-c notify=[]");
+    expect(before).toContain('-c mcp_servers.ressac.disabled_tools=["launch_app"]');
+    expect(before).toMatch(/-c mcp_servers\.ressac=\{url=/);
+    expect(before).toContain("-m x");
+    expect(spec.env.RESSAC_MCP_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+    expect(spec.env.RESSAC_ENGINE_TOKEN).toBe("t");
+    expect(spec.codexConfig).toBeUndefined();
+    expect(uncovered(n.masker, "w")).toBe(true); // a Codex resume is never covered
+    await spec.stop();
+  });
+
+  test("stop() cleans once", async () => {
+    const n = await createReady();
+    const stopSession = vi.spyOn(Workshop.prototype, "stopSession");
+    try {
+      const spec = await n.openAgentSession({ transport: "pipe", window: "w", profile: "claude", conversation });
+      // The clean step calls server.closeSession and masker.close together, guarded by the token: one close proves one of each.
+      const close = vi.spyOn(n.masker, "close");
+      const folder = join(n.paths.internal, "sessions");
+      expect(await readdir(folder)).toHaveLength(1);
+      await spec.stop();
+      await spec.stop();
+      spec.ended();
+      expect(stopSession).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledWith(spec.sessionId);
+      expect(n.masker.table(spec.sessionId)).toBe(n.masker.table(null));
+      expect(await readdir(folder)).toHaveLength(0);
+    } finally {
+      stopSession.mockRestore();
+    }
+  });
+
+  test("ended() alone cleans without stopping the remote process", async () => {
+    const n = await createReady();
+    const stopSession = vi.spyOn(Workshop.prototype, "stopSession");
+    try {
+      const spec = await n.openAgentSession({ transport: "pipe", window: "w", profile: "claude" });
+      const close = vi.spyOn(n.masker, "close");
+      spec.ended();
+      spec.ended();
+      await spec.stop();
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(stopSession).not.toHaveBeenCalled();
+    } finally {
+      stopSession.mockRestore();
+    }
+  });
+
+  test("login session: a terminal running the CLI's login, no MCP token, no masker session", async () => {
+    const n = await createReady();
+    const start = vi.spyOn(SessionAgent, "start");
+    const open = vi.spyOn(n.masker, "open");
+    try {
+      const claude = await n.openLoginSession({ cols: 80, rows: 24, program: "claude" });
+      const codex = await n.openLoginSession({ cols: 80, rows: 24, program: "codex" });
+      const [a, ao] = start.mock.calls[0]!;
+      const b = start.mock.calls[1]![0];
+      expect(a).toContain("-it");
+      expect(a.slice(-3)).toEqual(["claude", "auth", "login"]);
+      expect(b.slice(-3)).toEqual(["codex", "login", "--device-auth"]);
+      expect(a.join(" ")).not.toMatch(/RESSAC_MCP_TOKEN|mcp-config|mcp_servers/);
+      expect(ao.env ?? {}).toEqual({});
+      expect(open).not.toHaveBeenCalled();
+      await claude.stop();
+      await codex.stop();
+    } finally {
+      start.mockRestore();
+    }
+  });
+});

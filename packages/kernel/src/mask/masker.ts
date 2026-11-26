@@ -138,7 +138,11 @@ export class Masker {
 
   /** Why the window's conversation is not covered: resumed from an uncovered one, and/or the passport entries added since it read. */
   uncoveredCause(win: string): { resumed: boolean; passport: PassportRef[] } {
-    const s = this.sessionOf(win);
+    return this.uncoveredCauseOf(this.sessionOf(win));
+  }
+
+  /** The same, for one session (a chat discussion: several may share a window). */
+  uncoveredCauseOf(s: string | null): { resumed: boolean; passport: PassportRef[] } {
     return { resumed: s !== null && this.uncoveredSessions.has(s), passport: [...((s !== null && this.passportUncovered.get(s)) || [])] };
   }
 
@@ -162,7 +166,12 @@ export class Masker {
 
   /** What the user hands the agent (a paste, the ⌘T request): masked as their own data, with what it hid named for a card. */
   maskTyped(win: string, text: string): { text: string; names: string[] } {
-    const masked = maskText(text, { table: this.table(this.sessionOf(win)), zone: "sources", origin: null });
+    return this.maskTypedFor(this.sessionOf(win), text);
+  }
+
+  /** The same, with one session's table (a chat discussion: the window's last session may be another one). */
+  maskTypedFor(session: string | null, text: string): { text: string; names: string[] } {
+    const masked = maskText(text, { table: this.table(session), zone: "sources", origin: null });
     const before = new Set(text.match(LABELS) ?? []);
     const names = new Set<string>();
     for (const m of masked.matchAll(LABELS)) if (!before.has(m[0])) names.add(valueName(m[1] as LabelType, "sources", this.locale()));
@@ -172,7 +181,12 @@ export class Masker {
 
   /** The value behind a label, for the user's own bubble (never sent to the agent). */
   lookupForUser(win: string, label: string): { type: LabelType; value: string } | null {
-    const e = this.table(this.sessionOf(win)).resolve(label);
+    return this.lookupForSession(this.sessionOf(win), label);
+  }
+
+  /** The same, in one session's table: another discussion's label resolves nothing. */
+  lookupForSession(session: string | null, label: string): { type: LabelType; value: string } | null {
+    const e = this.table(session).resolve(label);
     return e ? { type: e.type, value: e.raw } : null;
   }
 
