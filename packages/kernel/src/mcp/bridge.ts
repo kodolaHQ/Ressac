@@ -149,7 +149,8 @@ export type LoadOptions = { allow?: string[] | null };
 export interface BrowserBridge {
   /** The approval log (mcp/asks.ts): every card the kernel asks writes its why and its answer here; absent, none. */
   noteAsk?: AskSink;
-  activeTab(): Promise<TabInfo | null>;
+  /** `win`: that window's tab on screen (a host-loop line); without it, the focused window's. */
+  activeTab(win?: string): Promise<TabInfo | null>;
   listTabs(): Promise<TabInfo[]>;
   /** Throws TabNotFound if the id is unknown (like lireTexte, naviguer and capturer). */
   /**

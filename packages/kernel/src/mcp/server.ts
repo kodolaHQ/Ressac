@@ -934,7 +934,8 @@ export function createToolsServer(
   server.registerTool = ((name: string, config: { inputSchema?: unknown; outputSchema?: unknown }, cb: (...a: unknown[]) => unknown) => {
     if (config.outputSchema !== undefined) throw new Error("outputSchema not supported: the masker covers content only");
     const source = outflow && !OUTFLOW_UNFED.has(name) ? (a: { id?: unknown }) => l10n(`kernel-outflow-source-${OUTFLOW_SOURCES[name] ?? "tool"}`, { id: String(a.id) }) : undefined;
-    const run = name === "note_lesson" ? cb : (...a: unknown[]) => (searching?.notes?.forget(key), cb(...a));
+    // The host loop's own calls are not the model's: they close no lesson slot and fix no conversation sites.
+    const run = name === "note_lesson" || HOST_LOOP_ONLY.has(name) ? cb : (...a: unknown[]) => (searching?.notes?.forget(key), cb(...a));
     const fed = source
       ? async (...a: unknown[]) => {
           const r = (await run(...a)) as Result;
@@ -957,7 +958,7 @@ export function createToolsServer(
         // Fail closed (design § 5.2): no tool reads anything before the host pushed every passport.
         if (!(await passportReady(masker.passport))) return text(PASSPORT_NOT_READY, true);
         // The conversation's sites are fixed at its first tool call of any kind: every result after it may sit next to it.
-        masker.originsOf(session);
+        if (!HOST_LOOP_ONLY.has(name)) masker.originsOf(session);
         const refusal = await gate(name, args, extra?.signal);
         r = refusal === null ? ((await fed(...a)) as Result) : text(refusal);
       } catch (e) {
@@ -1405,8 +1406,9 @@ export function createToolsServer(
    * tab the user has in hand, grant or not). A site app always shows, by its name (never the page title), and by the app's
    * current domain until granted (never the page's host: a login domain would say what the user is doing).
    */
-  const shownTab = (o: TabInfo, at: { url?: string; domainOnly?: boolean } = {}): { title: string; address: string } | null => {
-    const zone = zoneOf(o);
+  const shownTab = (o: TabInfo, at: { url?: string; domainOnly?: boolean; peek?: boolean } = {}): { title: string; address: string } | null => {
+    // `peek`: the zone without taking the conversation's sites snapshot (a host-loop call is no tool call of the model).
+    const zone = at.peek ? tabZone(o, agentSites, policy.conversation, masker.peekOrigins(session)) : zoneOf(o);
     const origin = originOf(o.url);
     const title = wrap(relabelAt(o.title, origin, labels.pinned(o.id)), zone, origin);
     const address = () => urlOf(o, at.url ?? o.url, zone, origin);
@@ -1819,11 +1821,12 @@ export function createToolsServer(
     { description: "The host loop's line on the tab the user is on: its title, then its origin and path. Empty when it is not shared." },
     protect(async () => {
       if (bridge.activePrivateTab?.()) return text("");
-      const o = await bridge.activeTab();
+      // The discussion's window, never the focused one: the line describes the tab the user talks about.
+      const o = await bridge.activeTab(win ?? undefined);
       if (!o || !urlWeb(o.url)) return text("");
       const u = new URL(o.url);
       // No userinfo, query nor fragment (tokens); a site app by its domain only.
-      const s = shownTab({ ...o, title: o.title.replace(/\s+/g, " ").trim().slice(0, 200) }, { url: u.origin + u.pathname, domainOnly: true });
+      const s = shownTab({ ...o, title: o.title.replace(/\s+/g, " ").trim().slice(0, 200) }, { url: u.origin + u.pathname, domainOnly: true, peek: true });
       if (!s) return text("");
       const r = text(`${s.title}\n${s.address}`);
       if (!exempt(o)) remember(r, l10n("kernel-outflow-source-tabs"), linksFollowable(o));

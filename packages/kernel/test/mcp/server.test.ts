@@ -3663,3 +3663,34 @@ test("active_tab is the host loop's only: another token neither lists nor calls 
     expect((await call("active_tab", {}, s.openSession("main"))).isError).toBe(true);
   });
 });
+
+test("active_tab answers for the discussion's window, never the focused one", async () => {
+  const one: TabInfo = { id: "one", title: "Un", url: "https://un.test/", space: "perso" };
+  const two: TabInfo = { id: "two", title: "Deux", url: "https://deux.test/", space: "perso" };
+  const bridge = new FakeBridge([one, two], { active: "one", allow: false, activeIn: { W2: "two" } });
+  const p = new AccessPolicy();
+  p.grant(one);
+  p.grant(two);
+  const s = await startMcpServer({ lab: () => true, locale: () => "fr", bridge, policy: p, token: generateToken() });
+  const c = new Client({ name: "test", version: "0" });
+  try {
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${s.openSession("W2", undefined, undefined, "browser", HOST_LOOP_TOOLS)}` } } }));
+    expect(text(await c.callTool({ name: "active_tab", arguments: {} }))).toBe("Deux\nhttps://deux.test/");
+    expect(bridge.calls.filter((x) => x.method === "activeTab").map((x) => x.args)).toEqual([["W2"]]);
+  } finally {
+    await c.close();
+    await s.stop();
+  }
+});
+
+test("active_tab is not the model's tool call: it closes no lesson slot", async () => {
+  const notes = new BrowsingNotes(join(await tempFolder(), "carnet.md"), async () => "# Carnet\n");
+  const forget = vi.spyOn(notes, "forget");
+  await withSearch(async ({ call, s }) => {
+    // The notebook is an Atelier thing: a host-loop-scoped token in that mode, so a slot exists to close.
+    await call("active_tab", {}, s.openSession("main", undefined, undefined, "workshop", HOST_LOOP_TOOLS));
+    expect(forget).not.toHaveBeenCalled();
+    await call("list_tabs", {});
+    expect(forget).toHaveBeenCalled();
+  }, { notes, workshop: true });
+});

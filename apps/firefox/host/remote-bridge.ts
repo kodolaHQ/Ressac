@@ -81,7 +81,7 @@ export class RemoteBridge implements BrowserBridge {
     }
   }
 
-  activeTab = () => this.call<TabInfo | null>("activeTab", []);
+  activeTab = (win?: string) => this.call<TabInfo | null>("activeTab", win === undefined ? [] : [win]);
   listTabs = () => this.call<TabInfo[]>("listTabs", []);
   readText = (id: string, o?: { capture?: boolean; expect?: string }) =>
     this.call<TabRead>("readText", o?.capture || o?.expect !== undefined ? [id, o] : [id]);

@@ -7,6 +7,7 @@ import { AccessPolicy, DEV_RIGHTS } from "../../src/access/policy.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { generateToken, startMcpServer } from "../../src/mcp/server.js";
 import { TOOL_KINDS } from "../../src/mask/inventory.js";
+import { HOST_LOOP_TOOLS } from "../../src/mcp/host-agent.js";
 import { SearchSessions } from "../../src/search/sessions.js";
 import { BrowsingNotes } from "../../src/search/notes.js";
 import { createRecaps } from "../../src/recaps/recaps.js";
@@ -35,7 +36,11 @@ test("every tool of a server with every option is classified, and every classifi
   try {
     // An Atelier session: the notebook (`note_lesson`) is registered for it only.
     await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${s.openSession("W1", undefined, undefined, "workshop")}` } } }));
-    const names = (await c.listTools()).tools.map((t) => t.name).sort();
+    // The host loop's own tools are listed for its token only.
+    const host = new Client({ name: "test", version: "0" });
+    await host.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${s.openSession("W1", undefined, undefined, "browser", HOST_LOOP_TOOLS)}` } } }));
+    const names = [...new Set([...(await c.listTools()).tools, ...(await host.listTools()).tools].map((t) => t.name))].sort();
+    await host.close();
     expect(names.filter((n) => !(n in TOOL_KINDS))).toEqual([]);
     expect(Object.keys(TOOL_KINDS).filter((n) => !names.includes(n) && !NOT_YET_REGISTERED.includes(n))).toEqual([]);
   } finally {
@@ -49,5 +54,6 @@ test("the outflows the spec lists, run_js among them, are outflows; the shared s
   for (const n of ["search_web", "open_site", "launch_app", "launch_action", "open_workflow", "hand_over", "run_js", "reload"]) expect(TOOL_KINDS[n]).toBe("outflow-no-destination");
   for (const n of ["note_lesson", "show_recap", "harvest_widget"]) expect(TOOL_KINDS[n]).toBe("store-write");
   expect(TOOL_KINDS.read_tab).toBe("read");
+  expect(TOOL_KINDS.active_tab).toBe(TOOL_KINDS.list_tabs);
   expect(TOOL_KINDS.reveal_value).toBe("read");
 });

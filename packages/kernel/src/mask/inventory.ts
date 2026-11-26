@@ -17,7 +17,7 @@ export const TOOL_KINDS: Readonly<Record<string, ToolKind>> = Object.freeze({
   ...kinds("outflow-no-destination", ["search_web", "open_site", "launch_app", "launch_action", "open_workflow", "hand_over", "run_js", "reload"]),
   ...kinds("store-write", ["note_lesson", "show_recap", "harvest_widget"]),
   ...kinds("read", [
-    "reveal_value", "current_page", "list_tabs", "read_tab", "capture_screen", "stop_app", "app_log",
+    "reveal_value", "current_page", "list_tabs", "active_tab", "read_tab", "capture_screen", "stop_app", "app_log",
     "widget_data", "widget_runs", "action_runs", "read_recap", "list_sites", "close_site", "site_memory", "tweak_errors",
     "search_history", "read_history", "search_bookmarks",
     "request_devtools", "read_console", "read_network", "read_request", "profile_performance", "memory_snapshot", "compare_memory",

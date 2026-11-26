@@ -268,8 +268,11 @@ export class FakeBridge implements BrowserBridge {
       labelAlert?: boolean;
       /** Provides `fill` (commits recorded, raw value included) and the fill card, which answers this. */
       fill?: { yes: boolean; login?: number };
+      /** Per window, its tab on screen (`activeTab(win)`); a window not named here shows `active`. */
+      activeIn?: Record<string, string>;
     },
   ) {
+    this.activeIn = o.activeIn ?? {};
     this.sites = o.sites ?? {};
     this.pendingSites = new Set(o.pendingSites ?? []);
     this.tabs = tabs.map((x) => ({ ...x }));
@@ -524,9 +527,11 @@ export class FakeBridge implements BrowserBridge {
     return o;
   }
 
-  async activeTab() {
-    this.note("activeTab");
-    return this.tabs.find((x) => x.id === this.active && !this.privateTabs.has(x.id)) ?? null;
+  private activeIn: Record<string, string>;
+  async activeTab(win?: string) {
+    this.note("activeTab", ...(win === undefined ? [] : [win]));
+    const id = (win !== undefined && this.activeIn[win]) || this.active;
+    return this.tabs.find((x) => x.id === id && !this.privateTabs.has(x.id)) ?? null;
   }
 
   async listTabs() {

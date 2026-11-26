@@ -794,3 +794,19 @@ test("active_tab masks the title on the tab's origin, as list_tabs does: a value
     expect((await call("list_tabs", {}, t)).text).toContain(`copie · Profil de ${label}@novacourriel.test – Novacourriel · `);
   });
 });
+
+test("active_tab leaves the conversation's sites unfixed: its zone is a peek, as the chrome's question", async () => {
+  const policy = new AccessPolicy();
+  policy.grant(user);
+  await serve({ bridge: bridgeWith({}), policy }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const taken = vi.spyOn(masker, "originsOf");
+    const peeked = vi.spyOn(masker, "peekOrigins");
+    const t = s.openSession("W1", undefined, "A", "browser", HOST_LOOP_TOOLS);
+    expect((await call("active_tab", {}, t)).text).toBe(`Boîte de réception\n${HOST}/inbox`);
+    expect(taken).not.toHaveBeenCalled();
+    expect(peeked).toHaveBeenCalled();
+    await call("list_tabs", {}, t);
+    expect(taken).toHaveBeenCalled();
+  });
+});

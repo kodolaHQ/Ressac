@@ -13,6 +13,7 @@ import { CODE, IBAN, PHONE } from "../mask/values.js";
 import { WorkspaceLock } from "../../src/mask/lock.js";
 import { PassportStore } from "../../src/mask/passport.js";
 import { tempFolder } from "../helpers/temp.js";
+import { HOST_LOOP_TOOLS } from "../../src/mcp/host-agent.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -1073,5 +1074,17 @@ test("a site's own label sent back to its own origin asks no label alert; to ano
     const code = (await read()).match(/⟨code-[a-z0-9]{8}⟩/)![0];
     await call("open_tab", { url: `${HOST}/?c=${code}`, reason: "r" });
     expect(alerts()).toHaveLength(2);
+  });
+});
+
+test("under the lock, the host loop's active_tab line is a read: no card, no refusal", async () => {
+  await serve({}, async ({ call, bridge, masker, label, s }) => {
+    await call("reveal_value", { label: await label(), reason: "payer" });
+    expect(masker.lock("A").locked()).toBe(true);
+    const asks = () => bridge.calls.filter((c) => c.method.startsWith("ask")).length;
+    const before = asks();
+    const r = await call("active_tab", {}, s.openSession("W1", undefined, "A", "browser", HOST_LOOP_TOOLS));
+    expect(r).toEqual({ text: `Boîte de réception\n${HOST}/inbox`, isError: false });
+    expect(asks()).toBe(before);
   });
 });
