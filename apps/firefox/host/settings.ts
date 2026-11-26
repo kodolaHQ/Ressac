@@ -185,21 +185,19 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       pull = null;
     }
   };
-  /** Ressac's own models, downloaded at AI start. */
   const ressacModel = (name: string) => name === SEARCH_MODEL;
-  /** Ressac's download chain at AI start, from its first model to its last. */
-  let ressacPulls: Promise<void> | undefined;
+  /** Waits while Ressac's own model downloads, so a user pull never cuts into it. */
   const afterRessac = async () => {
-    while (ressacPulls || (pull && ressacModel(pull.name))) await (ressacPulls ?? pulled);
+    while (pull && ressacModel(pull.name)) await pulled;
   };
-  // A failure is kept in modelErrors (shown in Réglages) and the chain goes on to the next model. Busy (a quick AI off → on
-  // while the cancelled download still ends), it starts after the current pull, unless AI went off again meanwhile.
+  // A failure is kept in modelErrors (shown in Réglages). Busy (a quick AI off → on while the cancelled download still ends),
+  // it starts after the current pull, unless AI went off again meanwhile.
   const downloadModels = (names: string[], g = generation): void => {
     if (generation !== g) return;
-    if (pull || ressacPulls) return void (ressacPulls ?? pulled).then(() => downloadModels(names, g));
-    ressacPulls = (async () => {
+    if (pull) return void pulled.then(() => downloadModels(names, g));
+    void (async () => {
       for (const n of names) if (generation === g) await pullOne(n).catch(() => {});
-    })().finally(() => (ressacPulls = undefined));
+    })();
   };
   /** The restart or rebuild in progress, whatever page or window asked for it. */
   let operation: WorkshopOperation = null;
@@ -303,8 +301,6 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
         return { kind: "error", error: failure(e) };
       }
       const r = await signIn!.result;
-      // A workshop built before Codex has no `codex` yet (docker exec: exit 127).
-      if (r.kind === "error" && /executable file not found|command not found|codex: not found/.test(r.error)) return { kind: "error", error: hostSay("host-codex-missing") };
       return r;
     },
     "settings.codexKey": (p: { key?: unknown }) => keyResult("codex", async () => {
@@ -412,7 +408,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       try {
         const g = generation;
         // Rechecked after the wait: of two callers resuming together, the second finds the slot taken by the first and waits again.
-        do await afterRessac(); while (ressacModel(String(p?.name)) && (ressacPulls || (pull && ressacModel(pull.name))));
+        do await afterRessac(); while (ressacModel(String(p?.name)) && pull && ressacModel(pull.name));
         if (generation !== g) throw new Error(hostSay("kernel-ai-install-cancelled"));
         await pullOne(String(p?.name));
         return { ok: true };

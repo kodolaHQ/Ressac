@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { AI_CLOSED_ERROR, EMBED_MODEL, LlamaModel, launchAiProcess, type AiProcess, type LlamaModelOptions, type LlamaModelSpec } from "../../src/ai/llama-model.js";
 import { tempFolder } from "../helpers/temp.js";
-import { fakeForeign, fakeKev, unreachableUrl, type FakeServer } from "../helpers/fake-ai.js";
+import { fakeForeign, fakeLlama, unreachableUrl, type FakeServer } from "../helpers/fake-ai.js";
 
 const toClose: FakeServer[] = [];
 const toStop: LlamaModel[] = [];
@@ -18,8 +18,8 @@ afterEach(async () => {
 const keep = <T extends FakeServer>(s: T) => (toClose.push(s), s);
 const fast = { pollMs: 10, idleCheckMs: 10 };
 const LLAMA = "/opt/llama/llama-server";
-/** fakeKev's /v1/models names d1's file: the spec under test uses it, on the fake's port when a test needs a ready server. */
-const SPEC: LlamaModelSpec = { name: "m", file: "d1-2B-Q4_K_M.gguf", url: "http://127.0.0.1:9/m.gguf", sha256: "0", bytes: 1e9, port: 1, args: ["-ngl", "99", "--x"], idleMs: 600_000 };
+/** fakeLlama's /v1/models names the file: the spec under test uses it, on the fake's port when a test needs a ready server. */
+const SPEC: LlamaModelSpec = { name: "m", file: "m.gguf", url: "http://127.0.0.1:9/m.gguf", sha256: "0", bytes: 1e9, port: 1, args: ["-ngl", "99", "--x"], idleMs: 600_000 };
 const model = (o: Partial<LlamaModelOptions> & { folder: string }, spec: Partial<LlamaModelSpec> = {}) => {
   const m = new LlamaModel({ ...SPEC, ...spec }, { llamaServer: LLAMA, ...fast, ...o });
   toStop.push(m);
@@ -93,7 +93,7 @@ describe("LlamaModel: the server", () => {
 
   it("launches llama-server with the model on 127.0.0.1, its port and its args, and answers its base URL once ready", async () => {
     const folder = await installed();
-    const kev = keep(await fakeKev());
+    const kev = keep(await fakeLlama());
     const launches: { cmd: string; args: string[]; cwd: string }[] = [];
     const states: string[] = [];
     const launch = (cmd: string, args: string[], o: { cwd: string }): AiProcess => (launches.push({ cmd, args, cwd: o.cwd }), { stop() {}, onOutput() {} });
@@ -140,12 +140,12 @@ describe("LlamaModel: the server", () => {
   });
 
   it("a GPU death at start: the CPU relaunch answers, and later launches stay on the CPU", async () => {
-    const kev = keep(await fakeKev());
+    const kev = keep(await fakeLlama());
     const launched: string[][] = [];
     const exits: ((c: number | null) => void)[] = [];
     const launch = (_cmd: string, args: string[]): AiProcess => {
       launched.push(args);
-      // The GPU launch dies before the port answers... except fakeKev answers at once: it dies on its first poll.
+      // The GPU launch dies before the port answers... except fakeLlama answers at once: it dies on its first poll.
       return launched.length === 1 ? { stop() {}, onOutput(r) { r(134); } } : { stop() {}, onOutput(r) { exits.push(r); } };
     };
     const m = model({ folder: await installed(), launch }, { port: portOf(kev) });
@@ -157,7 +157,7 @@ describe("LlamaModel: the server", () => {
   });
 
   it("relaunches after a crash; parallel calls start one server", async () => {
-    const kev = keep(await fakeKev());
+    const kev = keep(await fakeLlama());
     const exits: ((c: number | null) => void)[] = [];
     const launch = (): AiProcess => ({ stop() {}, onOutput(r) { exits.push(r); } });
     const m = model({ folder: await installed(), launch }, { port: portOf(kev) });
@@ -198,7 +198,7 @@ describe("LlamaModel: the server", () => {
   });
 
   it("after idleMs without a call, the server is stopped (fake clock)", async () => {
-    const kev = keep(await fakeKev());
+    const kev = keep(await fakeLlama());
     let now = 1000;
     let stopped = 0;
     const launch = (): AiProcess => ({ stop() { stopped++; }, onOutput() {} });
@@ -215,7 +215,7 @@ describe("LlamaModel: the server", () => {
   });
 
   it("the old server's late exit does not cancel the new server's idle stop", async () => {
-    const kev = keep(await fakeKev());
+    const kev = keep(await fakeLlama());
     let now = 1000;
     const exits: ((c: number | null) => void)[] = [];
     const launch = (): AiProcess => ({ stop() {}, onOutput(r) { exits.push(r); } });
@@ -252,7 +252,7 @@ describe("LlamaModel: the server", () => {
   });
 
   it("stop() allows a relaunch; close() then refuses ready(), warm() and install() without launching anything", async () => {
-    const kev = keep(await fakeKev());
+    const kev = keep(await fakeLlama());
     let launched = 0;
     const launch = (): AiProcess => (launched++, { stop() {}, onOutput() {} });
     const m = model({ folder: await installed(), launch }, { port: portOf(kev) });

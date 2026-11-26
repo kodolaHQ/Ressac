@@ -29,8 +29,6 @@ export interface LlamaModelOptions {
   /** Test overrides of the model download. */
   urlOverride?: string;
   sha256Override?: string;
-  /** Expected size of the model file (default: the spec's); a longer download is aborted. */
-  bytesOverride?: number;
   /** A server already running elsewhere (tests): ready() answers it without launching anything. */
   serverUrl?: string;
   launch?: (cmd: string, args: string[], o: { cwd: string }) => AiProcess;
@@ -200,7 +198,7 @@ export class LlamaModel {
         url: this.o.urlOverride ?? this.spec.url,
         file: this.modelFile,
         sha256: this.o.sha256Override ?? this.spec.sha256,
-        bytes: this.o.bytesOverride ?? this.spec.bytes,
+        bytes: this.spec.bytes,
         signal,
         onPercent,
         cancelled: () => new Error(this.say("kernel-ai-install-cancelled")),

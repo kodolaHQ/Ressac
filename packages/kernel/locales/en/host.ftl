@@ -21,7 +21,6 @@ host-grant-site-app = Touch-ups and reading of the app granted
 host-grant-reads = Reads with your account: { $domains }
 host-unknown-agent = Unknown agent.
 host-workshop-not-started = The agent's workshop is not started: see Workshop.
-host-codex-missing = Codex is not installed in the workshop yet: open the agent view or restart the workshop (Workshop section).
 host-cli-downloading = Downloading { $agent }… { $percent } %
 host-cli-downloading-size = Downloading { $agent }…
 host-cli-slow = The { $agent } download is still running: try again in a moment.

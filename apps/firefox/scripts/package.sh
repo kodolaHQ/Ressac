@@ -114,7 +114,7 @@ pty=$(realpath $kernel/node_modules/node-pty)
 mkdir -p $host/node_modules/node-pty/prebuilds $host/kernel $host/LICENSES
 cp $node_x/node-$node_version-darwin-arm64/bin/node $host/node
 cp $node_x/node-$node_version-darwin-arm64/LICENSE $host/LICENSES/node-LICENSE
-# llama-server and its dylibs, side by side (its rpath is @loader_path); the decision model is downloaded at first use.
+# llama-server and its dylibs, side by side (its rpath is @loader_path); the search model is downloaded at first use.
 mkdir -p $host/llama
 cp $llama_src/llama-server $llama_src/*.dylib $host/llama/
 cp $llama_src/LICENSE $host/LICENSES/llama.cpp-LICENSE

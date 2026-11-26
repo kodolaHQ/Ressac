@@ -735,7 +735,7 @@ const rpc = createRpc({
       return relab();
     },
     // Once, for a session saved before tiers: does the user already use the lab? The chrome sends its saved mode (no
-    // `agent.mode` has come yet). Widget tiers come with Task 6.
+    // `agent.mode` has come yet).
     "lab.decide": async (p: { agentMode?: unknown }) => ({ on: await labInUse(paths, p?.agentMode === "workshop" ? "workshop" : "browser", isTier3Widget) }),
     // macOS runs short of memory (Firefox's memory-pressure): the local models unload, idle agent sessions sleep, the
     // machine stops unless in use.

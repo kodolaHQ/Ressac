@@ -29,11 +29,10 @@ const json = (res: import("node:http").ServerResponse, code: number, o: unknown)
   res.end(JSON.stringify(o));
 };
 
-/** Fake Kev: /v1/models and /v1/systemone. */
-export const fakeKev = (answers: unknown = { q: { type: "noul", noul: 0.91 } }) =>
+/** Fake llama-server: /v1/models only. */
+export const fakeLlama = () =>
   start((r, res) => {
-    if (r.url === "/v1/models") return json(res, 200, { data: [{ id: "d1-2B-Q4_K_M.gguf" }] });
-    if (r.url === "/v1/systemone") return json(res, 200, { model: "kev-latest", answers, usage: {} });
+    if (r.url === "/v1/models") return json(res, 200, { data: [{ id: "m.gguf" }] });
     json(res, 404, {});
   });
 

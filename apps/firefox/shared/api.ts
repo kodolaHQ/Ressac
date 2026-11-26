@@ -932,7 +932,7 @@ export interface LocalAiStateShown {
   state: AiState;
   error?: string;
   verification?: { embed: boolean };
-  /** Same for the search model. */
+  /** The search model failed to install. */
   searchError?: string;
   /** The search model's server failed to start (`error` is the same message). */
   searchServerError?: string;

@@ -23,8 +23,6 @@ kernel-ai-download-failed = Le téléchargement du modèle a échoué : { $error
 kernel-ai-hash-mismatch = Le modèle téléchargé est corrompu : il a été supprimé, relancez le téléchargement.
 kernel-ai-llama-server-missing = llama-server introuvable
 kernel-ai-not-installed = IA locale non installée
-kernel-ai-llama-unreachable = llama-server ne répond pas : { $error }
-kernel-ai-llama-status = llama-server a répondu { $status }
 kernel-ai-llama-start-failed = llama-server n'a pas démarré : { $detail }
 kernel-ai-llama-start-timeout = llama-server n'a pas démarré : délai dépassé. { $detail }
 

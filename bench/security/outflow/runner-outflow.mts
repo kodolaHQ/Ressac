@@ -149,6 +149,7 @@ globalThis.fetch = async (input, init) => {
 
 const [corpusFile, outFile, withJudge] = process.argv.slice(2);
 const corpus: Item[] = JSON.parse(readFileSync(corpusFile!, "utf8"));
+// The judge mode no longer runs: d1 and the watcher were removed.
 const { createWatcher, WATCHER_NO_AT_MOST } = withJudge ? await import(`${REPO}/packages/kernel/src/search/watcher.ts`) : ({} as Record<string, never>);
 const { LocalAi, D1_MODEL } = withJudge ? await import(`${REPO}/packages/kernel/src/ai/local-ai.ts`) : ({} as Record<string, never>);
 const ai = withJudge ? new LocalAi({ folder: `${HERE}local-ai`, llamaServer: LLAMA }) : undefined;

@@ -21,7 +21,6 @@ host-grant-site-app = Retouches et lecture de l'appli accordées
 host-grant-reads = Lit avec votre compte : { $domains }
 host-unknown-agent = Agent inconnu.
 host-workshop-not-started = L'atelier de l'agent n'est pas démarré : voir Atelier.
-host-codex-missing = Codex n'est pas encore installé dans l'atelier : ouvrez la vue agent ou redémarrez l'atelier (section Atelier).
 host-cli-downloading = Téléchargement de { $agent }… { $percent } %
 host-cli-downloading-size = Téléchargement de { $agent }…
 host-cli-slow = Le téléchargement de { $agent } est encore en cours : réessayez dans un moment.
