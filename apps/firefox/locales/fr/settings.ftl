@@ -378,7 +378,7 @@ settings-passport-unmute = Retirer { $site }
 ## Réglages › Agent › Votre modèle
 
 own-title = Votre modèle
-own-help = Un agent de Ressac qui utilise le modèle de votre choix. Il cherche, ouvre et lit des pages, sans cliquer ni remplir.
+own-help = Un agent de Ressac qui utilise le modèle de votre choix. Il cherche, ouvre et lit des pages, sans cliquer. Avec un modèle en ligne (cloud d'Ollama, API distante), il remplit aussi les formulaires, avec les mêmes cartes que Claude.
 own-kind-ollama = Ollama sur ce Mac
 own-kind-api = API compatible OpenAI
 own-ollama-url = Adresse d'Ollama
