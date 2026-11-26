@@ -85,12 +85,13 @@
 
 <style>
   /* Shrinks before the Send button does: the name ends in an ellipsis, the full name is the title. */
-  .wrap { position: relative; min-width: 0; flex: 0 1 auto; max-width: 60%; }
+  /* Static: the menu sizes on the composer's bottom row (positioned), not the chip, so it never leaves a narrow panel. */
+  .wrap { min-width: 0; flex: 0 1 auto; max-width: 60%; }
   .chip { display: flex; max-width: 100%; padding: 3px 8px; border-radius: 999px; border: 0; background: var(--bg-hover); color: var(--text-muted); font: 11.5px/1.4 var(--font-ui); cursor: pointer; transition: transform var(--tap), color var(--tap); }
   .chip:hover { color: var(--text); }
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* Opens upward, above the composer, aligned on the chip's right edge. */
-  .menu { position: absolute; z-index: 5; right: 0; bottom: calc(100% + 6px); width: max-content; min-width: 220px; max-width: min(300px, calc(100vw - 24px)); max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 12px; background: var(--glass-dense); box-shadow: var(--float), inset 0 0 0 1px var(--glass-edge); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  /* Opens upward, as wide as the composer's bottom row. */
+  .menu { position: absolute; z-index: 5; left: 0; right: 0; bottom: calc(100% + 6px); max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 12px; background: var(--glass-dense); box-shadow: var(--float), inset 0 0 0 1px var(--glass-edge); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .menu button { padding: 6px 10px; border-radius: 8px; border: 0; background: transparent; color: var(--text); font: 13px/1.3 var(--font-ui); text-align: left; cursor: pointer; overflow-wrap: anywhere; transition: transform var(--tap), background var(--tap); }
   .menu button:hover:not(:disabled) { background: var(--bg-hover); }
   .menu button[aria-checked="true"] { background: var(--bg-active); font-weight: 600; }

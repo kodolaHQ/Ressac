@@ -199,7 +199,7 @@
   .icon:hover { background: var(--bg-active); color: var(--text); }
   .error { margin: 0; color: var(--in-error); font-size: 12px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   /* A narrow panel: the passport note takes its own line rather than squeezing the controls. */
-  .foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+  .foot { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
   .note { margin: 0; color: var(--text-muted); font-size: 11.5px; }
   .sent-to { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   /* The passport note fills the row, or goes to its own line under 180 px; the model chip shrinks, Send keeps its size. */
