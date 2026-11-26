@@ -7,6 +7,19 @@ export type ReleaseVideo = { url: string; title: string; poster?: "passport" };
 /** What changed for the user, newest first. Add an entry when bumping `version` in package.json: its page opens once after the update. */
 export const RELEASE_NOTES: { version: string; date: string; items: string[]; video?: ReleaseVideo }[] = [
   {
+    version: "0.1.29",
+    date: "novembre 2026",
+    items: [
+      "Pendant que l'agent travaille, une ligne en bas de la discussion montre ce qu'il fait : « Réfléchit… », « Agit… » ou « Écrit… ».",
+      "Connexion : le terminal de connexion de Claude montre toute la connexion, sans ligne coupée. « Se connecter » dans Réglages ouvre directement la carte de connexion, et une discussion ouverte passe sur cette carte dès que vous vous déconnectez. Pour Codex, le code est copié avant l'ouverture de la page de connexion : il suffit de le coller.",
+      "Dans la discussion, le titre et votre message montrent vos seuls mots ; l'onglet et les pages joints s'affichent en petites lignes dessous.",
+      "La carte « Les réglages de l'agent ont changé » est plus claire : des noms simples, le détail replié, et des boutons qui disent ce qu'ils font. Elle ne s'affiche plus pour rien quand la machine de l'agent est neuve ou quand Codex installe ses propres compétences.",
+      "Le bandeau qui suit l'affichage d'une valeur masquée explique ce qui se passe : vous pouvez continuer, Ressac vous demande avant tout envoi vers un autre site.",
+      "Sécurité : en mode Navigateur, Claude ne peut plus lire ni modifier vos anciennes conversations, sa mémoire ou sa configuration. Une clé d'API n'est plus jamais transmise à un autre site par une redirection. Une discussion Codex reprise reste couverte par le masquage.",
+      "Passeport : un accent tapé avec une touche morte, le menu des accents ou un clavier de saisie ne fait plus perdre la protection d'un champ.",
+    ],
+  },
+  {
     version: "0.1.28",
     date: "novembre 2026",
     items: [
