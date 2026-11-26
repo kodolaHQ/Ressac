@@ -430,6 +430,16 @@ it("@onglet : une puce dans le message, l'agent lit cet onglet sans carte dans c
   await waitUi(m, "return doc.querySelector(arguments[0])?.textContent.includes('L\\'agent veut lire')", [CARD], 30_000);
   await click(m, `${CARD} button`, { text: "Refuser" });
   expect((await main).text).toContain("Accès refusé");
+  // Readable in the discussion: its badge shows, and « Couper l'accès » takes it back (the next read asks).
+  const badge = `[data-testid="tab-${cited}"] [data-testid="access-pill"]`;
+  await waitUi(m, "return !!doc.querySelector(arguments[0])", [badge]);
+  await click(m, badge);
+  await click(m, '[data-testid="access-bubble"] button', { text: "Couper l'accès" });
+  await waitUi(m, "return !doc.querySelector(arguments[0]) && !doc.querySelector('[data-testid=\"access-bubble\"]')", [badge]);
+  const again = callMcpTool(root(), "read_tab", { id: cited }, config);
+  await waitUi(m, "return doc.querySelector(arguments[0])?.textContent.includes('L\\'agent veut lire')", [CARD], 30_000);
+  await click(m, `${CARD} button`, { text: "Refuser" });
+  expect((await again).text).toContain("Accès refusé");
 });
 
 const chipText = () => waitAgent<string>("return doc.querySelector('[data-testid=\"chat-mode-chip\"]')?.textContent ?? ''");
