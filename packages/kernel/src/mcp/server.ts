@@ -1376,7 +1376,8 @@ export function createToolsServer(
   }
   /**
    * A handle's redirect landing exactly on the address its own `q=` or `url=` parameter names (an engine's result link), or
-   * Google's first hop off its `/goto` link (whose sealed target only Google mints), carrying none of the handle's masked
+   * the first hop off Google's origin from its `/goto` link (whose sealed target only Google mints; Google's own hops before it
+   * are not seen, and the address it lands on is checked all the same), carrying none of the handle's masked
    * values nor the user's: those went only to the handle's origin, which showed them. `from`: the address that redirected.
    */
   const ownTarget = (pin: Pin | undefined, hop: string, from: string) => {

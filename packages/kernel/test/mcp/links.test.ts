@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { rankLinks, unwrapLink, withoutTracking } from "../../src/mcp/links.js";
+import { rankLinks, unwrapLink, withoutTracking, isGoogleGoto } from "../../src/mcp/links.js";
 
 test("unwrapLink decodes DuckDuckGo and Google result redirects, nothing else", () => {
   expect(unwrapLink("https://duckduckgo.com/l/?uddg=https%3A%2F%2Fex.fr%2Fa&rut=x")).toBe("https://ex.fr/a");
@@ -78,4 +78,10 @@ test("tracking parameters are dropped from a link (Google's srsltid, utm_*…), 
   expect(rankLinks([{ text: "Ressac", url: "https://getressac.app/?srsltid=abc" }], "https://www.google.com/search?q=ressac").map((l) => l.url)).toEqual(["https://getressac.app/"]);
   // A page opened with trackers is still itself: its link to itself stays out.
   expect(rankLinks([{ text: "Accueil", url: "https://ex.fr/" }], "https://ex.fr/?utm_source=a")).toEqual([]);
+});
+
+test("isGoogleGoto: Google's own https /goto link only, never a look-alike", () => {
+  expect(isGoogleGoto(new URL("https://www.google.com/goto?url=CAES&gsessionid=x"))).toBe(true);
+  for (const u of ["https://google.com@evil.test/goto?url=x", "http://www.google.com/goto?url=x", "https://www.google.com/goto/?url=x", "https://www.google.com/GOTO?url=x", "https://www.google.com.evil.test/goto?url=x", "https://www.google.com/goto?q=x"])
+    expect(isGoogleGoto(new URL(u)), u).toBe(false);
 });
