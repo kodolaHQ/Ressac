@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { LaunchSpec } from "@ressac/kernel";
-import type { AskReply, ChatState, ChatSummary, ChatView, SessionUpdate } from "../../shared/chat";
+import type { AskReply, ChatItem, ChatState, ChatSummary, ChatView, SessionUpdate } from "../../shared/chat";
 import type { EngineConversation } from "./chat/engine";
 import type { ChatRecord, ChatStore } from "./chat-store";
 
@@ -28,9 +27,11 @@ export class ResumeError extends Error {
 export interface OpenOptions {
   chatId: string;
   windowId: string | null;
-  engine: "claude" | "codex";
+  engine: "claude" | "codex" | "own";
   profile: string;
   mode: "browser" | "workshop";
+  /** Own model: the discussion so far (it keeps no history of its own), without the messages still to send. */
+  transcript?: ChatItem[];
   /** The engine's own id of a conversation that ran a turn. */
   resumeId?: string;
   /** Claude: the uuid of a new conversation. */
@@ -47,7 +48,7 @@ interface Entry {
   /** A prompt is in the engine: the adapters track one turn at a time. */
   turn: boolean;
   conv?: EngineConversation;
-  launch?: LaunchSpec;
+  launch?: { sessionId: string };
   /** open() runs; `keep: false` closes what it returns. */
   opening?: { keep: boolean };
   /** The running start(), resolved once what its open returned is kept or closed. */
@@ -75,7 +76,7 @@ export class Chats {
   constructor(
     private readonly o: {
       store: ChatStore;
-      open: (o: OpenOptions) => Promise<{ conversation: EngineConversation; launch: LaunchSpec }>;
+      open: (o: OpenOptions) => Promise<{ conversation: EngineConversation; launch: { sessionId: string } }>;
       notify: (windowId: string, view: ChatView) => void;
       /** A message already streaming grew: only its text so far, the UI merges it into the view it has. */
       stream: (windowId: string, chatId: string, streaming: { messageId: string; text: string }) => void;
@@ -102,7 +103,7 @@ export class Chats {
     return e ? this.view(e) : null;
   }
 
-  async create(windowId: string, c: { profile: string; mode: "browser" | "workshop"; engine: "claude" | "codex"; spaceId: string }): Promise<ChatView> {
+  async create(windowId: string, c: { profile: string; mode: "browser" | "workshop"; engine: "claude" | "codex" | "own"; spaceId: string }): Promise<ChatView> {
     const t = this.now();
     const rec: ChatRecord = { id: randomUUID(), title: NEW_TITLE, ...c, state: "starting", updatedAt: t, messages: 0, windowId, items: [] };
     const e = this.entry(rec, "starting");
@@ -230,7 +231,7 @@ export class Chats {
    * then its file. Returns the engine conversation it ran (to erase that history too) and the windows it was active in;
    * null when unknown.
    */
-  async remove(chatId: string): Promise<{ engine: "claude" | "codex"; historyIds: string[]; windows: string[] } | null> {
+  async remove(chatId: string): Promise<{ engine: "claude" | "codex" | "own"; historyIds: string[]; windows: string[] } | null> {
     const e = this.entries.get(chatId);
     const rec = e?.rec ?? (await this.o.store.read(chatId));
     const historyIds = rec ? [...new Set([rec.engineSessionId, e?.conv?.engineSessionId, ...(rec.historyIds ?? [])])].filter((x): x is string => !!x) : [];
@@ -305,7 +306,9 @@ export class Chats {
     const sessionId = !resumeId && e.rec.engine === "claude" ? randomUUID() : undefined;
     // Claude writes its history under this uuid from the first prompt: « Supprimer » can erase it before any turn ends.
     if (sessionId) keepHistoryId(e.rec, sessionId);
-    let opened: { conversation: EngineConversation; launch: LaunchSpec };
+    const waiting = new Set(e.pending.map((p) => p.itemId));
+    const transcript = e.rec.engine === "own" ? e.rec.items.filter((i) => !waiting.has(i.id) && !(i.kind === "user" && i.unsent)) : undefined;
+    let opened: { conversation: EngineConversation; launch: { sessionId: string } };
     try {
       opened = await this.o.open({
         chatId: e.rec.id,
@@ -315,6 +318,7 @@ export class Chats {
         mode: e.rec.mode,
         ...(resumeId ? { resumeId } : {}),
         ...(sessionId ? { sessionId } : {}),
+        ...(transcript ? { transcript } : {}),
       });
     } catch (err) {
       if (e.opening !== opening) return;
@@ -403,7 +407,8 @@ export class Chats {
         if (u.stopReason === "error" && u.error === "signed-out") e.state = "signed-out";
         else {
           e.state = "ready";
-          e.error = u.stopReason === "error" ? (u.error ?? "L'agent a rencontré une erreur.") : undefined;
+          // The own model's max_turns carries its text too.
+          e.error = u.error ?? (u.stopReason === "error" ? "L'agent a rencontré une erreur." : undefined);
         }
         // A turn that failed (turn/start refused) may leave an empty Codex thread: never resumed.
         if (u.stopReason !== "error") e.rec.engineSessionId = conv.engineSessionId;
@@ -503,6 +508,7 @@ function unsend(e: Entry): void {
 
 /** shortcut: one id per engine start, so a discussion reopened without end grows the list; cap it if that shows. */
 function keepHistoryId(r: ChatRecord, id: string): void {
+  if (!id) return; // the own model keeps no history
   if (!r.historyIds?.includes(id)) r.historyIds = [...(r.historyIds ?? []), id];
 }
 

@@ -34,7 +34,7 @@ export type ChatState = "starting" | "ready" | "running" | "waiting" | "paused" 
 export interface ChatSummary {
   id: string;
   title: string;
-  engine: "claude" | "codex";
+  engine: "claude" | "codex" | "own";
   profile: string;
   mode: "browser" | "workshop";
   state: ChatState;
@@ -57,6 +57,8 @@ export interface ChatView {
   prefix?: string;
   /** The window's panel shows the terminal on this conversation (« Mode avancé »), whatever the UI last knew. */
   advanced?: true;
+  /** Own model behind a non-loopback API: its host (the « en ligne » mark). */
+  remote?: string;
 }
 
 /** `pasted`: [start, end] ranges of pasted text; `clear`: labels the user chose to send in clear. */

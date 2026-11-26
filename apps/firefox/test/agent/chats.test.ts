@@ -2,7 +2,6 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import type { LaunchSpec } from "@ressac/kernel";
 import type { AskReply, ChatView, SessionUpdate } from "../../shared/chat";
 import type { EngineConversation } from "../../core/agent/chat/engine";
 import { ChatStore } from "../../core/agent/chat-store";
@@ -79,8 +78,8 @@ function prepare(auto = true, mode?: () => "browser" | "workshop") {
     stream: (w, chatId, s) => streams.push([w, chatId, s]),
     open: (o) =>
       new Promise((resolve, reject) => {
-        const conv = new FakeConv(o.resumeId ?? o.sessionId ?? `thread-${opens.length + 1}`);
-        const launch = { sessionId: `kernel-${opens.length + 1}` } as LaunchSpec;
+        const conv = new FakeConv(o.engine === "own" ? "" : (o.resumeId ?? o.sessionId ?? `thread-${opens.length + 1}`));
+        const launch = { sessionId: `kernel-${opens.length + 1}` };
         const opened: Opened = { o, conv, resolve: () => resolve({ conversation: conv, launch }), reject };
         opens.push(opened);
         if (auto) opened.resolve();
@@ -644,4 +643,58 @@ test("remove during the first turn: the engine's id is known for its history, th
   await chats.select("w2", a.summary.id); // now live in w2
   await tick();
   expect(await chats.remove(a.summary.id)).toEqual({ engine: "claude", historyIds: [opens[1]!.o.sessionId, opens[0]!.o.sessionId], windows: ["w2"] });
+});
+
+const own = { ...opts, engine: "own" as const, profile: "own" };
+
+test("sessionIdOf works with a host launch (a bare kernel session id)", async () => {
+  const { chats } = prepare();
+  const a = await chats.create("w1", own);
+  await tick();
+  expect(chats.sessionIdOf(a.summary.id)).toBe("kernel-1");
+});
+
+test("an own discussion opens with its transcript, without the messages still to send", async () => {
+  const { chats, opens } = prepare();
+  const a = await chats.create("w1", own);
+  await tick();
+  expect(opens[0]!.o.transcript).toEqual([]);
+  chats.prompt(a.summary.id, "un", "un");
+  opens[0]!.conv.emit({ type: "agent_message", messageId: "m1", text: "réponse" });
+  opens[0]!.conv.endTurn();
+  chats.prompt(a.summary.id, "deux", "deux");
+  chats.prompt(a.summary.id, "trois", "trois");
+  chats.cancel(a.summary.id); // "trois" never sent
+  opens[0]!.conv.endTurn();
+  await chats.pause(a.summary.id);
+  chats.prompt(a.summary.id, "quatre", "quatre"); // reopens with "quatre" waiting
+  await tick();
+  const o = opens[1]!.o;
+  expect(o.resumeId).toBeUndefined();
+  expect(o.sessionId).toBeUndefined();
+  expect(o.transcript?.map((i) => (i as { text?: string }).text)).toEqual(["un", "réponse", "deux"]);
+  expect(opens[1]!.conv.prompts).toEqual(["quatre"]);
+});
+
+test("an own discussion never offers to erase an engine history", async () => {
+  const { chats, opens } = prepare();
+  const a = await chats.create("w1", own);
+  await tick();
+  chats.prompt(a.summary.id, "un", "un");
+  opens[0]!.conv.endTurn();
+  expect(chats.active("w1")?.summary.engineHistory).toBeUndefined();
+  expect(await chats.remove(a.summary.id)).toEqual({ engine: "own", historyIds: [], windows: ["w1"] });
+});
+
+test("a turn ending on its step cap shows the engine's text (own model)", async () => {
+  const { chats, opens } = prepare();
+  const a = await chats.create("w1", own);
+  await tick();
+  chats.prompt(a.summary.id, "un", "un");
+  opens[0]!.conv.emit({ type: "turn_end", stopReason: "max_turns", error: "L'agent s'est arrêté." });
+  expect(chats.active("w1")?.error).toBe("L'agent s'est arrêté.");
+  expect(chats.active("w1")?.summary.state).toBe("ready");
+  chats.prompt(a.summary.id, "deux", "deux");
+  opens[0]!.conv.endTurn();
+  expect(chats.active("w1")?.error).toBeUndefined();
 });

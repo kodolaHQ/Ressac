@@ -21,7 +21,7 @@
   export const hasFocus = (): boolean => composer?.hasFocus() ?? false;
 </script>
 
-{#if phase === "signed-out" && view}
+{#if phase === "signed-out" && view && view.summary.engine !== "own"}
   <ChatLogin engine={view.summary.engine} {openSettings} />
 {:else}
   <ChatThread />

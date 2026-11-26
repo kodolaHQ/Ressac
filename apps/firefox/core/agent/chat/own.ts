@@ -114,8 +114,8 @@ export interface OwnOpen {
   locale: "fr" | "en";
   /** The paused discussion's items: its user and agent turns become the history. */
   transcript?: ChatItem[];
-  /** Host texts (own-bad-format, own-steps). */
-  texts: { badFormat: string; steps: string };
+  /** Host texts (own-bad-format, own-steps, own-timeout). */
+  texts: { badFormat: string; steps: string; timeout: string };
   mcp?: (l: HostLaunch) => Promise<McpLike>;
 }
 
@@ -230,7 +230,7 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
         }, TURN_MS);
         run(text, ac)
           .catch((e: unknown) => {
-            if (late) return emit({ type: "turn_end", stopReason: "max_turns", error: texts.steps });
+            if (late) return emit({ type: "turn_end", stopReason: "max_turns", error: texts.timeout });
             if (ac.signal.aborted) return emit({ type: "turn_end", stopReason: "cancelled" });
             const error = e instanceof Error ? e.message : String(e);
             emit({ type: "turn_end", stopReason: "error", error });

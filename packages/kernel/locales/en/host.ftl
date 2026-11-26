@@ -63,6 +63,7 @@ own-model-missing = The model “{ $model }” cannot be found on { $host }.
 own-models-failed = The model list could not be read: type the model's name.
 own-bad-format = The model did not answer in the expected format.
 own-steps = The agent stopped after { $count } steps without an answer. Rephrase or clarify your request.
+own-timeout = The agent stopped after 5 minutes without an answer. Rephrase or clarify your request.
 own-workshop-off = Your model only works in Browser mode.
 own-server-error = { $host } answered with an error: { $error }
 own-key-elsewhere = The saved API key is tied to { $saved }: it is not sent to { $host }. Save your key again for this address.

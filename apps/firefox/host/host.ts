@@ -803,7 +803,8 @@ async function accountSignedIn(agent: "claude" | "codex"): Promise<boolean> {
 
 /** Chats' open: the kernel's pipe session, then the engine on it. Any failure once the session exists stops it (its slot blocks a lift). */
 async function openChat(o: OpenOptions) {
-  if (o.profile !== "claude" && o.profile !== "codex") throw new Error(CHAT_CUSTOM_PROFILE);
+  // shortcut: the own model is not wired here yet (plan task 7).
+  if (o.engine === "own" || (o.profile !== "claude" && o.profile !== "codex")) throw new Error(CHAT_CUSTOM_PROFILE);
   if (o.windowId === null) throw new Error(CHAT_WINDOW_CLOSED);
   const slot: ChatOpen = { abort: new AbortController() };
   const signal = slot.abort.signal;
@@ -1529,7 +1530,7 @@ const rpc = createRpc({
       chatPrep.delete(id);
       // Another window showing it moves on (the caller's UI does so itself).
       for (const w of removed?.windows ?? []) if (w !== p.window) rpc.notify("chat.removed", { window: w, chatId: id });
-      if (p.engineHistory !== true || !removed?.historyIds.length) return { history: null };
+      if (p.engineHistory !== true || !removed?.historyIds.length || removed.engine === "own") return { history: null };
       const results = [];
       for (const hid of removed.historyIds) results.push(await engineHistory.forget({ engine: removed.engine, id: hid }));
       return { history: results.includes("failed") ? "failed" : results.includes("pending") ? "pending" : "done" };
@@ -1612,7 +1613,9 @@ const rpc = createRpc({
     // The login card: the CLI's own sign-in in a small terminal; the window's signed-out discussions retry when it ends.
     "chat.login": aiOnly(async (p: { window?: unknown }) => {
       if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
-      const program = activeChat(p.window)?.engine ?? (sessions.profileOf(p.window) === "codex" ? "codex" : "claude");
+      const engine = activeChat(p.window)?.engine;
+      if (engine === "own") return; // no sign-in of its own
+      const program = engine ?? (sessions.profileOf(p.window) === "codex" ? "codex" : "claude");
       signedIn.delete(program);
       await readyToStart(program);
       await logins.start(p.window, program, { cols: 80, rows: 24 });

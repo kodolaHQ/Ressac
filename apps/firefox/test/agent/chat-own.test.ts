@@ -10,7 +10,7 @@ import { connectMcp, ownEngine, RESULT_MAX, STEP_MAX, TURN_MS, type McpLike } fr
 import { OWN_PROMPTS } from "../../core/agent/chat/own-prompts";
 import type { EngineConversation } from "../../core/agent/chat/engine";
 
-const texts = { badFormat: "Le modèle n'a pas répondu dans le format attendu.", steps: "L'agent s'est arrêté après 10 étapes sans réponse." };
+const texts = { badFormat: "Le modèle n'a pas répondu dans le format attendu.", steps: "L'agent s'est arrêté après 10 étapes sans réponse.", timeout: "L'agent s'est arrêté au bout de 5 minutes sans réponse." };
 const fr = OWN_PROMPTS.fr;
 const open: EngineConversation[] = [];
 afterEach(async () => {
@@ -149,7 +149,7 @@ test("a turn past TURN_MS ends with max_turns", async () => {
     await vi.advanceTimersByTimeAsync(1);
     await new Promise((r) => setImmediate(r));
     expect(s.signals[0]!.aborted).toBe(true);
-    expect(s.updates.filter((u) => u.type === "turn_end")).toEqual([{ type: "turn_end", stopReason: "max_turns", error: texts.steps }]);
+    expect(s.updates.filter((u) => u.type === "turn_end")).toEqual([{ type: "turn_end", stopReason: "max_turns", error: texts.timeout }]);
   } finally {
     vi.useRealTimers();
   }
