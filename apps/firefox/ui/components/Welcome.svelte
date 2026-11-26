@@ -93,8 +93,6 @@
     const v = ai?.verification;
     // AI on already starts the missing models' download: shown as started, not offered again.
     pulling = !!running;
-    // The search model already on its way (AI on starts it): the agent's CLI goes with it.
-    if (running && profile) api.agent.prepareCli(profile);
     missing = v && !running ? v.embed ? [] : [SEARCH_MODEL] : [];
     models = !!v;
   }
@@ -106,6 +104,10 @@
   }
   // Each state is checked when its page first shows (only after « Oui »: no Docker or AI call while AI is off).
   let checked = { docker: false, models: false };
+  // Each show of the search page starts the chosen agent's CLI too: one shared download in the host, so a repeat is free.
+  $effect(() => {
+    if (page === 6 && profile) api.agent.prepareCli(profile);
+  });
   $effect(() => {
     if (page === 5 && !checked.docker) {
       checked.docker = true;
@@ -131,6 +133,8 @@
   }
   /** Each page's main button takes the keyboard as it appears. */
   const focus = (el: HTMLElement) => el.focus({ preventScroll: true });
+  /** Page 4 before a choice: « Continuer » is disabled, so the first card takes the keyboard. */
+  const focusIf = (el: HTMLElement, on: boolean) => void (on && focus(el));
 
   function finish(e: SubmitEvent) {
     e.preventDefault();
@@ -216,19 +220,18 @@
         {:else if page === 4}
           <h2>{t("home-welcome-tier-title")}</h2>
           <div class="tiers" role="radiogroup" aria-label={t("home-welcome-tier-title")}>
-            {#each TIERS as [id, key] (id)}
+            {#each TIERS as [id, key], i (id)}
               <label class="agent tier" data-testid="welcome-tier-{id}-card">
-                <input type="radio" name="welcome-tier" data-testid="welcome-tier-{id}" checked={step.tier === id} onchange={() => (step.tier = id)} />
+                <input type="radio" name="welcome-tier" data-testid="welcome-tier-{id}" aria-labelledby="welcome-tier-{id}-title" aria-describedby="welcome-tier-{id}-detail" checked={step.tier === id} onchange={() => (step.tier = id)} use:focusIf={!step.tier && i === 0} />
                 <span class="tier-text">
-                  <b>{t(key)}</b>
-                  <span>{t(`${key}-detail`)}</span>
-                  {#if id === "ai"}<span class="note">{t(machine ? "home-welcome-tier-ai-needs-machine" : "home-welcome-tier-ai-needs", sizes)}</span>{/if}
+                  <b id="welcome-tier-{id}-title">{t(key)}</b>
+                  <span id="welcome-tier-{id}-detail">{t(`${key}-detail`)}{#if id === "ai"}<span class="note">{t(machine ? "home-welcome-tier-ai-needs-machine" : "home-welcome-tier-ai-needs", sizes)}</span>{/if}</span>
                 </span>
               </label>
             {/each}
           </div>
           <p class="note" data-testid="welcome-tier-later">{t("home-welcome-tier-later")}</p>
-          {@render actions(t("home-welcome-continue"), false, () => answer(step.tier === "ai"), next, !!step.tier)}
+          {@render actions(t("home-welcome-continue"), false, () => answer(step.tier === "ai"), undefined, !!step.tier)}
         {:else if page === 5}
           <h2>{t("home-welcome-agent-title")}</h2>
           <p>{t(machine ? "home-welcome-agent-intro-machine" : "home-welcome-agent-intro", sizes)}</p>
@@ -377,6 +380,7 @@
   .tier input { margin-top: 3px; }
   .tier-text { display: flex; flex-direction: column; gap: 4px; }
   .tier b { font-weight: 600; }
+  .tier .note { display: block; margin-top: 4px; }
 
   .sidebar { display: flex; align-items: center; gap: 22px; }
   .sidebar ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
@@ -411,13 +415,13 @@
 
   .actions { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 10px; }
   button { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 13px var(--font-ui); transition: transform var(--tap), background var(--tap); }
-  button:hover { background: var(--bg-active); }
+  button:hover:not(:disabled) { background: var(--bg-active); }
   button:active:not(:disabled) { transform: scale(0.97); }
   button:disabled { opacity: 0.5; }
   button.quiet { border-color: transparent; background: none; color: var(--text-muted); }
-  button.quiet:hover { background: var(--bg-hover); color: var(--text); }
+  button.quiet:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
   button.primary { padding-inline: 18px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-  button.primary:hover { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
+  button.primary:hover:not(:disabled) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
   .aura-choice:hover, .aura-choice:active { background: none; }
   :is(button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 

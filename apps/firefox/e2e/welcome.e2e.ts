@@ -437,6 +437,9 @@ describe("welcome", () => {
     const disabled = () => inUi(m, "return doc.querySelector(arguments[0]).disabled", [`${LAYER} [data-testid="welcome-next"]`]);
     expect(await inUi(m, "return [...doc.querySelectorAll('[name=welcome-tier]')].some((r) => r.checked)")).toBe(false);
     expect(await disabled()).toBe(true);
+    // The disabled button cannot take the keyboard: the first card does.
+    await waitUi(m, "return doc.activeElement?.dataset.testid === 'welcome-tier-browser'");
+    expect(await inUi(m, "const r = doc.querySelector(arguments[0]); return [r.labels[0] && doc.getElementById(r.getAttribute('aria-labelledby')).textContent, doc.getElementById(r.getAttribute('aria-describedby')).textContent.startsWith('Un navigateur calme')]", [`${LAYER} [data-testid="welcome-tier-browser"]`])).toEqual(["Navigateur", true]);
     await press("welcome-tier-ai");
     await waitUi(m, "return !doc.querySelector(arguments[0]).disabled", [`${LAYER} [data-testid="welcome-next"]`]);
   });
@@ -466,13 +469,13 @@ describe("welcome", () => {
       await press("welcome-agent-codex");
       await saved((s) => s.settings?.agentProfile === "codex");
       await press("welcome-next");
+      // Page 6 starts the chosen agent's CLI as it shows, Codex here.
       await shows("welcome-6", "EmbeddingGemma");
+      await waitFor(m, "return true", () => cli.paths.includes("/codex.tgz"), 15_000);
       expect(await inUi(m, "return /\\bd1\\b/.test(doc.querySelector(arguments[0]).textContent)", [`${LAYER} [data-testid="welcome-6"]`])).toBe(false);
       // The background search download failed at once (a dead address): the button is offered.
       await shown("welcome-pull");
-      expect(cli.paths.filter((p) => p === "/codex.tgz")).toEqual([]);
       await press("welcome-pull");
-      await waitFor(m, "return true", () => cli.paths.includes("/codex.tgz"), 15_000);
     } finally {
       await cli.close();
     }
