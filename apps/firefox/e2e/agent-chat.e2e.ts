@@ -1,12 +1,14 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
-import { dispatch, waitReady } from "./firefox";
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
+import { callMcpTool } from "../test/mcp";
+import { dispatch, state, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { writePassport } from "./passport-file";
+import { startServer } from "./server";
 import { click, pressKeys, typeText, waitUi } from "./ui";
 
 // The agent panel's chat (agent view « Discussion »): the fake docker runs test/tools/fake-claude-stream.mjs or
@@ -14,6 +16,7 @@ import { click, pressKeys, typeText, waitUi } from "./ui";
 // (fake-chat-claude.jsonl, fake-chat-codex.jsonl). A « Bonjour » turn streams « Bonjour, » then holds until the test
 // writes fake-chat-go; any other text gets « Bien reçu. », « ask » asks a question, « wait » runs until interrupted.
 const EMAIL = "camille.aubrac@example.org";
+const CARD = '[data-testid="permission-request"]';
 
 let w: LaunchedRessac | undefined;
 let m: Marionette;
@@ -320,4 +323,111 @@ it("Codex répond dans le chat", async () => {
   await waitAgent("return doc.querySelector('[data-testid=\"chat-model-chip\"]')?.textContent.trim() === 'GPT-5.4'");
   await send("encore");
   await expect.poll(() => trace("codex").filter((l) => l.method === "turn/start").map((l) => l.params.model ?? null), { timeout: 20_000 }).toEqual([null, "gpt-5.4"]);
+});
+
+const menuKeys = () => waitAgent<string[]>("return [...doc.querySelectorAll('[data-testid=\"chat-menu-item\"]')].map((e) => e.dataset.key)");
+const activeKey = () => waitAgent<string>("return doc.querySelector('[data-testid=\"chat-menu-item\"].active')?.dataset.key ?? ''");
+const inputIs = (v: string) => waitAgent("return doc.querySelector('[data-testid=\"chat-input\"]')?.value === arguments[0]", [v]);
+
+it("le menu « / » : filtré à la frappe, au clavier, /modèle ouvre le choix du modèle et Échap rend le focus, /cherche lance la recherche", async () => {
+  await launch({ writer: "claude" });
+  await send("salut");
+  await agentSays("Bien reçu.");
+  await type("/");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["model", "new", "mode", "agent", "terminal", "search", "read", "tabs", "history", "bookmarks"]);
+  await typeText(m, "mod");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["model", "mode"]);
+  await pressKeys(m, "ArrowDown");
+  await expect.poll(activeKey).toBe("mode");
+  await pressKeys(m, "ArrowUp");
+  await expect.poll(activeKey).toBe("model");
+  await pressKeys(m, "Enter");
+  // The model menu takes the keyboard on the current model; Échap closes it and focus goes back to the composer.
+  await waitAgent("return !!doc.querySelector('[data-testid=\"chat-model-menu\"]') && doc.activeElement?.getAttribute('role') === 'menuitemradio'");
+  await inputIs("");
+  await pressKeys(m, "ArrowDown");
+  await pressKeys(m, "Escape");
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-model-menu\"]') && doc.activeElement?.dataset.testid === 'chat-input'");
+  // Échap closes the « / » menu too, and the text stays.
+  await typeText(m, "/ch");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["search"]);
+  await pressKeys(m, "Escape");
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-command-menu\"]')");
+  await typeText(m, "e");
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-command-menu\"]')");
+  // Back to « / »: the token changed, the menu comes back; Entrée takes /cherche, the query follows.
+  for (let i = 0; i < 4; i++) await pressKeys(m, "Backspace");
+  await inputIs("");
+  await typeText(m, "/ch");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["search"]);
+  await pressKeys(m, "Enter");
+  await inputIs("/cherche ");
+  await typeText(m, "chats noirs");
+  await pressKeys(m, "Enter");
+  await inputIs("");
+  // The agent gets the command's words, then the query: the search tool runs as the engine's own tool call.
+  await expect.poll(() => said().at(-1), { timeout: 20_000 }).toBe("Cherchez sur le web avec search_web : chats noirs");
+});
+
+let pages: Awaited<ReturnType<typeof startServer>>;
+beforeAll(async () => {
+  const page = (title: string) => (_req: unknown, res: import("node:http").ServerResponse) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<title>${title}</title><p>Contenu de ${title}</p>`);
+  pages = await startServer({ routes: { "/lue": page("Page citee"), "/autre": page("Page voisine"), "/ici": page("Page ici") } });
+});
+afterAll(() => pages?.close());
+
+it("@onglet : une puce dans le message, l'agent lit cet onglet sans carte dans cette discussion, un autre onglet demande toujours", { timeout: 90_000 }, async () => {
+  w = await launchRessac({ agentView: "chat", writer: "claude" });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitReady(m);
+  // Opened and shown before the panel (a tab shown with the panel open is given to the agent), each loaded once; the
+  // user then looks at a third one, the tab they speak from.
+  const win = (await state(m)).windows[0]!.id;
+  const tabOf = async (title: string) => {
+    await expect.poll(async () => Object.values((await state(m)).tabs).some((t) => t.title === title), { timeout: 20_000 }).toBe(true);
+    return Object.values((await state(m)).tabs).find((t) => t.title === title)!.id;
+  };
+  const ids: string[] = [];
+  for (const [path, title] of [["/lue", "Page citee"], ["/autre", "Page voisine"], ["/ici", "Page ici"]] as const) {
+    await dispatch(m, { type: "openTab", windowId: win, url: `${pages.url}${path}`, agentReached: false });
+    ids.push(await tabOf(title));
+  }
+  const [cited, other] = ids as [string, string];
+  await click(m, '[data-testid="agent-button"]');
+  // The discussion's engine has started: its session's token is there for the reads below.
+  await expect.poll(() => trace().some((l) => l.argv), { timeout: 30_000 }).toBe(true);
+  await type("@ong");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["tab"]);
+  await pressKeys(m, "Enter");
+  await inputIs("@onglet ");
+  await typeText(m, "citee");
+  await expect.poll(menuKeys, { timeout: 10_000 }).toEqual([cited]);
+  await pressKeys(m, "Enter");
+  await inputIs("");
+  expect(await textOf("chat-ref")).toContain("Page citee");
+  await typeText(m, "resume");
+  await pressKeys(m, "Enter");
+  await inputIs("");
+  // Title, address and id as data after the text; the chip is gone with the message.
+  await expect.poll(() => said().at(-1) ?? "", { timeout: 20_000 }).toContain(`"tab":"${cited}","title":"Page citee"`);
+  expect(said().at(-1)).toContain("] resume — Pages que je cite");
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-ref\"]')");
+  // The discussion's own agent, with its session's token.
+  const folder = join(root(), ".ressac", "sessions");
+  const config = join(folder, readdirSync(folder).find((f) => f.endsWith(".json"))!);
+  const read = await callMcpTool(root(), "read_tab", { id: cited }, config);
+  expect(read.text).toContain("Contenu de Page citee");
+  // The other tab still asks (refused here), and so does the cited tab with the main token (no discussion).
+  const asked = callMcpTool(root(), "read_tab", { id: other }, config);
+  // A tab's card shows on that tab: put on screen after the call (showing it grants nothing).
+  await dispatch(m, { type: "activateTab", id: other });
+  await waitUi(m, "return doc.querySelector(arguments[0])?.textContent.includes('L\\'agent veut lire')", [CARD], 30_000);
+  await click(m, `${CARD} button`, { text: "Refuser" });
+  expect((await asked).text).toContain("Accès refusé");
+  const main = callMcpTool(root(), "read_tab", { id: cited });
+  await dispatch(m, { type: "activateTab", id: cited });
+  await waitUi(m, "return doc.querySelector(arguments[0])?.textContent.includes('L\\'agent veut lire')", [CARD], 30_000);
+  await click(m, `${CARD} button`, { text: "Refuser" });
+  expect((await main).text).toContain("Accès refusé");
 });
