@@ -6,6 +6,7 @@
   import { t } from "../../i18n.svelte";
   import Icon from "../Icon.svelte";
   import { chat, maskedName } from "./chat.svelte";
+  import ChatModelPicker from "./ChatModelPicker.svelte";
   import { shiftRanges } from "./draft";
 
   /**
@@ -164,12 +165,14 @@
   </div>
   {#if error}<p class="error" role="alert" out:fade={{ duration: chat.visible ? 150 : 0 }}>{error}</p>{/if}
   <div class="foot">
-    <span class="note">{t("chat-composer-footer")}</span>
-    <span class="spacer"></span>
-    {#if running}
-      <button type="button" class="secondary" data-testid="chat-stop" out:fade={{ duration: chat.visible ? 150 : 0 }} onclick={() => api.chat.cancel()}>{t("chat-stop")}</button>
-    {/if}
-    <button type="submit" class="primary" data-testid="chat-send" disabled={!text.trim() || sending}>{t("chat-send")}</button>
+    <span class="note grow">{t("chat-composer-footer")}</span>
+    <div class="actions">
+      <ChatModelPicker />
+      {#if running}
+        <button type="button" class="secondary" data-testid="chat-stop" out:fade={{ duration: chat.visible ? 150 : 0 }} onclick={() => api.chat.cancel()}>{t("chat-stop")}</button>
+      {/if}
+      <button type="submit" class="primary" data-testid="chat-send" disabled={!text.trim() || sending}>{t("chat-send")}</button>
+    </div>
   </div>
   {#if chat.view?.summary.engine === "own"}<p class="note" data-testid="chat-own-warning">{t("chat-composer-own-warning")}</p>{/if}
   {#if chat.view?.remote}<p class="note sent-to" data-testid="chat-sent-to" out:fade={{ duration: chat.visible ? 150 : 0 }}>{t("chat-composer-sent-to", { host: chat.view.remote })}</p>{/if}
@@ -195,10 +198,13 @@
   .icon { flex: none; width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border-radius: 6px; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; }
   .icon:hover { background: var(--bg-active); color: var(--text); }
   .error { margin: 0; color: var(--in-error); font-size: 12px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
-  .foot { display: flex; align-items: center; gap: 8px; }
+  /* A narrow panel: the passport note takes its own line rather than squeezing the controls. */
+  .foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
   .note { margin: 0; color: var(--text-muted); font-size: 11.5px; }
   .sent-to { animation: ressac-rise var(--spring-d) var(--spring) backwards; }
-  .spacer { flex: 1; }
+  /* The passport note fills the row, or goes to its own line under 180 px; the model chip shrinks, Send keeps its size. */
+  .grow { flex: 1 1 180px; min-width: 0; }
+  .actions { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
   .foot button { flex: none; padding: 6px 12px; border-radius: 10px; font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap), opacity var(--tap); }
   .primary { padding: 6px 14px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); }
   .primary:disabled { opacity: 0.5; cursor: default; }

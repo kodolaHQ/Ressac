@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { waitReady } from "./firefox";
+import { dispatch, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { writePassport } from "./passport-file";
@@ -251,6 +251,36 @@ it("le sélecteur de modèle : la liste de Claude, un changement dès le message
   await expect.poll(() => trace().filter((l) => l.argv).length, { timeout: 20_000 }).toBeGreaterThan(before);
   expect(trace().filter((l) => l.argv).at(-1)!.argv).toContain("--model=sonnet");
   await waitAgent("return doc.querySelector('[data-testid=\"chat-model-chip\"]')?.textContent.trim() === 'Sonnet'");
+});
+
+it("panneau étroit : le modèle est en bas, l'en-tête laisse sa place à la liste des discussions, rien ne déborde", async () => {
+  await launch({ writer: "claude" });
+  await dispatch(m, { type: "agentPanelWidth", width: 340 });
+  await waitAgent("return ui.innerWidth <= 345 && !!doc.querySelector('[data-testid=\"chat-model-chip\"]')");
+  const box = await waitAgent<Record<string, number | boolean>>(`
+    const r = (s) => doc.querySelector(s).getBoundingClientRect();
+    const foot = doc.querySelector('[data-testid="chat-send"]').closest('.foot');
+    const chip = r('[data-testid="chat-model-chip"]'), send = r('[data-testid="chat-send"]'), composer = r('[data-testid="chat-composer"]');
+    return { inFoot: foot.contains(doc.querySelector('[data-testid="chat-model-chip"]')), inHeader: !!doc.querySelector('header [data-testid="chat-model-chip"]'),
+      picker: r('[data-testid="chat-picker"]').width, overflow: foot.scrollWidth - foot.clientWidth, gap: send.left - chip.right, sendOut: send.right - composer.right };
+  `);
+  expect(box).toMatchObject({ inFoot: true, inHeader: false, overflow: 0 });
+  // The discussion picker keeps room for its title; the chip sits before Send, inside the composer.
+  expect(box.picker as number).toBeGreaterThan(120);
+  expect(box.gap as number).toBeGreaterThanOrEqual(0);
+  expect(box.sendOut as number).toBeLessThanOrEqual(0);
+  // The menu opens upward, above the chip (its list is the started discussion's engine's).
+  await send("salut");
+  await agentSays("Bien reçu.");
+  // A short title shows whole: the mode chip gives way first.
+  expect(await waitAgent<boolean>("const t = doc.querySelector('[data-testid=\"chat-picker\"] .title'); return t.textContent === 'salut' && t.scrollWidth <= t.clientWidth")).toBe(true);
+  await click(m, '[data-testid="chat-model-chip"]', { frame: "agent" });
+  await waitAgent("return !!doc.querySelector('[data-testid=\"chat-model-sonnet\"]')");
+  expect(await waitAgent<boolean>("return doc.querySelector('[data-testid=\"chat-model-menu\"]').getBoundingClientRect().bottom <= doc.querySelector('[data-testid=\"chat-model-chip\"]').getBoundingClientRect().top")).toBe(true);
+  if (process.env.RESSAC_E2E_SHOTS) {
+    const png = (await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value;
+    writeFileSync(join(process.env.RESSAC_E2E_SHOTS, "chat-model-340.png"), Buffer.from(png, "base64"));
+  }
 });
 
 it("compte déconnecté : la carte de connexion", async () => {
