@@ -442,6 +442,24 @@ test("a pointed tab lapses on close, on a cut, on the agent's move to another si
   expect(p.pointed("s1", github)).toBe(false);
 });
 
+test("a point made late, from a tab that moved or closed since the @, never lands (no badge, no read back on its site)", () => {
+  // The message waited for its discussion; meanwhile the user went elsewhere in that tab.
+  p.tabNavigated(gmail.id, "https://evil.example/");
+  p.pointTab("s1", gmail);
+  expect(p.state()[gmail.id]).toBeUndefined();
+  p.tabNavigated(gmail.id, gmail.url);
+  expect(p.pointed("s1", gmail)).toBe(false);
+  // Closed before the point: no ghost.
+  p.tabClosed(github.id);
+  p.pointTab("s1", github);
+  expect(p.state()[github.id]).toBeUndefined();
+  // Still on the site it was pointed on: it lands.
+  p.tabNavigated(demo.id, demo.url + "page");
+  p.pointTab("s1", demo);
+  expect(p.pointed("s1", demo)).toBe(true);
+  expect(p.state()[demo.id]?.read).toBe(true);
+});
+
 test("a site app window is never pointed: it keeps its own grant", () => {
   const app: TabInfo = { id: "site:x", title: "App", url: "https://app.example/", space: "perso", site: "x" };
   p.pointTab("s1", app);

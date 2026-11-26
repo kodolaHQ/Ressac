@@ -87,6 +87,11 @@ export class AccessPolicy {
   private readonly pointedTabs = new Map<string, Map<string, string>>();
   /** tab id → number of « couper » of its whole access: a @ queued before one of them grants nothing. Kept until closed. */
   private readonly wholeCuts = new Map<string, number>();
+  /**
+   * tab id → its origin at its last reported navigation, null once closed: a @ point made from an older snapshot (a message
+   * queued while its discussion started) is dropped. shortcut: a closed tab's id stays here for the process's life (a few bytes each).
+   */
+  private readonly lastOrigin = new Map<string, string | null>();
   private readonly listeners = new Set<() => void>();
   private conversationNumber = 0;
   private readonly portBuilt: (port: number) => boolean;
@@ -268,6 +273,7 @@ export class AccessPolicy {
   /** The agent navigated a tab it had access to itself: access follows on the same site or to one of its apps. */
   navigationByAgent(id: string, url: string): void {
     const org = origin(url);
+    this.lastOrigin.set(id, org);
     this.leaveOrigin(id, org);
     if (org && this.qualify(url)) this.builtTabs.set(id, org);
     if (this.permissions.has(id)) {
@@ -288,6 +294,7 @@ export class AccessPolicy {
   /** Navigation done by the user: changing site removes the authorization. */
   tabNavigated(id: string, url: string): void {
     const org = origin(url);
+    this.lastOrigin.set(id, org);
     if (this.permissions.get(id) !== org) this.permissions.delete(id);
     if (this.captureCarriers.has(id) && this.captureCarriers.get(id) !== org) this.captureCarriers.delete(id);
     this.leaveOrigin(id, org);
@@ -299,6 +306,8 @@ export class AccessPolicy {
     const org = origin(o.url);
     // A site app reads only through its app's grant.
     if (!org || o.site !== undefined) return;
+    // The tab moved or closed since the host listed it.
+    if (this.lastOrigin.has(o.id) && this.lastOrigin.get(o.id) !== org) return;
     const tabs = this.pointedTabs.get(session) ?? new Map<string, string>();
     tabs.set(o.id, org);
     this.pointedTabs.set(session, tabs);
@@ -330,6 +339,7 @@ export class AccessPolicy {
   tabClosed(id: string): void {
     this.shared.delete(id);
     this.wholeCuts.delete(id);
+    this.lastOrigin.set(id, null);
     this.forget(id);
     this.change();
   }
