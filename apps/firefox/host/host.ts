@@ -1074,9 +1074,9 @@ const rpc = createRpc({
         setImmediate(() => writeStdout("", () => process.exit(0)));
       }
     },
-    // The user's keystrokes and pastes: what they type is theirs to send (outflow rules). Prefills never come through here.
-    "agent.write": (p: { window: string; data: string }) => {
-      kernel?.outflow.typed(p.window, p.data);
+    // The user's keystrokes and pastes: what they type is theirs to send, not what they paste (outflow rules). Prefills never come through here.
+    "agent.write": (p: { window: string; data: string; paste?: unknown }) => {
+      kernel?.outflow.typed(p.window, p.data, { pasted: p.paste === true });
       sessions.write(p.window, p.data);
     },
     "agent.resize": (p: { window: string; size: TerminalSize }) => sessions.resize(p.window, p.size),

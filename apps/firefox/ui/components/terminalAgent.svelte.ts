@@ -29,6 +29,16 @@ let asked = 0;
  * the host is kept until its answer, then written or shown in the bubble where the terminal is then.
  */
 let pastes = 0;
+/** True while `terminal.paste` runs: xterm sends a paste through `onData` synchronously, like a keystroke. */
+let pasting = false;
+function paste(text: string): void {
+  pasting = true;
+  try {
+    terminal?.paste(text);
+  } finally {
+    pasting = false;
+  }
+}
 export function dismissBubble(): void {
   asked++;
   bubble.current = null;
@@ -50,7 +60,7 @@ async function holdPaste(original: string): Promise<void> {
   if (n !== pastes || !terminal || !host) return;
   // A reveal still waiting must not cover the paste's bubble.
   asked++;
-  if (r && !r.names.length) return terminal.paste(original);
+  if (r && !r.names.length) return paste(original);
   // The host could not check it (r null): nothing goes until « Coller en clair ».
   bubble.current = { kind: "paste", host, names: r?.names ?? null, masked: r?.text ?? null, original };
 }
@@ -61,7 +71,7 @@ export function choosePaste(masked: boolean): void {
   dismissBubble();
   if (b?.kind !== "paste") return;
   const text = masked ? b.masked : b.original;
-  if (text !== null) terminal?.paste(text);
+  if (text !== null) paste(text);
 }
 
 /** The agent counts as answering while its output flows; this long a silence ends the answer. */
@@ -186,7 +196,7 @@ function create(hostName: HTMLElement): void {
   });
   terminal.open(element);
   adjustment.fit();
-  terminal.onData((d) => api.agent.write(d));
+  terminal.onData((d) => api.agent.write(d, pasting));
   dataEnd = api.agent.onData((d) => {
     terminal!.write(d);
     flowing();

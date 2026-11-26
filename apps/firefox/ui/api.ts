@@ -134,7 +134,7 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
           .then(() => host.request("agent.start", { window: windowId, size: size }))
           .catch((e) => failed(e instanceof Error ? e.message : String(e)));
       },
-      write: (d) => host.notify("agent.write", { window: windowId, data: d }),
+      write: (d, paste) => host.notify("agent.write", { window: windowId, data: d, ...(paste ? { paste: true } : {}) }),
       resize: (size) => host.notify("agent.resize", { window: windowId, size: size }),
       onData: (callback) => untilUnload(host.on("agent.data", (p) => p.window === windowId && callback(String(p.data)))),
       onState(callback) {

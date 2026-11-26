@@ -53,11 +53,53 @@ test("an e-mail not read is not a hit", () => {
   expect(new Outflow().check("w", "contact jean.dupont@example.org")).toBeUndefined();
 });
 
-test("typed paste whitelists re-spaced digits", () => {
+test("typed digits whitelist them re-spaced", () => {
   const o = new Outflow();
-  o.typed("w", `\x1b[200~${IBAN}\x1b[201~ cherche ma banque\r`);
+  o.typed("w", `${IBAN} cherche ma banque\r`);
   o.read("w", `IBAN ${SPACED_IBAN}`, "clients.boursobank.com");
   expect(o.check("w", `https://search.example/?q=${SPACED_IBAN}`)).toBeUndefined();
+});
+
+// A paste may come from anywhere (the agent's own output, a page): it goes to the message, not to the exemption.
+// « 4815B »: a bare 4-digit number is no item, a short identifier is.
+const CODE = "Code d'accès 4815B pour Camille Aubrac.";
+const pastedThenRead = (...chunks: (string | [string, { pasted: boolean }])[]) => {
+  const o = new Outflow();
+  o.read("w", CODE, "mail.example.fr");
+  for (const c of chunks) typeof c === "string" ? o.typed("w", c) : o.typed("w", ...c);
+  return o;
+};
+
+test("a bracketed paste is not exempt", () => {
+  expect(pastedThenRead("\x1b[200~code 4815B\x1b[201~\r").check("w", "code 4815B")).toMatchObject({ source: "mail.example.fr" });
+  // Not submitted yet: the message being composed is not exempt either.
+  expect(pastedThenRead("\x1b[200~code 4815B\x1b[201~").check("w", "code 4815B")).toMatchObject({ source: "mail.example.fr" });
+});
+
+test("a pasted write is not exempt", () => {
+  expect(pastedThenRead(["code 4815B", { pasted: true }], "\r").check("w", "code 4815B")).toMatchObject({ source: "mail.example.fr" });
+});
+
+test("a paste split across chunks is not exempt, its markers cut anywhere", () => {
+  expect(pastedThenRead("voir \x1b[2", "00~code 48", "15\x1b[20", "1~\r").check("w", "code 4815B")).toMatchObject({ source: "mail.example.fr" });
+  expect(pastedThenRead("\x1b[200~code 4815B", "\r\x1b[201~", "\r").check("w", "code 4815B")).toMatchObject({ source: "mail.example.fr" });
+});
+
+test("typed words around a paste stay exempt", () => {
+  const o = pastedThenRead("tarif \x1b[200~4815B\x1b[201~ hotel\r");
+  expect(o.check("w", "tarif")).toBeUndefined();
+  expect(o.typedWord("w", "tarif")).toBe(true);
+  expect(o.typedWord("w", "hotel")).toBe(true);
+  expect(o.typedWord("w", "4815b")).toBe(false);
+  expect(o.check("w", "code 4815B")).toMatchObject({ source: "mail.example.fr" });
+  // Typed characters on both sides of a paste do not join into one typed word.
+  const p = pastedThenRead("48\x1b[200~x\x1b[201~15B\r");
+  expect(p.check("w", "code 4815B")).toMatchObject({ source: "mail.example.fr" });
+});
+
+test("a typed value is still exempt", () => {
+  expect(pastedThenRead("code 4815B\r").check("w", "code 4815B")).toBeUndefined();
+  expect(pastedThenRead("\x1b[200~x\x1b[201~ code 4815B\r").check("w", "code 4815B")).toBeUndefined();
 });
 
 test("a typed secret is not a rule-1 hit", () => {
@@ -95,13 +137,14 @@ const typedThenRead = (...chunks: string[]) => {
 
 test("typed escapes, paste returns, backspace and clear keys", () => {
   expect(typedThenRead("\x1b]0;title\x07\x1bOAcamille.rx\x7foussel@exa\x1b[1;5Dmple.com\r")).toBeUndefined();
-  expect(typedThenRead("\x1b[200~ligne 1\r" + MAIL + "\x1b[201~\r")).toBeUndefined();
+  // A return inside a paste does not send what was typed before it.
+  expect(typedThenRead(MAIL + "\x1b[200~ligne 1\rligne 2\x1b[201~\x15neuf\r")).toMatchObject({ kind: "email" });
   // Cleared before it was sent: not the user's.
   expect(typedThenRead("\x15" + MAIL + "\x03neuf\r")).toMatchObject({ kind: "email" });
 });
 
 test("an escape split across chunks is still stripped", () => {
-  expect(typedThenRead("camille.rous\x1b", "[20", "0~sel@example.com\x1b[201~\r")).toBeUndefined();
+  expect(typedThenRead("camille.rous\x1b", "[1;5", "Dsel@example.com\r")).toBeUndefined();
 });
 
 test("forget clears read and typed for that window only", () => {

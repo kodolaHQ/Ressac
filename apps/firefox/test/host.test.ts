@@ -355,7 +355,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     await until(() => h.data().includes("bonjour"));
   });
 
-  it("outflow: keystrokes and the ⌘T question count as typed, prefills do not, closing the window forgets", async () => {
+  it("outflow: keystrokes and the ⌘T question count as typed, pastes and prefills do not, closing the window forgets", async () => {
     const h = startHost();
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     const check = (window: string, text: string) => h.rpc.request("debug.outflowCheck", { window, text });
@@ -364,7 +364,10 @@ describe("agent host", { timeout: 30_000 }, () => {
     // Prefill is not typed: the tab title in the context prefix stays a secret the user never wrote.
     h.rpc.notify("agent.panelOpened", { window: "f1", tab: { id: "t1", title: iban, url: "https://un.test/", space: "Perso" } });
     expect(await check("f1", iban)).toMatchObject({ kind: "iban" });
-    h.rpc.notify("agent.write", { window: "f1", data: `${iban}\r` });
+    // A paste is not typed: the value stays held.
+    h.rpc.notify("agent.write", { window: "f1", data: `${iban}\r`, paste: true });
+    expect(await check("f1", iban)).toMatchObject({ kind: "iban" });
+    h.rpc.notify("agent.write", { window: "f1", data: `\x15${iban}\r` });
     expect(await check("f1", iban)).toBeNull();
     // ⌘T before the window's agent runs (its usual case): the question is typed once written into the new conversation,
     // as written: masked, its key went as a label, so the key itself was never typed; the page titles shown with it are not typed.

@@ -60,7 +60,10 @@ interface Win {
   typedText: string;
   /** Submitted messages as words (lowercased, single spaces), newest last: a series part is exempt only as whole words. */
   typedWords: string;
+  /** The message being composed, pasted text included. */
   buffer: string;
+  /** Per character of `buffer`: "t" typed by the user, "p" pasted (not theirs: a paste may come from anywhere). */
+  origin: string;
   paste: boolean;
   /** Start of an escape sequence cut at the end of the previous chunk. */
   carry: string;
@@ -163,6 +166,8 @@ function sameAddress(raw: string): string | undefined {
 
 /** Lowercase letters and digits only (plus `@`, which splits an e-mail): any separator can re-space a number. */
 const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}@]/gu, "");
+/** `norm` per line: typed text on both sides of a paste (or of a line break) never joins into one value. */
+const normLines = (s: string) => s.split("\n").map(norm).join("\n");
 /** Like `norm` but keeps `/`, to tell a match inside a path segment from one glued across segments. */
 const softNorm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}@/]/gu, "");
 
@@ -250,6 +255,7 @@ export class Outflow {
         typedText: "",
         typedWords: "",
         buffer: "",
+        origin: "",
         paste: false,
         carry: "",
         privateRead: false,
@@ -371,8 +377,13 @@ export class Outflow {
     else w.shortLengths.delete(n);
   }
 
-  typed(win: string, data: string): void {
+  /** `pasted`: the whole of `data` is a paste (as text inside `\x1b[200~`…`\x1b[201~` is). */
+  typed(win: string, data: string, o?: { pasted?: boolean }): void {
     const w = this.win(win);
+    const add = (c: string) => {
+      w.buffer += c;
+      w.origin += w.paste || o?.pasted ? "p" : "t";
+    };
     const s = w.carry + data;
     w.carry = "";
     for (let i = 0; i < s.length; ) {
@@ -391,20 +402,33 @@ export class Outflow {
         continue;
       }
       i++;
-      if (c === "\r" && !w.paste) this.submit(w);
-      else if (c === "\r" || c === "\n") w.buffer += "\n";
-      else if (c === "\x7f" || c === "\b") w.buffer = w.buffer.replace(/[\s\S]$/u, "");
-      else if (c === "\x03" || c === "\x15") w.buffer = "";
-      else if (c >= " " || c === "\t") w.buffer += c;
+      if (c === "\r" && !w.paste && !o?.pasted) this.submit(w);
+      else if (c === "\r" || c === "\n") add("\n");
+      else if (c === "\x7f" || c === "\b") {
+        const n = /[\s\S]$/u.exec(w.buffer)?.[0].length ?? 0;
+        w.buffer = w.buffer.slice(0, w.buffer.length - n);
+        w.origin = w.origin.slice(0, w.origin.length - n);
+      } else if (c === "\x03" || c === "\x15") w.buffer = w.origin = "";
+      else if (c >= " " || c === "\t") add(c);
     }
     w.buffer = w.buffer.slice(-TYPED_MAX);
+    w.origin = w.origin.slice(-TYPED_MAX);
+  }
+
+  /** What the user typed of the message being composed, each pasted run replaced by "\n" (never joins typed text). */
+  private own(w: Win): string {
+    let out = "";
+    for (let i = 0; i < w.buffer.length; i++)
+      if (w.origin[i] === "t") out += w.buffer[i];
+      else if (i === 0 || w.origin[i - 1] === "t") out += "\n";
+    return out;
   }
 
   private submit(w: Win): void {
-    const message = w.buffer.trim();
-    w.buffer = "";
+    const message = this.own(w).trim();
+    w.buffer = w.origin = "";
     if (!message) return;
-    w.typedText = (w.typedText + "\n" + norm(message)).slice(-TYPED_MAX);
+    w.typedText = (w.typedText + "\n" + normLines(message)).slice(-TYPED_MAX);
     // Messages apart by " \n ": an exemption never spans two messages (« chambre 3 », « 8 personnes »).
     w.typedWords = (w.typedWords + " \n " + words(message)).slice(-TYPED_MAX);
     for (const item of extract(message)) {
@@ -424,7 +448,7 @@ export class Outflow {
   check(win: string, out: string, address = false, except?: { tab: string; origin: string | null }): OutflowHit | undefined {
     const w = this.wins.get(win);
     const foreign = (item: Item) => !except?.origin || ![...item.from].some((k) => k.split("\n")[1] === except.origin);
-    const typedNow = w ? w.typedText + "\n" + norm(w.buffer) : "";
+    const typedNow = w ? w.typedText + "\n" + normLines(this.own(w)) : "";
     const typed = (n: string) => !!w && (w.typedItems.has(n) || typedNow.includes(n));
 
     for (const s of findSecrets(out)) {
@@ -487,7 +511,7 @@ export class Outflow {
     let suf = Infinity;
     const members: string[][] = [];
     // Whole words only: with spaces dropped, « 38 ans » would exempt the part « 3 8 ».
-    const typedWords = ` ${w.typedWords} \n ${words(w.buffer)} `;
+    const typedWords = ` ${w.typedWords} \n ${words(this.own(w))} `;
     for (const q of w.sent) {
       const other = q.split(" ");
       const [p, x] = frame(terms, other);
@@ -613,7 +637,7 @@ export class Outflow {
   /** `word` (lower case, accents dropped) is a whole word of what the user typed in `win`'s conversation. */
   typedWord(win: string, word: string): boolean {
     const w = this.wins.get(win);
-    return !!w && ` ${w.typedWords} \n ${words(w.buffer)} `.normalize("NFD").replace(/\p{M}/gu, "").includes(` ${word} `);
+    return !!w && ` ${w.typedWords} \n ${words(this.own(w))} `.normalize("NFD").replace(/\p{M}/gu, "").includes(` ${word} `);
   }
 
   /**
@@ -652,7 +676,7 @@ export class Outflow {
     const w = this.wins.get(win);
     if (!w) return;
     w.typedItems.clear();
-    w.typedText = w.typedWords = w.buffer = w.carry = "";
+    w.typedText = w.typedWords = w.buffer = w.origin = w.carry = "";
     w.paste = false;
     w.sent = [];
     w.clicks.clear();
