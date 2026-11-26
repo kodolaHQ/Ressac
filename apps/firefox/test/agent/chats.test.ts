@@ -394,3 +394,18 @@ test("a notice joins the transcript, is pushed and written", async () => {
   expect(chats.active("w1")!.items.at(-1)).toMatchObject({ kind: "notice", text: "Échanges faits dans le terminal" });
   expect(onDisk(a.summary.id).items.at(-1)).toMatchObject({ kind: "notice" });
 });
+
+test("pause resolves only once the engine conversation has closed (« Mode avancé » starts its terminal after it)", async () => {
+  const { chats, opens } = prepare();
+  const a = await chats.create("w1", opts);
+  await tick();
+  let closed!: () => void;
+  opens[0]!.conv.close = () => new Promise<void>((r) => (closed = r));
+  let paused = false;
+  const pausing = chats.pause(a.summary.id).then(() => (paused = true));
+  await tick();
+  expect(paused).toBe(false);
+  closed();
+  await pausing;
+  expect(paused).toBe(true);
+});

@@ -42,6 +42,7 @@ const { claudeEngine: claudeChat } = await import("../core/agent/chat/claude.ts"
 const { codexEngine: codexChat } = await import("../core/agent/chat/codex.ts");
 const { cleanDraft, createChatSend, DRAFT_MAX } = await import("./chat-send.ts");
 const { createLoginTerminals } = await import("./chat-login.ts");
+const { chatToTerminal } = await import("./chat-terminal.ts");
 const { LABEL_SOURCE } = await import("../../../packages/kernel/src/mask/table.ts");
 const { labInUse } = await import("./tiers.ts");
 const { History } = await import("../core/history.ts");
@@ -1540,16 +1541,16 @@ const rpc = createRpc({
     // « Mode avancé »: the discussion pauses, the window's terminal resumes its conversation (Claude by id, Codex its latest).
     "chat.toTerminal": aiOnly(async (p: { window?: unknown }) => {
       if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
-      terminalWindows.add(p.window);
-      // A sign-in still running would take the terminal's keys (agent.write goes to it first).
-      await logins.stop(p.window);
-      const chat = activeChat(p.window);
-      if (!chat) return;
-      // Before the pause: its view (advanced) makes the panel attach and start the terminal, which must find the resume set.
-      const id = chats.resumeIdOf(chat.id);
-      if (id) sessions.resumeNext(p.window, chat.profile, id);
-      else void sessions.switchProfile(p.window, chat.profile);
-      await chats.pause(chat.id);
+      await chatToTerminal(p.window, {
+        stopLogin: (w) => logins.stop(w),
+        active: activeChat,
+        pause: (id) => chats.pause(id),
+        resumeIdOf: (id) => chats.resumeIdOf(id),
+        resumeNext: (w, profile, id) => sessions.resumeNext(w, profile, id),
+        switchProfile: (w, profile) => sessions.switchProfile(w, profile),
+        terminal: terminalWindows,
+        repush: repushChat,
+      });
     }),
     "chat.toChat": aiOnly(async (p: { window?: unknown }) => {
       if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));

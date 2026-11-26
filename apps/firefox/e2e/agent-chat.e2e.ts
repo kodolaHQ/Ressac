@@ -1,4 +1,5 @@
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -16,9 +17,13 @@ const EMAIL = "camille.aubrac@example.org";
 
 let w: LaunchedRessac | undefined;
 let m: Marionette;
+/** A profile folder a test made itself: launchRessac keeps folders passed in. */
+let ownProfile: string | undefined;
 afterEach(async () => {
   await w?.close();
   w = undefined;
+  if (ownProfile) await rm(ownProfile, { recursive: true, force: true });
+  ownProfile = undefined;
 });
 
 const root = () => join(w!.dataDir, "workspace");
@@ -68,7 +73,7 @@ it("une réponse s'affiche en direct puis la discussion se termine", async () =>
 });
 
 it("une adresse du passeport tapée part masquée", async () => {
-  const profile = mkdtempSync(join(tmpdir(), "ressac-firefox-"));
+  const profile = (ownProfile = mkdtempSync(join(tmpdir(), "ressac-firefox-")));
   await writePassport(profile, [{ id: "e", field: "email", value: { text: EMAIL }, origins: [] }]);
   await launch({ writer: "claude", profile, env: { RESSAC_TEST_PASSPORT_CIPHER: "memory" } });
   await type(`écris à ${EMAIL}`);
@@ -148,6 +153,10 @@ it("Mode avancé ouvre le terminal sur la même conversation", async () => {
     .toEqual(expect.arrayContaining(["claude", "--resume", uuid]));
   const resumed = JSON.parse(readFileSync(args, "utf8")) as string[];
   expect(resumed[resumed.indexOf("--resume") + 1]).toBe(uuid);
+  // A TTY exec (`docker exec -it`), not a chat pipe (`-i`).
+  const execs = readFileSync(join(root(), "fake-docker-all.log"), "utf8").split("\n").filter((l) => l.includes(` --resume ${uuid}`));
+  expect(execs.length).toBeGreaterThan(0);
+  expect(execs.every((l) => l.startsWith("exec -it "))).toBe(true);
   await waitAgent("return doc.querySelector('.xterm-rows')?.textContent.includes('ready>')");
   await click(m, '[data-testid="chat-back"]', { frame: "agent" });
   // The discussion resumes its own conversation by id.
