@@ -1,4 +1,5 @@
 import type { ShownSite } from "../shared/sites";
+import type { ChatView } from "../shared/chat";
 import type { ChangedFile, DiffFile, QuarantinedFile, Action, ApiRessac, LocalAiStateShown, AgentPanelState, ApplicationList, MaskingStatus, ShownWidget } from "../shared/api";
 import type { HomeTheme } from "../../../packages/kernel/src/home/theme.ts";
 import type { FreePlacement } from "../../../packages/kernel/src/home/schemas.ts";
@@ -107,6 +108,7 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
   const ask = <T>(method: string, params: unknown, fallback: T): Promise<T> => host.request<T>(method, params).then((r) => structuredClone(r), () => fallback);
   /** An action's builder in a window whose active space is private (or unknown), read at the moment of asking. */
   const privateAction = (target: { type: string }) => target.type === "action" && (!win.store.state || activeSpacePrivate(win.store.state, windowId));
+  const activeSpace = () => win.store.state?.windows.find((f) => f.id === windowId)?.activeSpace ?? null;
   const switchAgent = (profile: string): Promise<void> => {
     win.store.dispatch({ type: "chooseAgentProfile", profile });
     return host.request("agent.switch", { window: windowId, profile }).then(() => {}, (e) => console.error("[agent] switch failed:", e));
@@ -185,6 +187,31 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
         restore: (id) => host.request("masking.quarantine.restore", { id: String(id) }).then(() => ({ ok: true as const }), (e) => ({ ok: false as const, error: errorText(e) })),
       },
     },
+    // The window's chat discussions, in the kernel host; routed by window like the terminal. The space is this window's active one.
+    chat: {
+      list: () => ask("chat.list", { window: windowId, space: activeSpace() }, []),
+      open: (chatId) => host.ensure().then(() => host.request<ChatView>("chat.open", { window: windowId, space: activeSpace(), ...(chatId ? { chatId: String(chatId) } : {}) })).then((v) => structuredClone(v)),
+      create: (c) => host.ensure().then(() => host.request<ChatView>("chat.create", { window: windowId, space: activeSpace(), ...(c?.profile ? { profile: String(c.profile) } : {}), ...(c?.mode ? { mode: c.mode } : {}) })).then((v) => structuredClone(v)),
+      send: (draft) =>
+        host.request<{ ok: true } | { ok: false; error: string }>("chat.send", { window: windowId, draft: structuredClone(draft) }).then(
+          (r) => structuredClone(r),
+          (e) => ({ ok: false as const, error: errorText(e) }),
+        ),
+      preview: (text) =>
+        host.request<{ text?: unknown; names?: unknown } | null>("chat.preview", { window: windowId, text: String(text) }).then(
+          (r) => (r && typeof r.text === "string" && Array.isArray(r.names) ? { text: r.text, names: r.names.map(String) } : null),
+          () => null,
+        ),
+      cancel: () => host.notify("chat.cancel", { window: windowId }),
+      answer: (requestId, reply) => host.notify("chat.answer", { window: windowId, requestId: String(requestId), reply: structuredClone(reply) }),
+      retry: () => host.notify("chat.retry", { window: windowId }),
+      review: (id, choice) => host.notify("chat.review", { window: windowId, id, choice }),
+      reveal: (label) => host.request<unknown>("chat.reveal", { window: windowId, label: String(label) }).then((v) => (typeof v === "string" ? v : null), () => null),
+      toTerminal: () => host.request("chat.toTerminal", { window: windowId }).then(() => {}, (e) => console.error("[chat] to terminal failed:", e)),
+      toChat: () => host.request("chat.toChat", { window: windowId }).then(() => {}, (e) => console.error("[chat] back to chat failed:", e)),
+      login: () => host.request("chat.login", { window: windowId }).then(() => {}, (e) => failed(errorText(e))),
+    },
+    onChat: (callback) => untilUnload(host.on("chat.view", (p) => p.window === windowId && callback(structuredClone(p.view)))),
     tabCycle: (m) => win.tabSwitch(m),
     navigate: (id, input) => win.navigate(id, input),
     // shortcut: zoom, find in page and devtools are out of step 2 and do nothing.

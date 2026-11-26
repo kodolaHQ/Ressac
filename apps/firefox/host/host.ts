@@ -1,4 +1,6 @@
-import type { Kernel, TabInfo } from "../../../packages/kernel/src/index.ts";
+import type { BuildProgress, InstructionChange, Kernel, LaunchSpec, TabInfo } from "../../../packages/kernel/src/index.ts";
+import type { OpenOptions } from "../core/agent/chats.ts";
+import type { AskReply, ChatView } from "../shared/chat.ts";
 import type { FrameBounds } from "../shared/model.ts";
 import type { ClaudeEngine, CodexEngine, DockerStatus } from "../shared/settings.ts";
 import type { BuilderSelection, TerminalSize } from "../shared/api.ts";
@@ -34,6 +36,13 @@ const { rm, stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
 const { passportReady, ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE, WorkspaceLock, tweaksPaused, isTier3Widget } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
+const { Chats, SignedOutError } = await import("../core/agent/chats.ts");
+const { ChatStore } = await import("../core/agent/chat-store.ts");
+const { claudeEngine: claudeChat } = await import("../core/agent/chat/claude.ts");
+const { codexEngine: codexChat } = await import("../core/agent/chat/codex.ts");
+const { cleanDraft, createChatSend, DRAFT_MAX } = await import("./chat-send.ts");
+const { createLoginTerminals } = await import("./chat-login.ts");
+const { LABEL_SOURCE } = await import("../../../packages/kernel/src/mask/table.ts");
 const { labInUse } = await import("./tiers.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -44,7 +53,7 @@ const { copyComponentRequest, copyHomeRequest } = await import("./home-copy.ts")
 const { createAsk } = await import("./ask.ts");
 const { createPageIndexer, llamaEmbed } = await import("./page-indexer.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
-const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
+const { AGENT_ACCOUNTS, createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createHostWriter, createWriterChoice } = await import("./writer.ts");
 const { createAgentCli, NAMES: AGENT_NAMES, profileCli } = await import("./agent-cli.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
@@ -426,7 +435,8 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     // The sweep before a first session kills every process of the agent's user: a sign-in by code in progress ends first
     // (the session waits for it, 2 min at most), then the apps stop cleanly (« arrêtée »).
     // shortcut: a sign-in started in the few ms between its end and the sweep is still killed; serialize them if it shows.
-    aroundSweep: (sweep) => settings.loginEnded().then(() => apps.whileStopped(sweep)),
+    // The chat's login terminals too: they run as the agent's user (chat-login.ts).
+    aroundSweep: (sweep) => Promise.all([settings.loginEnded(), logins.settled()]).then(() => apps.whileStopped(sweep)),
     openWorkflow: (f) => workflowOpen(actives.get(f), selections.get(f)),
     // Widgets and actions wrote something, or a grant changed: the page reads again.
     onChange: () => rpc.notify("home.change"),
@@ -531,7 +541,7 @@ const stop = () =>
     );
     indexer?.stop();
     settings.stopLogins();
-    await sessions.stopAll();
+    await Promise.all([sessions.stopAll(), chats.stopAll(), logins.stopAll()]);
     await relay.stop();
     await sites.stop();
     await design.stop();
@@ -588,7 +598,7 @@ const applyAi = async () => {
   // The kernel first: its widget scheduler must not start a harvest while the sessions and apps stop. Its stop only
   // drops the sessions' MCP tokens (idempotent with their own end); the sessions themselves stop below.
   ready = ready.then(async (n) => (await stopKernel(n), null));
-  await sessions.stopAll();
+  await Promise.all([sessions.stopAll(), chats.stopAll(), logins.stopAll()]);
   await apps.stop().catch((e) => console.error("[ressac] the apps did not stop:", e));
   await ready;
 };
@@ -605,7 +615,8 @@ const applyMode = () => {
     // After the relaunch (its start already recreated the container): with no session, the old shape (Atelier's writable
     // folders) must not keep running. removeOutdated keeps it under the lock.
     const outdated = () => workshop.removeOutdated().catch((e) => console.error("[ressac] the outdated workshop was not removed:", e));
-    return aiOn ? sessions.relaunchActive().finally(outdated) : outdated();
+    // The discussions resting in the old container pause (a running turn ends with it and shows « Réessayer »).
+    return aiOn ? Promise.all([sessions.relaunchActive(), chats.pauseIdle()]).finally(outdated) : outdated();
   }
   sessions.engineChanged("claude");
   sessions.engineChanged("codex");
@@ -634,6 +645,57 @@ const applyLab = async () => {
   ]);
 };
 
+/**
+ * What every agent start needs first, terminal or chat: AI on, the passports, the kernel, the machine awake, the profile's
+ * CLI downloaded (its progress through `onBuildProgress`).
+ */
+async function readyToStart(profile: string, onBuildProgress?: (p: BuildProgress) => void): Promise<Kernel> {
+  if (!aiOn) throw new Error("ai-off");
+  await aiSwitch;
+  // Ressac's own texts to the session (prefills, the ⌘T question) are masked as they are written, once it runs: with
+  // the passports, never before them (design § 5.2). At the cap: as without a kernel.
+  if (!(await passportReady(passport))) throw new Error(hostSay("host-kernel-not-started"));
+  const n = await ready;
+  if (!n) throw new Error(error ?? hostSay("host-kernel-not-started"));
+  // AI turned off while waiting: no further docker command.
+  if (!aiOn) throw new Error("ai-off");
+  // The machine or a container app Ressac is starting (or can start): the panel stays on « Préparation » until it answers.
+  await engines.current().wake("user").catch(() => {});
+  if (!aiOn) throw new Error("ai-off");
+  // A custom profile runs a pinned CLI too (by its command): the image carries none. A profile gone: the kernel says so.
+  const needs = await cliOfProfile(profile);
+  if (needs) {
+    // The kernel refuses this anyway: before a download nobody can use yet.
+    if (workspaceLock.locked() && (await workshop.shapeChanged())) throw new Error(hostSay("kernel-err-shape-locked"));
+    const since = Date.now();
+    const agent = AGENT_NAMES[needs];
+    const label = (p: number | null) => (p === null ? hostSay("host-cli-downloading-size", { agent }) : hostSay("host-cli-downloading", { agent, percent: p }));
+    await cli.ensure(needs, (p) => onBuildProgress?.({ step: 1, of: 1, label: label(p), since }));
+    if (!aiOn) throw new Error("ai-off");
+  }
+  return n;
+}
+
+/** The engine relay's env and args for a shipped profile (Réglages › Agent), and its token: the caller closes it when the session ends. */
+async function engineRelay(profile: "claude" | "codex"): Promise<{ extra: { args: string[]; env: Record<string, string> }; token: string | null }> {
+  const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
+  const claude = profile === "claude";
+  // Ollama is relayed without a key: the agent reaches inference paths only, never /api/pull. Codex's target ends in /v1.
+  const token =
+    e.kind === "api" && (await keys[profile].has())
+      ? relay.openSession(claude ? withoutV1(e.apiUrl) : e.apiUrl, profile)
+      : e.kind === "ollama" && e.ollamaUrl
+        ? relay.openSession(ollamaRelayTarget(e.ollamaUrl, profile), `${profile}-ollama`)
+        : null;
+  try {
+    const relayed = token ? { url: relay.containerUrl, token } : null;
+    return { extra: claude ? claudeEngineEnv(e as ClaudeEngine, relayed) : codexEngineArgs(e as CodexEngine, relayed), token };
+  } catch (err) {
+    if (token) relay.closeSession(token);
+    throw err;
+  }
+}
+
 /** Ressac's own text for a window's agent, as it goes to it: masked with its session's table (nothing to mask without a kernel). */
 const maskForAgent = (win: string, text: string) => kernel?.masker.maskTyped(win, text).text ?? text;
 const sessions = new SessionsAgent({
@@ -642,43 +704,11 @@ const sessions = new SessionsAgent({
   // The mode counts as part of the engine: a change offers « Relancer » in the other windows' panels.
   engineOf: (p) => (p === "claude" ? JSON.stringify([claudeEngine, agentMode]) : p === "codex" ? JSON.stringify([engine, agentMode]) : ""),
   async open(f, t, { profile, resume, conversation, onBuildProgress, review }) {
-    if (!aiOn) throw new Error("ai-off");
-    await aiSwitch;
-    // Ressac's own texts to the session (prefills, the ⌘T question) are masked as they are written, once it runs: with
-    // the passports, never before them (design § 5.2). At the cap: as without a kernel.
-    if (!(await passportReady(passport))) throw new Error(hostSay("host-kernel-not-started"));
-    const n = await ready;
-    if (!n) throw new Error(error ?? hostSay("host-kernel-not-started"));
-    // AI turned off while waiting: no further docker command.
-    if (!aiOn) throw new Error("ai-off");
-    // The machine or a container app Ressac is starting (or can start): the panel stays on « Préparation » until it answers.
-    await engines.current().wake("user").catch(() => {});
-    if (!aiOn) throw new Error("ai-off");
-    // A custom profile runs a pinned CLI too (by its command): the image carries none. A profile gone: the kernel says so.
-    const needs = await cliOfProfile(profile);
-    if (needs) {
-      // The kernel refuses this anyway: before a download nobody can use yet.
-      if (workspaceLock.locked() && (await workshop.shapeChanged())) throw new Error(hostSay("kernel-err-shape-locked"));
-      const since = Date.now();
-      const agent = AGENT_NAMES[needs];
-      const label = (p: number | null) => (p === null ? hostSay("host-cli-downloading-size", { agent }) : hostSay("host-cli-downloading", { agent, percent: p }));
-      await cli.ensure(needs, (p) => onBuildProgress?.({ step: 1, of: 1, label: label(p), since }));
-      if (!aiOn) throw new Error("ai-off");
-    }
+    const n = await readyToStart(profile, onBuildProgress);
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, mode: agentMode, onBuildProgress, review });
-    const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
-    const claude = profile === "claude";
-    // Ollama is relayed without a key: the agent reaches inference paths only, never /api/pull. Codex's target ends in /v1.
-    const token =
-      e.kind === "api" && (await keys[profile].has())
-        ? relay.openSession(claude ? withoutV1(e.apiUrl) : e.apiUrl, profile)
-        : e.kind === "ollama" && e.ollamaUrl
-          ? relay.openSession(ollamaRelayTarget(e.ollamaUrl, profile), `${profile}-ollama`)
-          : null;
+    const { extra, token } = await engineRelay(profile);
     try {
-      const relayed = token ? { url: relay.containerUrl, token } : null;
-      const extra = profile === "claude" ? claudeEngineEnv(e as ClaudeEngine, relayed) : codexEngineArgs(e as CodexEngine, relayed);
-      const session = await n.openAgentSession({ ...t, window: f, profile, resume, ...(claude ? { conversation } : {}), extra, mode: agentMode, onBuildProgress, review });
+      const session = await n.openAgentSession({ ...t, window: f, profile, resume, ...(profile === "claude" ? { conversation } : {}), extra, mode: agentMode, onBuildProgress, review });
       if (token) session.onEnd(() => relay.closeSession(token));
       return session;
     } catch (err) {
@@ -696,11 +726,190 @@ const sessions = new SessionsAgent({
   send: (win, channel, v) => rpc.notify(channel === "data" ? "agent.data" : "agent.state", channel === "data" ? { window: win, data: v } : { window: win, state: v }),
 });
 
+// The chat (spec §4-§7): discussions over pipe sessions, the terminal above stays for « Mode avancé » and custom profiles.
+const CHAT_CUSTOM_PROFILE = "Ce profil s'utilise dans le terminal (Mode avancé).";
+const CHAT_WINDOW_CLOSED = "La fenêtre de cette discussion est fermée.";
+const CHAT_LABEL = new RegExp(`^${LABEL_SOURCE}$`);
+/** Réglages › Agent « Affichage de l'agent », told by the chrome. */
+let agentView: "chat" | "terminal" = "chat";
+/** Windows whose panel shows the terminal for now (« Mode avancé ») whatever the setting. */
+const terminalWindows = new Set<string>();
+/** A custom profile stays in the terminal: the chat speaks the shipped CLIs only. */
+const viewOf = (win: string) => {
+  const profile = sessions.profileOf(win);
+  return agentView === "terminal" || terminalWindows.has(win) || (profile !== "claude" && profile !== "codex") ? "terminal" : "chat";
+};
+/** Each window's active space, as its UI last said: where a discussion made for it belongs. */
+const windowSpaces = new Map<string, string>();
+/** Page titles the agent saw (list_tabs), for its read_tab lines. */
+const tabTitles = new Map<string, string>();
+const rememberTabs = (l: readonly TabInfo[]) => {
+  for (const t of l) tabTitles.set(t.id, t.title);
+  if (tabTitles.size > 500) for (const k of [...tabTitles.keys()].slice(0, tabTitles.size - 500)) tabTitles.delete(k);
+};
+/** An engine start in flight: aborted, with its review card, when its discussion pauses or fails meanwhile. */
+type ChatOpen = { abort: AbortController; review?: { id: number; resolve: (c: "keep" | "revert") => void; reject: (e: Error) => void } };
+const chatOpens = new Map<string, ChatOpen>();
+const chatPrep = new Map<string, NonNullable<ChatView["preparing"]>>();
+/** The last view each discussion pushed, to push it again with its preparing state. */
+const chatViews = new Map<string, { win: string; view: ChatView }>();
+let chatReviews = 0;
+/** Accounts seen signed in by their status command: the next opens skip the check (a later sign-out shows at its turn). */
+const signedIn = new Set<"claude" | "codex">();
+const chatStore = new ChatStore(join(dataDir, "chats"));
+void chatStore.sweep(Date.now()).catch((e) => console.error("[ressac] old discussions not removed:", e));
+
+const pushChat = (win: string, view: ChatView) => {
+  const id = view.summary.id;
+  chatViews.set(id, { win, view });
+  const preparing = chatPrep.get(id);
+  const waiting = chatSend.waiting(id);
+  rpc.notify("chat.view", { window: win, view: { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}) } });
+};
+const repushChat = (id: string) => {
+  const v = chatViews.get(id);
+  if (v) pushChat(v.win, v.view);
+};
+const abortChatOpen = (id: string) => {
+  const o = chatOpens.get(id);
+  o?.abort.abort();
+  o?.review?.reject(new Error("closed"));
+};
+
+/** The account's status command in the workshop (Réglages' check); unreadable counts as signed in: the engine's own error shows then. */
+async function accountSignedIn(agent: "claude" | "codex"): Promise<boolean> {
+  const e = engineOf(agent);
+  if (e.kind !== (agent === "claude" ? "subscription" : "chatgpt") || signedIn.has(agent)) return true;
+  const a = AGENT_ACCOUNTS.find((x) => x.id === agent)!;
+  try {
+    const s = a.parse(await workshop.exec(a.status));
+    if (s.loggedIn) signedIn.add(agent);
+    return s.loggedIn;
+  } catch {
+    return true;
+  }
+}
+
+/** Chats' open: the kernel's pipe session, then the engine on it. Any failure once the session exists stops it (its slot blocks a lift). */
+async function openChat(o: OpenOptions) {
+  if (o.profile !== "claude" && o.profile !== "codex") throw new Error(CHAT_CUSTOM_PROFILE);
+  if (o.windowId === null) throw new Error(CHAT_WINDOW_CLOSED);
+  const slot: ChatOpen = { abort: new AbortController() };
+  const signal = slot.abort.signal;
+  chatOpens.set(o.chatId, slot);
+  const onBuildProgress = (p: BuildProgress) => {
+    if (slot.review) return;
+    chatPrep.set(o.chatId, { state: "preparing", ...p });
+    repushChat(o.chatId);
+  };
+  const review = (files: InstructionChange[]) =>
+    new Promise<"keep" | "revert">((resolve, reject) => {
+      if (signal.aborted) return reject(new Error("closed"));
+      const id = ++chatReviews;
+      slot.review = { id, resolve, reject };
+      chatPrep.set(o.chatId, { state: "review", id, files });
+      repushChat(o.chatId);
+    });
+  try {
+    const n = await readyToStart(o.profile, onBuildProgress);
+    if (signal.aborted) throw new Error("closed");
+    const { extra, token } = await engineRelay(o.profile);
+    let launch: LaunchSpec;
+    try {
+      launch = await n.openAgentSession({
+        transport: "pipe",
+        window: o.windowId,
+        profile: o.profile,
+        mode: o.mode,
+        resume: o.resumeId !== undefined,
+        // Claude by uuid: the covered set and the terminal's resume keep working by id. Codex resumes by thread id in the adapter.
+        ...(o.profile === "claude" ? { conversation: o.resumeId ?? o.sessionId } : {}),
+        extra,
+        onBuildProgress,
+        review,
+      });
+    } catch (err) {
+      if (token) relay.closeSession(token);
+      throw err;
+    }
+    try {
+      if (signal.aborted) throw new Error("closed");
+      if (!(await accountSignedIn(o.engine))) throw new SignedOutError();
+      const conversation = await (o.engine === "claude" ? claudeChat : codexChat).open({
+        chatId: o.chatId,
+        ...(o.resumeId ? { resumeId: o.resumeId } : {}),
+        ...(o.sessionId ? { sessionId: o.sessionId } : {}),
+        launch,
+        signal,
+        tabTitle: (id) => (typeof id === "string" ? tabTitles.get(id) : undefined),
+      });
+      if (token) conversation.onEnd(() => relay.closeSession(token));
+      return { conversation, launch };
+    } catch (err) {
+      await launch.stop();
+      if (token) relay.closeSession(token);
+      throw err;
+    }
+  } finally {
+    if (chatOpens.get(o.chatId) === slot) chatOpens.delete(o.chatId);
+    chatPrep.delete(o.chatId);
+    repushChat(o.chatId);
+  }
+}
+
+const chats = new Chats({
+  store: chatStore,
+  open: openChat,
+  notify: (win, view) => {
+    // Pushed before the flush: a prompt it sends pushes a newer view, which must arrive last.
+    pushChat(win, view);
+    const s = view.summary.state;
+    if (s === "paused" || s === "error" || s === "signed-out") abortChatOpen(view.summary.id);
+    chatSend.flush(view.summary.id);
+  },
+});
+
+/** Talking from a window gives its tab on screen to the agent, as the terminal's Enter does. */
+const giveActiveTab = (win: string) => {
+  rpc.request<TabInfo | null>("activeTab", [win]).then(
+    (t) => t && kernel?.policy.userInteraction(t),
+    () => {},
+  );
+};
+
+const chatSend = createChatSend({
+  chats,
+  masker: () => kernel?.masker ?? null,
+  outflow: () => kernel?.outflow ?? null,
+  interacted: giveActiveTab,
+  create: (win) => createChat(win, {}),
+});
+
+async function createChat(win: string, c: { profile?: unknown; mode?: unknown; space?: unknown }): Promise<ChatView> {
+  const profile = typeof c.profile === "string" ? c.profile : sessions.profileOf(win);
+  if (profile !== "claude" && profile !== "codex") throw new Error(CHAT_CUSTOM_PROFILE);
+  const mode = c.mode === "workshop" || c.mode === "browser" ? c.mode : agentMode;
+  if (typeof c.space === "string") windowSpaces.set(win, c.space);
+  return chats.create(win, { profile, mode, engine: profile, spaceId: windowSpaces.get(win) ?? "" });
+}
+
+const activeChat = (win: unknown) => (typeof win === "string" ? (chats.active(win)?.summary ?? null) : null);
+
+// The CLI's own sign-in for the chat's login card; a first session's sweep waits for it (launchKernel's aroundSweep).
+const logins = createLoginTerminals({
+  open: async (program, size) => (await liveKernel()).openLoginSession({ ...size, program }),
+  data: (win, d) => rpc.notify("agent.data", { window: win, data: d }),
+  ended: (win, code) => {
+    rpc.notify("agent.state", { window: win, state: { state: "done", code } });
+    // Signed in (or not): the window's signed-out discussions check again.
+    for (const { win: w, view } of chatViews.values()) if (w === win && view.summary.state === "signed-out") void chats.retry(view.summary.id);
+  },
+});
+
 /** macOS runs short of memory: the local models unload, idle agent sessions sleep, the machine stops unless in use. */
 function relieveMemory(): void {
   void ai.stopServers().catch(() => {});
-  void sessions
-    .sleepIdle(Number(process.env.RESSAC_TEST_AGENT_SLEEP_MS) || 2 * 60_000)
+  void Promise.all([sessions.sleepIdle(Number(process.env.RESSAC_TEST_AGENT_SLEEP_MS) || 2 * 60_000), chats.pauseIdle()])
     .catch((e) => console.error("[ressac] the agent sessions did not sleep:", e))
     .then(() => machine.relieve())
     .catch((e) => console.error("[ressac] the machine did not stop:", e));
@@ -1084,7 +1293,7 @@ const rpc = createRpc({
       if (typeof p?.question !== "string") throw new Error("ask.find: invalid question");
       return ask.find(p.question.slice(0, 2000));
     }),
-    "ask.handOff": aiOnly((p: { window?: unknown; question?: unknown; shown?: unknown }) => {
+    "ask.handOff": aiOnly((p: { window?: unknown; question?: unknown; shown?: unknown; space?: unknown }) => {
       if (typeof p?.window !== "string" || typeof p.question !== "string" || !Array.isArray(p.shown)) throw new Error("ask.handOff: invalid params");
       const str = (x: unknown) => typeof x === "string";
       const shown = (p.shown as Partial<Record<"url" | "title" | "lastVisit", unknown>>[])
@@ -1092,6 +1301,12 @@ const rpc = createRpc({
         .slice(0, 3);
       const question = p.question.slice(0, 2000);
       const win = p.window;
+      if (viewOf(win) === "chat") {
+        if (typeof p.space === "string") windowSpaces.set(win, p.space);
+        // The question is the user's own text (typed); the pages shown with it go after it, masked, never typed.
+        const q = handOffText(question, [], "");
+        return chatSend.handOff(win, q, handOffText(question, shown, hostSay("host-ask-shown-pages")).slice(q.length));
+      }
       // Outflow rules: only the question is the user's own text, not the page titles shown with it. Fed as it is written,
       // after a fresh session's reset (⌘T usually opens the window's agent), not when it is queued; masked as it is written
       // (the same value gets the same label in the session's table).
@@ -1107,10 +1322,12 @@ const rpc = createRpc({
     },
     // The user's keystrokes and pastes: what they type is theirs to send, not what they paste (outflow rules). Prefills never come through here.
     "agent.write": (p: { window: string; data: string; paste?: unknown }) => {
+      // The login terminal's keys (a sign-in code) reach no agent: not the outflow's.
+      if (logins.write(p.window, p.data)) return;
       kernel?.outflow.typed(p.window, p.data, { pasted: p.paste === true });
       sessions.write(p.window, p.data);
     },
-    "agent.resize": (p: { window: string; size: TerminalSize }) => sessions.resize(p.window, p.size),
+    "agent.resize": (p: { window: string; size: TerminalSize }) => void (logins.resize(p.window, p.size) || sessions.resize(p.window, p.size)),
     "agent.masking": async (p: { window?: unknown }) => maskingStatus(kernel?.masker ?? null, workspaceLock, maskNotices, String(p?.window), passport),
     // The chrome's passports (design § 5.2, § 5.3): kept by this process whether a kernel runs or not.
     "passport.replace": async (p: { profile?: unknown; entries?: unknown }) => {
@@ -1151,7 +1368,10 @@ const rpc = createRpc({
       const choice = p?.choice;
       if (choice !== "quarantine" && choice !== "keep" && choice !== "delete") throw new Error(hostSay("host-invalid-params"));
       const remove = Array.isArray(p.remove) ? p.remove.filter((x): x is string => typeof x === "string") : [];
-      await (await liveKernel()).masking.lift({ choice, remove });
+      const n = await liveKernel();
+      // Idle discussions pause first (R7); a running turn keeps its session open, so the kernel refuses the lift.
+      await chats.pauseIdle();
+      await n.masking.lift({ choice, remove });
     },
     "masking.quarantine.list": async () => (await liveKernel()).masking.quarantine.list(),
     "masking.quarantine.restore": async (p: { id?: unknown }) => {
@@ -1173,6 +1393,11 @@ const rpc = createRpc({
     "agent.closeWindow": (p: { window: string }) => {
       selections.delete(p.window);
       actives.delete(p.window);
+      terminalWindows.delete(p.window);
+      windowSpaces.delete(p.window);
+      chatSend.dropWindow(p.window);
+      void logins.stop(p.window).catch((e) => console.error("[ressac] login terminal stop:", e));
+      void chats.closeWindow(p.window).catch((e) => console.error("[ressac] chat window close:", e));
       kernel?.outflow.forget(p.window);
       // Again once the agent is stopped: a tool call answered while it stopped would have made the window's memory anew.
       // Not if the window reopened on the same id meanwhile (chrome/store/windows.ts reuses it): that memory is the new session's.
@@ -1195,9 +1420,113 @@ const rpc = createRpc({
     "agent.panelOpened": (p: { window: string; tab: TabInfo }) => {
       const share = () => kernel?.policy.userInteraction(p.tab);
       share();
+      // Chat: the context goes before the discussion's first message (its send gives the tab again, after the session's reset).
+      if (viewOf(p.window) === "chat") return chatSend.panelOpened(p.window, contextPrefix(p.tab.title, p.tab.url));
       // A session still starting (the panel's first opening) gets the context once active, and the tab again: its start takes the accesses back.
       sessions.prefill(p.window, contextPrefix(p.tab.title, p.tab.url), share);
     },
+    "settings.agentView": (p: { view?: unknown }) => {
+      agentView = p?.view === "terminal" ? "terminal" : "chat";
+    },
+    // The chat (shared/api.ts `chat`): always the window's own discussions; the UI names no other window.
+    "chat.list": aiOnly(async (p: { window?: unknown; space?: unknown }) => {
+      if (typeof p?.window !== "string" || typeof p.space !== "string") throw new Error(hostSay("host-invalid-params"));
+      windowSpaces.set(p.window, p.space);
+      return chats.list(p.window, p.space);
+    }),
+    "chat.open": aiOnly(async (p: { window?: unknown; space?: unknown; chatId?: unknown }) => {
+      if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
+      if (typeof p.space === "string") windowSpaces.set(p.window, p.space);
+      if (typeof p.chatId === "string") {
+        const v = await chats.select(p.window, p.chatId);
+        if (!v) throw new Error("Cette discussion n'existe plus.");
+        return v;
+      }
+      return chats.active(p.window) ?? createChat(p.window, p);
+    }),
+    "chat.create": aiOnly((p: { window?: unknown; space?: unknown; profile?: unknown; mode?: unknown }) => {
+      if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
+      return createChat(p.window, p);
+    }),
+    "chat.send": aiOnly(async (p: { window?: unknown; draft?: unknown }) => {
+      const draft = cleanDraft(p?.draft);
+      const chat = activeChat(p?.window);
+      if (!draft) return { ok: false, error: "Ce message est vide ou trop long." };
+      if (!chat) return { ok: false, error: "Aucune discussion n'est ouverte." };
+      return chatSend.send(p.window as string, chat.id, draft);
+    }),
+    // Chips while typing: masked with the discussion's table (the labels it issues are the ones the send gives); never typed, never sent.
+    "chat.preview": (p: { window?: unknown; text?: unknown }) => {
+      const chat = activeChat(p?.window);
+      const session = chat && chats.sessionIdOf(chat.id);
+      if (!session || !kernel || typeof p.text !== "string" || p.text.length > DRAFT_MAX) return null;
+      try {
+        return kernel.masker.maskTypedFor(session, p.text);
+      } catch {
+        return null;
+      }
+    },
+    "chat.cancel": (p: { window?: unknown }) => {
+      const chat = activeChat(p?.window);
+      if (!chat) return;
+      chatSend.drop(chat.id);
+      chats.cancel(chat.id);
+    },
+    "chat.answer": (p: { window?: unknown; requestId?: unknown; reply?: unknown }) => {
+      const chat = activeChat(p?.window);
+      const r = (p?.reply ?? {}) as Record<string, unknown>;
+      const answers = r.answers && typeof r.answers === "object" ? Object.entries(r.answers as object) : null;
+      const reply: AskReply | null =
+        r.cancelled === true ? { cancelled: true } : answers?.every(([, v]) => typeof v === "string") ? { answers: Object.fromEntries(answers) as Record<string, string> } : null;
+      if (chat && typeof p.requestId === "string" && reply) chats.answer(chat.id, p.requestId, reply);
+    },
+    "chat.retry": (p: { window?: unknown }) => {
+      const chat = activeChat(p?.window);
+      if (chat) void chats.retry(chat.id);
+    },
+    "chat.review": (p: { window?: unknown; id?: unknown; choice?: unknown }) => {
+      const chat = activeChat(p?.window);
+      const r = chat && chatOpens.get(chat.id)?.review;
+      if (!chat || !r || r.id !== p.id || (p.choice !== "keep" && p.choice !== "revert")) return;
+      chatOpens.get(chat.id)!.review = undefined;
+      chatPrep.set(chat.id, { state: "preparing" });
+      repushChat(chat.id);
+      r.resolve(p.choice);
+    },
+    // The value goes back to the window's own UI only: never logged, never sent. A paused discussion's labels resolve nothing (R2).
+    "chat.reveal": (p: { window?: unknown; label?: unknown }) => {
+      const chat = activeChat(p?.window);
+      const session = chat && chats.sessionIdOf(chat.id);
+      if (!session || typeof p.label !== "string" || !CHAT_LABEL.test(p.label)) return null;
+      return kernel?.masker.lookupForSession(session, p.label)?.value ?? null;
+    },
+    // « Mode avancé »: the discussion pauses, the window's terminal resumes its conversation (Claude by id, Codex its latest).
+    "chat.toTerminal": aiOnly(async (p: { window?: unknown }) => {
+      if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
+      terminalWindows.add(p.window);
+      const chat = activeChat(p.window);
+      if (!chat) return;
+      await chats.pause(chat.id);
+      const id = chats.resumeIdOf(chat.id);
+      if (id) sessions.resumeNext(p.window, chat.profile, id);
+      else void sessions.switchProfile(p.window, chat.profile);
+    }),
+    "chat.toChat": aiOnly(async (p: { window?: unknown }) => {
+      if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
+      terminalWindows.delete(p.window);
+      await sessions.closeWindow(p.window);
+      const chat = activeChat(p.window);
+      if (chat) await chats.select(p.window, chat.id);
+    }),
+    // The login card: the CLI's own sign-in in a small terminal; the window's signed-out discussions retry when it ends.
+    "chat.login": aiOnly(async (p: { window?: unknown }) => {
+      if (typeof p?.window !== "string") throw new Error(hostSay("host-invalid-params"));
+      const program = activeChat(p.window)?.engine ?? (sessions.profileOf(p.window) === "codex" ? "codex" : "claude");
+      signedIn.delete(program);
+      await readyToStart(program);
+      await logins.start(p.window, program, { cols: 80, rows: 24 });
+      rpc.notify("agent.state", { window: p.window, state: { state: "active" } });
+    }),
     // The RPC signal is ignored on purpose: the kernel's Pacing hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
     "read.changeHost": (p: { read: string; host: string }) => bridge.changeHost(p.read, p.host),
     // Tests only: a paced read through a Pacing shared by the calls, as a workflow's web widget does.
@@ -1246,6 +1575,9 @@ function maskNotice(o: { text: unknown }, win: string | undefined, unless = fals
   maskingChanged();
 }
 const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url), maskNotice);
+// The titles the agent's list_tabs gives, for the chat's « Lit la page « … » » lines (read_tab's input has the id only).
+const listTabs = bridge.listTabs;
+bridge.listTabs = () => listTabs().then((l) => (rememberTabs(l), l));
 const testPacing = new Pacing();
 // Agent-written extensions are gone (0.1.27): their leftovers go once, without holding the start.
 void removeAgentExtensions({ dataDir, workspace: root }).catch((e: unknown) => console.error("[ressac] agent extensions' leftovers not removed:", e));

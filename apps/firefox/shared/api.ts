@@ -7,6 +7,7 @@ import { APPEARANCES, LANGUAGE_SETTING, NOTICE_IDS, type Decision, type PendingR
 import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile, type InstructionChange, type ChangedFile, type LiftChoice, type QuarantinedFile } from "@ressac/kernel";
 import { ClaudeEngineSchema, CodexEngineSchema, MachineIdleSchema, type DockerStatus, type MachineShown, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
+import type { AskReply, ChatDraft, ChatSummary, ChatView } from "./chat";
 import type { PassportEntry, PassportField } from "../../../packages/kernel/src/mask/passport-fields.ts";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
@@ -370,6 +371,34 @@ export interface ApiRessac {
       restore(id: string): Promise<{ ok: true } | { ok: false; error: string }>;
     };
   };
+  /** This window's chat discussions (the agent view « Discussion »). */
+  chat: {
+    /** The discussions of this window's active space, the most recently updated first. */
+    list(): Promise<ChatSummary[]>;
+    /** Makes it the window's active discussion (a paused one resumes); omitted, the active one, made if there is none. */
+    open(chatId?: string): Promise<ChatView>;
+    /** A new discussion, the window's profile and mode unless given; a custom profile is refused (terminal only). */
+    create(o?: { profile?: string; mode?: "browser" | "workshop" }): Promise<ChatView>;
+    /** To the active discussion: masked with its own table before the agent sees it. */
+    send(draft: ChatDraft): Promise<{ ok: true } | { ok: false; error: string }>;
+    /** The chips while typing: the text masked as it would be sent, never sent nor counted as typed. null without a session. */
+    preview(text: string): Promise<{ text: string; names: string[] } | null>;
+    cancel(): void;
+    answer(requestId: string, reply: AskReply): void;
+    retry(): void;
+    /** The answer on the changed-instructions card of the starting discussion. */
+    review(id: number, choice: "keep" | "revert"): void;
+    /** The value behind a label of the active discussion, shown here only; null when unknown (another discussion's, a paused one). */
+    reveal(label: string): Promise<string | null>;
+    /** « Mode avancé »: the discussion pauses and the window's terminal resumes its conversation. */
+    toTerminal(): Promise<void>;
+    /** « Revenir au chat »: the terminal stops, the discussion resumes. */
+    toChat(): Promise<void>;
+    /** The CLI's own sign-in in a small terminal, over `agent.onData` / `agent.write` / `agent.resize`. */
+    login(): Promise<void>;
+  };
+  /** A discussion of this window changed. */
+  onChat(callback: (v: ChatView) => void): () => void;
   /** The agent's access to tabs (badges and bubble to cut it). */
   access: {
     state(): Promise<AccessState>;

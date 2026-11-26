@@ -673,7 +673,7 @@ async function start(): Promise<RessacStore> {
   });
   bindApps(agent, openInTab, dataDir, { access: () => access, design, locale: () => store.state.locale });
   const history = createHistory(store, agent);
-  const ask = createAsk(agent, giveAgent);
+  const ask = createAsk(agent, giveAgent, (w) => store.state.windows.find((f) => f.id === w)?.activeSpace ?? null);
   registerHomeNotifications(agent);
   // A site app's or an agent app's downloads are cancelled: an app downloads nothing (an agent app would drop files in ~/Downloads unasked).
   const downloads = await createDownloads((id) => isSiteContainer(id) || isAppContainer(id));

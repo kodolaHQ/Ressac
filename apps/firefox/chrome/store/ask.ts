@@ -12,14 +12,15 @@ export interface Ask {
 }
 
 /** The ⌘T questions: the history search and the agent live in the kernel host. */
-export function createAsk(host: AgentHost, openAgent: (windowId: WindowId) => void): Ask {
+/** `spaceOf`: the window's active space, where a discussion made for the question belongs. */
+export function createAsk(host: AgentHost, openAgent: (windowId: WindowId) => void, spaceOf: (windowId: WindowId) => string | null = () => null): Ask {
   return {
     usable: () => host.request<boolean>("ask.usable").catch(() => false),
     warm: () => host.notify("ask.warm"),
     find: (question) => host.request<AskResult>("ask.find", { question }).catch((): AskResult => ({ kind: "agent" })),
     async handOff(windowId, question, shown) {
       try {
-        await host.request("ask.handOff", { window: windowId, question, shown });
+        await host.request("ask.handOff", { window: windowId, question, shown, space: spaceOf(windowId) });
       } catch (e) {
         // Nothing was sent: the panel stays closed, the bar keeps the question.
         console.error("[ask] hand-off failed:", e);

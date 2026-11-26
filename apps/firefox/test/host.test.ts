@@ -83,6 +83,8 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
   });
   createInterface({ input: child.stdout }).on("line", (l) => rpc.receive(l));
   if (o.passport !== false) void rpc.request("passport.ready", { unreadable: [] }).catch(() => {});
+  // These tests drive the terminal path; the chat has its own (as the chrome says at start, chrome/store/index.ts).
+  rpc.notify("settings.agentView", { view: "terminal" });
   const exited = new Promise<number | null>((r) => child.on("exit", (code) => (rpc.close(`host exited: ${err}`), r(code))));
   const h = { child, rpc, dataDir, root: root, log: log, stderr: () => err, data: () => data, states: states, exited };
   hosts.push(h);
@@ -355,6 +357,22 @@ describe("agent host", { timeout: 30_000 }, () => {
     await until(() => h.data().includes("fake agent ready>"));
     h.rpc.notify("agent.write", { window: "f1", data: "bonjour\r" });
     await until(() => h.data().includes("bonjour"));
+  });
+
+  it("chat view: ⌘T makes the window's discussion, its question waits for the session unmasked nowhere; a custom profile is refused", async () => {
+    const views: { window: string; view: { summary: { id: string; state: string }; items: { kind: string; text?: string }[]; waiting?: number } }[] = [];
+    const h = startHost({}, undefined, { handlers: { "chat.view": (p: (typeof views)[number]) => void views.push(p) } });
+    await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
+    h.rpc.notify("settings.agentView", { view: "chat" });
+    const key = "ghp_x7Kq9LmN2pRs4TuVw6YzA8bCdEfGhJ1kMn3P";
+    await h.rpc.request("ask.handOff", { window: "f1", question: `corrige ${key}`, shown: [], space: "perso" });
+    await until(() => views.some((v) => v.window === "f1" && v.view.waiting === 1));
+    // The terminal got nothing; no view ever carried the key.
+    expect(h.data()).toBe("");
+    expect(JSON.stringify(views)).not.toContain(key);
+    const list = (await h.rpc.request("chat.list", { window: "f1", space: "perso" })) as { id: string }[];
+    expect(list.map((c) => c.id)).toEqual([views[0]!.view.summary.id]);
+    await expect(h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "mon-agent" })).rejects.toThrow("Ce profil s'utilise dans le terminal (Mode avancé).");
   });
 
   it("outflow: keystrokes and the ⌘T question count as typed, pastes and prefills do not, closing the window forgets", async () => {

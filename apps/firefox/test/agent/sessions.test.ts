@@ -320,6 +320,24 @@ test("ouvrir receives the session's window", async () => {
   expect(received).toEqual([{ f: "F7", t: size }]);
 });
 
+test("a discussion handed to the terminal is resumed by its conversation at the next start only", async () => {
+  const opened: { profile: string; resume: boolean; conversation: string }[] = [];
+  const manager = new SessionsAgent({
+    open: async (_f, _t, s) => {
+      opened.push({ profile: s.profile, resume: s.resume, conversation: s.conversation });
+      return new FakeSession();
+    },
+    send: () => {},
+  });
+  await manager.start("F", size);
+  manager.resumeNext("F", "claude", "33333333-3333-4333-8333-333333333333");
+  await manager.start("F", size);
+  expect(opened[1]).toEqual({ profile: "claude", resume: true, conversation: "33333333-3333-4333-8333-333333333333" });
+  await manager.closeWindow("F");
+  await manager.start("F", size);
+  expect(opened[2]!.resume).toBe(false);
+});
+
 describe("each window keeps its agent", () => {
   /** `open` notes each call; `fails` lists profiles whose opening rejects; `slow` holds openings until released. */
   function windows(o: { fails?: string[]; slow?: boolean } = {}) {

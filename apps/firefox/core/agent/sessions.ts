@@ -104,6 +104,8 @@ interface Entry {
   last?: number;
   /** Stopped under memory pressure (sleepIdle): the next input resumes its conversation. */
   asleep?: boolean;
+  /** The chat handed its conversation over (« Mode avancé »): the next start resumes it. */
+  resumeNext?: boolean;
   /** Keys typed since the wake, written once the resumed agent first speaks (its TUI is then up), then while they are delivered. */
   waking?: string;
   /** The buffered keys and pre-fill are being written to the woken agent (deliver). */
@@ -184,6 +186,8 @@ export class SessionsAgent {
     entry.buffer.clear();
     this.cancelSend(entry);
     this.o.send(f, "state", { state: "preparing" });
+    resume ||= entry.resumeNext === true;
+    entry.resumeNext = undefined;
     const was = entry.ran.get(entry.profile);
     // Claude resumes this window's own conversation by id, and only one that got a message: before it, Claude keeps none.
     if (entry.profile === "claude" && !was?.sent) resume = false;
@@ -473,6 +477,19 @@ export class SessionsAgent {
     const e = this.entry(f, old?.size ?? { cols: 80, rows: 24 }, profile, old?.ran);
     e.touched = old?.touched;
     await this.start(f, e.size, e.ran.has(profile));
+  }
+
+  /**
+   * A chat discussion goes to the terminal (« Mode avancé »): the window's session stops, and its next start runs `profile`
+   * resuming `conversation` (Claude by that id; another profile resumes its workdir's latest).
+   */
+  resumeNext(f: WindowId, profile: string, conversation: string): void {
+    const old = this.inputs.get(f);
+    this.inputs.delete(f);
+    if (old) this.drop(old);
+    const e = this.entry(f, old?.size ?? { cols: 80, rows: 24 }, profile, old?.ran);
+    e.ran.set(profile, { id: conversation, sent: true });
+    e.resumeNext = true;
   }
 
   /** Hands control back once the agent is stopped in the container. */

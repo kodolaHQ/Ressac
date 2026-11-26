@@ -180,6 +180,11 @@ export class Chats {
     return e?.conv && e.launch ? e.launch.sessionId : null;
   }
 
+  /** The engine's own id once the discussion ran a turn (the terminal resumes it, « Mode avancé »). */
+  resumeIdOf(chatId: string): string | undefined {
+    return this.entries.get(chatId)?.rec.engineSessionId;
+  }
+
   /** App quit: messages still waiting are marked never sent. */
   async stopAll(): Promise<void> {
     await Promise.all([...this.entries.values()].map((e) => (unsend(e), this.close(e))));

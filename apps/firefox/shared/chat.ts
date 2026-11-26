@@ -1,4 +1,5 @@
 // Engine-neutral chat model, shared by the host and the UI bundles: types only.
+import type { AgentPanelState } from "./api";
 
 export type ToolKind = "read" | "edit" | "search" | "fetch" | "execute" | "other";
 
@@ -48,6 +49,10 @@ export interface ChatView {
   items: ChatItem[];
   streaming?: { messageId: string; text: string };
   error?: string;
+  /** While the engine starts: the CLI download, the machine, the image build step, or the instruction review card (`chat.review`). */
+  preparing?: Extract<AgentPanelState, { state: "preparing" } | { state: "review" }>;
+  /** Messages sent before the discussion's session existed: masked and sent once it does. */
+  waiting?: number;
 }
 
 /** `pasted`: [start, end] ranges of pasted text; `clear`: labels the user chose to send in clear. */
