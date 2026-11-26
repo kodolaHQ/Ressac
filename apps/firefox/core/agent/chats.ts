@@ -77,6 +77,8 @@ export class Chats {
       store: ChatStore;
       open: (o: OpenOptions) => Promise<{ conversation: EngineConversation; launch: LaunchSpec }>;
       notify: (windowId: string, view: ChatView) => void;
+      /** A message already streaming grew: only its text so far, the UI merges it into the view it has. */
+      stream: (windowId: string, chatId: string, streaming: { messageId: string; text: string }) => void;
       now?: () => number;
       liveMax?: number;
       /** The app's current mode: a discussion reopens in it (the workshop is shaped for it). */
@@ -335,10 +337,17 @@ export class Chats {
     if (e.conv !== conv) return;
     const items = e.rec.items;
     switch (u.type) {
-      case "agent_message_chunk":
-        if (e.streaming && e.streaming.messageId !== u.messageId) flush(e);
+      case "agent_message_chunk": {
+        const same = e.streaming?.messageId === u.messageId;
+        if (e.streaming && !same) flush(e);
         e.streaming = { messageId: u.messageId, text: (e.streaming?.text ?? "") + u.text };
+        // The view the UI holds has this message: a full view per chunk would copy and re-render every item.
+        if (same) {
+          if (e.rec.windowId) this.o.stream(e.rec.windowId, e.rec.id, { ...e.streaming });
+          return;
+        }
         break;
+      }
       case "agent_message": {
         if (e.streaming?.messageId === u.messageId) e.streaming = undefined;
         const old = items.find((i) => i.kind === "agent" && i.id === u.messageId);

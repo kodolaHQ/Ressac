@@ -213,6 +213,7 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
       login: () => host.request("chat.login", { window: windowId }).then(() => {}, (e) => failed(errorText(e))),
     },
     onChat: (callback) => untilUnload(host.on("chat.view", (p) => p.window === windowId && callback(structuredClone(p.view)))),
+    onChatStream: (callback) => untilUnload(host.on("chat.stream", (p) => p.window === windowId && callback(String(p.chatId), structuredClone(p.streaming)))),
     tabCycle: (m) => win.tabSwitch(m),
     navigate: (id, input) => win.navigate(id, input),
     // shortcut: zoom, find in page and devtools are out of step 2 and do nothing.

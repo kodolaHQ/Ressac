@@ -69,12 +69,14 @@ function prepare(auto = true, mode?: () => "browser" | "workshop") {
   const store = new ChatStore(join(dir, "chats"));
   const opens: Opened[] = [];
   const views: [string, ChatView][] = [];
+  const streams: [string, string, { messageId: string; text: string }][] = [];
   let clock = 1000;
   const chats = new Chats({
     store,
     now: () => ++clock,
     ...(mode ? { mode } : {}),
     notify: (w, v) => views.push([w, v]),
+    stream: (w, chatId, s) => streams.push([w, chatId, s]),
     open: (o) =>
       new Promise((resolve, reject) => {
         const conv = new FakeConv(o.resumeId ?? o.sessionId ?? `thread-${opens.length + 1}`);
@@ -87,7 +89,7 @@ function prepare(auto = true, mode?: () => "browser" | "workshop") {
   managers.push(chats);
   const state = (id: string) => views.filter(([, v]) => v.summary.id === id).at(-1)?.[1].summary.state;
   const onDisk = (id: string) => JSON.parse(readFileSync(join(dir, "chats", `${id}.json`), "utf8"));
-  return { chats, store, opens, views, state, onDisk };
+  return { chats, store, opens, views, streams, state, onDisk };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -542,4 +544,26 @@ test("a card saved unanswered (the app quit mid-turn) loads as unanswered", asyn
   await store.write(rec);
   const v = await chats.select("w1", "old");
   expect(v!.items[0]).toMatchObject({ answer: "cancelled" });
+});
+
+test("a chunk of a message already streaming sends only its text, not a full view", async () => {
+  const { chats, opens, views, streams } = prepare();
+  const id = (await chats.create("w1", opts)).summary.id;
+  await tick();
+  chats.prompt(id, "un", "un");
+  const conv = opens[0]!.conv;
+  conv.emit({ type: "agent_message_chunk", messageId: "m1", text: "Bon" });
+  const n = views.length;
+  expect(views.at(-1)![1].streaming).toEqual({ messageId: "m1", text: "Bon" });
+  conv.emit({ type: "agent_message_chunk", messageId: "m1", text: "jour" });
+  conv.emit({ type: "agent_message_chunk", messageId: "m1", text: " !" });
+  expect(views.length).toBe(n);
+  expect(streams).toEqual([
+    ["w1", id, { messageId: "m1", text: "Bonjour" }],
+    ["w1", id, { messageId: "m1", text: "Bonjour !" }],
+  ]);
+  // A new message flushes the old one into the items: a full view.
+  conv.emit({ type: "agent_message_chunk", messageId: "m2", text: "Et" });
+  expect(views.length).toBe(n + 1);
+  expect(views.at(-1)![1].items.at(-1)).toEqual({ kind: "agent", id: "m1", text: "Bonjour !" });
 });

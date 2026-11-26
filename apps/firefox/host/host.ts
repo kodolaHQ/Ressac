@@ -883,6 +883,12 @@ const chats = new Chats({
     if (s === "paused" || s === "error" || s === "signed-out") abortChatOpen(view.summary.id);
     chatSend.flush(view.summary.id);
   },
+  stream: (win, chatId, streaming) => {
+    // The last view keeps the text so far: a repush (the start's progress) carries it.
+    const v = chatViews.get(chatId);
+    if (v) v.view = { ...v.view, streaming };
+    rpc.notify("chat.stream", { window: win, chatId, streaming });
+  },
 });
 
 /** Talking from a window gives its tab on screen to the agent, as the terminal's Enter does. */

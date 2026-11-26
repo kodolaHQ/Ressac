@@ -76,6 +76,7 @@
   };
   $effect(() => {
     void view;
+    void view?.streaming?.text;
     if (stuck) toBottom();
     else unseen = true;
   });

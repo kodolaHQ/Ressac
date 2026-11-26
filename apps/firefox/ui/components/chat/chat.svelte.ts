@@ -44,8 +44,13 @@ const off = api.onChat((v) => {
   else if (chat.listOpen) void readList();
 });
 
+// A streaming message's text only: the other items stay as they are, so they are not drawn again.
+const offStream = api.onChatStream((id, s) => {
+  if (chat.view?.summary.id === id) chat.view.streaming = s;
+});
+
 // Hot reload (development): the old module gives its subscription back.
-if (import.meta.hot) import.meta.hot.dispose(off);
+if (import.meta.hot) import.meta.hot.dispose(() => (off(), offStream()));
 
 const LABEL_TYPES = new Set(["nom", "adresse", "carte", "iban", "tel", "email", "code", "id", "secu", "motdepasse", "date", "masque"]);
 /** A chip's words for a label's kind: « nom masqué », « IBAN masqué »… */

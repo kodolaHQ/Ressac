@@ -401,6 +401,8 @@ export interface ApiRessac {
   };
   /** A discussion of this window changed. */
   onChat(callback: (v: ChatView) => void): () => void;
+  /** A message of discussion `chatId` streaming in this window grew: its text so far. */
+  onChatStream(callback: (chatId: string, streaming: { messageId: string; text: string }) => void): () => void;
   /** The agent's access to tabs (badges and bubble to cut it). */
   access: {
     state(): Promise<AccessState>;
