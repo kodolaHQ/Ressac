@@ -38,7 +38,12 @@ export function vmImage(env: NodeJS.ProcessEnv = process.env): typeof VM_IMAGE {
 export type { MachineStatus };
 
 const NAME = "ressac";
-export const MACHINE_HOME = join(homedir(), ".ressac-vm");
+/**
+ * RESSAC_VM_HOME gives a second copy of Ressac (a test copy) its own machine: one machine is owned by its latest launch, and
+ * that launch stops it on quit, under every other copy using it.
+ */
+// shortcut: both machines forward guest ports 5300-5319 to the same Mac ports, so apps in the copy started second are unreachable while both run; give each its own range if that matters.
+export const MACHINE_HOME = process.env.RESSAC_VM_HOME || join(homedir(), ".ressac-vm");
 
 /** A Mac of 8 GiB or less (shared/settings.ts isSmallMac): the VM boots smaller and the local models unload sooner. */
 export const smallMac = (total = totalmem()) => isSmallMac(total, process.env.RESSAC_TEST_SMALL_MAC);
