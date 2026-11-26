@@ -1170,9 +1170,10 @@ describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
       expect(await h.rpc.request("chat.send", { window: "f1", draft: { text: "Quelle ville ?" } })).toMatchObject({ ok: true });
       await until(() => views.some((v) => v.view.summary.id === created.summary.id && v.view.items.some((i) => i.kind === "agent" && i.text === "Lyon")));
       expect(paths).toEqual(["/api/show", "/api/chat"]);
-      // The turn names the window's active tab, masked, its query gone: the key never reaches the model.
+      // The turn names the window's active tab (given to the agent as the user talked), masked by the kernel, its query
+      // gone: the key never reaches the model.
       const user = (JSON.parse(chatBody) as { messages: { role: string; content: string }[] }).messages.at(-1)!.content;
-      expect(user).toMatch(/^Onglet actif : Jeton ⟨[a-z-]+-[a-z0-9]{8}⟩ — https:\/\/un\.test\/p\n\nQuelle ville \?$/);
+      expect(user).toMatch(/^Onglet actif \(donnée de la page\) : « Jeton ⟨[a-z-]+-[a-z0-9]{8}⟩ » — https:\/\/un\.test\/p\n\nQuelle ville \?$/);
       // No container session, no CLI: the fake docker never ran a session command.
       expect(readFileSync(h.log, "utf8")).not.toContain("ressac-session");
       // « Mode avancé » has no terminal for it: the discussion stays as it is.

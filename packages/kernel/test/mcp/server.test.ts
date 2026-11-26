@@ -12,6 +12,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { AccessPolicy, DEV_RIGHTS } from "../../src/access/policy.js";
 import { PRIVATE_TEXT, type HistoryResult, type KeptPage, type TabInfo } from "../../src/mcp/bridge.js";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
+import { HOST_LOOP_TOOLS } from "../../src/mcp/host-agent.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Outflow } from "../../src/outflow/outflow.js";
 import { mask } from "../../src/outflow/detect.js";
@@ -3605,5 +3606,60 @@ describe("a per-session tool allowlist", () => {
     expect(names).toContain("navigate");
     expect(names).toContain("fill_field");
     await c.close();
+  });
+});
+
+// --- the host loop's active-tab line (« Votre modèle ») ---
+
+/** The active tab line, as the host loop's token gets it. */
+const activeLine = (call: Parameters<Parameters<typeof withSearch>[0]>[0]["call"], s: Awaited<ReturnType<typeof startMcpServer>>) => call("active_tab", {}, s.openSession("main", undefined, undefined, "browser", HOST_LOOP_TOOLS));
+const activate = (fake: FakeBridge, id: string) => Object.assign(fake, { active: id });
+
+test("active_tab: a readable tab's title (one line) and its origin and path only; no userinfo, query nor fragment", async () => {
+  const doc: TabInfo = { id: "doc", title: "Doc  du\n jour", url: "https://u:p@docs.test/a/b?token=S#f", space: "perso" };
+  await withSearch(async ({ call, s, fake, policy }) => {
+    activate(fake, "doc");
+    policy.userInteraction(doc);
+    expect(await activeLine(call, s)).toEqual({ text: "Doc du jour\nhttps://docs.test/a/b", isError: false });
+  }, { tabs: [doc] });
+});
+
+test("active_tab: nothing for a tab the agent may not read, nor for a non-web page", async () => {
+  const about: TabInfo = { id: "about", title: "Réglages", url: "about:preferences", space: "perso" };
+  await withSearch(async ({ call, s, fake, policy }) => {
+    expect(await activeLine(call, s)).toEqual({ text: "", isError: false });
+    activate(fake, "about");
+    policy.userInteraction(about);
+    expect((await activeLine(call, s)).text).toBe("");
+  }, { tabs: [github, about] });
+});
+
+test("active_tab: nothing of the search tab while the user has it in hand, even with a grant", async () => {
+  await withSearch(async ({ call, s, fake, search, policy }) => {
+    await call("search_web", { query: "x" });
+    policy.grant((await fake.listTabs()).find((x) => x.id === "search-1")!);
+    expect((await activeLine(call, s)).text).toBe("https://moteur.test/?q=x\nhttps://moteur.test/");
+    const hand = handOver(call);
+    await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
+    expect((await activeLine(call, s)).text).toBe("");
+    search.continue("search-1");
+    await hand;
+  });
+});
+
+test("active_tab: a site app by its name and its domain only, grant or not", async () => {
+  const app: TabInfo = { id: "site:vidola", title: "Vidola", url: "https://vidola-a.example/film/1?ep=3", space: "", site: "vidola", domain: "vidola-a.example" };
+  await withSearch(async ({ call, s, fake, policy }) => {
+    activate(fake, "site:vidola");
+    expect((await activeLine(call, s)).text).toBe("Vidola\nvidola-a.example");
+    policy.grantSiteRead("vidola");
+    expect((await activeLine(call, s)).text).toBe("Vidola\nvidola-a.example");
+  }, { tabs: [app], sites: { vidola: ["vidola-a.example"] } });
+});
+
+test("active_tab is the host loop's only: another token neither lists nor calls it", async () => {
+  await withSearch(async ({ call, s }) => {
+    expect((await call("active_tab", {})).isError).toBe(true);
+    expect((await call("active_tab", {}, s.openSession("main"))).isError).toBe(true);
   });
 });

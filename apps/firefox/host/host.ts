@@ -943,12 +943,6 @@ async function openOwnChat(o: OpenOptions, win: string, signal: AbortSignal) {
       signal,
       tabTitle: (id) => (typeof id === "string" ? tabTitles.get(id) : undefined),
       model: e.kind === "ollama" ? ollamaClient(e) : openAiClient(e, { key: readOwn }),
-      activeTab: () => rpc.request<TabInfo | null>("activeTab", [win]),
-      // As the typed message: an ended session's table is gone, so the turn fails rather than send it unmasked.
-      mask: (text) => {
-        if (!kernel) throw new Error("closed");
-        return kernel.masker.maskTypedFor(launch.sessionId, text).text;
-      },
       locale: hostLocale() === "en" ? "en" : "fr",
       ...(o.transcript ? { transcript: o.transcript } : {}),
       texts: { badFormat: hostSay("own-bad-format"), steps: hostSay("own-steps", { count: STEP_MAX }), timeout: hostSay("own-timeout") },
@@ -979,7 +973,10 @@ const chats = new Chats({
   },
 });
 
-/** Talking from a window gives its tab on screen to the agent, as the terminal's Enter does. */
+/**
+ * Talking from a window gives its tab on screen to the agent, as the terminal's Enter does. « Votre modèle »'s active_tab line
+ * reads after this grant: both ask the chrome's activeTab, answered in order, and this one is asked first.
+ */
 const giveActiveTab = (win: string) => {
   rpc.request<TabInfo | null>("activeTab", [win]).then(
     (t) => t && kernel?.policy.userInteraction(t),

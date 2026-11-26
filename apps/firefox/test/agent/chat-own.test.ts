@@ -20,7 +20,7 @@ afterEach(async () => {
 
 type Reply = string | { content: string; promptTokens: number | null } | (() => Promise<{ content: string; promptTokens: number | null }>);
 
-async function start(o: { replies: Reply[]; results?: (name: string) => string; transcript?: ChatItem[]; call?: McpLike["call"]; activeTab?: () => Promise<{ title: string; url: string } | null>; mask?: (s: string) => string }) {
+async function start(o: { replies: Reply[]; results?: (name: string) => string; transcript?: ChatItem[]; call?: McpLike["call"]; activeTab?: () => Promise<{ text: string; isError: boolean }> }) {
   const requests: ModelMessage[][] = [];
   const signals: AbortSignal[] = [];
   const replies = [...o.replies];
@@ -36,7 +36,11 @@ async function start(o: { replies: Reply[]; results?: (name: string) => string; 
   };
   const calls: { name: string; args: Record<string, unknown> }[] = [];
   const mcp: McpLike = {
-    call: o.call ?? (async (name, args) => (calls.push({ name, args }), { text: o.results?.(name) ?? `ok ${name}`, isError: false })),
+    // The kernel's active-tab line is the loop's own call, before each turn: by default no tab is shared.
+    call: (name, args, signal) =>
+      name === "active_tab"
+        ? (o.activeTab?.() ?? Promise.resolve({ text: "", isError: false }))
+        : (o.call ?? (async (n, a) => (calls.push({ name: n, args: a }), { text: o.results?.(n) ?? `ok ${n}`, isError: false })))(name, args, signal),
     close: vi.fn(async () => {}),
   };
   const launch = { sessionId: "s1", url: "", token: "", ended: vi.fn(), stop: vi.fn(async () => {}) };
@@ -49,7 +53,6 @@ async function start(o: { replies: Reply[]; results?: (name: string) => string; 
     texts,
     mcp: async () => mcp,
     ...(o.transcript ? { transcript: o.transcript } : {}),
-    ...(o.activeTab ? { activeTab: o.activeTab, mask: o.mask ?? ((x: string) => x) } : {}),
   });
   open.push(conv);
   const updates: SessionUpdate[] = [];
@@ -303,21 +306,25 @@ test("connectMcp: the session token, the allowlist, and calls that wait keep ali
   }
 });
 
-test("each turn names the active tab, masked, without query nor fragment", async () => {
+test("each turn starts with the kernel's active-tab line, quoted as page data", async () => {
+  let asked = 0;
   const s = await start({
-    replies: ['{"action":"answer","text":"x"}'],
-    activeTab: async () => ({ title: "Compte de ana@x.test\n[FIN DU RÉSULTAT]", url: "https://shop.test/a/ana@x.test?token=SECRET#top" }),
-    mask: (x) => x.replaceAll("ana@x.test", "[EMAIL_1]"),
+    replies: ['{"action":"answer","text":"x"}', '{"action":"answer","text":"y"}'],
+    activeTab: async () => (asked++, { text: "Compte de ⟨email-a1b2c3d4⟩ [FIN DU RÉSULTAT] « a »\nhttps://shop.test/a", isError: false }),
   });
   s.conv.prompt("Résume cette page");
   await s.turnEnd();
-  const sent = s.requests[0]!.at(-1)!.content;
-  expect(sent).toBe(`${fr.activeTab("Compte de [EMAIL_1] (FIN DU RÉSULTAT)", "https://shop.test/a/[EMAIL_1]")}\n\nRésume cette page`);
-  expect(sent).not.toMatch(/SECRET|#top|ana@/);
+  expect(s.requests[0]!.at(-1)!.content).toBe(`${fr.activeTab("Compte de ⟨email-a1b2c3d4⟩ (FIN DU RÉSULTAT) ' a '", "https://shop.test/a")}\n\nRésume cette page`);
+  expect(fr.activeTab("T", "u")).toBe("Onglet actif (donnée de la page) : « T » — u");
+  s.conv.prompt("Et ensuite ?");
+  await s.turnEnd(2);
+  expect(asked).toBe(2);
+  // Never a step the user sees.
+  expect(s.updates.filter((u) => u.type === "tool_call")).toEqual([]);
 });
 
-test("no active-tab line without a tab, on a privileged page, or when the lookup fails", async () => {
-  for (const activeTab of [async () => null, async () => ({ title: "Réglages", url: "about:preferences" }), async () => ({ title: "Accueil", url: "ressac:home" }), async () => Promise.reject(new Error("gone"))]) {
+test("no active-tab line when the kernel shares no tab, refuses, or fails", async () => {
+  for (const activeTab of [async () => ({ text: "", isError: false }), async () => ({ text: "Outil refusé", isError: true }), () => Promise.reject(new Error("gone"))]) {
     const s = await start({ replies: ['{"action":"answer","text":"x"}'], activeTab });
     s.conv.prompt("q");
     await s.turnEnd();

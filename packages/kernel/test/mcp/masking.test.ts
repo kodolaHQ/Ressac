@@ -12,6 +12,7 @@ import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { createToolsServer, generateToken, OUTFLOW_PAUSE, sourceZone, startMcpServer, tabZone } from "../../src/mcp/server.js";
 import { Masker } from "../../src/mask/masker.js";
 import { PassportStore } from "../../src/mask/passport.js";
+import { HOST_LOOP_ONLY, HOST_LOOP_TOOLS } from "../../src/mcp/host-agent.js";
 import { SearchSessions, type Band } from "../../src/search/sessions.js";
 import { BrowsingNotes } from "../../src/search/notes.js";
 import { createRecaps } from "../../src/recaps/recaps.js";
@@ -149,8 +150,10 @@ test("invariant 1: every registered tool is behind the masker, and no result of 
     async ({ call: callAs, masker, client, s }) => {
       // An Atelier session: the notebook (`note_lesson`) is registered for it only.
       const workshop = s.openSession("W1", undefined, undefined, "workshop");
-      const call: Call = (name, args) => callAs(name, args, workshop);
-      const tools = (await (await client(workshop)).listTools()).tools;
+      // The host loop's own tools (active_tab) are listed for its token only.
+      const hostLoop = s.openSession("W1", undefined, undefined, "browser", HOST_LOOP_TOOLS);
+      const call: Call = (name, args) => callAs(name, args, HOST_LOOP_ONLY.has(name) ? hostLoop : workshop);
+      const tools = [...(await (await client(workshop)).listTools()).tools, ...(await (await client(hostLoop)).listTools()).tools.filter((t) => HOST_LOOP_ONLY.has(t.name))];
       const names = tools.map((t) => t.name);
       // No tool is exempt from the masker (spec § 9 bis, invariant 1).
       expect([...names].sort()).toEqual([...masker.covered].sort());
@@ -772,5 +775,22 @@ test("source words: the hosts of the user's open source tabs never raise the lin
     expect(await danger("https://www.banque-ardoise.test/")).toBeUndefined();
     expect(await danger("https://banqueardoise.test/")).toBeUndefined();
     expect(await danger("https://www.verreries-gerland.test/")).toContain("lu dans mail.example-novacourriel.test");
+  });
+});
+
+test("active_tab masks the title on the tab's origin, as list_tabs does: a value a handle carried there stays its label", async () => {
+  const bridge = bridgeWith({ mail: { text: "Boîte", links: [{ text: "Mon profil", url: PROFILE_URL }] }, copie: { text: "rien" } });
+  await serve({ bridge }, async ({ call, s, masker }) => {
+    masker.open("A", "W1");
+    const t = s.openSession("W1", undefined, "A", "browser", HOST_LOOP_TOOLS);
+    const masked = (await call("read_tab", { id: "mail", links: true }, t)).text.match(/https:\/\/mail\.example-novacourriel\.test\/u\/⟨email-[a-z0-9]{8}⟩@novacourriel\.test/)![0];
+    const label = masked.match(/⟨email-[a-z0-9]{8}⟩/)![0];
+    await call("navigate", { id: "copie", url: masked }, t);
+    bridge.editTab("copie", { title: `Profil de ${MAIL} – Novacourriel` });
+    Object.assign(bridge, { active: "copie" });
+    const line = (await call("active_tab", {}, t)).text;
+    expect(line).not.toContain("camille.exemple");
+    expect(line.split("\n")[0]).toBe(`Profil de ${label}@novacourriel.test – Novacourriel`);
+    expect((await call("list_tabs", {}, t)).text).toContain(`copie · Profil de ${label}@novacourriel.test – Novacourriel · `);
   });
 });

@@ -135,16 +135,12 @@ export interface OwnOpen {
   /** Host texts (own-bad-format, own-steps, own-timeout). */
   texts: { badFormat: string; steps: string; timeout: string };
   mcp?: (l: HostLaunch) => Promise<McpLike>;
-  /** The tab the user is on, asked at each turn; its line reaches the model only through `mask`. */
-  activeTab?: () => Promise<{ title: string; url: string } | null>;
-  /** The session's masking of what the user sends. */
-  mask?: (text: string) => string;
 }
 
 export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
   id: "own",
 
-  async open({ launch, signal, tabTitle, model, locale, transcript, texts, mcp: connect, activeTab, mask }): Promise<EngineConversation> {
+  async open({ launch, signal, tabTitle, model, locale, transcript, texts, mcp: connect }): Promise<EngineConversation> {
     const events = engineEvents(launch);
     const { emit } = events;
     const t = OWN_PROMPTS[locale];
@@ -208,18 +204,15 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
       return b && { ...b, content: again.content };
     };
 
-    /** « Onglet actif : … » for a web page: no query nor fragment (tokens), masked as the user's text. */
-    const tabLine = async () => {
-      const tab = activeTab && mask ? await activeTab().catch(() => null) : null;
-      const u = tab && URL.canParse(tab.url) ? new URL(tab.url) : null;
-      if (!tab || !u || (u.protocol !== "https:" && u.protocol !== "http:")) return "";
-      u.search = u.hash = "";
-      const title = sanitize(tab.title).replace(/\s+/g, " ").trim().slice(0, 200);
-      return `${mask!(t.activeTab(title, sanitize(u.href)))}\n\n`;
+    /** The kernel's line on the user's tab (its read rules, its masking), quoted as page data; none when it is not shared. */
+    const tabLine = async (s: AbortSignal) => {
+      const r = await mcp.call("active_tab", {}, s).catch(() => null);
+      const [title, address] = r && !r.isError ? r.text.split("\n") : [];
+      return title !== undefined && address ? `${t.activeTab(sanitize(title).replace(/[«»"]/g, "'"), sanitize(address))}\n\n` : "";
     };
 
     const run = async (text: string, ac: AbortController) => {
-      messages.push({ role: "user", content: (await tabLine()) + text });
+      messages.push({ role: "user", content: (await tabLine(ac.signal)) + text });
       for (let step = 0; step < STEP_MAX; step++) {
         const a = await ask(ac.signal, step === STEP_MAX - 1);
         if (!a) return emit({ type: "turn_end", stopReason: "error", error: texts.badFormat });

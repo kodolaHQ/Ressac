@@ -40,6 +40,7 @@ import { NO_WORKSPACE_LOCK, type WorkspaceLockHook } from "../mask/lock.js";
 import { nameAgreement, valueName } from "../mask/names.js";
 import { LABEL_SOURCE, LABELS, relabel, type Pin } from "../mask/table.js";
 import { askScope, noted } from "./asks.js";
+import { HOST_LOOP_ONLY } from "./host-agent.js";
 import { FIELDS_MAX, TabNotFound, PrivateTab, SiteChanged, LoadRefused, PRIVATE_TEXT, type TabInfo, type PageLink, type TabRead, type PageField, type FieldChoice, type BrowserDevTools, type BrowserBridge, type HistoryResult, type FillSeal } from "./bridge.js";
 
 export const UNREAD_ADDRESS_TEXT = "Adresse non lue dans cette recherche : tu ne peux suivre que les liens des pages lues ici.";
@@ -616,9 +617,11 @@ export function createToolsServer(
         ? handler
         : async (...a: unknown[]) => {
             const r = (await handler(...a)) as ListToolsResult;
-            return { ...r, tools: r.tools.filter((t) => (lab() || !LAB_TOOLS.has(t.name)) && (!allowed || allowed.has(t.name))) };
+            return { ...r, tools: r.tools.filter((t) => (lab() || !LAB_TOOLS.has(t.name)) && toolAllowed(t.name)) };
           }) as never,
     )) as typeof server.server.setRequestHandler;
+  /** A token without a list gets every tool but the host loop's own. */
+  const toolAllowed = (name: string) => (allowed ? allowed.has(name) : !HOST_LOOP_ONLY.has(name));
   const key = win ?? MAIN_WINDOW;
   /** Rules 1 and 2. The main token belongs to no window: it is checked against every window's reads. */
   const checkOutflow = (out: string, address = false, except?: { tab: string; origin: string | null }) =>
@@ -946,7 +949,7 @@ export function createToolsServer(
     const guarded = async (...a: unknown[]): Promise<Result> => {
       // Read at the call: the lab may have gone off since the agent listed the tools.
       if (LAB_TOOLS.has(name) && !lab()) return text(l10n("kernel-mcp-lab-off"), true);
-      if (allowed && !allowed.has(name)) return text(l10n("kernel-mcp-tool-not-allowed"), true);
+      if (!toolAllowed(name)) return text(l10n("kernel-mcp-tool-not-allowed"), true);
       let r: Result;
       try {
         // A tool without input schema gets only `extra`.
@@ -1397,6 +1400,20 @@ export function createToolsServer(
   /** The search tab `id` is the user's for now (a hand is open on it). */
   const handing = (id: string | undefined) => !!id && !!searching?.sessions.handing(id);
 
+  /**
+   * A tab as the agent may see it in a list, masked on its own origin; null when it is not shared (no read right, or a search
+   * tab the user has in hand, grant or not). A site app always shows, by its name (never the page title), and by the app's
+   * current domain until granted (never the page's host: a login domain would say what the user is doing).
+   */
+  const shownTab = (o: TabInfo, at: { url?: string; domainOnly?: boolean } = {}): { title: string; address: string } | null => {
+    const zone = zoneOf(o);
+    const origin = originOf(o.url);
+    const title = wrap(relabelAt(o.title, origin, labels.pinned(o.id)), zone, origin);
+    const address = () => urlOf(o, at.url ?? o.url, zone, origin);
+    if (o.site !== undefined) return { title, address: policy.canRead(o) && !at.domainOnly ? address() : wrap(o.domain ?? "", zone, origin) };
+    return policy.canRead(o) && !handing(o.id) ? { title, address: address() } : null;
+  };
+
   async function content(o: TabInfo, withLinks = false, full = false, extra?: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<Result> {
     actOn(o);
     if (handing(o.id)) return text(HANDING_TEXT, true);
@@ -1787,17 +1804,30 @@ export function createToolsServer(
     protect(async () => {
       const tabs = await bridge.listTabs();
       const lines = tabs.map((o) => {
-        // A site app: its name (never the page title); its full address only with the grant.
-        // Without a grant: the app's current domain, never the page's host (a login domain would say what the user is doing).
-        if (o.site !== undefined) return `${wrap(relabelAt(`${o.id} · ${o.title} · `, originOf(o.url), labels.pinned(o.id)), zoneOf(o), originOf(o.url))}${policy.canRead(o) ? urlOf(o, o.url, zoneOf(o), originOf(o.url)) : wrap(o.domain ?? "", zoneOf(o), originOf(o.url))} · ${SITE_APP_LABEL}`;
-        // A search tab the user has in hand: nothing of it, grant or not.
-        return policy.canRead(o) && !handing(o.id)
-          ? `${wrap(relabelAt(`${o.id} · ${o.title} · `, originOf(o.url), labels.pinned(o.id)), zoneOf(o), originOf(o.url))}${urlOf(o, o.url, zoneOf(o), originOf(o.url))} · ${o.space}`
-          : `${o.id} · ${NOT_SHARED_LABEL} ·  · ${o.space}`;
+        const s = shownTab(o);
+        if (o.site !== undefined) return `${o.id} · ${s!.title} · ${s!.address} · ${SITE_APP_LABEL}`;
+        return s ? `${o.id} · ${s.title} · ${s.address} · ${o.space}` : `${o.id} · ${NOT_SHARED_LABEL} ·  · ${o.space}`;
       });
       for (const follow of [true, false])
         remember(text(lines.filter((_, i) => !exempt(tabs[i]!) && linksFollowable(tabs[i]!) === follow).join("\n")), l10n("kernel-outflow-source-tabs"), follow);
       return text(lines.join("\n") || "Aucun onglet ouvert.");
+    }),
+  );
+
+  server.registerTool(
+    "active_tab",
+    { description: "The host loop's line on the tab the user is on: its title, then its origin and path. Empty when it is not shared." },
+    protect(async () => {
+      if (bridge.activePrivateTab?.()) return text("");
+      const o = await bridge.activeTab();
+      if (!o || !urlWeb(o.url)) return text("");
+      const u = new URL(o.url);
+      // No userinfo, query nor fragment (tokens); a site app by its domain only.
+      const s = shownTab({ ...o, title: o.title.replace(/\s+/g, " ").trim().slice(0, 200) }, { url: u.origin + u.pathname, domainOnly: true });
+      if (!s) return text("");
+      const r = text(`${s.title}\n${s.address}`);
+      if (!exempt(o)) remember(r, l10n("kernel-outflow-source-tabs"), linksFollowable(o));
+      return r;
     }),
   );
 

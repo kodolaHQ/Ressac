@@ -29,7 +29,7 @@ import { changedFileDiff, changedFiles, liftWorkspace, listQuarantine, restoreQu
 import type { DiffFile } from "./review/repo.js";
 import { CoveredConversations } from "./mask/covered.js";
 import { readSites, readTweaks, tweaksHash } from "./sites/read.js";
-import { HOST_AGENT_TOOLS } from "./mcp/host-agent.js";
+import { HOST_LOOP_TOOLS } from "./mcp/host-agent.js";
 import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow, type AgentActivity } from "./mcp/server.js";
 import { createRecaps, type Recaps } from "./recaps/recaps.js";
 import type { ProfileFiles } from "./mcp/devtools.js";
@@ -256,7 +256,7 @@ export interface HostLaunch {
   /** The masking table's key, as `LaunchSpec.sessionId`. */
   sessionId: string;
   url: string;
-  /** This session's own token, scoped to HOST_AGENT_TOOLS. */
+  /** This session's own token, scoped to HOST_LOOP_TOOLS. */
   token: string;
   /** Closes the token and the masking table. Idempotent. */
   ended(): void;
@@ -332,7 +332,7 @@ export interface Kernel {
   openAgentSession(o: AgentSessionOptions & { transport: "pipe" }): Promise<LaunchSpec>;
   /** A terminal running the CLI's own login in the workshop: no MCP, no window token, no masking (it runs no model). */
   openLoginSession(o: { cols: number; rows: number; program: "claude" | "codex" }): Promise<SessionAgent>;
-  /** A conversation whose loop runs in the host (« Votre modèle »): a window's token scoped to HOST_AGENT_TOOLS, its own masking, nothing in the workshop. */
+  /** A conversation whose loop runs in the host (« Votre modèle »): a window's token scoped to HOST_LOOP_TOOLS, its own masking, nothing in the workshop. */
   openHostSession(o: { window: string; resume: boolean; agent: string }): Promise<HostLaunch>;
   /** Widgets of the home page, with their data and state (stored outside the workspace). */
   readHome(): Promise<HomeState>;
@@ -1020,7 +1020,7 @@ export async function createKernel(o: {
         search.reset();
         if (!resume) outflow.forgetTyped(win);
         const id = randomBytes(8).toString("hex");
-        const sessionToken = server.openSession(win, agent, id, "browser", HOST_AGENT_TOOLS);
+        const sessionToken = server.openSession(win, agent, id, "browser", HOST_LOOP_TOOLS);
         // Covered: the transcript only ever held masked text.
         masker.open(id, win);
         let open = true;

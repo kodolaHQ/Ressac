@@ -19,7 +19,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { declarationWidget, writeWidget } from "./helpers/home.js";
 import { FakeBridge } from "../src/mcp/fake-bridge.js";
-import { HOST_AGENT_TOOLS } from "../src/mcp/host-agent.js";
+import { HOST_LOOP_TOOLS } from "../src/mcp/host-agent.js";
 import { LABELS } from "../src/mask/table.js";
 import { tempFolder } from "./helpers/temp.js";
 import { fakeRunner } from "./helpers/fake-runner.js";
@@ -1325,14 +1325,14 @@ describe("host session", () => {
     await expect(n.openHostSession({ window: "", resume: false, agent: "Votre modèle" })).rejects.toThrow();
   });
 
-  test("host session token lists only HOST_AGENT_TOOLS", async () => {
+  test("host session token lists only HOST_LOOP_TOOLS", async () => {
     // Every tool on: the bridge has history, bookmarks and search, so the scope alone trims the list.
     const n = await createReady(() => "fr", { bridge: new FakeBridge([], { active: null, allow: false, history: { results: [] }, bookmarks: [], search: {} }) });
     const launch = await n.openHostSession({ window: "w", resume: false, agent: "Votre modèle" });
     const c = new Client({ name: "test", version: "0" });
     await c.connect(new StreamableHTTPClientTransport(new URL(launch.url), { requestInit: { headers: { Authorization: `Bearer ${launch.token}` } } }));
     try {
-      expect((await c.listTools()).tools.map((t) => t.name).sort()).toEqual([...HOST_AGENT_TOOLS].sort());
+      expect((await c.listTools()).tools.map((t) => t.name).sort()).toEqual([...HOST_LOOP_TOOLS].sort());
     } finally {
       await c.close();
       await launch.stop();
