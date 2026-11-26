@@ -13,7 +13,9 @@ export function agentGroups(order: readonly string[], chatOf: (tab: string) => s
   const by = new Map<ChatSummary | null, string[]>();
   for (const id of order) {
     const c = known.get(chatOf(id) ?? "") ?? null;
-    by.set(c, [...(by.get(c) ?? []), id]);
+    const tabs = by.get(c);
+    if (tabs) tabs.push(id);
+    else by.set(c, [id]);
   }
   const none = by.get(null);
   by.delete(null);
