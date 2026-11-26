@@ -44,6 +44,7 @@ Firefox under the hood, a quiet sidebar, nothing to sign up for, nothing to swit
 - It browses in its own tab, which you can watch; a thumbnail shows what it is doing while you keep working.
 - Before a purchase or a choice, it fills a **live recap**: criteria, independent sources, offers, sourced pros and cons.
 - It asks before opening an address it wrote itself, and hands back control when a page needs you (a login, a captcha).
+- You talk to it in a **chat**: several discussions per window, kept 30 days (masked text only). Your message is masked before it is sent, and « Mode avancé » (Settings › Agent) switches back to the agent's terminal.
 - It builds widgets for your home page.
 - It works with your identifiers without seeing them: masking, a passport for your name and address, and « Cacher pour l'agent » for anything you point at.
 
