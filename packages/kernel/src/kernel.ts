@@ -900,6 +900,7 @@ export async function createKernel(o: {
         if (sessionToken === undefined) return Promise.resolve();
         server.closeSession(sessionToken);
         masker.close(id);
+        policy.dropSession(id);
         sessionToken = undefined;
         return rm(configSession, { force: true }).catch((e) => console.error("[ressac] session config deletion:", e));
       };
@@ -1040,6 +1041,7 @@ export async function createKernel(o: {
         hostSessions.delete(clean);
         server.closeSession(sessionToken);
         masker.close(id);
+        policy.dropSession(id);
       };
       const clean = async () => ended();
       hostSessions.add(clean);

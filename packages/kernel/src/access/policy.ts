@@ -80,6 +80,11 @@ export class AccessPolicy {
   private readonly devCarrierOrigins = new Set<string>();
   /** tab id → origin whose dev tools the user unlocked on a carrier tab, for this conversation. */
   private readonly devUnlocks = new Map<string, string>();
+  /**
+   * session → tab id → origin: tabs the user pointed with @ in that discussion's message. Consent to read that tab in that
+   * session only, on that origin; it outlives `reset()` (another session's start), never the session itself.
+   */
+  private readonly pointedTabs = new Map<string, Map<string, string>>();
   private readonly listeners = new Set<() => void>();
   private conversationNumber = 0;
   private readonly portBuilt: (port: number) => boolean;
@@ -114,6 +119,7 @@ export class AccessPolicy {
     this.captureCarriers.delete(id);
     this.devCarriers.delete(id);
     this.devUnlocks.delete(id);
+    for (const tabs of this.pointedTabs.values()) tabs.delete(id);
   }
 
   /** Number of the current conversation: changes on every `reset()`. A reply from a past conversation is worth nothing. */
@@ -195,7 +201,10 @@ export class AccessPolicy {
       this.add(this.cuts, id, c);
       if (built) for (const key of this.builtKeys(id, built)) this.add(this.builtCuts, key, c);
     }
-    if (!d) this.permissions.delete(id);
+    if (!d) {
+      this.permissions.delete(id);
+      for (const tabs of this.pointedTabs.values()) tabs.delete(id);
+    }
     this.change();
   }
 
@@ -268,6 +277,7 @@ export class AccessPolicy {
     if (this.rights.get(id)?.origin !== org) this.rights.delete(id);
     if (this.devUnlocks.get(id) !== org) this.devUnlocks.delete(id);
     if (this.builtTabs.get(id) !== org) this.builtTabs.delete(id);
+    for (const tabs of this.pointedTabs.values()) if (tabs.get(id) !== org) tabs.delete(id);
   }
 
   /** Navigation done by the user: changing site removes the authorization. */
@@ -277,6 +287,27 @@ export class AccessPolicy {
     if (this.captureCarriers.has(id) && this.captureCarriers.get(id) !== org) this.captureCarriers.delete(id);
     this.leaveOrigin(id, org);
     this.change();
+  }
+
+  /** The user pointed this tab with @ in session `session`'s message (the host checked it is a real, readable tab). */
+  pointTab(session: string, o: TabInfo): void {
+    const org = origin(o.url);
+    // A site app reads only through its app's grant.
+    if (!org || o.site !== undefined) return;
+    const tabs = this.pointedTabs.get(session) ?? new Map<string, string>();
+    tabs.set(o.id, org);
+    this.pointedTabs.set(session, tabs);
+  }
+
+  /** Session `session` may read `o` because its user pointed it there, and it is still on that origin. */
+  pointed(session: string, o: TabInfo): boolean {
+    const org = origin(o.url);
+    return o.site === undefined && org !== null && this.pointedTabs.get(session)?.get(o.id) === org;
+  }
+
+  /** The session closed: what was pointed in it goes. */
+  dropSession(session: string): void {
+    this.pointedTabs.delete(session);
   }
 
   /** The user shared this tab with the agent (`userInteraction`), on the site of `url`, in this conversation or an earlier one. */

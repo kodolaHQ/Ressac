@@ -646,6 +646,8 @@ export function createToolsServer(
   const wrapRaw = wrap;
   const zoned: Zoned = (x, account) => (account ? wrap(json(x), "sources", null) : json(x));
   const labels = masker.table(session);
+  /** This session may read the tab: a tab grant, or the user pointed it with @ in this discussion (no card for it). */
+  const mayRead = (o: TabInfo) => policy.canRead(o) || (session !== null && policy.pointed(session, o));
   /** A tab's last link list, if this conversation read it: another one's links are unknown here (read the tab again). */
   const ownList = (id: string) => {
     const l = listed.get(id);
@@ -1007,12 +1009,12 @@ export function createToolsServer(
    * card (« L'agent veut voir l'appli de site … »), one at a time per app, whose grant is valid for the conversation.
    */
   async function access(o: TabInfo): Promise<boolean> {
-    if (policy.canRead(o)) return true;
+    if (mayRead(o)) return true;
     // Like for a tab: site.json may have been rewritten (window re-read) during the card; today's window counts.
-    if (o.site !== undefined) return (await siteAccess(o.site, o.title, o.hash)) && policy.canRead(await tab(o.id));
+    if (o.site !== undefined) return (await siteAccess(o.site, o.title, o.hash)) && mayRead(await tab(o.id));
     if (!(await conversationCard(policy, requests, o.id, (signal) => noted(bridge.noteAsk, { kind: "read-tab", rule: "tab-not-granted", url: o.url }, () => bridge.askPermission(o, signal), Boolean, signal), () => policy.grant(o)))) return false;
     // The user may have changed site during the question: their grant is for the site they saw.
-    return policy.canRead(await tab(o.id));
+    return mayRead(await tab(o.id));
   }
 
   /** Tells the browser what the agent does on a tab; never for a tab of a private space. */
@@ -1287,7 +1289,7 @@ export function createToolsServer(
 
   /** `access`, then rule 3 for a sensitive tab: a card just answered yes by `access` counts for this search. */
   async function readAccess(o: TabInfo): Promise<boolean> {
-    const had = policy.canRead(o);
+    const had = mayRead(o);
     if (!(await access(o))) return false;
     if (!isSensitive(o.url)) return true;
     return oncePerSearch(
@@ -1327,7 +1329,7 @@ export function createToolsServer(
     // masked form that is no handle (the main token issues none) opens as written: never a read address.
     const asRead = shown !== url || !LABEL_SHAPE.test(shown);
     if (free && (isLocal(url) || (asRead && seen.has(shown)) || policy.addressGranted(shown))) return null;
-    if (free && (await bridge.listTabs()).some((t) => policy.canRead(t) && segments.apply(urlOf(t, t.url, zoneOf(t), originOf(t.url)), labels) === shown)) return null;
+    if (free && (await bridge.listTabs()).some((t) => mayRead(t) && segments.apply(urlOf(t, t.url, zoneOf(t), originOf(t.url)), labels) === shown)) return null;
     if (url.length > URL_MAX) return TOO_LONG_TEXT;
     if (!bridge.askAddress) return denial(url);
     const card = withMask({ url, reason: (reason ?? "").slice(0, ADDRESS_REASON_LENGTH), agent: dev?.agent ?? "L'agent", ...(await danger(shown, clicks)) }, url);
@@ -1416,8 +1418,8 @@ export function createToolsServer(
     const origin = originOf(o.url);
     const title = wrap(relabelAt(o.title, origin, labels.pinned(o.id)), zone, origin);
     const address = () => urlOf(o, at.url ?? o.url, zone, origin);
-    if (o.site !== undefined) return { title, address: policy.canRead(o) && !at.domainOnly ? address() : wrap(o.domain ?? "", zone, origin) };
-    return policy.canRead(o) && !handing(o.id) ? { title, address: address() } : null;
+    if (o.site !== undefined) return { title, address: mayRead(o) && !at.domainOnly ? address() : wrap(o.domain ?? "", zone, origin) };
+    return mayRead(o) && !handing(o.id) ? { title, address: address() } : null;
   };
 
   async function content(o: TabInfo, withLinks = false, full = false, extra?: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<Result> {
@@ -1556,7 +1558,7 @@ export function createToolsServer(
       const unlisted = asked.find((r) => r.listed === undefined);
       if (unlisted) return text(`Champ ${unlisted.field} inconnu : relis l'onglet avec read_tab.`, true);
       if (!bridge.fill || !bridge.askFill) return text("Ce navigateur ne remplit pas de champ.", true);
-      if (!searching?.sessions.owns(id) && !policy.canRead(o)) return text(DENIAL_TEXT);
+      if (!searching?.sessions.owns(id) && !mayRead(o)) return text(DENIAL_TEXT);
       const usedOf = (v: string | undefined) => [...new Set(v?.match(BRACKETED) ?? [])];
       const used = [...new Set(asked.flatMap((r) => usedOf(r.value)))];
       // The main token resolves no label (spec § 9 bis, invariant 8).

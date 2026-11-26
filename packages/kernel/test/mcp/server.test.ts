@@ -3696,3 +3696,28 @@ test("active_tab is not the model's tool call: it closes no lesson slot", async 
     expect(forget).toHaveBeenCalled();
   }, { notes, workshop: true });
 });
+
+test("a tab pointed with @ reads with no card in its session only; another tab or session still asks", async () => {
+  const s1 = server.openSession("W1", "claude", "S1", "browser");
+  const s2 = server.openSession("W1", "claude", "S2", "browser");
+  const as = async (t: string) => {
+    const c = new Client({ name: "test", version: "0" });
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${t}` } } }));
+    return c;
+  };
+  policy.pointTab("S1", gmail);
+  const [c1, c2] = [await as(s1), await as(s2)];
+  try {
+    expect(text(await c1.callTool({ name: "read_tab", arguments: { id: "gmail" } }))).not.toBe(DENIAL_TEXT);
+    expect(requests()).toBe(0);
+    // Listed with its address in that session only.
+    expect(text(await c1.callTool({ name: "list_tabs", arguments: {} }))).toContain("mail.google.com");
+    expect(text(await c2.callTool({ name: "list_tabs", arguments: {} }))).not.toContain("mail.google.com");
+    // The other session and the other tab: the card (refused here).
+    expect(text(await c2.callTool({ name: "read_tab", arguments: { id: "gmail" } }))).toBe(DENIAL_TEXT);
+    expect(text(await c1.callTool({ name: "read_tab", arguments: { id: "github" } }))).toBe(DENIAL_TEXT);
+    expect(requests()).toBe(2);
+  } finally {
+    await Promise.all([c1.close(), c2.close()]);
+  }
+});

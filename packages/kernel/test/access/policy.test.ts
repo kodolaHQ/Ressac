@@ -407,3 +407,43 @@ test("dev rights hold for the origin they were granted on only", () => {
   p.grantDev(github, ["console"], []);
   expect(p.devRights({ ...github, url: "https://evil.test/" })).toEqual([]);
 });
+
+test("a tab pointed with @ reads in that conversation only, on that origin", () => {
+  p.pointTab("s1", gmail);
+  expect(p.pointed("s1", gmail)).toBe(true);
+  // Another discussion, another tab: the usual rules.
+  expect(p.pointed("s2", gmail)).toBe(false);
+  expect(p.pointed("s1", github)).toBe(false);
+  // Not a tab grant: the badge's read state and the other sessions see nothing.
+  expect(p.canRead(gmail)).toBe(false);
+  // A new conversation elsewhere (reset) keeps it: it is this session's own.
+  p.reset();
+  expect(p.pointed("s1", gmail)).toBe(true);
+  // Another site in the same tab: gone, even back on the first one.
+  p.tabNavigated(gmail.id, "https://evil.example/");
+  p.tabNavigated(gmail.id, gmail.url);
+  expect(p.pointed("s1", gmail)).toBe(false);
+});
+
+test("a pointed tab lapses on close, on a cut, on the agent's move to another site and with its session", () => {
+  p.pointTab("s1", gmail);
+  p.navigationByAgent(gmail.id, "https://mail.google.com/other");
+  expect(p.pointed("s1", { ...gmail, url: "https://mail.google.com/other" })).toBe(true);
+  p.navigationByAgent(gmail.id, "https://evil.example/");
+  expect(p.pointed("s1", { ...gmail, url: "https://evil.example/" })).toBe(false);
+  p.pointTab("s1", github);
+  p.cut(github.id);
+  expect(p.pointed("s1", github)).toBe(false);
+  p.pointTab("s1", github);
+  p.tabClosed(github.id);
+  expect(p.pointed("s1", github)).toBe(false);
+  p.pointTab("s1", github);
+  p.dropSession("s1");
+  expect(p.pointed("s1", github)).toBe(false);
+});
+
+test("a site app window is never pointed: it keeps its own grant", () => {
+  const app: TabInfo = { id: "site:x", title: "App", url: "https://app.example/", space: "perso", site: "x" };
+  p.pointTab("s1", app);
+  expect(p.pointed("s1", app)).toBe(false);
+});
