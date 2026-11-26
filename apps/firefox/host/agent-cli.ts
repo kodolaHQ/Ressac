@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { chmod, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { HashMismatchError, downloadVerified } from "../../../packages/kernel/src/index.ts";
@@ -30,8 +30,14 @@ export const AGENT_CLIS: Record<Agent, { version: string; url: string; sha256: s
   },
 };
 
-const NAMES: Record<Agent, string> = { claude: "Claude Code", codex: "Codex" };
+export const NAMES: Record<Agent, string> = { claude: "Claude Code", codex: "Codex" };
 const tar = promisify(execFile);
+
+/** `p` as a real folder: a link (never followed) or a file in its place is removed first. */
+async function realDir(p: string): Promise<void> {
+  if (!(await lstat(p).catch(() => null))?.isDirectory()) await rm(p, { force: true });
+  await mkdir(p, { recursive: true });
+}
 
 /**
  * Downloads an agent's CLI into `<internal>/cli/<agent>/<binary>` (the container's /workspace/.ressac, read-only there, first
@@ -63,6 +69,8 @@ export function createAgentCli(o: { internal: string; download?: typeof download
     const final = join(o.internal, "cli", a);
     const work = `${final}.download`;
     const archive = join(work, `${pin.version}.tgz`);
+    await realDir(join(o.internal, "cli"));
+    await realDir(work);
     // A download left by another version would resume into a wrong file: only this version's is kept.
     for (const f of await readdir(work).catch(() => [])) if (f !== `${basename(archive)}.part`) await rm(join(work, f), { recursive: true, force: true });
     try {
@@ -83,8 +91,11 @@ export function createAgentCli(o: { internal: string; download?: typeof download
 
   return {
     installed,
-    /** Installs `a`'s CLI unless it is there at its version; calls at the same time share one download. */
-    async ensure(a: Agent, onPercent?: (p: number | null) => void): Promise<void> {
+    /**
+     * Installs `a`'s CLI unless it is there at its version; calls at the same time share one download. `wait` bounds this
+     * caller's wait only (its signal, its delay): the download goes on for the next call.
+     */
+    async ensure(a: Agent, onPercent?: (p: number | null) => void, wait?: { signal?: AbortSignal; delayMs?: number }): Promise<void> {
       if (await installed(a)) return;
       let p = pending.get(a);
       if (!p) {
@@ -93,7 +104,25 @@ export function createAgentCli(o: { internal: string; download?: typeof download
         pending.set(a, (p = { done, listeners }));
       }
       if (onPercent) p.listeners.add(onPercent);
-      return p.done;
+      if (!wait) return p.done;
+      const { signal, delayMs } = wait;
+      let timer: NodeJS.Timeout | undefined;
+      let onAbort = () => {};
+      try {
+        await Promise.race([
+          p.done,
+          new Promise<never>((_, reject) => {
+            onAbort = () => reject(signal!.reason ?? new Error("aborted"));
+            if (signal?.aborted) return onAbort();
+            signal?.addEventListener("abort", onAbort, { once: true });
+            if (delayMs !== undefined) timer = setTimeout(() => reject(new Error(hostSay("host-cli-slow", { agent: NAMES[a] }))), delayMs);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        if (onPercent) p.listeners.delete(onPercent);
+      }
     },
     /** Stops the downloads in progress (AI off); their partial files stay for the next try. */
     cancel(): void {

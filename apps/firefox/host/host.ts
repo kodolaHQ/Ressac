@@ -46,7 +46,7 @@ const { createPageIndexer, llamaEmbed } = await import("./page-indexer.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createHostWriter, createWriterChoice } = await import("./writer.ts");
-const { createAgentCli } = await import("./agent-cli.ts");
+const { createAgentCli, NAMES: AGENT_NAMES } = await import("./agent-cli.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
 const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, createWakeGrace, memoryAllows, memoryLevel, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
@@ -299,8 +299,9 @@ const hostWriter = createHostWriter({
   cli: (only) =>
     createAgentWriter({
       exec: async (argv, x) => {
-        await cli.ensure(argv[0] as "claude" | "codex");
-        return workshop.execWrite(argv, x);
+        const started = Date.now();
+        await cli.ensure(argv[0] as "claude" | "codex", undefined, x);
+        return workshop.execWrite(argv, { ...x, delayMs: Math.max(1, x.delayMs - (Date.now() - started)) });
       },
       agent: (exclude) => writerChoice.wakeAgent(new Set([...(exclude ?? []), only === "claude" ? "codex" : "claude"])),
       signedOut: writerChoice.signedOut,
@@ -648,9 +649,12 @@ const sessions = new SessionsAgent({
     await engines.current().wake("user").catch(() => {});
     if (!aiOn) throw new Error("ai-off");
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, mode: agentMode, onBuildProgress, review });
+    // The kernel refuses this anyway: before a download nobody can use yet.
+    if (workspaceLock.locked() && (await workshop.shapeChanged())) throw new Error(hostSay("kernel-err-shape-locked"));
     const since = Date.now();
-    const agent = profile === "claude" ? "Claude Code" : "Codex";
-    await cli.ensure(profile, (p) => onBuildProgress?.({ step: 1, of: 1, label: hostSay("host-cli-downloading", { agent, percent: p ?? 0 }), since }));
+    const agent = AGENT_NAMES[profile];
+    const label = (p: number | null) => (p === null ? hostSay("host-cli-downloading-size", { agent }) : hostSay("host-cli-downloading", { agent, percent: p }));
+    await cli.ensure(profile, (p) => onBuildProgress?.({ step: 1, of: 1, label: label(p), since }));
     if (!aiOn) throw new Error("ai-off");
     const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
     const claude = profile === "claude";

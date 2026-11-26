@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -139,5 +139,37 @@ describe("agent CLI download", () => {
     expect(await createAgentCli({ internal: temp(), env: { RESSAC_TEST_CLI_PRESENT: "1" } }).installed("claude")).toBe(true);
     // The packaged host ignores both.
     expect(await createAgentCli({ internal: temp(), env: { RESSAC_TEST_CLI_PRESENT: "1", RESSAC_KERNEL_RESOURCES: "/k" } }).installed("claude")).toBe(false);
+  });
+  it("a caller's abort or delay ends its wait at once; the shared download goes on for the next call", async () => {
+    const internal = temp();
+    let open!: () => void;
+    const download = fakeDownload(fixture("claude"), new Promise<void>((r) => (open = r)));
+    const cli = createAgentCli({ internal, download: download as any, env: {} });
+    const abort = new AbortController();
+    const aborted = cli.ensure("claude", undefined, { signal: abort.signal, delayMs: 60_000 });
+    abort.abort(new Error("stopped"));
+    await expect(aborted).rejects.toThrow("stopped");
+    await expect(cli.ensure("claude", undefined, { delayMs: 5 })).rejects.toThrow(/encore en cours|still running/);
+    const next = cli.ensure("claude");
+    open();
+    await next;
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(await cli.installed("claude")).toBe(true);
+  });
+
+  it("a link in place of the cli folder is removed, never followed", async () => {
+    const internal = temp();
+    const outside = temp();
+    symlinkSync(outside, join(internal, "cli"));
+    await createAgentCli({ internal, download: fakeDownload(fixture("claude")) as any, env: {} }).ensure("claude");
+    expect(lstatSync(join(internal, "cli")).isDirectory()).toBe(true);
+    expect(readdirSync(outside)).toEqual([]);
+    expect(readFileSync(join(internal, "cli", "claude", "claude"), "utf8")).toContain("echo claude");
+  });
+
+  it("the pinned versions are the Dockerfile's", () => {
+    const dockerfile = readFileSync(join(__dirname, "../../../packages/kernel/docker/workshop.Dockerfile"), "utf8");
+    expect(/@anthropic-ai\/claude-code@(\S+)/.exec(dockerfile)?.[1]).toBe(AGENT_CLIS.claude.version);
+    expect(/@openai\/codex@(\S+)/.exec(dockerfile)?.[1]).toBe(AGENT_CLIS.codex.version);
   });
 });

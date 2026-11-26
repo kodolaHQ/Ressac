@@ -495,7 +495,7 @@ test("the lift is refused while a conversation is open; once it ended, the lock 
 test("under the lock a shape change refuses the session", async () => {
   const n = await createReady(() => "fr", { shape: "2-workshop" });
   await n.workspaceLock.lock({ names: ["votre code"] });
-  await expect(n.openAgentSession({ cols: 80, rows: 24, window: "F1" })).rejects.toThrow("Le mode a changé pendant le verrou : levez d'abord le verrou pour ouvrir une conversation.");
+  await expect(n.openAgentSession({ cols: 80, rows: 24, window: "F1" })).rejects.toThrow("L'atelier doit être recréé : levez d'abord le verrou pour ouvrir une conversation.");
 });
 
 test("while a lift runs, the same lift shares it and another choice is refused", async () => {
