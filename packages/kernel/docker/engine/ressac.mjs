@@ -16,8 +16,8 @@ export function createRessac({ call, config, previous, now, log, input }) {
   async function sort(items, { question, text, threshold = 0.5 } = {}) {
     const list = [...items];
     if (!list.length) return [];
-    // The kernel keeps 500 characters per text; 2000 and 4000 are its argument bounds.
-    const scores = await call("sort", { question: String(question).slice(0, 2000), texts: list.map((e) => String(text(e)).slice(0, 4000)) });
+    // 500: what the kernel keeps of each text (SORT_TEXT_MAX); 2000: the question's argument bound.
+    const scores = await call("sort", { question: String(question).slice(0, 2000), texts: list.map((e) => String(text(e)).slice(0, 500)) });
     return list
       .map((element, i) => ({ element, score: scores[i] }))
       .filter((x) => x.score >= threshold)

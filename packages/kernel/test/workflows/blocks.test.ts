@@ -250,6 +250,14 @@ describe("ai.sort", () => {
     expect(r.terminal).toEqual({ t: "failure", error: "Le modèle n'a pas rendu une note par élément." });
   });
 
+  it("ai.sort: a question naming an item field fails the block visibly, without a call", async () => {
+    const r = await launch({ workflow: sort({ question: "Parle de {title} ?" }), files: list(elements).files, config: { interests: "Rust" }, reply });
+    const error = "La question du tri ne peut citer que des valeurs de la configuration, pas un champ d'élément.";
+    expect(r.calls).toEqual([]);
+    expect(r.blockEnd("tri")).toMatchObject({ status: "failed", error });
+    expect(r.terminal).toEqual({ t: "failure", error });
+  });
+
   it("an old ai.sort with onError skip still validates", () => {
     const d = BLOCK_REGISTRY.get("ai.sort")!;
     const old = { question: "q", text: "{title}", threshold: 0.6, onError: "skip", budgetSeconds: 60, reuse: "url", keepDays: 7 };

@@ -79,8 +79,8 @@ test("a fenced JSON answer is accepted", async () => {
 });
 
 test("a text is cut at 500 characters and loses its newlines", () => {
-  const p = sortPrompt("Q ?", ["a\nb\r\nc", "x".repeat(600)]);
-  expect(p).toContain("\nQuestion: Q ?\nItems:\n1. a b  c\n2. " + "x".repeat(500));
+  const p = sortPrompt("Q ?", ["a\nb\r\nc\u2028d\u2029e\u0085f\vg\fh", "x".repeat(600)]);
+  expect(p).toContain("\nQuestion: Q ?\nItems:\n1. a b c d e f g h\n2. " + "x".repeat(500));
   expect(p).not.toContain("x".repeat(501));
   expect(p).toContain("from 1 to 2,");
   expect(p.startsWith("Score each numbered item for the question below.")).toBe(true);

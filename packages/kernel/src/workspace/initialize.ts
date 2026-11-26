@@ -308,6 +308,9 @@ const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
     // Before ai.sort scored a whole list in one call (Kev, one item per question): fr, en.
     "70e002112b3a9297e99f9f3c4f0d7dcdbdb7a4d0b76023750ac3e12b52b3c6df",
     "663edce0b36733b24fe6f31bbfd03e69640aff6c7a7be8f79665294e7805626e",
+    // Before the sort question was said to come from the configuration only: fr, en.
+    "563a72038b161807db53bbba484bc5f9c1d4a0edb8fb8f9aa2c3cb4f9d2dcbf3",
+    "43de686c6bc518c52d8a8749d2a7c0e7ec76b849bb49a7c016d1263c606ebd4f",
   ]),
   // Before the caps of the harvest's copy: fr, en.
   "guides/actions.md": new Set(["f2e7637484158ec1c8747311bf6c03c303fcf58f9afcfcf67678c29b0bf9f43b", "24cfeffac0bbeada14f8fa7dae02a89db6a89f41ed9ee360baffb8661bd7aa29"]),

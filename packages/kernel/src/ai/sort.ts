@@ -16,7 +16,8 @@ export function sortPrompt(question: string, texts: string[]): string {
   const values: Record<string, string> = {
     n: String(texts.length),
     question,
-    items: texts.map((t, i) => `${i + 1}. ${t.replace(/[\r\n]/g, " ").slice(0, SORT_TEXT_MAX)}`).join("\n"),
+    // \s misses NEL (U+0085), which some renderers break lines on.
+    items: texts.map((t, i) => `${i + 1}. ${t.replace(/[\s\u0085]+/g, " ").slice(0, SORT_TEXT_MAX)}`).join("\n"),
   };
   // One pass: a placeholder inside the question or an item is never filled.
   return SORT_PROMPT.replace(/\{(n|question|items)\}/g, (_, k: string) => values[k]!);

@@ -81,8 +81,8 @@ workflows-warn-config = config.{ $key } absent de la configuration du widget
 # Exécution.
 
 # Blocs : noms et descriptions.
-workflows-block-ai-sort = Trier avec l'IA locale
-workflows-block-ai-sort-desc = Note chaque élément avec l'IA locale et garde ceux qui passent le seuil.
+workflows-block-ai-sort = Trier avec l'IA
+workflows-block-ai-sort-desc = Note chaque élément avec le petit modèle de votre agent et garde ceux qui passent le seuil.
 workflows-block-ai-write = Rédiger avec l'IA
 workflows-block-ai-write-desc = Fait écrire un texte à l'IA à partir d'une consigne.
 workflows-block-code = Code
@@ -116,7 +116,7 @@ workflows-field-reuse = Réutiliser un résultat précédent
 workflows-field-reuse-help = Chemin de la clé qui identifie l'élément.
 workflows-field-keep-days = Garder (jours)
 workflows-field-question = Question
-workflows-field-question-help = Ce que l'IA locale doit juger, par exemple « Est-ce intéressant ? ».
+workflows-field-question-help = Ce que l'IA doit juger, par exemple « Est-ce intéressant ? ».
 workflows-field-judged-text = Texte à juger
 workflows-field-threshold = Seuil
 workflows-field-score-field = Champ de la note

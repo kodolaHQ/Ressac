@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FakeBridge } from "../../src/mcp/fake-bridge.js";
+import { say } from "../../src/i18n.js";
 import {
   RUN_DELAY_MS,
   MEMORY_GAP_MS,
@@ -562,6 +563,24 @@ describe("executerWorkflow", () => {
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain("Question: q\nItems:\n1. x\n2. y");
     expect(r.issue).toMatchObject({ t: "end", output: { value: [{ element: "y", score: 1 }, { element: "x", score: 0.6 }] } });
+  });
+
+  it("a writer at its limit fails the ai.sort block with the writer's text", async () => {
+    const workflow = {
+      version: 1,
+      blocks: [
+        { id: "liste", type: "code", params: { source: "liste.mjs" } },
+        { id: "tri", type: "ai.sort", params: { question: "q ?", text: "{t}" } },
+        { id: "sortie", type: "output", params: { to: "widget" } },
+      ],
+      links: [{ from: "liste", to: "tri" }, { from: "tri", to: "sortie" }],
+    };
+    const b = await bench(workflow, { "liste.mjs": `export default () => [{ t: "a" }, { t: "b" }];` });
+    const limit = say("fr", "kernel-writer-limit");
+    b.infra.ai = { gemma: async () => Promise.reject(new Error(limit)) };
+    const r = await runWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "failure", error: limit });
+    expect(r.run.blocks.find((x) => x.id === "tri")).toMatchObject({ status: "failed", error: limit });
   });
 
   it("a harvester kev call is refused as an unknown function", async () => {
