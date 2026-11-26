@@ -294,3 +294,85 @@ agent-lift-keep-help = Cochez les fichiers à supprimer, puis appuyez de nouveau
 agent-lift-remove = Supprimer
 agent-lift-see = Voir
 agent-lift-hide = Masquer
+
+## The chat (the agent view « Discussion »)
+
+chat-untitled = Nouvelle discussion
+chat-picker = Discussions
+chat-new = Nouvelle discussion
+chat-advanced = Mode avancé (terminal)
+chat-back = Revenir au chat
+chat-menu = Mode et agent
+chat-menu-note = Un changement ouvre une nouvelle discussion.
+chat-list-title = Discussions
+chat-list-new = Nouvelle
+chat-list-close = Fermer la liste
+chat-list-live = En cours (3 au plus en même temps)
+chat-list-paused = En pause, reprises à l'ouverture
+chat-list-footer = Chaque discussion a son propre contexte : elle ne voit pas les autres.
+chat-list-empty = Aucune discussion pour l'instant.
+chat-list-waiting = Attend votre réponse
+chat-list-running = Travaille
+chat-list-starting = Démarre
+chat-list-done = Terminé { $ago }
+chat-list-queued = En attente d'une discussion libre
+chat-list-error = Arrêtée sur une erreur
+chat-list-signed-out = Connexion requise
+chat-list-now = à l'instant
+chat-list-messages = { $count ->
+        [one] { $count } message
+       *[other] { $count } messages
+    }
+chat-composer-label = Message à l'agent
+chat-composer-placeholder = Demandez quelque chose à l'agent
+chat-composer-footer = Les données de votre passeport sont masquées avant l'envoi.
+chat-send = Envoyer
+chat-stop = Arrêter
+chat-prefix = Joint à votre prochain message
+chat-prefix-drop = Retirer
+chat-chip-clear = Envoyer en clair
+chat-chip-mask = Garder masqué
+chat-chip-in-clear = en clair
+chat-unsent = non envoyé
+chat-copy = Copier
+chat-copy-code = Copier le code
+chat-new-messages = Nouveaux messages
+chat-tool-running = en cours
+chat-tool-done = terminé
+chat-tool-failed = échec
+chat-question = Question de l'agent
+chat-question-validate = Valider
+chat-question-ignored = Question ignorée
+chat-queued = En attente d'une discussion libre : trois discussions travaillent déjà.
+chat-paused = Discussion en pause : elle reprend à votre prochain message.
+chat-waiting = { $count ->
+        [one] Un message attend le démarrage de l'agent.
+       *[other] { $count } messages attendent le démarrage de l'agent.
+    }
+chat-error = La discussion s'est arrêtée : { $message }
+chat-open-failed = La discussion n'a pas pu s'ouvrir : { $message }
+chat-reveal = Voir la valeur, ici seulement
+chat-masked-nom = nom masqué
+chat-masked-adresse = adresse masquée
+chat-masked-carte = carte masquée
+chat-masked-iban = IBAN masqué
+chat-masked-tel = téléphone masqué
+chat-masked-email = e-mail masqué
+chat-masked-code = code masqué
+chat-masked-id = numéro d'identité masqué
+chat-masked-secu = numéro de sécu masqué
+chat-masked-motdepasse = mot de passe masqué
+chat-masked-date = date masquée
+chat-masked-masque = valeur masquée
+chat-login-title = Connectez votre compte { $name }
+chat-login-intro = Une seule fois. La connexion se fait dans { $cli } lui-même : Ressac ne voit jamais votre mot de passe. Ensuite, tout se passe ici, en discussion.
+chat-login-step-1 = Cliquez « Se connecter ».
+chat-login-step-2 = Votre navigateur ouvre la page de { $name } : acceptez.
+chat-login-step-3 = Si on vous donne un code, collez-le ci-dessous.
+chat-login-button = Se connecter
+chat-login-running = { $cli }, connexion en cours
+chat-login-terminal = Terminal de connexion
+chat-login-alt = Pas d'abonnement ?
+chat-login-api-key = Utiliser une clé d'API
+chat-login-or = ou
+chat-login-local = un modèle local

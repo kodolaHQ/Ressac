@@ -1,0 +1,118 @@
+<script lang="ts">
+  import { tick } from "svelte";
+  import { fade } from "svelte/transition";
+  import type { ChatSummary } from "../../../shared/chat";
+  import { appState } from "../../state.svelte";
+  import { t } from "../../i18n.svelte";
+  import Icon from "../Icon.svelte";
+  import { chat, newChat, openChat } from "./chat.svelte";
+
+  let { profiles }: { profiles: { id: string; name: string }[] } = $props();
+  let panel = $state<HTMLElement>();
+
+  const live = $derived(chat.list.filter((s) => s.state !== "paused"));
+  const paused = $derived(chat.list.filter((s) => s.state === "paused"));
+  const engineName = (s: ChatSummary) => profiles.find((p) => p.id === s.profile)?.name ?? (s.engine === "codex" ? "Codex" : "Claude");
+
+  /** « il y a 5 min », « hier »: in the shown language. */
+  function ago(at: number): string {
+    const rtf = new Intl.RelativeTimeFormat(appState.value?.locale ?? "fr", { numeric: "auto", style: "short" });
+    const minutes = Math.round((Date.now() - at) / 60_000);
+    if (minutes < 1) return t("chat-list-now");
+    if (minutes < 60) return rtf.format(-minutes, "minute");
+    if (minutes < 24 * 60) return rtf.format(-Math.round(minutes / 60), "hour");
+    return rtf.format(-Math.round(minutes / (24 * 60)), "day");
+  }
+  const dot = (s: ChatSummary) => (s.state === "waiting" ? "waiting" : s.state === "running" || s.state === "starting" ? "running" : s.state === "error" || s.state === "signed-out" ? "error" : "done");
+  function line(s: ChatSummary): string {
+    switch (s.state) {
+      case "waiting":
+        return t("chat-list-waiting");
+      case "running":
+        return t("chat-list-running");
+      case "starting":
+        return t("chat-list-starting");
+      case "queued":
+        return t("chat-list-queued");
+      case "error":
+        return t("chat-list-error");
+      case "signed-out":
+        return t("chat-list-signed-out");
+      default:
+        return t("chat-list-done", { ago: ago(s.updatedAt) });
+    }
+  }
+  const close = () => (chat.listOpen = false);
+  function pick(id: string) {
+    close();
+    if (id !== chat.view?.summary.id) void openChat(id);
+  }
+  function fresh() {
+    close();
+    void newChat();
+  }
+  // The list takes the keyboard on its first row (or « Nouvelle »), Échap gives it back.
+  $effect(() => void tick().then(() => panel?.querySelector<HTMLElement>(".row, .new")?.focus()));
+</script>
+
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<section class="list" data-testid="chat-list" aria-label={t("chat-list-title")} bind:this={panel} out:fade={{ duration: chat.visible ? 150 : 0 }} onkeydown={(e) => e.key === "Escape" && (e.stopPropagation(), close())}>
+  <header>
+    <button class="icon" aria-label={t("chat-list-close")} title={t("chat-list-close")} data-testid="chat-list-close" onclick={close}><Icon name="back" size={15} /></button>
+    <strong>{t("chat-list-title")}</strong>
+    <span class="spacer"></span>
+    <button class="new" data-testid="chat-list-new" onclick={fresh}><Icon name="plus" size={13} />{t("chat-list-new")}</button>
+  </header>
+  <div class="rows">
+    {#if live.length}
+      <span class="group">{t("chat-list-live")}</span>
+      {#each live as s (s.id)}
+        <button class="row" class:current={s.id === chat.view?.summary.id} data-testid="chat-row" onclick={() => pick(s.id)}>
+          <span class="top"><span class="dot {dot(s)}" aria-hidden="true"></span><strong>{s.title || t("chat-untitled")}</strong><span class="side">{engineName(s)}</span></span>
+          <span class="sub">{line(s)}</span>
+        </button>
+      {/each}
+    {/if}
+    {#if paused.length}
+      <span class="group">{t("chat-list-paused")}</span>
+      {#each paused as s (s.id)}
+        <button class="row paused" class:current={s.id === chat.view?.summary.id} data-testid="chat-row" onclick={() => pick(s.id)}>
+          <span class="top"><strong>{s.title || t("chat-untitled")}</strong><span class="side">{ago(s.updatedAt)}</span></span>
+          <span class="sub">{t("chat-list-messages", { count: s.messages })}</span>
+        </button>
+      {/each}
+    {/if}
+    {#if !chat.list.length}<p class="empty">{t("chat-list-empty")}</p>{/if}
+  </div>
+  <p class="footer">{t("chat-list-footer")}</p>
+</section>
+
+<style>
+  /* Over the whole panel, on the spring; out by a fade (DESIGN.md). */
+  .list { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; background: var(--glass-dense); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); -moz-window-dragging: drag; }
+  strong { font-size: 13px; }
+  .spacer { flex: 1; }
+  button { -moz-window-dragging: no-drag; cursor: pointer; transition: transform var(--tap), background var(--tap); }
+  button:active { transform: scale(0.97); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .icon { width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text); }
+  .new { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); font: 600 12.5px var(--font-ui); }
+  .rows { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 10px; }
+  .group { padding: 6px 8px 2px; color: var(--text-muted); font-size: 11.5px; }
+  .group:not(:first-child) { padding-top: 14px; }
+  .row { display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 10px 12px; border-radius: 10px; border: 0; background: transparent; color: var(--text); text-align: left; font: 13px/1.4 var(--font-ui); }
+  .row:hover { background: var(--bg-hover); }
+  .row.current { background: var(--bg-active); }
+  .top { display: flex; align-items: center; gap: 8px; }
+  .top strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side, .sub { color: var(--text-muted); font-size: 11.5px; }
+  .sub { font-size: 12px; }
+  .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+  .dot.waiting { background: var(--in-progress); }
+  .dot.running { background: var(--running); }
+  .dot.done { background: var(--stopped); }
+  .dot.error { background: var(--in-error); }
+  .empty { margin: 8px; color: var(--text-muted); }
+  .footer { margin: 0; padding: 10px 16px 14px; color: var(--text-muted); font-size: 11.5px; border-top: 1px solid var(--border); }
+</style>

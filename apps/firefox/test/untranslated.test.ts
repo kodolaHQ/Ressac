@@ -16,6 +16,7 @@ const TRANSLATED = [
   "ui/components/SettingsShortcuts.svelte",
   "ui/components/OllamaModelPicker.svelte",
   "ui/components/AgentPanel.svelte",
+  ...["ChatView", "ChatHeader", "ChatThread", "ChatComposer", "ChatList", "ChatLogin", "ChatQuestion"].map((c) => `ui/components/chat/${c}.svelte`),
   "ui/components/Review.svelte",
   "ui/components/ReviewComment.svelte",
   "ui/components/DiffFile.svelte",

@@ -293,3 +293,85 @@ agent-lift-keep-help = Tick the files to delete, then press « Keep the files an
 agent-lift-remove = Delete
 agent-lift-see = Show
 agent-lift-hide = Hide
+
+## The chat (the agent view « Discussion »)
+
+chat-untitled = New conversation
+chat-picker = Conversations
+chat-new = New conversation
+chat-advanced = Advanced mode (terminal)
+chat-back = Back to the chat
+chat-menu = Mode and agent
+chat-menu-note = A change opens a new conversation.
+chat-list-title = Conversations
+chat-list-new = New
+chat-list-close = Close the list
+chat-list-live = Running (3 at most at once)
+chat-list-paused = Paused, resumed when opened
+chat-list-footer = Each conversation has its own context: it does not see the others.
+chat-list-empty = No conversation yet.
+chat-list-waiting = Waiting for your answer
+chat-list-running = Working
+chat-list-starting = Starting
+chat-list-done = Done { $ago }
+chat-list-queued = Waiting for a free conversation
+chat-list-error = Stopped on an error
+chat-list-signed-out = Sign-in needed
+chat-list-now = just now
+chat-list-messages = { $count ->
+        [one] { $count } message
+       *[other] { $count } messages
+    }
+chat-composer-label = Message to the agent
+chat-composer-placeholder = Ask the agent something
+chat-composer-footer = Your passport data is masked before sending.
+chat-send = Send
+chat-stop = Stop
+chat-prefix = Attached to your next message
+chat-prefix-drop = Remove
+chat-chip-clear = Send in clear
+chat-chip-mask = Keep masked
+chat-chip-in-clear = in clear
+chat-unsent = not sent
+chat-copy = Copy
+chat-copy-code = Copy the code
+chat-new-messages = New messages
+chat-tool-running = running
+chat-tool-done = done
+chat-tool-failed = failed
+chat-question = The agent's question
+chat-question-validate = Confirm
+chat-question-ignored = Question skipped
+chat-queued = Waiting for a free conversation: three are already working.
+chat-paused = Conversation paused: it resumes at your next message.
+chat-waiting = { $count ->
+        [one] A message waits for the agent to start.
+       *[other] { $count } messages wait for the agent to start.
+    }
+chat-error = The conversation stopped: { $message }
+chat-open-failed = The conversation could not open: { $message }
+chat-reveal = See the value, here only
+chat-masked-nom = masked name
+chat-masked-adresse = masked address
+chat-masked-carte = masked card
+chat-masked-iban = masked IBAN
+chat-masked-tel = masked phone
+chat-masked-email = masked email
+chat-masked-code = masked code
+chat-masked-id = masked ID number
+chat-masked-secu = masked social security number
+chat-masked-motdepasse = masked password
+chat-masked-date = masked date
+chat-masked-masque = masked value
+chat-login-title = Connect your { $name } account
+chat-login-intro = Only once. The sign-in happens in { $cli } itself: Ressac never sees your password. Then everything happens here, in the chat.
+chat-login-step-1 = Click “Sign in”.
+chat-login-step-2 = Your browser opens { $name }'s page: accept.
+chat-login-step-3 = If you are given a code, paste it below.
+chat-login-button = Sign in
+chat-login-running = { $cli }, signing in
+chat-login-terminal = Sign-in terminal
+chat-login-alt = No subscription?
+chat-login-api-key = Use an API key
+chat-login-or = or
+chat-login-local = a local model

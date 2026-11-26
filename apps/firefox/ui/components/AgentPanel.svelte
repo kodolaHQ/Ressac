@@ -16,6 +16,10 @@
   import MaskBubble from "./MaskBubble.svelte";
   import { passportTip, uncoveredText } from "./maskBanner";
   import { firstTimePending } from "./hints";
+  import { chat, openChat } from "./chat/chat.svelte";
+  import ChatHeader from "./chat/ChatHeader.svelte";
+  import ChatList from "./chat/ChatList.svelte";
+  import ChatView from "./chat/ChatView.svelte";
 
   let {
     visible,
@@ -66,10 +70,12 @@
   let hostEl = $state<HTMLDivElement>() as HTMLDivElement;
   const appState = $derived(terminalAgent.agent.state);
   let engineNotice = $state<HTMLElement>();
+  /** What the panel prepares: the active discussion's start in chat view, the terminal's session otherwise. */
+  const prep = $derived(chatMode ? (chat.view?.preparing ?? null) : appState.state === "preparing" || appState.state === "review" ? appState : null);
   /** Ticks while a build step shows, so the elapsed minutes count up. */
   let now = $state(Date.now());
   $effect(() => {
-    if (appState.state !== "preparing" || appState.since === undefined) return;
+    if (prep?.state !== "preparing" || prep.since === undefined) return;
     const timer = setInterval(() => (now = Date.now()), 5_000);
     return () => clearInterval(timer);
   });
@@ -77,7 +83,7 @@
   /** While the panel prepares: Ressac's workshop machine is booting (asked every 2 s). */
   let machineStarting = $state(false);
   $effect(() => {
-    if (appState.state !== "preparing" || !aiOn()) return void (machineStarting = false);
+    if (prep?.state !== "preparing" || !aiOn()) return void (machineStarting = false);
     const check = () => api.settings.machine().then((m) => (machineStarting = m?.kind === "starting"), () => {});
     void check();
     const timer = setInterval(check, 2_000);
@@ -172,6 +178,41 @@
     api.dispatch({ type: "chooseAgentMode", mode: m });
     void api.agent.relaunch();
   }
+  /**
+   * The agent view « Discussion » (Réglages › Agent), for Claude Code and Codex: a custom profile, the setting
+   * « Terminal » or « Mode avancé » show the terminal. The profile is assumed shipped until the host says.
+   */
+  let advanced = $state(false);
+  const chatView = $derived((browserState.value?.settings.agentView ?? "chat") === "chat" && (current === null || current === "claude" || current === "codex"));
+  const chatMode = $derived(aiOn() && chatView && !advanced);
+  const chatProfiles = $derived(profiles.filter((p) => p.id === "claude" || p.id === "codex"));
+  let chatPane = $state<ReturnType<typeof ChatView>>();
+  $effect(() => void (chat.visible = visible));
+  // Shown in chat view: the window's active discussion (made if none, a paused one resumes).
+  $effect(() => {
+    if (visible && chatMode) untrack(() => void openChat());
+  });
+  $effect(() => {
+    if (!chatMode) chat.listOpen = false;
+  });
+  /** « Mode avancé »: the discussion pauses, the window's terminal resumes its conversation. */
+  async function toTerminal() {
+    const had = terminalAgent.exists();
+    await api.chat.toTerminal();
+    advanced = true;
+    // A terminal made earlier needs a new start; a first one starts as it attaches.
+    if (had) terminalAgent.reset();
+  }
+  /** « Revenir au chat »: the terminal stops, the discussion resumes. */
+  async function toChat() {
+    await api.chat.toChat();
+    advanced = false;
+  }
+  const chatReview = (id: number, choice: "keep" | "revert") => Promise.resolve(api.chat.review(id, choice));
+  /** Where the keyboard goes for ⌘J: the composer in chat view, the terminal otherwise. */
+  const focusTarget = () => (chatMode ? chatPane?.focus() : terminalAgent.focus());
+  const targetHasFocus = () => (chatMode ? (chatPane?.hasFocus() ?? false) : terminalAgent.hasFocus());
+
   async function choose(id: string) {
     reads++;
     current = id;
@@ -182,7 +223,7 @@
 
   // Hidden, the panel drops its bubble: a revealed value or a held paste never waits off screen.
   $effect(() => {
-    if (!visible) untrack(() => terminalAgent.bubble.current?.host === hostEl && terminalAgent.dismissBubble());
+    if (!visible) untrack(() => terminalAgent.bubble.current && section?.contains(terminalAgent.bubble.current.host) && terminalAgent.dismissBubble());
   });
 
   // The window's terminal comes here on the first opening of this panel, then stays attached: closing the panel only
@@ -195,8 +236,8 @@
     if (!aiOn()) terminalAgent.sleep();
   });
   $effect(() => {
-    // AI off: the terminal is not attached, so no agent session starts.
-    if (!visible || !aiOn()) return;
+    // AI off, or the chat shown: the terminal is not attached, so no terminal session starts.
+    if (!visible || !aiOn() || chatMode) return;
     detach ??= terminalAgent.attacher(hostEl);
     terminalAgent.wake();
     terminalAgent.adjust();
@@ -222,13 +263,13 @@
     }
     if (n === served) return;
     served = n;
-    focusOwed = untrack(() => appState.state !== "active");
+    focusOwed = untrack(() => !chatMode && appState.state !== "active");
     // Untracked: a note change re-running this effect would clear the retries below, then return (request served).
     if (untrack(notePending)) userAsked = true;
     // The first-time note keeps the keyboard until Compris.
-    const aim = () => visible && !notePending() && terminalAgent.focus();
+    const aim = () => visible && !notePending() && focusTarget();
     void tick().then(aim);
-    const relaunches = [100, 500].map((ms) => setTimeout(() => !terminalAgent.hasFocus() && aim(), ms));
+    const relaunches = [100, 500].map((ms) => setTimeout(() => !targetHasFocus() && aim(), ms));
     return () => relaunches.forEach(clearTimeout);
   });
   /** Asleep, then waking until active: the terminal stays shown, so it keeps the keyboard for the keys typed meanwhile. */
@@ -264,7 +305,7 @@
         const asked = userAsked;
         giveBack = undefined;
         userAsked = false;
-        void tick().then(() => (asked ? terminalAgent.focus() : back()));
+        void tick().then(() => (asked ? focusTarget() : back()));
       }
     });
   });
@@ -274,6 +315,19 @@
   });
 </script>
 
+<!-- The preparing states, under the terminal's header or above the chat's composer. -->
+{#snippet preparing()}
+  {#if prep?.state === "preparing"}
+    {#if prep.step !== undefined && prep.since !== undefined}
+      <p class="message" data-testid="agent-build-step">{t("agent-panel-build-step", { step: prep.step, of: prep.of ?? 0, label: prep.label ?? "", minutes: Math.max(0, Math.floor((now - prep.since) / 60_000)) })}</p>
+    {:else}
+      <p class="message">{t(machineStarting ? "agent-panel-machine-starting" : "agent-panel-preparing")}</p>
+    {/if}
+  {:else if prep?.state === "review"}
+    <InstructionReview id={prep.id} files={prep.files} {visible} onAnswer={chatMode ? chatReview : undefined} />
+  {/if}
+{/snippet}
+
 <section class="agent" class:built-in={builtIn} class:right={sidebarRight} data-testid={builtIn ? "built-in-agent-terminal" : "agent-panel"} hidden={!visible} bind:this={section}>
   {#if aiOn()}<FirstTimeNote id="agent" />{/if}
   {#if !builtIn}
@@ -281,6 +335,9 @@
   {/if}
   {#if !aiOn()}
     <AiAsleep feature="agent" />
+  {:else}
+  {#if chatMode}
+    <ChatHeader profiles={chatProfiles} onAdvanced={() => void toTerminal()} />
   {:else}
   <header>
     <!-- The agent's mark: the aura's three hues, turning while it answers. -->
@@ -306,7 +363,11 @@
         {/each}
       </div>
     {/if}
+    {#if advanced && chatView}
+      <button class="back" data-testid="chat-back" in:fade={{ duration: 150 }} onclick={() => void toChat()}>{t("chat-back")}</button>
+    {/if}
   </header>
+  {/if}
   <!-- A fade never ends in a hidden panel (no frames): off screen, a banner leaves at once. -->
   {#if lockedText}
     <div class="mask-banner lock" data-testid="agent-mask-locked-banner" out:fade={{ duration: visible ? 150 : 0 }}>
@@ -336,25 +397,21 @@
   {#if masking.notice}
     <p class="mask-banner" role="status" data-testid="agent-mask-notice" out:fade={{ duration: visible ? 150 : 0 }}>{masking.notice.slice(0, 300)}</p>
   {/if}
-  {#if signedOutCodex}
+  {#if signedOutCodex && !chatMode}
     <p class="message">{t("agent-panel-codex-signed-out")}</p>
     <button data-testid="agent-login-settings" onclick={openAgentSettings}>{t("agent-panel-login")}</button>
   {/if}
-  {#if appState.state === "active" && appState.engineChanged}
+  {#if !chatMode && appState.state === "active" && appState.engineChanged}
     <!-- A fade never ends in a hidden panel (no frames): off screen, the notice leaves at once. -->
     <div class="engine-changed" data-testid="agent-engine-changed" bind:this={engineNotice} out:fade={{ duration: engineNotice?.getClientRects().length ? 150 : 0 }}>
       <p class="message">{t("agent-panel-engine-changed")}</p>
       <button data-testid="agent-engine-relaunch" onclick={() => void api.agent.relaunch()}>{t("agent-panel-restart")}</button>
     </div>
   {/if}
-  {#if appState.state === "preparing"}
-    {#if appState.step !== undefined && appState.since !== undefined}
-      <p class="message" data-testid="agent-build-step">{t("agent-panel-build-step", { step: appState.step, of: appState.of ?? 0, label: appState.label ?? "", minutes: Math.max(0, Math.floor((now - appState.since) / 60_000)) })}</p>
-    {:else}
-      <p class="message">{t(machineStarting ? "agent-panel-machine-starting" : "agent-panel-preparing")}</p>
-    {/if}
-  {:else if appState.state === "review"}
-    <InstructionReview id={appState.id} files={appState.files} {visible} />
+  {#if chatMode}
+    <ChatView bind:this={chatPane} status={preparing} openSettings={openAgentSettings} />
+  {:else if prep}
+    {@render preparing()}
   {:else if appState.state === "docker-absent"}
     <p class="message">{t("agent-panel-docker-absent")}</p>
     <button onclick={terminalAgent.reset}>{t("agent-panel-retry")}</button>
@@ -370,11 +427,14 @@
   {/if}
   <!-- Asleep: a click wakes the agent too (a TUI without mouse reporting sends nothing for it). -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="terminal" bind:this={hostEl} hidden={!aiOn()} class:masked={appState.state !== "active" && appState.state !== "done" && !waking} onpointerdown={() => appState.state === "asleep" && api.agent.write("")}></div>
+  <div class="terminal" bind:this={hostEl} hidden={!aiOn() || chatMode} class:masked={appState.state !== "active" && appState.state !== "done" && !waking} onpointerdown={() => appState.state === "asleep" && api.agent.write("")}></div>
   {#if terminalAgent.bubble.current && terminalAgent.bubble.current.host === hostEl}
     <MaskBubble b={terminalAgent.bubble.current} {visible} />
   {/if}
-  {#if aiOn()}
+  {#if chatMode && chat.listOpen}
+    <ChatList profiles={chatProfiles} />
+  {/if}
+  {#if aiOn() && !chatMode}
     <!-- Keys typed in the terminal go to the agent as they are (spec § 5.4 bis): said, always. -->
     <p class="typed" data-testid="agent-typed-reminder">{t("agent-mask-typed-reminder")}</p>
   {/if}
@@ -424,5 +484,6 @@
   .mask-banner.lock p { flex: 1; min-width: 0; margin: 0; }
   .mask-banner .lift-open { flex: none; margin: 0; padding: 4px 10px; font-size: 12px; }
   .terminal[hidden] { display: none; }
+  .back { flex: none; margin: 0 0 0 auto; padding: 4px 10px; font-size: 12px; -moz-window-dragging: no-drag; }
   .typed { flex: none; margin: -2px 14px 6px; color: var(--text-muted); font-size: 11.5px; line-height: 1.3; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
 </style>

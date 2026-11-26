@@ -83,9 +83,9 @@ function flowing(): void {
   quiet = setTimeout(() => (agent.busy = false), BUSY_QUIET_MS);
 }
 
-const MONO_FALLBACK = "ui-monospace, Menlo, monospace";
+export const MONO_FALLBACK = "ui-monospace, Menlo, monospace";
 /** xterm paints with JS colours: read from the tokens, again when the theme or the space's aura changes. */
-function palette() {
+export function palette() {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string) => css.getPropertyValue(name).trim();
   const accent = v("--accent");
@@ -235,6 +235,9 @@ export function adjust(): void {
   adjustment.fit();
   if (`${terminal.cols}x${terminal.rows}` !== before) api.agent.resize(size());
 }
+
+/** The window's terminal was made (a panel showed it once): a later session needs an explicit start. */
+export const exists = (): boolean => !!terminal;
 
 export function focus(): void {
   // The textarea alone is not enough: its frame must be the focused element of the window's document too.

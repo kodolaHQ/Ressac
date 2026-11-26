@@ -137,6 +137,15 @@
         }}
       />
     </SettingsRow>
+    <SettingsRow label={t("settings-agent-view")} labelId="agent-view-label" help={t("settings-agent-view-help")}>
+      <div role="radiogroup" aria-labelledby="agent-view-label" class="kinds">
+        {#each [["chat", "settings-agent-view-chat"], ["terminal", "settings-agent-view-terminal"]] as const as [view, name] (view)}
+          <label>
+            <input type="radio" name="agent-view" data-testid="settings-agent-view-{view}" checked={(appState.value?.settings.agentView ?? "chat") === view} onchange={() => api.dispatch({ type: "chooseAgentView", view })} />{t(name)}
+          </label>
+        {/each}
+      </div>
+    </SettingsRow>
   </div>
   {#if labCard}
     <LabCard

@@ -6,7 +6,12 @@
   import { t } from "../i18n.svelte";
   import { foldLines, shownPath } from "./instructionReview";
 
-  let { id, files, visible }: { id: number; files: InstructionChange[]; visible: boolean } = $props();
+  let {
+    id,
+    files,
+    visible,
+    onAnswer = api.agent.review,
+  }: { id: number; files: InstructionChange[]; visible: boolean; /** The chat answers its own discussion's card (`chat.review`). */ onAnswer?: (id: number, choice: "keep" | "revert") => Promise<void> } = $props();
   let card = $state<HTMLElement>();
   let revert = $state<HTMLButtonElement>();
   /** The review already answered: its buttons wait for the next review's id. */
@@ -14,7 +19,7 @@
   const answer = (choice: "keep" | "revert") => {
     answered = id;
     // A failed request leaves the buttons usable: the host's id check still refuses a stale answer.
-    api.agent.review(id, choice).catch(() => (answered = undefined));
+    onAnswer(id, choice).catch(() => (answered = undefined));
   };
   const markerText: Record<string, string> = { binary: "agent-review-binary", other: "agent-review-other", unreadable: "agent-review-unreadable", "too-many": "agent-review-too-many" };
   // The safe choice takes the keyboard when a review shows in a visible panel.
