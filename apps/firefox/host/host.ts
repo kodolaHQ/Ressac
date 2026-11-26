@@ -3,7 +3,7 @@ import type { OpenOptions } from "../core/agent/chats.ts";
 import type { AskReply, ChatModel, ChatView } from "../shared/chat.ts";
 import type { EngineModel } from "../core/agent/chat/engine.ts";
 import type { FrameBounds } from "../shared/model.ts";
-import type { ClaudeEngine, CodexEngine, DockerStatus, OwnEngine } from "../shared/settings.ts";
+import type { AgentAccount, ClaudeEngine, CodexEngine, DockerStatus, OwnEngine } from "../shared/settings.ts";
 import type { BuilderSelection, TerminalSize } from "../shared/api.ts";
 import { hostLocale, hostSay, setHostLocale } from "./locale.ts";
 import type { OwnKey } from "./own-model.ts";
@@ -911,6 +911,23 @@ async function accountSignedIn(agent: "claude" | "codex"): Promise<boolean> {
     return s.loggedIn;
   } catch {
     return true;
+  }
+}
+
+const LIVE_STATES = new Set(["starting", "ready", "running", "waiting", "error"]);
+/**
+ * An account seen signed out (Réglages' « Se déconnecter », /logout in a terminal) puts its live discussions on the login
+ * card at once, not at their next message; seen signed in, its discussions on the card go back to the discussion.
+ */
+function accountsSeen(accounts: readonly AgentAccount[]): void {
+  for (const a of accounts) {
+    if (a.id !== "claude" && a.id !== "codex") continue;
+    if (a.state === "logged-out") signedIn.delete(a.id);
+    // On Ollama or an API the account does not matter: those discussions stay.
+    const out = a.state === "logged-out" && onSubscription(a.id);
+    if (!out && a.state !== "logged-in") continue;
+    for (const { view } of chatViews.values())
+      if (view.summary.engine === a.id && (out ? LIVE_STATES.has(view.summary.state) : view.summary.state === "signed-out")) void chats.retry(view.summary.id);
   }
 }
 
@@ -2070,6 +2087,7 @@ const settings = createSettingsHandlers({
   },
   stopApps: () => apps.manager.stopAll(),
   relaunchSessions: () => sessions.relaunchAll(),
+  accountsSeen,
   dataDir,
   widgetsFolder,
   actionsFolder,

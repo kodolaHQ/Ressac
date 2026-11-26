@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { callMcpTool } from "../test/mcp";
-import { dispatch, state, waitReady } from "./firefox";
+import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchRessac, type LaunchedRessac } from "./launch";
 import type { Marionette } from "./marionette";
 import { writePassport } from "./passport-file";
@@ -349,6 +349,28 @@ it("compte déconnecté : la carte de connexion", async () => {
   await waitAgent("return !doc.querySelector('[data-testid=\"chat-login\"]') && !!doc.querySelector('[data-testid=\"chat-input\"]')");
   await send("Bonjour");
   await agentSays("Bonjour, Camille.");
+});
+
+const PANEL_OPEN = `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).state.windows[0].agentPanelOpen)();`;
+it("déconnecté dans Réglages : la carte de connexion sans rien envoyer, et « Se connecter » ouvre le panneau dessus", async () => {
+  await launch({ writer: "claude" });
+  await send("salut");
+  await agentSays("Bien reçu.");
+  await click(m, '[data-testid="settings-button"]');
+  await click(m, '[data-testid="settings-nav-agent"]');
+  await click(m, '[data-testid="agent-claude"] [data-testid="agent-logout"]');
+  // Nothing sent: the open discussion learns the sign-out from Réglages.
+  await waitAgent("return !!doc.querySelector('[data-testid=\"chat-login\"]')");
+  await dispatch(m, { type: "toggleAgentPanel", windowId: (await state(m)).windows[0]!.id });
+  await waitFor(m, PANEL_OPEN, (v) => v === false);
+  await click(m, '[data-testid="agent-claude"] [data-testid="agent-login"]');
+  await waitFor(m, PANEL_OPEN, (v) => v === true);
+  await click(m, '[data-testid="chat-login-start"]', { frame: "agent" });
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-login\"] .xterm-rows')?.textContent.includes('fake login: waiting')");
+  writeFileSync(join(root(), "fake-claude-login-go"), "");
+  // Signed in again: back to the discussion, its messages kept.
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-login\"]') && !!doc.querySelector('[data-testid=\"chat-input\"]')");
+  await agentSays("Bien reçu.");
 });
 
 it("Codex répond dans le chat", async () => {

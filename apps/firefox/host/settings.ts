@@ -137,6 +137,8 @@ export interface SettingsOptions {
   notify(n: { title: string; text: string }): void;
   /** One of Ressac's own models finished downloading. */
   modelInstalled?(name: string): void;
+  /** Each account check's answer: a sign-out or sign-in made anywhere reaches the open discussions (host.ts). */
+  accountsSeen?(accounts: AgentAccount[]): void;
 }
 
 /** How long a first agent session waits for a sign-in by code in progress. */
@@ -217,7 +219,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     const state = await o.workshop.state();
     if (state === "docker-absent" || state === "machine-stopped" || state === "absent" || state === "stopped")
       return AGENT_ACCOUNTS.map((a) => ({ id: a.id, name: a.name, login: a.login.kind, state: state === "docker-absent" ? "docker-absent" : "no-container", ...signing(a) }));
-    return Promise.all(
+    const seen = await Promise.all(
       AGENT_ACCOUNTS.map(async (a): Promise<AgentAccount> => {
         try {
           if (!(await o.cli.installed(a.id as "claude" | "codex"))) return { id: a.id, name: a.name, login: a.login.kind, state: "not-downloaded", ...signing(a) };
@@ -241,6 +243,8 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
         }
       }),
     );
+    o.accountsSeen?.(seen);
+    return seen;
   }
 
   async function grants(): Promise<GrantRow[]> {
