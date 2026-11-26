@@ -131,8 +131,8 @@ agent-panel-mode-workshop = Atelier
 agent-panel-mode-workshop-title = Peut lancer des commandes : installer et lancer les applis de projet
 agent-panel-mode-workshop-lab = Atelier (labo)
 agent-panel-mode-workshop-lab-title = Demande le labo : Réglages › Agent
-agent-review-title = Des réglages de l'agent ont changé
-agent-review-intro = Ces fichiers disent à l'agent comment se comporter. Une page qu'il a lue a pu essayer de les modifier : vérifiez que ce changement vient bien de vous.
+agent-review-title = Les réglages de l'agent ont changé
+agent-review-intro = Ces fichiers disent à l'agent comment se comporter. Si vous n'avez pas demandé ce changement, annulez : une page qu'il a lue a pu essayer de le détourner.
 agent-review-too-long = Fichier trop long pour être affiché
 agent-review-too-many = Trop de fichiers pour être affichés
 agent-review-unreadable = Fichier illisible
@@ -143,10 +143,10 @@ agent-review-folded = ⋯ { $count ->
         [one] { $count } ligne
        *[other] { $count } lignes
     }
-agent-review-keep = C'est moi, garder
-agent-review-revert = Annuler ces changements
-agent-review-keep-hint = Seulement si vous les avez modifiés vous-même.
-agent-review-revert-hint = Remet les fichiers comme avant. Sans risque.
+agent-review-keep = Je l'ai demandé, garder
+agent-review-revert = Annuler les changements
+agent-review-keep-hint = Si vous l'avez demandé à l'agent ou fait vous-même.
+agent-review-revert-hint = Conseillé. Remet les fichiers comme avant.
 agent-review-detail-show = Voir le détail
 agent-review-detail-hide = Masquer le détail
 agent-review-files-count = { $count ->

@@ -54,7 +54,8 @@
 {/if}
 
 <style>
-  .states { flex: none; display: flex; flex-direction: column; }
+  /* Shrinks under a tall review card (which scrolls) instead of pushing past the panel. */
+  .states { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .states:empty { display: none; }
   .line { display: flex; align-items: center; gap: 8px; margin: 0 14px 8px; color: var(--text-muted); font-size: 12.5px; line-height: 1.45; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .line p { flex: 1; margin: 0; }

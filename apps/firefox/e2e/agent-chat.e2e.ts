@@ -326,6 +326,35 @@ it("panneau étroit : le modèle est en bas, l'en-tête laisse sa place à la li
   }
 });
 
+it("carte des consignes, panneau étroit et fenêtre basse : le détail défile seul, les choix restent visibles et cliquables", async () => {
+  await launch({ writer: "claude" });
+  await send("première");
+  await agentSays("Bien reçu.");
+  const file = join(root(), "AGENTS.md");
+  const before = readFileSync(file, "utf8");
+  // A long rewrite (like a whole LICENSE): its diff is far taller than the panel.
+  writeFileSync(file, `${before}\n${Array.from({ length: 400 }, (_, i) => `PLANTED ${i}`).join("\n")}\n`);
+  await dispatch(m, { type: "agentPanelWidth", width: 340 });
+  await m.execute("window.resizeTo(1000, 560)");
+  await click(m, '[data-testid="chat-new"]', { frame: "agent" });
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-user\"]')");
+  await type("deuxième");
+  await pressKeys(m, "Enter");
+  await waitAgent("return !!doc.querySelector('[data-testid=\"agent-review-detail\"]')");
+  await click(m, '[data-testid="agent-review-detail"]', { frame: "agent" });
+  await waitAgent("return doc.querySelector('#agent-review-detail')?.textContent.includes('PLANTED 399')");
+  // Both choices inside the panel's visible height, the detail scrolling on its own.
+  // Not clipped either: inside the card's own box, hints included.
+  const inView = `const h = ui.innerHeight, card = doc.querySelector('[data-testid="agent-review"]').getBoundingClientRect();
+    return [...doc.querySelectorAll('[data-testid="agent-review"] .choice')].every((c) => { const r = c.getBoundingClientRect(); return r.height > 0 && r.top >= card.top && r.bottom <= Math.min(card.bottom, h); })
+    && doc.querySelector('#agent-review-detail').scrollHeight > doc.querySelector('#agent-review-detail').clientHeight;`;
+  await waitAgent(inView);
+  await shot("instruction-review-chat-detail");
+  await click(m, '[data-testid="agent-review-revert"]', { frame: "agent" });
+  await agentSays("Bien reçu.");
+  expect(readFileSync(file, "utf8")).toBe(before);
+});
+
 it("compte déconnecté : la carte de connexion", async () => {
   await launch();
   await waitAgent("return !!doc.querySelector('[data-testid=\"chat-login\"]')");
