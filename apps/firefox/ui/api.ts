@@ -191,6 +191,8 @@ export function createApi(win: WindowController, o: { settingsPage?: boolean } =
     chat: {
       list: () => ask("chat.list", { window: windowId, space: activeSpace() }, []),
       open: (chatId) => host.ensure().then(() => host.request<ChatView>("chat.open", { window: windowId, space: activeSpace(), ...(chatId ? { chatId: String(chatId) } : {}) })).then((v) => structuredClone(v)),
+      remove: (chatId, o) =>
+        host.request<{ history: "done" | "pending" | "failed" | null }>("chat.remove", { window: windowId, chatId: String(chatId), engineHistory: o?.engineHistory === true }).then((r) => r.history),
       create: (c) => host.ensure().then(() => host.request<ChatView>("chat.create", { window: windowId, space: activeSpace(), ...(c?.profile ? { profile: String(c.profile) } : {}), ...(c?.mode ? { mode: c.mode } : {}) })).then((v) => structuredClone(v)),
       send: (draft) =>
         host.request<{ ok: true } | { ok: false; error: string }>("chat.send", { window: windowId, draft: structuredClone(draft) }).then(

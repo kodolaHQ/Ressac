@@ -567,3 +567,70 @@ test("a chunk of a message already streaming sends only its text, not a full vie
   expect(views.length).toBe(n + 1);
   expect(views.at(-1)![1].items.at(-1)).toEqual({ kind: "agent", id: "m1", text: "Bonjour !" });
 });
+
+test("remove: a paused discussion leaves the list and the disk", async () => {
+  const { chats, store } = prepare();
+  const a = await chats.create("w1", opts);
+  const b = await chats.create("w1", opts);
+  await tick();
+  await chats.pause(a.summary.id);
+  await chats.remove(a.summary.id);
+  expect(await store.read(a.summary.id)).toBeNull();
+  expect((await chats.list("perso")).map((s) => s.id)).toEqual([b.summary.id]);
+  expect(await chats.select("w1", a.summary.id)).toBeNull();
+  await chats.remove("unknown-id"); // no throw
+});
+
+test("remove: a live discussion's engine closes (its kernel session stops) before it goes", async () => {
+  const { chats, store, opens } = prepare();
+  const a = await chats.create("w1", opts);
+  await tick();
+  chats.prompt(a.summary.id, "travaille", "travaille");
+  await chats.remove(a.summary.id);
+  expect(opens[0]!.conv.closed).toBe(true);
+  expect(chats.sessionIdOf(a.summary.id)).toBeNull();
+  expect(await store.read(a.summary.id)).toBeNull();
+});
+
+test("remove: a discussion still opening closes what its open returns", async () => {
+  const { chats, opens } = prepare(false);
+  const a = await chats.create("w1", opts);
+  const removed = chats.remove(a.summary.id);
+  opens[0]!.resolve();
+  await removed;
+  expect(opens[0]!.conv.closed).toBe(true);
+  expect(await chats.list("perso")).toEqual([]);
+});
+
+test("remove: the window's active discussion is no longer active; a send to it does nothing", async () => {
+  const { chats, opens } = prepare();
+  const a = await chats.create("w1", opts);
+  await tick();
+  await chats.remove(a.summary.id);
+  expect(chats.active("w1")).toBeNull();
+  chats.prompt(a.summary.id, "encore", "encore");
+  chats.answer(a.summary.id, "q1", { cancelled: true });
+  await chats.notice(a.summary.id, "note");
+  expect(opens[0]!.conv.prompts).toEqual([]);
+  expect(await chats.list("perso")).toEqual([]);
+});
+
+test("remove: a save still writing when it starts does not bring the file back", async () => {
+  const { chats, store, opens } = prepare();
+  const a = await chats.create("w1", opts);
+  await tick();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const write = store.write.bind(store);
+  store.write = async (rec) => {
+    await gate;
+    return write(rec);
+  };
+  chats.prompt(a.summary.id, "un", "un");
+  opens[0]!.conv.endTurn(); // its save waits on the gate
+  const removed = chats.remove(a.summary.id);
+  release();
+  expect(await removed).toEqual({ engine: "claude", engineSessionId: opens[0]!.o.sessionId });
+  await tick();
+  expect(await store.read(a.summary.id)).toBeNull();
+});

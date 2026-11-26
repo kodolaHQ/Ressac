@@ -376,6 +376,11 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(await h.rpc.request("chat.list", { window: "f1", space: null })).toEqual([]);
     expect(await h.rpc.request("chat.preview", undefined)).toBeNull();
     await expect(h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "mon-agent" })).rejects.toThrow("Ce profil s'utilise dans le terminal (Mode avancé).");
+    // « Supprimer »: gone from the list; an unknown id is no error, a malformed one is refused.
+    expect(await h.rpc.request("chat.remove", { window: "f1", chatId: views[0]!.view.summary.id, engineHistory: true })).toEqual({ history: null });
+    expect(await h.rpc.request("chat.list", { window: "f1", space: "perso" })).toEqual([]);
+    expect(await h.rpc.request("chat.remove", { window: "f1", chatId: "inconnue" })).toEqual({ history: null });
+    await expect(h.rpc.request("chat.remove", { window: "f1", chatId: "../x" })).rejects.toThrow();
   });
 
   it("outflow: keystrokes and the ⌘T question count as typed, pastes and prefills do not, closing the window forgets", async () => {

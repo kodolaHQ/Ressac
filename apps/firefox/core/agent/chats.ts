@@ -225,6 +225,29 @@ export class Chats {
     return this.entries.get(chatId)?.rec.engineSessionId;
   }
 
+  /**
+   * Deletes the discussion: gone from the list and the window at once, its engine closed (its kernel session stops),
+   * then its file. Returns the engine conversation it ran (to erase that history too), null when unknown.
+   */
+  async remove(chatId: string): Promise<{ engine: "claude" | "codex"; engineSessionId?: string } | null> {
+    const e = this.entries.get(chatId);
+    const rec = e?.rec ?? (await this.o.store.read(chatId));
+    // Gone first: a select meanwhile finds nothing in memory, and save() writes nothing for it any more.
+    this.entries.delete(chatId);
+    for (const [w, id] of this.actives) if (id === chatId) this.actives.delete(w);
+    if (e) {
+      e.rec.windowId = null; // pushes nothing to a window
+      // The write already running lands before the file goes: it cannot bring it back.
+      await e.saving;
+      await this.o.store.remove(chatId);
+      const starting = e.opening ? e.starting : undefined;
+      await this.close(e);
+      await starting;
+      this.wake();
+    } else await this.o.store.remove(chatId);
+    return rec ? { engine: rec.engine, ...(rec.engineSessionId ? { engineSessionId: rec.engineSessionId } : {}) } : null;
+  }
+
   /** App quit: messages still waiting are marked never sent. */
   async stopAll(): Promise<void> {
     await Promise.all([...this.entries.values()].map((e) => (unsend(e), this.close(e))));
@@ -442,6 +465,8 @@ export class Chats {
   }
 
   private save(e: Entry): Promise<void> {
+    // Removed: a late write (turn end, death, notice) never brings its file back.
+    if (this.entries.get(e.rec.id) !== e) return e.saving;
     const rec: ChatRecord = { ...e.rec, ...this.summary(e), items: [...e.rec.items] };
     e.saving = e.saving.then(() => this.o.store.write(rec)).catch((err) => console.error("[chat] not saved:", err));
     return e.saving;
@@ -486,5 +511,5 @@ function endQuestions(r: ChatRecord): void {
 
 function summaryOf(r: ChatRecord): ChatSummary {
   const { id, title, engine, profile, mode, state, updatedAt, messages } = r;
-  return { id, title, engine, profile, mode, state, updatedAt, messages };
+  return { id, title, engine, profile, mode, state, updatedAt, messages, ...(r.engineSessionId ? { engineHistory: true as const } : {}) };
 }

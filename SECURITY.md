@@ -301,6 +301,7 @@ The chat:
 - A mode change recreates the workshop, which interrupts a sign-in in progress: sign in again.
 - Before a discussion's first completed turn, a retry or resume opens a fresh session: the agent loses that turn's context; the transcript keeps it.
 - If switching to Mode avancé or back fails, the panel and the app can disagree on the view until you click again.
+- Deleting a discussion erases it from Ressac. The engine's own history (Claude Code, Codex) is erased only if its box is ticked, and only in the workshop (waiting for the workshop's next chat start if it is stopped); a copy kept by the provider's servers is outside Ressac's reach.
 
 ## Out of scope
 

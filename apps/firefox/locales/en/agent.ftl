@@ -322,6 +322,15 @@ chat-list-messages = { $count ->
         [one] { $count } message
        *[other] { $count } messages
     }
+chat-delete = Delete the conversation
+chat-delete-title = Delete this conversation?
+chat-delete-text = It will be erased from Ressac.
+chat-delete-history = Also delete the history in { $engine }
+chat-delete-confirm = Delete
+chat-delete-cancel = Cancel
+chat-delete-pending = The agent's history will be erased the next time the workshop starts.
+chat-delete-history-failed = The agent's history could not be erased in the workshop.
+chat-delete-failed = The conversation could not be deleted: { $message }
 chat-composer-label = Message to the agent
 chat-composer-placeholder = Ask the agent something
 chat-composer-footer = Your passport data is masked before sending.

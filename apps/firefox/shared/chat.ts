@@ -40,6 +40,8 @@ export interface ChatSummary {
   state: ChatState;
   updatedAt: number;
   messages: number;
+  /** The engine keeps a conversation of its own for it (it ran a turn): « Supprimer » can erase that history too. */
+  engineHistory?: true;
 }
 
 export interface ChatView {

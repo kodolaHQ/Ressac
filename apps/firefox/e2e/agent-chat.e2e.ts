@@ -125,6 +125,49 @@ it("deux discussions gardent chacune leur contexte", async () => {
   );
 });
 
+it("Supprimer une discussion la retire après confirmation, l'historique de l'agent aussi si la case est cochée", async () => {
+  await launch({ writer: "claude" });
+  go();
+  await send("Bonjour");
+  await agentSays("Bonjour, Camille.");
+  await click(m, '[data-testid="chat-new"]', { frame: "agent" });
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-user\"]')");
+  await send("deuxième");
+  await agentSays("Bien reçu.");
+  await expect.poll(() => new Set(sessionIds()).size, { timeout: 20_000 }).toBe(2);
+  const [first, second] = [...new Set(sessionIds())];
+  const erased = (id: string) => readFileSync(join(root(), "fake-docker-all.log"), "utf8").split("\n").filter((l) => l.split(" ").includes("find") && l.split(" ").includes(`${id}.jsonl`));
+  const rows = () => waitAgent<string[]>("return [...doc.querySelectorAll('[data-testid=\"chat-row\"]')].map((e) => e.textContent)");
+  const openList = async () => {
+    await click(m, '[data-testid="chat-picker"]', { frame: "agent" });
+    await waitAgent("return doc.querySelector('[data-testid=\"chat-list\"]')");
+  };
+  await openList();
+  // Both ran a turn: each row offers its engine history. The most recent first: « deuxième », then « Bonjour ».
+  await waitAgent("return doc.querySelectorAll('[data-testid=\"chat-row\"]').length === 2");
+  // « Bonjour » with the box left ticked (the default): the fake docker gets the deletion, the id as its own argument.
+  await click(m, '.rows > .item:nth-of-type(2) [data-testid="chat-row-delete"]', { frame: "agent" });
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-delete-history\"]')?.checked === true");
+  expect(await textOf("chat-delete-dialog")).toContain("Supprimer aussi l'historique dans Claude Code");
+  await click(m, '[data-testid="chat-delete-confirm"]', { frame: "agent" });
+  await expect.poll(() => erased(first!).length, { timeout: 20_000 }).toBe(1);
+  await waitAgent("return doc.querySelectorAll('[data-testid=\"chat-row\"]').length === 1 && !doc.querySelector('[data-testid=\"chat-delete-dialog\"]')");
+  // « deuxième », the window's active one, with the box unticked: no deletion in the workshop.
+  await click(m, '[data-testid="chat-row-delete"]', { frame: "agent" });
+  await click(m, '[data-testid="chat-delete-history"]', { frame: "agent" });
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-delete-history\"]')?.checked === false");
+  await click(m, '[data-testid="chat-delete-confirm"]', { frame: "agent" });
+  // The window moves on once the host has answered (here a new discussion: none is left): any deletion ran before.
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-list\"]') && !doc.querySelector('[data-testid=\"chat-user\"]') && [...doc.querySelectorAll('[data-testid=\"chat-row\"]')].every((e) => !e.textContent.includes('deuxième'))");
+  expect(erased(second!)).toEqual([]);
+  // Reopened, the list still lacks both.
+  await click(m, '[data-testid="chat-list-close"]', { frame: "agent" });
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-list\"]')");
+  await openList();
+  await waitAgent("return doc.querySelectorAll('[data-testid=\"chat-row\"]').length <= 1");
+  expect((await rows()).join(" ")).not.toMatch(/Bonjour|deuxième/);
+});
+
 it("Arrêter coupe le tour", async () => {
   await launch({ writer: "claude" });
   await send("Bonjour");

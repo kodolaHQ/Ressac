@@ -377,6 +377,11 @@ export interface ApiRessac {
     list(): Promise<ChatSummary[]>;
     /** Makes it the window's active discussion (a paused one resumes); omitted, the active one, made if there is none. */
     open(chatId?: string): Promise<ChatView>;
+    /**
+     * « Supprimer »: the discussion goes from Ressac (its engine closed first); `engineHistory`, the engine's own session in
+     * the workshop too: erased (`done`), at the workshop's next start (`pending`), not erased (`failed`), not asked (null).
+     */
+    remove(chatId: string, o: { engineHistory: boolean }): Promise<"done" | "pending" | "failed" | null>;
     /** A new discussion, the window's profile and mode unless given; a custom profile is refused (terminal only). */
     create(o?: { profile?: string; mode?: "browser" | "workshop" }): Promise<ChatView>;
     /** To the active discussion: masked with its own table before the agent sees it. */

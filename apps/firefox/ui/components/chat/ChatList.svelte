@@ -5,7 +5,7 @@
   import { appState } from "../../state.svelte";
   import { t } from "../../i18n.svelte";
   import Icon from "../Icon.svelte";
-  import { chat, newChat, openChat } from "./chat.svelte";
+  import { chat, newChat, openChat, removeChat } from "./chat.svelte";
 
   let { profiles }: { profiles: { id: string; name: string }[] } = $props();
   let panel = $state<HTMLElement>();
@@ -53,7 +53,50 @@
   }
   // The list takes the keyboard on its first row (or « Nouvelle »), Échap gives it back.
   $effect(() => void tick().then(() => panel?.querySelector<HTMLElement>(".row, .new")?.focus()));
+
+  /** The discussion whose deletion waits for the dialog; `opener`, the button focus goes back to. */
+  let toDelete = $state<{ s: ChatSummary; opener: HTMLElement | null; history: boolean } | null>(null);
+  let dialog = $state<HTMLElement>();
+  let notice = $state<string | null>(null);
+  function askDelete(s: ChatSummary, e: MouseEvent) {
+    notice = null;
+    toDelete = { s, opener: e.currentTarget as HTMLElement, history: true };
+    void tick().then(() => dialog?.querySelector<HTMLElement>("[data-cancel]")?.focus());
+  }
+  function closeDialog() {
+    const opener = toDelete?.opener;
+    toDelete = null;
+    void tick().then(() => (opener?.isConnected ? opener : panel?.querySelector<HTMLElement>(".row, .new"))?.focus());
+  }
+  async function confirmDelete() {
+    const d = toDelete!;
+    toDelete = null;
+    notice = await removeChat(d.s.id, d.history && !!d.s.engineHistory);
+    void tick().then(() => panel?.querySelector<HTMLElement>(".row, .new")?.focus());
+  }
+  /** Échap and Annuler close it; Tab stays among its controls. */
+  function dialogKeys(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeDialog();
+    } else if (e.key === "Tab") {
+      const list = [...dialog!.querySelectorAll<HTMLElement>("button, input")];
+      const i = list.indexOf(document.activeElement as HTMLElement);
+      const next = e.shiftKey ? (i <= 0 ? list.at(-1) : null) : i === -1 || i === list.length - 1 ? list[0] : null;
+      if (next) {
+        e.preventDefault();
+        next.focus();
+      }
+    }
+  }
 </script>
+
+{#snippet remove(s: ChatSummary)}
+  <button class="delete" aria-label={t("chat-delete")} title={t("chat-delete")} data-testid="chat-row-delete" onclick={(e) => askDelete(s, e)}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M6 7l1 13h10l1-13" /><path d="M9 7V4h6v3" /></svg>
+  </button>
+{/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <section class="list" data-testid="chat-list" aria-label={t("chat-list-title")} bind:this={panel} out:fade={{ duration: chat.visible ? 150 : 0 }} onkeydown={(e) => e.key === "Escape" && (e.stopPropagation(), close())}>
@@ -67,24 +110,47 @@
     {#if live.length}
       <span class="group">{t("chat-list-live")}</span>
       {#each live as s (s.id)}
-        <button class="row" class:current={s.id === chat.view?.summary.id} data-testid="chat-row" onclick={() => pick(s.id)}>
-          <span class="top"><span class="dot {dot(s)}" aria-hidden="true"></span><strong>{s.title || t("chat-untitled")}</strong><span class="side">{engineName(s)}</span></span>
-          <span class="sub">{line(s)}</span>
-        </button>
+        <div class="item" class:current={s.id === chat.view?.summary.id} out:fade={{ duration: chat.visible ? 150 : 0 }}>
+          <button class="row" data-testid="chat-row" onclick={() => pick(s.id)}>
+            <span class="top"><span class="dot {dot(s)}" aria-hidden="true"></span><strong>{s.title || t("chat-untitled")}</strong><span class="side">{engineName(s)}</span></span>
+            <span class="sub">{line(s)}</span>
+          </button>
+          {@render remove(s)}
+        </div>
       {/each}
     {/if}
     {#if paused.length}
       <span class="group">{t("chat-list-paused")}</span>
       {#each paused as s (s.id)}
-        <button class="row paused" class:current={s.id === chat.view?.summary.id} data-testid="chat-row" onclick={() => pick(s.id)}>
-          <span class="top"><strong>{s.title || t("chat-untitled")}</strong><span class="side">{ago(s.updatedAt)}</span></span>
-          <span class="sub">{t("chat-list-messages", { count: s.messages })}</span>
-        </button>
+        <div class="item" class:current={s.id === chat.view?.summary.id} out:fade={{ duration: chat.visible ? 150 : 0 }}>
+          <button class="row paused" data-testid="chat-row" onclick={() => pick(s.id)}>
+            <span class="top"><strong>{s.title || t("chat-untitled")}</strong><span class="side">{ago(s.updatedAt)}</span></span>
+            <span class="sub">{t("chat-list-messages", { count: s.messages })}</span>
+          </button>
+          {@render remove(s)}
+        </div>
       {/each}
     {/if}
     {#if !chat.list.length}<p class="empty">{t("chat-list-empty")}</p>{/if}
   </div>
+  {#if notice}<p class="notice" role="status" data-testid="chat-delete-notice" out:fade={{ duration: chat.visible ? 150 : 0 }}>{notice}</p>{/if}
   <p class="footer">{t("chat-list-footer")}</p>
+  {#if toDelete}
+    {@const d = toDelete}
+    <div class="veil" out:fade={{ duration: chat.visible ? 150 : 0 }}>
+      <div class="dialog" tabindex="-1" role="alertdialog" aria-modal="true" aria-labelledby="chat-delete-title" aria-describedby="chat-delete-text" data-testid="chat-delete-dialog" bind:this={dialog} onkeydown={dialogKeys}>
+        <strong id="chat-delete-title">{t("chat-delete-title")}</strong>
+        <p id="chat-delete-text">{t("chat-delete-text")}</p>
+        {#if d.s.engineHistory}
+          <label class="check"><input type="checkbox" data-testid="chat-delete-history" bind:checked={toDelete.history} />{t("chat-delete-history", { engine: d.s.engine === "codex" ? "Codex" : "Claude Code" })}</label>
+        {/if}
+        <div class="buttons">
+          <button data-cancel data-testid="chat-delete-cancel" onclick={closeDialog}>{t("chat-delete-cancel")}</button>
+          <button class="confirm" data-testid="chat-delete-confirm" onclick={() => void confirmDelete()}>{t("chat-delete-confirm")}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </section>
 
 <style>
@@ -102,8 +168,22 @@
   .group { padding: 6px 8px 2px; color: var(--text-muted); font-size: 11.5px; }
   .group:not(:first-child) { padding-top: 14px; }
   .row { display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 10px 12px; border-radius: 10px; border: 0; background: transparent; color: var(--text); text-align: left; font: 13px/1.4 var(--font-ui); }
-  .row:hover { background: var(--bg-hover); }
-  .row.current { background: var(--bg-active); }
+  .item { display: flex; align-items: center; border-radius: 10px; transition: background var(--tap); }
+  .item:hover { background: var(--bg-hover); }
+  .item.current { background: var(--bg-active); }
+  .item .row { flex: 1; min-width: 0; }
+  /* Shown on hover or focus; still in the Tab order, so the keyboard always reaches it. */
+  .delete { flex: none; width: 28px; height: 28px; margin-right: 6px; display: grid; place-items: center; padding: 0; border-radius: 8px; border: 0; background: transparent; color: var(--text-muted); opacity: 0; transition: opacity var(--tap), transform var(--tap), background var(--tap); }
+  .item:hover .delete, .delete:focus-visible { opacity: 1; }
+  .delete:hover { background: var(--glass-hi); color: var(--in-error); }
+  .veil { position: absolute; inset: 0; z-index: 1; display: grid; place-content: center; padding: 16px; background: var(--veil); backdrop-filter: blur(6px); }
+  .dialog { display: flex; flex-direction: column; gap: 10px; max-width: 340px; padding: 18px 20px; border-radius: 16px; background: var(--glass-dense); border: 1px solid var(--glass-edge); box-shadow: var(--modal-shadow); animation: ressac-drop var(--spring-d) var(--spring) backwards; }
+  .dialog p { margin: 0; color: var(--text-muted); }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+  .buttons button { padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--glass-hi); color: var(--text); font: 600 12.5px var(--font-ui); }
+  .buttons .confirm { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .notice { margin: 0; padding: 8px 16px; color: var(--text-muted); font-size: 12px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .top { display: flex; align-items: center; gap: 8px; }
   .top strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .side, .sub { color: var(--text-muted); font-size: 11.5px; }

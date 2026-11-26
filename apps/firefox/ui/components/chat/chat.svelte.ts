@@ -37,6 +37,25 @@ export const openChat = (id?: string): Promise<void> => take(api.chat.open(id));
 export const newChat = (o?: { profile?: string; mode?: "browser" | "workshop" }): Promise<void> => take(api.chat.create(o));
 export const readList = (): Promise<void> => api.chat.list().then((l) => void (chat.list = l), () => {});
 
+/**
+ * « Supprimer »: the row goes at once; the window's active discussion gives way to the space's most recent other one, or
+ * a new one (what the panel opens with none). Returns a short notice for the list, null when there is nothing to say.
+ */
+export async function removeChat(id: string, engineHistory: boolean): Promise<string | null> {
+  const wasActive = chat.view?.summary.id === id;
+  chat.list = chat.list.filter((s) => s.id !== id);
+  let notice: string | null = null;
+  try {
+    const history = await api.chat.remove(id, { engineHistory });
+    notice = history === "pending" ? t("chat-delete-pending") : history === "failed" ? t("chat-delete-history-failed") : null;
+  } catch (e) {
+    notice = t("chat-delete-failed", { message: e instanceof Error ? e.message : String(e) });
+  }
+  await readList();
+  if (wasActive && !chat.list.some((s) => s.id === id)) await openChat(chat.list[0]?.id);
+  return notice;
+}
+
 const off = api.onChat((v) => {
   if (chat.view?.summary.id === v.summary.id) chat.view = v;
   const i = chat.list.findIndex((s) => s.id === v.summary.id);

@@ -41,6 +41,7 @@ const { ChatStore } = await import("../core/agent/chat-store.ts");
 const { claudeEngine: claudeChat } = await import("../core/agent/chat/claude.ts");
 const { codexEngine: codexChat } = await import("../core/agent/chat/codex.ts");
 const { cleanDraft, createChatSend, DRAFT_MAX } = await import("./chat-send.ts");
+const { createEngineHistory } = await import("./chat-history.ts");
 const { createLoginTerminals } = await import("./chat-login.ts");
 const { chatToTerminal } = await import("./chat-terminal.ts");
 const { LABEL_SOURCE } = await import("../../../packages/kernel/src/mask/table.ts");
@@ -759,6 +760,8 @@ let chatReviews = 0;
 const signedIn = new Set<"claude" | "codex">();
 const chatStore = new ChatStore(join(dataDir, "chats"));
 void chatStore.sweep(Date.now()).catch((e) => console.error("[ressac] old discussions not removed:", e));
+/** Deleted discussions' histories inside the engines (not `.json`: the store reads every `.json` there as a discussion). */
+const engineHistory = createEngineHistory({ file: join(dataDir, "chats", "engine-history.pending"), workshop });
 
 /** The view with what the host adds: the start's progress, the drafts waiting, the window's prefix. */
 const decorated = (win: string, view: ChatView): ChatView => {
@@ -842,6 +845,8 @@ async function openChat(o: OpenOptions) {
       if (token) relay.closeSession(token);
       throw err;
     }
+    // The workshop runs now: the engine histories erased while it was stopped go.
+    void engineHistory.replay();
     try {
       if (signal.aborted) throw new Error("closed");
       if (!checked && !(await accountSignedIn(o.engine))) throw new SignedOutError();
@@ -1511,6 +1516,19 @@ const rpc = createRpc({
       return chatSend.send(p.window as string, chat.id, draft);
     }),
     // Chips while typing: masked with the discussion's table (the labels it issues are the ones the send gives); never typed, never sent.
+    // « Supprimer »: the discussion goes from Ressac; with `engineHistory`, the engine's own session files in the workshop too.
+    "chat.remove": async (p: { window?: unknown; chatId?: unknown; engineHistory?: unknown }) => {
+      if (typeof p?.window !== "string" || typeof p.chatId !== "string" || !/^[\w-]{1,100}$/.test(p.chatId)) throw new Error(hostSay("host-invalid-params"));
+      const id = p.chatId;
+      chatSend.drop(id);
+      // Its start in flight (a build, a review card) ends now: remove() waits for it.
+      abortChatOpen(id);
+      const removed = await chats.remove(id);
+      chatViews.delete(id);
+      chatPrep.delete(id);
+      if (p.engineHistory !== true || !removed?.engineSessionId) return { history: null };
+      return { history: await engineHistory.forget({ engine: removed.engine, id: removed.engineSessionId }) };
+    },
     "chat.preview": (p: { window?: unknown; text?: unknown }) => {
       const chat = activeChat(p?.window);
       const session = chat && chats.sessionIdOf(chat.id);

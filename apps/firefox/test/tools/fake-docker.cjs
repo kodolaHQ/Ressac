@@ -453,6 +453,8 @@ if (args[0] === "exec") {
     }, 50);
     return;
   }
+  // A deleted discussion's engine history (host/chat-history.ts): logged above, nothing to erase here.
+  if (command[0] === "find") quit(0);
   // What the agent received from docker exec, for the tests.
   put(join(env.RESSAC_ROOT, "fake-agent-env.json"), JSON.stringify(Object.fromEntries(Object.entries(vars).filter(([k]) => /^(RESSAC_|ANTHROPIC_|CLAUDE_CODE_)/.test(k)))));
   // A chat's pipe session: the engine's protocol fake, its trace in RESSAC_ROOT; FAKE_CHAT_GO releases a held « Bonjour ».
