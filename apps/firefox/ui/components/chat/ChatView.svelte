@@ -32,7 +32,7 @@
         <p role="alert">{t("chat-open-failed", { message: chat.error })}</p>
         <button data-testid="chat-open-retry" onclick={() => void openChat()}>{t("agent-panel-retry")}</button>
       </div>
-    {:else if phase === "error"}
+    {:else if phase === "error" || phase === "signed-out"}
       <div class="line" out:fade={{ duration: chat.visible ? 150 : 0 }}>
         <p role="alert">{t("chat-error", { message: view?.error ?? "" })}</p>
         <button data-testid="chat-retry" onclick={() => api.chat.retry()}>{t("agent-panel-retry")}</button>

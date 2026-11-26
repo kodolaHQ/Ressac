@@ -374,3 +374,22 @@ settings-passport-suggest-label = Proposer d'ajouter vos adresses quand vous rem
 settings-passport-suggest-help = Quand vous tapez une adresse dans un formulaire, une barre propose de l'ajouter à votre passeport (Touch ID demandé). Désactivé, Ressac ne vous propose rien.
 settings-passport-muted-label = Sites où ne plus proposer
 settings-passport-unmute = Retirer { $site }
+
+## Réglages › Agent › Votre modèle
+
+own-title = Votre modèle
+own-help = Un agent de Ressac qui utilise le modèle de votre choix. Il cherche, ouvre et lit des pages, sans cliquer ni remplir.
+own-kind-ollama = Ollama sur ce Mac
+own-kind-api = API compatible OpenAI
+own-ollama-url = Adresse d'Ollama
+own-api-url = Adresse de l'API (se termine souvent par /v1)
+own-api-key = Clé d'API (facultative)
+own-api-key-saved = Clé enregistrée dans le trousseau de votre Mac
+own-api-key-delete = Supprimer la clé
+own-model = Modèle
+own-model-typed = Ou saisissez son nom
+own-none = Choisissez un modèle pour le proposer dans les discussions.
+own-on-mac = Ce que le modèle lit et écrit reste sur votre Mac ; les recherches et les pages ouvertes passent par le web comme toute navigation.
+own-off-mac = Ce modèle n'est pas sur votre Mac : ce que l'agent lit et ce que vous lui écrivez sont envoyés à { $host }. Les données de votre passeport restent masquées.
+own-check = Vérifier
+own-check-ok = Connexion réussie avec { $model }.

@@ -8,6 +8,7 @@
   import LiftLock from "./LiftLock.svelte";
   import type { QuarantinedFile } from "../../shared/api";
   import SettingsEngine from "./SettingsEngine.svelte";
+  import SettingsOwnModel from "./SettingsOwnModel.svelte";
   import SettingsRow from "./SettingsRow.svelte";
 
   // Styles come from Settings.svelte.
@@ -201,6 +202,7 @@
     {:else}
       <p class="status"><span class="pill" data-tone="error">{t("settings-agent-silent-sentence")}</span></p>
     {/each}
+    <SettingsOwnModel />
   {/if}
   {#if aiOn()}
     <div class="group">

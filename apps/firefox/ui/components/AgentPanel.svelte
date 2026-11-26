@@ -185,7 +185,10 @@
   let advanced = $state(false);
   const chatView = $derived((browserState.value?.settings.agentView ?? "chat") === "chat" && (current === null || current === "claude" || current === "codex"));
   const chatMode = $derived(aiOn() && chatView && !advanced);
-  const chatProfiles = $derived(profiles.filter((p) => p.id === "claude" || p.id === "codex"));
+  // « Votre modèle » once its kind has a model (Réglages › Agent).
+  const ownSetting = $derived(browserState.value?.settings.ownEngine);
+  const ownReady = $derived(!!ownSetting && !!(ownSetting.kind === "ollama" ? ownSetting.ollamaModel : ownSetting.apiModel));
+  const chatProfiles = $derived([...profiles.filter((p) => p.id === "claude" || p.id === "codex"), ...(ownReady ? [{ id: "own", name: t("chat-engine-own") }] : [])]);
   let chatPane = $state<ReturnType<typeof ChatView>>();
   $effect(() => void (chat.visible = visible));
   // Shown in chat view: the window's active discussion (made if none, a paused one resumes).

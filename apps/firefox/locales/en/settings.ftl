@@ -374,3 +374,22 @@ settings-passport-suggest-label = Offer to add your addresses when you fill in a
 settings-passport-suggest-help = When you type an address in a form, a bar offers to add it to your passport (Touch ID asked). Off, Ressac offers you nothing.
 settings-passport-muted-label = Sites where not to offer
 settings-passport-unmute = Remove { $site }
+
+## Settings › Agent › Your model
+
+own-title = Your model
+own-help = A Ressac agent that uses the model of your choice. It searches, opens and reads pages, without clicking or filling in.
+own-kind-ollama = Ollama on this Mac
+own-kind-api = OpenAI-compatible API
+own-ollama-url = Ollama address
+own-api-url = API address (often ends with /v1)
+own-api-key = API key (optional)
+own-api-key-saved = Key saved in your Mac's keychain
+own-api-key-delete = Delete the key
+own-model = Model
+own-model-typed = Or type its name
+own-none = Choose a model to offer it in conversations.
+own-on-mac = What the model reads and writes stays on your Mac; searches and opened pages go through the web like any browsing.
+own-off-mac = This model is not on your Mac: what the agent reads and what you write to it are sent to { $host }. Your passport data stays masked.
+own-check = Check
+own-check-ok = Connected to { $model }.

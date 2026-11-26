@@ -171,6 +171,7 @@
     {/if}
     <button type="submit" class="primary" data-testid="chat-send" disabled={!text.trim() || sending}>{t("chat-send")}</button>
   </div>
+  {#if chat.view?.remote}<p class="note" data-testid="chat-sent-to">{t("chat-composer-sent-to", { host: chat.view.remote })}</p>{/if}
 </form>
 
 <style>
@@ -194,7 +195,7 @@
   .icon:hover { background: var(--bg-active); color: var(--text); }
   .error { margin: 0; color: var(--in-error); font-size: 12px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .foot { display: flex; align-items: center; gap: 8px; }
-  .note { color: var(--text-muted); font-size: 11.5px; }
+  .note { margin: 0; color: var(--text-muted); font-size: 11.5px; }
   .spacer { flex: 1; }
   .foot button { flex: none; padding: 6px 12px; border-radius: 10px; font: 600 12.5px var(--font-ui); cursor: pointer; transition: transform var(--tap), opacity var(--tap); }
   .primary { padding: 6px 14px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); }

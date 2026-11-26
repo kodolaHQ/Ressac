@@ -9,7 +9,9 @@
   let { profiles, onAdvanced }: { profiles: { id: string; name: string }[]; onAdvanced: () => void } = $props();
 
   const summary = $derived(chat.view?.summary);
-  const engineName = (id: string | undefined) => profiles.find((p) => p.id === id)?.name ?? (id === "codex" ? "Codex" : "Claude");
+  const engineName = (id: string | undefined) => profiles.find((p) => p.id === id)?.name ?? (id === "codex" ? "Codex" : id === "own" ? t("chat-engine-own") : "Claude");
+  // « Votre modèle » runs in Navigateur only, without a terminal: whatever mode its record carries.
+  const own = $derived(summary?.engine === "own");
   const modeName = (m: "browser" | "workshop") => t(`agent-panel-mode-${m}`);
   let menuOpen = $state(false);
   let menu = $state<HTMLElement>();
@@ -22,7 +24,8 @@
   function choose(o: { profile?: string; mode?: "browser" | "workshop" }) {
     menuOpen = false;
     if (o.mode) api.dispatch({ type: "chooseAgentMode", mode: o.mode });
-    void newChat({ profile: o.profile ?? summary?.profile, mode: o.mode ?? summary?.mode });
+    const profile = o.profile ?? summary?.profile;
+    void newChat({ profile, mode: profile === "own" ? "browser" : (o.mode ?? summary?.mode) });
   }
   // A press outside the menu or Échap closes it.
   $effect(() => {
@@ -47,13 +50,14 @@
   {#if summary}
     <div class="chip-wrap" bind:this={menu}>
       <button class="chip" data-testid="chat-mode-chip" aria-haspopup="menu" aria-expanded={menuOpen} title={t("chat-menu")} onclick={() => (menuOpen = !menuOpen)}>
-        {modeName(summary.mode)} · {engineName(summary.profile)}
+        {modeName(own ? "browser" : summary.mode)} · {engineName(summary.profile)}{#if own && chat.view?.remote}
+          · <span class="remote" data-testid="chat-engine-remote" title={t("chat-engine-own-remote-title", { host: chat.view.remote })}>{t("chat-engine-own-remote")}</span>{/if}
       </button>
       {#if menuOpen}
         <div class="menu" role="menu" aria-label={t("chat-menu")} out:fade={{ duration: chat.visible ? 150 : 0 }}>
           {#each ["browser", "workshop"] as const as m (m)}
             {@const locked = m === "workshop" && !labOn()}
-            <button role="menuitemradio" aria-checked={summary.mode === m} data-testid="chat-mode-{m}" disabled={locked} title={t(locked ? "agent-panel-mode-workshop-lab-title" : `agent-panel-mode-${m}-title`)} onclick={() => choose({ mode: m })}>
+            <button role="menuitemradio" aria-checked={(own ? "browser" : summary.mode) === m} data-testid="chat-mode-{m}" disabled={locked || (own && m === "workshop")} title={t(locked ? "agent-panel-mode-workshop-lab-title" : `agent-panel-mode-${m}-title`)} onclick={() => choose({ mode: m })}>
               {t(locked ? "agent-panel-mode-workshop-lab" : `agent-panel-mode-${m}`)}
             </button>
           {/each}
@@ -69,7 +73,9 @@
     </div>
   {/if}
   <button class="icon" data-testid="chat-new" aria-label={t("chat-new")} title={t("chat-new")} onclick={() => void newChat()}><Icon name="plus" size={15} /></button>
-  <button class="icon muted" data-testid="chat-advanced" aria-label={t("chat-advanced")} title={t("chat-advanced")} onclick={onAdvanced}><Icon name="terminal" size={15} /></button>
+  {#if !own}
+    <button class="icon muted" data-testid="chat-advanced" aria-label={t("chat-advanced")} title={t("chat-advanced")} onclick={onAdvanced}><Icon name="terminal" size={15} /></button>
+  {/if}
 </header>
 
 <style>
@@ -86,6 +92,7 @@
   .chip-wrap { position: relative; flex: none; }
   .chip { padding: 3px 8px; border-radius: 999px; border: 0; background: var(--bg-hover); color: var(--text-muted); font: 11.5px/1.4 var(--font-ui); white-space: nowrap; }
   .chip:hover { color: var(--text); }
+  .remote { color: var(--in-progress); }
   .icon { flex: none; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text); }
   .icon.muted { color: var(--text-muted); }
   .icon:hover { background: var(--bg-hover); }

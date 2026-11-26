@@ -12,7 +12,7 @@
 
   const live = $derived(chat.list.filter((s) => s.state !== "paused"));
   const paused = $derived(chat.list.filter((s) => s.state === "paused"));
-  const engineName = (s: ChatSummary) => profiles.find((p) => p.id === s.profile)?.name ?? (s.engine === "codex" ? "Codex" : "Claude");
+  const engineName = (s: ChatSummary) => profiles.find((p) => p.id === s.profile)?.name ?? (s.engine === "codex" ? "Codex" : s.engine === "own" ? t("chat-engine-own") : "Claude");
 
   /** « il y a 5 min », « hier »: in the shown language. */
   function ago(at: number): string {
