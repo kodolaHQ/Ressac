@@ -119,6 +119,9 @@ test("a fourth discussion pauses the least recently used idle one", async () => 
   expect(chats.sessionIdOf(a.summary.id)).toBeNull();
   for (const x of [b, c, d]) expect(chats.sessionIdOf(x.summary.id)).not.toBeNull();
   expect(state(d.summary.id)).toBe("ready");
+  // A live session maps back to its discussion; a paused one's no longer does.
+  for (const x of [b, c, d]) expect(chats.chatOfSession(chats.sessionIdOf(x.summary.id)!)).toBe(x.summary.id);
+  expect(chats.chatOfSession("unknown")).toBeUndefined();
 });
 
 test("all three busy: the fourth is queued and opens when a turn ends", async () => {

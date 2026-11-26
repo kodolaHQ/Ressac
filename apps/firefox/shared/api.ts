@@ -26,6 +26,8 @@ const SchemaOpenTab = z.object({
   spaceId: id.optional(),
   activate: z.boolean().optional(),
   openedByAgent: z.boolean().optional(),
+  /** The chat discussion whose agent opens the tab. */
+  chat: id.max(100).optional(),
   /** Absent: reached by the agent (fail closed). Only the UI's own openings say false. */
   agentReached: z.boolean().optional(),
   /** The tab whose page opened this one: its agentReached wins over the field above. */
@@ -138,6 +140,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("showBlankPage"), windowId: id }),
   z.object({ type: z.literal("toggleCompact"), windowId: id }),
   z.object({ type: z.literal("toggleAgentPanel"), windowId: id }),
+  /** The discussion the window's agent panel shows; `open`: the panel opens too (the sidebar's group title). */
+  z.object({ type: z.literal("showChat"), windowId: id, chatId: id.max(100), open: z.boolean().optional() }),
   /** Activates the Applications page of the active space, or opens it. */
   z.object({ type: z.literal("openApps"), windowId: id }),
   /** Activates this window's Settings page, or opens it (like Applications). */

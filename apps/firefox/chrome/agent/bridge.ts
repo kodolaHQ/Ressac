@@ -19,6 +19,9 @@ import { labOn } from "../../shared/tiers";
 import { passportSettings } from "../passport/settings";
 import { keepTicks, rememberSite } from "./remember";
 
+/** A load as the host sends it: the kernel's options and the discussion whose agent asks (host/remote-bridge.ts). */
+type HostLoad = LoadOptions & { chat?: string };
+
 const XHTML = "http://www.w3.org/1999/xhtml";
 /** An agent app window seen as a tab: `app:<dossier>`. */
 const APP_PREFIX = "app:";
@@ -165,11 +168,13 @@ export function bridgeHandlers(
     }
   };
 
+  /** The host's discussion of the calling session (the sidebar's « Agent » groups), checked as any value from the host. */
+  const chatOf = (o?: HostLoad): { chat?: string } => (typeof o?.chat === "string" && /^[\w-]{1,100}$/.test(o.chat) ? { chat: o.chat } : {});
   /**
    * The agent's demos open in the foreground, marked ✦. With no window open, in the kept one. `allow` (load-guard.ts):
    * the tab's first load is judged and awaited; a refused hop closes the tab and throws LoadRefused.
    */
-  const openTabIn = async (window: WindowId | undefined, url: string, space?: string, extra: { profile?: string; background?: boolean } = {}, allow: string[] | null = null): Promise<TabInfo> => {
+  const openTabIn = async (window: WindowId | undefined, url: string, space?: string, extra: { profile?: string; background?: boolean; chat?: string } = {}, allow: string[] | null = null): Promise<TabInfo> => {
     const state = store.state;
     const f = state.windows.find((x) => x.id === (window ?? windows.active())) ?? state.windows[0];
     if (!f) throw new Error("Aucune fenêtre ouverte");
@@ -193,14 +198,14 @@ export function bridgeHandlers(
   };
 
   // A JSON null `space` (sent with an `o`) is no space.
-  const openTab = ([url, space, o]: [string, (string | null)?, LoadOptions?]) => openTabIn(undefined, url, space ?? undefined, {}, o?.allow ?? null);
+  const openTab = ([url, space, o]: [string, (string | null)?, HostLoad?]) => openTabIn(undefined, url, space ?? undefined, chatOf(o), o?.allow ?? null);
 
   return {
     // Decision 3: no window open (the last one kept), no active tab.
     activeTab: ([win]: [WindowId?] = []) => activeTabOf(store.state, win ?? windows.active()),
     listTabs: listed,
     openTab: openTab,
-    navigate: async ([id, url, o]: [string, string, LoadOptions?]) => {
+    navigate: async ([id, url, o]: [string, string, HostLoad?]) => {
       if (id.startsWith(SITE_PREFIX)) {
         if (!sites.viewFor(id.slice(SITE_PREFIX.length))) throw new TabNotFound(id);
         // Never a tab instead: off the app's domains nothing loads (the kernel checked it already).
@@ -219,7 +224,7 @@ export function bridgeHandlers(
       await windowOf(id).controller.navigateForAgentLoaded(id, url, o?.allow ?? null);
     },
     // The agent's search tab, in its own login profile; `reuse`: that tab goes to the new address instead.
-    "search.open": async ([win, target, reuse, o]: [WindowId | undefined, { query: string } | { url: string }, (string | null)?, LoadOptions?]) => {
+    "search.open": async ([win, target, reuse, o]: [WindowId | undefined, { query: string } | { url: string }, (string | null)?, HostLoad?]) => {
       const template = testEnv("RESSAC_TEST_SEARCH_URL") || searchTemplate(store.state.settings);
       const url = "query" in target ? template.replace("%s", encodeURIComponent(target.query)) : target.url;
       if (reuse != null && store.state.tabs[reuse]) {
@@ -231,11 +236,11 @@ export function bridgeHandlers(
         return info;
       }
       // In the background: the user follows it from the pill or the recap, in the « Agent » section of the tab list.
-      return openTabIn(win ?? undefined, url, undefined, { profile: AGENT_PROFILE, background: true }, o?.allow ?? null);
+      return openTabIn(win ?? undefined, url, undefined, { profile: AGENT_PROFILE, background: true, ...chatOf(o) }, o?.allow ?? null);
     },
-    "search.openBackground": ([searchTab, url, o]: [string, string, LoadOptions?]) => {
+    "search.openBackground": ([searchTab, url, o]: [string, string, HostLoad?]) => {
       const t = tab(searchTab);
-      return openTabIn(t.windowId, url, t.spaceId, { profile: AGENT_PROFILE, background: true }, o?.allow ?? null);
+      return openTabIn(t.windowId, url, t.spaceId, { profile: AGENT_PROFILE, background: true, ...chatOf(o) }, o?.allow ?? null);
     },
     // Only a page the search opened (agent profile, not private): never a tab of the user's.
     "search.close": ([id]: [string]) => {

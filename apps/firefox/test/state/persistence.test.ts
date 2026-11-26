@@ -54,6 +54,20 @@ test("a session reloaded has no agent search band", async () => {
   expect((await loadSession(d)).tabs[a]!.agentSearch).toBeUndefined();
 });
 
+test("a tab keeps the discussion that opened it across a relaunch; the panel's shown discussion is not saved", async () => {
+  const d = folder();
+  let state = richState();
+  const F = state.windows[0]!.id;
+  state = apply(state, { type: "openTab", windowId: F, url: "https://c.test/", openedByAgent: true, chat: "chat-1" }, () => "c");
+  state = apply(state, { type: "showChat", windowId: F, chatId: "chat-1" }, () => "x");
+  const recorder = new SessionRecorder(d);
+  recorder.schedule(state);
+  await recorder.clear();
+  const back = await loadSession(d);
+  expect(back.tabs.c!.chat).toBe("chat-1");
+  expect(back.windows[0]!.agentChat).toBeUndefined();
+});
+
 test("session v3 with a private space and a second sign-in profile: identical round trip", async () => {
   const d = folder();
   let n = 100;

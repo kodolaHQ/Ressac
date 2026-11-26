@@ -103,6 +103,8 @@ export interface Tab {
   /** Link to a persistent favorite: the tab materializes an essential or a pinned tab. */
   link: { type: "essential" | "pinned"; id: string } | null;
   openedByAgent: boolean;
+  /** The chat discussion whose agent opened the tab (the sidebar's « Agent » groups); absent: none known. */
+  chat?: string;
   /**
    * The agent reached the tab's page (opened it, navigated it, or a tab it reached opened this one): never one of the
    * user's masking sources (spec § 5.3). Only the user's own top-level navigation from Ressac's UI clears it.
@@ -245,6 +247,8 @@ export interface WindowState {
   recentlyClosed: RecentlyClosed[];
   /** Last known frame; null until the window has been moved or resized. */
   frame: FrameBounds | null;
+  /** The discussion this window's agent panel shows (the panel says it, the sidebar asks for one); volatile, never saved. */
+  agentChat?: string;
 }
 
 export type Notice = { id: "session-set-aside"; path: string } | { id: "data-set-aside"; backup: string; reason: "format" | "reset" } | { id: "telemetry" } | { id: "no-login-password" };

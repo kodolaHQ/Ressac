@@ -44,6 +44,8 @@ export class RemoteBridge implements BrowserBridge {
     private readonly lockNotice: (o: { text: string }, window: string | undefined) => void = () => {},
     /** The approval log (host/asks-log.ts); absent, no card is logged. */
     readonly noteAsk?: AskSink,
+    /** The chat discussion of the session whose tool call runs now (the tabs it opens are grouped by it); none: undefined. */
+    private readonly chat: () => string | undefined = () => undefined,
   ) {
     if (h)
       this.history = {
@@ -85,10 +87,19 @@ export class RemoteBridge implements BrowserBridge {
   listTabs = () => this.call<TabInfo[]>("listTabs", []);
   readText = (id: string, o?: { capture?: boolean; expect?: string }) =>
     this.call<TabRead>("readText", o?.capture || o?.expect !== undefined ? [id, o] : [id]);
-  // `o` sent only when it restricts: Firefox reads a missing one as no restriction.
-  openTab = (url: string, space?: string, o?: LoadOptions) =>
-    this.call<TabInfo>("openTab", o?.allow != null ? [url, space, o] : space === undefined ? [url] : [url, space]);
-  navigate = (id: string, url: string, o?: LoadOptions) => this.call<void | "pending">("navigate", o?.allow != null ? [id, url, o] : [id, url]);
+  /** The options sent with a load: `allow` only when it restricts (Firefox reads a missing one as no restriction), and the discussion. */
+  private load(o?: LoadOptions): (LoadOptions & { chat?: string }) | undefined {
+    const chat = this.chat();
+    return o?.allow != null || chat ? { ...(o?.allow != null ? { allow: o.allow } : {}), ...(chat ? { chat } : {}) } : undefined;
+  }
+  openTab = (url: string, space?: string, o?: LoadOptions) => {
+    const l = this.load(o);
+    return this.call<TabInfo>("openTab", l ? [url, space, l] : space === undefined ? [url] : [url, space]);
+  };
+  navigate = (id: string, url: string, o?: LoadOptions) => {
+    const l = this.load(o);
+    return this.call<void | "pending">("navigate", l ? [id, url, l] : [id, url]);
+  };
   carrierText = (id: string, o?: { expect?: string }) => this.call<CarrierText>("carrierText", o ? [id, o] : [id]);
   capture = async (id: string, o?: { expect?: string }) => Buffer.from(await this.call<string>("capture", o ? [id, o] : [id]), "base64");
   // Taken down (signal) when a new conversation starts: refused.
@@ -158,8 +169,14 @@ export class RemoteBridge implements BrowserBridge {
   askDevUnlock: NonNullable<BrowserBridge["askDevUnlock"]> = (o, d, signal) => this.card("askDevUnlock", [o, d], false, signal);
   askLockNotice = (o: { text: string }, window: string | undefined) => this.lockNotice(o, window);
   readonly search: NonNullable<BrowserBridge["search"]> = {
-    open: (window, target, reuse, o) => this.call("search.open", o?.allow != null ? [window, target, reuse, o] : [window, target, reuse]),
-    openBackground: (searchTabId, url, o) => this.call("search.openBackground", o?.allow != null ? [searchTabId, url, o] : [searchTabId, url]),
+    open: (window, target, reuse, o) => {
+      const l = this.load(o);
+      return this.call("search.open", l ? [window, target, reuse, l] : [window, target, reuse]);
+    },
+    openBackground: (searchTabId, url, o) => {
+      const l = this.load(o);
+      return this.call("search.openBackground", l ? [searchTabId, url, l] : [searchTabId, url]);
+    },
     close: (tabId) => this.call("search.close", [tabId]),
     band: (tabId: string, band: Band | null) => this.call("search.band", [tabId, band]),
   };

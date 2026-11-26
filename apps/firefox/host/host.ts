@@ -36,7 +36,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync, readFileSync } = await import("node:fs");
 const { rm, stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { passportReady, ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE, WorkspaceLock, tweaksPaused, isTier3Widget } = await import("../../../packages/kernel/src/index.ts");
+const { passportReady, ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE, WorkspaceLock, tweaksPaused, isTier3Widget, askScope } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { Chats, ResumeError, SignedOutError } = await import("../core/agent/chats.ts");
 const { ChatStore } = await import("../core/agent/chat-store.ts");
@@ -1902,7 +1902,16 @@ function maskNotice(o: { text: unknown }, win: string | undefined, unless = fals
   maskNotices.set(session, String(o.text).slice(0, 300));
   maskingChanged();
 }
-const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url), maskNotice, asksLog(join(dataDir, "logs", "asks.jsonl")));
+/**
+ * The discussion of the session whose tool call runs now: a chat's live conversation, or the terminal a discussion went to
+ * (« Mode avancé »). Workflows, watches and the terminal of no discussion: none.
+ */
+function callingChat(): string | undefined {
+  const s = askScope.getStore();
+  if (!s?.chat) return undefined;
+  return chats.chatOfSession(s.chat) ?? (s.window && terminalWindows.has(s.window) ? activeChat(s.window)?.id : undefined);
+}
+const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url), maskNotice, asksLog(join(dataDir, "logs", "asks.jsonl")), callingChat);
 // The titles the agent's list_tabs gives, for the chat's « Lit la page « … » » lines (read_tab's input has the id only).
 const listTabs = bridge.listTabs;
 bridge.listTabs = () => listTabs().then((l) => (rememberTabs(l), l));

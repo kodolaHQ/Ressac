@@ -238,6 +238,12 @@ export class Chats {
     return e?.conv && e.launch ? e.launch.sessionId : null;
   }
 
+  /** The discussion whose live conversation runs kernel session `sessionId` (the tabs its agent opens belong to it). */
+  chatOfSession(sessionId: string): string | undefined {
+    for (const [id, e] of this.entries) if (e.conv && e.launch?.sessionId === sessionId) return id;
+    return undefined;
+  }
+
   /** A line of Ressac's in the transcript (« Échanges faits dans le terminal »). */
   async notice(chatId: string, text: string): Promise<void> {
     const e = this.entries.get(chatId);
@@ -426,11 +432,14 @@ export class Chats {
         break;
       }
       case "tool_call":
-        items.push({ kind: "tool", id: u.toolCallId, title: u.title, toolKind: u.kind, status: u.status });
+        items.push({ kind: "tool", id: u.toolCallId, title: u.title, toolKind: u.kind, status: u.status, ...(u.tab ? { tab: u.tab } : {}) });
         break;
       case "tool_call_update": {
         const t = items.find((i) => i.kind === "tool" && i.id === u.toolCallId);
-        if (t?.kind === "tool") t.status = u.status;
+        if (t?.kind === "tool") {
+          t.status = u.status;
+          if (u.tab) t.tab = u.tab;
+        }
         break;
       }
       case "request_question":

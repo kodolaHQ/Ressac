@@ -92,7 +92,7 @@ function open(
   d: Draft,
   genId: () => string,
   f: WindowState,
-  a: { url: string; spaceId?: SpaceId; activate?: boolean; openedByAgent?: boolean; agentReached?: boolean; opener?: TabId; after?: TabId; title?: string; profile?: ProfileId },
+  a: { url: string; spaceId?: SpaceId; activate?: boolean; openedByAgent?: boolean; chat?: string; agentReached?: boolean; opener?: TabId; after?: TabId; title?: string; profile?: ProfileId },
 ): Tab | null {
   // A link opened from a tab stays in that tab's space (its login profile), even in the background;
   // an essential, shared between spaces, opens in the displayed space if it is the active tab there.
@@ -101,7 +101,7 @@ function open(
   if (!d.spaces.some((e) => e.id === space)) return null;
   // A page's tab is what its opener is (an unknown opener: the agent's); otherwise the agent's unless the UI says not.
   const agentReached = a.opener !== undefined ? (d.tabs[a.opener]?.agentReached ?? true) : (a.agentReached ?? true);
-  const o = createTab(d, genId, { windowId: f.id, spaceId: space, url: a.url, openedByAgent: a.openedByAgent ?? false, agentReached, everAgent: agentReached, ...(a.title ? { title: a.title } : {}), ...(a.profile ? { profile: a.profile } : {}) });
+  const o = createTab(d, genId, { windowId: f.id, spaceId: space, url: a.url, openedByAgent: a.openedByAgent ?? false, agentReached, everAgent: agentReached, ...(a.title ? { title: a.title } : {}), ...(a.profile ? { profile: a.profile } : {}), ...(a.chat ? { chat: a.chat } : {}) });
   const l = list(f, space);
   const i = a.after ? l.indexOf(a.after) : -1;
   l.splice(i >= 0 ? i + 1 : l.length, 0, o.id);
@@ -686,6 +686,13 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       const f = win(d, a.windowId);
       if (!f) return false;
       f.agentPanelOpen = !f.agentPanelOpen;
+      return true;
+    }
+    case "showChat": {
+      const f = win(d, a.windowId);
+      if (!f || (f.agentChat === a.chatId && (!a.open || f.agentPanelOpen))) return false;
+      f.agentChat = a.chatId;
+      if (a.open) f.agentPanelOpen = true;
       return true;
     }
     // A single Applications page per window: go back to it (in its space) rather than open a second one.

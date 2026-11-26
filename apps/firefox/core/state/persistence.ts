@@ -28,6 +28,7 @@ const TabSchema = z.object({
   favicon: favicon,
   link: z.object({ type: z.enum(["essential", "pinned"]), id: z.string() }).nullable().catch(null),
   openedByAgent: z.boolean(),
+  chat: z.string().optional().catch(undefined),
   // A session saved before the flag predates agent tabs: its tabs are the user's.
   agentReached: z.boolean().default(false),
   everAgent: z.boolean().default(false),
@@ -266,7 +267,7 @@ export class SessionRecorder {
     );
     const target = join(this.folder, FILE);
     const { update: _update, notices: _notices, locale: _locale, aiSetup: _aiSetup, welcomeReplay: _welcomeReplay, ...saved } = state;
-    const text = JSON.stringify({ ...saved, tabs: tabs });
+    const text = JSON.stringify({ ...saved, windows: saved.windows.map(({ agentChat: _chat, ...f }) => f), tabs: tabs });
     this.onDisk ??= await fs.readFile(target, "utf8").catch(() => null);
     if (text === this.onDisk) return;
     const temp = `${target}.${process.pid}.${++this.number}.tmp`;

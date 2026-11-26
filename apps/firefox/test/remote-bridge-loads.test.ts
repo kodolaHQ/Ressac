@@ -31,3 +31,23 @@ it("agent loads send `allow` only when it restricts; a refused hop comes back as
   expect(e).toBeInstanceOf(LoadRefused);
   expect(e.url).toBe("https://b.test/x");
 });
+
+it("a tab the agent opens carries its discussion, as the host maps the calling session", async () => {
+  const calls: { method: string; params: unknown[] }[] = [];
+  const rpc = { request: (method: string, params: unknown[]) => (calls.push({ method, params }), Promise.resolve({ id: "t" })), notify() {} } as unknown as Rpc;
+  let chat: string | undefined = "c1";
+  const bridge = new RemoteBridge(rpc, undefined, undefined, undefined, undefined, () => chat);
+  await bridge.openTab("https://a.test/");
+  await bridge.navigate("t", "https://a.test/", { allow: [] });
+  await bridge.search!.open("W", { query: "q" }, undefined);
+  await bridge.search!.openBackground("s", "https://a.test/");
+  chat = undefined;
+  await bridge.openTab("https://a.test/");
+  expect(calls.map((c) => [c.method, c.params])).toEqual([
+    ["openTab", ["https://a.test/", undefined, { chat: "c1" }]],
+    ["navigate", ["t", "https://a.test/", { allow: [], chat: "c1" }]],
+    ["search.open", ["W", { query: "q" }, undefined, { chat: "c1" }]],
+    ["search.openBackground", ["s", "https://a.test/", { chat: "c1" }]],
+    ["openTab", ["https://a.test/"]],
+  ]);
+});

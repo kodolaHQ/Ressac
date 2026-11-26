@@ -112,6 +112,22 @@ test("tab opened by the agent: openedByAgent true", () => {
   expect(e.tabs[a]!.openedByAgent).toBe(true);
 });
 
+test("a tab the agent opens for a discussion keeps that discussion", () => {
+  const a = open("https://a.test/", { openedByAgent: true, chat: "c1" });
+  const b = open("https://b.test/", { openedByAgent: true });
+  expect([e.tabs[a]!.chat, e.tabs[b]!.chat]).toEqual(["c1", undefined]);
+});
+
+test("showChat: the window's panel shows the discussion; `open` opens the panel too", () => {
+  ag({ type: "showChat", windowId: F, chatId: "c1" });
+  expect(fen()).toMatchObject({ agentChat: "c1", agentPanelOpen: false });
+  const before = e;
+  ag({ type: "showChat", windowId: F, chatId: "c1" });
+  expect(e).toBe(before);
+  ag({ type: "showChat", windowId: F, chatId: "c2", open: true });
+  expect(fen()).toMatchObject({ agentChat: "c2", agentPanelOpen: true });
+});
+
 describe("agentReached (masking sources, spec § 5.3)", () => {
   // Read after `open` has replaced the state.
   const reached = (id: string) => e.tabs[id]!.agentReached;
