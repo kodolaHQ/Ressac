@@ -17,6 +17,13 @@ export class SignedOutError extends Error {
   }
 }
 
+/** The engine refused to resume the conversation (the adapter's own resume): the one fresh open may follow. */
+export class ResumeError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+  }
+}
+
 /** What the host's `open` gets: it starts the kernel pipe session and the engine. */
 export interface OpenOptions {
   chatId: string;
@@ -43,6 +50,12 @@ interface Entry {
   launch?: LaunchSpec;
   /** open() runs; `keep: false` closes what it returns. */
   opening?: { keep: boolean };
+  /** The running start(), resolved once what its open returned is kept or closed. */
+  starting?: Promise<void>;
+  /** The running close(): a second close waits for it. */
+  closing?: Promise<void>;
+  /** Created and not yet started: its first open keeps the mode it was created with. */
+  fresh?: boolean;
   unsubs: (() => void)[];
   /** Last use, for the least recently used pause. */
   used: number;
@@ -66,6 +79,8 @@ export class Chats {
       notify: (windowId: string, view: ChatView) => void;
       now?: () => number;
       liveMax?: number;
+      /** The app's current mode: a discussion reopens in it (the workshop is shaped for it). */
+      mode?: () => "browser" | "workshop";
     },
   ) {
     this.now = o.now ?? Date.now;
@@ -89,6 +104,7 @@ export class Chats {
     const t = this.now();
     const rec: ChatRecord = { id: randomUUID(), title: NEW_TITLE, ...c, state: "starting", updatedAt: t, messages: 0, windowId, items: [] };
     const e = this.entry(rec, "starting");
+    e.fresh = true;
     this.actives.set(windowId, rec.id);
     this.live(e);
     await this.save(e);
@@ -102,6 +118,12 @@ export class Chats {
       const rec = await this.o.store.read(chatId);
       if (!rec) return null;
       e = this.entries.get(chatId) ?? this.entry(rec, "paused");
+    }
+    const was = e.rec.windowId;
+    if (was !== windowId) {
+      // Live in another window: its engine holds that window's token and tabs, so it reopens bound to this one.
+      if (e.conv || e.opening) await this.close(e);
+      if (was && this.actives.get(was) === chatId) this.actives.delete(was);
     }
     e.rec.windowId = windowId;
     e.used = this.now();
@@ -148,7 +170,10 @@ export class Chats {
   async pause(chatId: string): Promise<void> {
     const e = this.entries.get(chatId);
     if (!e) return;
+    // Still opening: what the open returns closes before this resolves (« Mode avancé » resumes the same conversation).
+    const starting = e.opening ? e.starting : undefined;
     await this.close(e);
+    await starting;
     this.wake();
   }
 
@@ -228,7 +253,7 @@ export class Chats {
       // shortcut: the slot is free before the old process has exited (briefly LIVE_MAX + 1), await close() if memory shows it.
       void this.close(lru);
     }
-    void this.start(e);
+    e.starting = this.start(e);
   }
 
   /** A conversation may be free: the queued discussions open in order. */
@@ -241,6 +266,8 @@ export class Chats {
     e.opening = opening;
     e.state = "starting";
     e.error = undefined;
+    if (!e.fresh && this.o.mode) e.rec.mode = this.o.mode();
+    e.fresh = undefined;
     this.push(e);
     // Only a conversation that ran a turn resumes: a Codex thread with no turn would resume without its policy.
     const resumeId = e.rec.engineSessionId;
@@ -266,12 +293,12 @@ export class Chats {
         this.wake();
         return;
       }
-      if (resumeId) {
+      // Only the engine's own refusal to resume: a stopped machine or a CLI download keeps the id for Réessayer.
+      if (resumeId && err instanceof ResumeError) {
         // Once: the next start has no resumeId. The transcript stays; the engine loses the context.
         e.rec.engineSessionId = undefined;
         e.rec.items.push({ kind: "notice", id: randomUUID(), text: RESUME_FAILED });
-        void this.start(e);
-        return;
+        return this.start(e);
       }
       e.state = "error";
       e.error = err instanceof Error ? err.message : String(err);
@@ -372,8 +399,20 @@ export class Chats {
     return conv;
   }
 
-  /** Closes what was opened (or drops what open() will return); the discussion is paused and written. */
-  private async close(e: Entry): Promise<void> {
+  /**
+   * Closes what was opened (or drops what open() will return); the discussion is paused and written. A close already
+   * running is awaited, not skipped: the terminal resumes only once the process is gone.
+   */
+  private close(e: Entry): Promise<void> {
+    if (e.closing) return e.closing;
+    const closing = this.closeNow(e).finally(() => {
+      if (e.closing === closing) e.closing = undefined;
+    });
+    e.closing = closing;
+    return closing;
+  }
+
+  private async closeNow(e: Entry): Promise<void> {
     const i = this.queue.indexOf(e);
     if (i >= 0) this.queue.splice(i, 1);
     if (e.opening) e.opening.keep = false;

@@ -66,6 +66,18 @@ it("maskingStatus: the lock's names, the window's uncovered conversation, the no
   expect(maskingStatus(null, lock({ since: "", names: [] }), notices, "f1", passport)).toEqual({ locked: [], lockedAgreement: "one-m", uncovered: false, uncoveredPassport: [], notice: null, passportUnreadable: [] });
 });
 
+it("maskingStatus in chat view: the window's active discussion's session, not the window's last one", () => {
+  const masker = new Masker();
+  masker.open("s1", "f1", { uncovered: true });
+  masker.open("s2", "f1");
+  const notices = new Map([["s1", "Remplissage bloqué."]]);
+  const passport = hostPassport({});
+  expect(maskingStatus(masker, lock(null), notices, "f1", passport, "s1")).toMatchObject({ uncovered: true, notice: "Remplissage bloqué." });
+  expect(maskingStatus(masker, lock(null), notices, "f1", passport, "s2")).toMatchObject({ uncovered: false, notice: null });
+  // No live discussion: nothing to say about a conversation.
+  expect(maskingStatus(masker, lock(null), notices, "f1", passport, null)).toMatchObject({ uncovered: false, notice: null });
+});
+
 it("hostPassport: waits for the chrome's ready; the loopback seam only from RESSAC_TEST_LOCAL_ADDRESSES, which a packaged host deletes first", async () => {
   const store = hostPassport({});
   let ready = false;

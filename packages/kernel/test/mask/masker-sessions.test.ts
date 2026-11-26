@@ -38,3 +38,15 @@ it("maskTypedFor refuses an unknown or closed session instead of masking into th
   expect(() => m.maskTypedFor("never", "x")).toThrow();
   expect(m.table(null).touched).toBe(false);
 });
+
+it("closing one of a window's sessions leaves the window on another one still open", () => {
+  const m = new Masker();
+  m.open("s1", "w");
+  m.open("s2", "w");
+  m.open("s3", "x");
+  m.close("s2");
+  expect(m.sessionOf("w")).toBe("s1");
+  m.close("s1");
+  expect(m.sessionOf("w")).toBeNull();
+  expect(m.sessionOf("x")).toBe("s3");
+});

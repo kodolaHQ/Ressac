@@ -14,18 +14,20 @@ const LABEL = new RegExp(`^${LABEL_SOURCE}$`);
 
 /**
  * What the window's agent panel says about masking: the workspace lock (read from its file), a conversation not covered,
- * the kernel's notice for this conversation (`notices`, by session: a new conversation has none).
+ * the kernel's notice for this conversation (`notices`, by session: a new conversation has none). `chatSession`, in chat
+ * view: the window's active discussion's session (null: none live), as several discussions share a window.
  */
 export function maskingStatus(
-  masker: Pick<Masker, "uncoveredCause" | "sessionOf"> | null,
+  masker: Pick<Masker, "uncoveredCauseOf" | "sessionOf"> | null,
   lock: Pick<WorkspaceLock, "info">,
   notices: ReadonlyMap<string, string>,
   win: string,
   passport: Pick<PassportStore, "unreadable">,
+  chatSession?: string | null,
 ): MaskingStatus {
-  const session = masker?.sessionOf(win) ?? null;
+  const session = chatSession !== undefined ? chatSession : (masker?.sessionOf(win) ?? null);
   const names = lock.info()?.names ?? null;
-  const cause = masker?.uncoveredCause(win);
+  const cause = masker?.uncoveredCauseOf(session);
   return {
     locked: names,
     lockedAgreement: nameAgreement(names ?? [], hostLocale()).agreement,

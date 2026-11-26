@@ -36,7 +36,7 @@ const { rm, stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
 const { passportReady, ACTION_UNKNOWN, Workshop, DEFAULT_DOCKER_FOLDER, containerName, createRunner, dockerEngine, blockCatalog, loadProfiles, spacePaths, createKernel, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, handOffText, removeGrant, createAgentWriter, deleteData, watchActions, createRecaps, ID_RECAP, removeReads, EMBED_FILE, WorkspaceLock, tweaksPaused, isTier3Widget } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
-const { Chats, SignedOutError } = await import("../core/agent/chats.ts");
+const { Chats, ResumeError, SignedOutError } = await import("../core/agent/chats.ts");
 const { ChatStore } = await import("../core/agent/chat-store.ts");
 const { claudeEngine: claudeChat } = await import("../core/agent/chat/claude.ts");
 const { codexEngine: codexChat } = await import("../core/agent/chat/codex.ts");
@@ -845,14 +845,19 @@ async function openChat(o: OpenOptions) {
     try {
       if (signal.aborted) throw new Error("closed");
       if (!checked && !(await accountSignedIn(o.engine))) throw new SignedOutError();
-      const conversation = await (o.engine === "claude" ? claudeChat : codexChat).open({
-        chatId: o.chatId,
-        ...(o.resumeId ? { resumeId: o.resumeId } : {}),
-        ...(o.sessionId ? { sessionId: o.sessionId } : {}),
-        launch,
-        signal,
-        tabTitle: (id) => (typeof id === "string" ? tabTitles.get(id) : undefined),
-      });
+      const conversation = await (o.engine === "claude" ? claudeChat : codexChat)
+        .open({
+          chatId: o.chatId,
+          ...(o.resumeId ? { resumeId: o.resumeId } : {}),
+          ...(o.sessionId ? { sessionId: o.sessionId } : {}),
+          launch,
+          signal,
+          tabTitle: (id) => (typeof id === "string" ? tabTitles.get(id) : undefined),
+        })
+        // Only the engine's own resume failing lets Chats open fresh; an abort stays an abort.
+        .catch((err) => {
+          throw o.resumeId && !signal.aborted ? new ResumeError(err) : err;
+        });
       if (token) conversation.onEnd(() => relay.closeSession(token));
       return { conversation, launch };
     } catch (err) {
@@ -870,6 +875,7 @@ async function openChat(o: OpenOptions) {
 const chats = new Chats({
   store: chatStore,
   open: openChat,
+  mode: () => agentMode,
   notify: (win, view) => {
     // Pushed before the flush: a prompt it sends pushes a newer view, which must arrive last.
     pushChat(win, view);
@@ -1360,7 +1366,11 @@ const rpc = createRpc({
       sessions.write(p.window, p.data);
     },
     "agent.resize": (p: { window: string; size: TerminalSize }) => void (logins.resize(p.window, p.size) || sessions.resize(p.window, p.size)),
-    "agent.masking": async (p: { window?: unknown }) => maskingStatus(kernel?.masker ?? null, workspaceLock, maskNotices, String(p?.window), passport),
+    "agent.masking": async (p: { window?: unknown }) => {
+      const win = String(p?.window);
+      const chat = viewOf(win) === "chat" ? chats.sessionIdOf(activeChat(win)?.id ?? "") : undefined;
+      return maskingStatus(kernel?.masker ?? null, workspaceLock, maskNotices, win, passport, chat);
+    },
     // The chrome's passports (design § 5.2, § 5.3): kept by this process whether a kernel runs or not.
     "passport.replace": async (p: { profile?: unknown; entries?: unknown }) => {
       try {

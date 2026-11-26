@@ -6,7 +6,7 @@ import type { LaunchSpec } from "@ressac/kernel";
 import type { AskReply, ChatView, SessionUpdate } from "../../shared/chat";
 import type { EngineConversation } from "../../core/agent/chat/engine";
 import { ChatStore } from "../../core/agent/chat-store";
-import { Chats, LIVE_MAX, SignedOutError, type OpenOptions } from "../../core/agent/chats";
+import { Chats, LIVE_MAX, ResumeError, SignedOutError, type OpenOptions } from "../../core/agent/chats";
 
 class FakeConv implements EngineConversation {
   prompts: string[] = [];
@@ -63,7 +63,7 @@ interface Opened {
 }
 
 /** `auto`: every open resolves at once; otherwise the test resolves each one. */
-function prepare(auto = true) {
+function prepare(auto = true, mode?: () => "browser" | "workshop") {
   const dir = mkdtempSync(join(tmpdir(), "ressac-chats-"));
   dirs.push(dir);
   const store = new ChatStore(join(dir, "chats"));
@@ -73,6 +73,7 @@ function prepare(auto = true) {
   const chats = new Chats({
     store,
     now: () => ++clock,
+    ...(mode ? { mode } : {}),
     notify: (w, v) => views.push([w, v]),
     open: (o) =>
       new Promise((resolve, reject) => {
@@ -255,9 +256,9 @@ test("a failed open leaves an error and no live slot; an open that lands after a
   expect(state(a.summary.id)).toBe("error");
   expect(chats.active("w1")?.error).toBe("pas de conteneur");
   const b = await chats.create("w1", opts);
-  await chats.pause(b.summary.id);
+  const pausing = chats.pause(b.summary.id);
   opens[1]!.resolve();
-  await tick();
+  await pausing;
   expect(opens[1]!.conv.closed).toBe(true);
   expect(chats.sessionIdOf(b.summary.id)).toBeNull();
 });
@@ -329,7 +330,7 @@ test("a resume that fails opens fresh once, with a notice, and the transcript an
   await chats.select("w1", id);
   chats.prompt(id, "deux", "deux");
   expect(opens[1]!.o.resumeId).toBe(opens[0]!.o.sessionId);
-  opens[1]!.reject(new Error("No conversation found"));
+  opens[1]!.reject(new ResumeError(new Error("No conversation found")));
   await tick();
   expect(opens).toHaveLength(3);
   expect(opens[2]!.o.resumeId).toBeUndefined();
@@ -408,4 +409,97 @@ test("pause resolves only once the engine conversation has closed (« Mode avanc
   closed();
   await pausing;
   expect(paused).toBe(true);
+});
+
+test("a transient open error on a resume keeps the engine id: error state, Réessayer resumes the same conversation", async () => {
+  const { chats, opens, state } = prepare(false);
+  const a = await chats.create("w1", opts);
+  const id = a.summary.id;
+  opens[0]!.resolve();
+  await tick();
+  chats.prompt(id, "un", "un");
+  opens[0]!.conv.endTurn();
+  await chats.pause(id);
+  await chats.select("w1", id);
+  opens[1]!.reject(new Error("La machine est arrêtée"));
+  await tick();
+  expect(opens).toHaveLength(2);
+  expect(state(id)).toBe("error");
+  expect(chats.active("w1")?.error).toBe("La machine est arrêtée");
+  expect(chats.resumeIdOf(id)).toBe(opens[0]!.o.sessionId);
+  await chats.retry(id);
+  expect(opens[2]!.o.resumeId).toBe(opens[0]!.o.sessionId);
+});
+
+test("a paused discussion reopens in the app's current mode, keeping its resume id", async () => {
+  let mode: "browser" | "workshop" = "workshop";
+  const { chats, opens } = prepare(true, () => mode);
+  const a = await chats.create("w1", { ...opts, mode: "workshop" });
+  const id = a.summary.id;
+  await tick();
+  expect(opens[0]!.o.mode).toBe("workshop");
+  chats.prompt(id, "un", "un");
+  opens[0]!.conv.endTurn();
+  await chats.pause(id);
+  mode = "browser";
+  const v = await chats.select("w1", id);
+  await tick();
+  expect(opens[1]!.o).toMatchObject({ mode: "browser", resumeId: opens[0]!.o.sessionId });
+  expect(v?.summary.mode).toBe("browser");
+});
+
+test("a discussion created with an explicit mode opens in it (the chip's choice may reach the host after the create)", async () => {
+  const { chats, opens } = prepare(true, () => "browser");
+  await chats.create("w1", { ...opts, mode: "workshop" });
+  await tick();
+  expect(opens[0]!.o.mode).toBe("workshop");
+});
+
+test("selecting from window B a discussion live in window A reopens it bound to B", async () => {
+  const { chats, opens, state } = prepare();
+  const a = await chats.create("w1", opts);
+  const id = a.summary.id;
+  await tick();
+  chats.prompt(id, "un", "un");
+  opens[0]!.conv.endTurn();
+  await chats.select("w2", id);
+  await tick();
+  expect(opens[0]!.conv.closed).toBe(true);
+  expect(opens).toHaveLength(2);
+  expect(opens[1]!.o).toMatchObject({ windowId: "w2", resumeId: opens[0]!.o.sessionId });
+  expect(chats.active("w1")).toBeNull();
+  expect(chats.active("w2")?.summary.id).toBe(id);
+  expect(state(id)).toBe("ready");
+});
+
+test("close waits for a close already running and for an open still running (« Mode avancé » starts after both)", async () => {
+  const { chats, opens } = prepare(false);
+  const a = await chats.create("w1", opts);
+  const id = a.summary.id;
+  opens[0]!.resolve();
+  await tick();
+  let closed!: () => void;
+  opens[0]!.conv.close = () => new Promise<void>((r) => (closed = r));
+  let idleDone = false;
+  void chats.pauseIdle().then(() => (idleDone = true));
+  let paused = false;
+  const pausing = chats.pause(id).then(() => (paused = true));
+  await tick();
+  expect(paused).toBe(false);
+  closed();
+  await pausing;
+  expect(idleDone).toBe(true);
+  // Still opening: the pause resolves once what the open returns has closed.
+  await chats.select("w1", id);
+  let closed2!: () => void;
+  opens[1]!.conv.close = () => new Promise<void>((r) => (closed2 = r));
+  let paused2 = false;
+  const pausing2 = chats.pause(id).then(() => (paused2 = true));
+  await tick();
+  opens[1]!.resolve();
+  await tick();
+  expect(paused2).toBe(false);
+  closed2();
+  await pausing2;
+  expect(opens[1]!.conv.prompts).toEqual([]);
 });

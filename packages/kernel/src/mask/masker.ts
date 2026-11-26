@@ -26,6 +26,8 @@ export class Masker {
   private readonly workspace: Pick<WorkspaceLock, "locked" | "info"> | undefined;
   private readonly bornLock = new ConversationLock();
   private readonly windows = new Map<string, string>();
+  /** Each open session's window, in opening order: a window whose last session ends falls back to another one still open. */
+  private readonly sessionWindows = new Map<string, string>();
   /** The sessions resumed from a conversation started before masking, or by Codex (spec § 9 bis, invariant 2). */
   private readonly uncoveredSessions = new Set<string>();
   /** The sessions a passport addition marked (design § 5.3), with the entries (profile and id, never a value) that did. */
@@ -52,6 +54,7 @@ export class Masker {
     if (this.workspace?.locked()) lock.bornLocked();
     this.sessionLocks.set(session, lock);
     this.windows.set(win, session);
+    this.sessionWindows.set(session, win);
     this.changed();
   }
 
@@ -62,7 +65,13 @@ export class Masker {
     this.uncoveredSessions.delete(session);
     this.passportUncovered.delete(session);
     this.origins.delete(session);
-    for (const [win, s] of this.windows) if (s === session) this.windows.delete(win);
+    const win = this.sessionWindows.get(session);
+    this.sessionWindows.delete(session);
+    if (win !== undefined && this.windows.get(win) === session) {
+      const other = [...this.sessionWindows].findLast(([, w]) => w === win)?.[0];
+      if (other === undefined) this.windows.delete(win);
+      else this.windows.set(win, other);
+    }
     this.changed();
   }
 
