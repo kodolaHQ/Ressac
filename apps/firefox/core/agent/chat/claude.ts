@@ -147,9 +147,12 @@ export const claudeEngine: ChatEngine<LaunchSpecLike, ModelOption> = {
         running = true;
         const send = () => (queue.push({ type: "user", message: { role: "user", content: text }, parent_tool_use_id: null }), push());
         if (wanted === applied) return send();
-        applied = wanted;
-        // Answered before the message goes: the turn runs on the new model.
-        q.setModel(wanted).catch(() => {}).finally(send);
+        const asked = wanted;
+        // Answered before the message goes: the turn runs on the new model. Refused: the old one runs, the next message asks again.
+        q.setModel(asked).then(
+          () => void (applied = asked),
+          (e: unknown) => console.error("[chat] model refused:", e instanceof Error ? e.message : e),
+        ).finally(send);
       },
       async models() {
         // Claude Code lists « default » (no --model) first: the empty choice.

@@ -182,3 +182,14 @@ test("setModel applies from the next message: set_model goes before it, once; un
   const seen = received().flatMap((m) => (m.request?.subtype === "set_model" ? [`model:${m.request.model ?? "default"}`] : m.type === "user" ? ["user"] : []));
   expect(seen).toEqual(["model:opus", "user", "user", "model:default", "user"]);
 });
+
+test("a refused set_model is tried again before the next message, never taken as applied", async () => {
+  const { conv, updates, received } = await start();
+  conv.setModel!("refused");
+  conv.prompt("hello");
+  await expect.poll(() => updates.filter((u) => u.type === "turn_end").length).toBe(1);
+  conv.prompt("hello");
+  await expect.poll(() => updates.filter((u) => u.type === "turn_end").length).toBe(2);
+  const seen = received().flatMap((m) => (m.request?.subtype === "set_model" ? [`model:${m.request.model}`] : m.type === "user" ? ["user"] : []));
+  expect(seen).toEqual(["model:refused", "user", "model:refused", "user"]);
+});

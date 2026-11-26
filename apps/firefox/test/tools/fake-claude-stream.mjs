@@ -34,7 +34,9 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: { commands: [], agents: [], models: MODELS, output_style: "default", available_output_styles: [], account: { tokenSource: process.env.FAKE_TOKEN_SOURCE ?? "claude.ai" } } } });
     out({ type: "system", subtype: "init", apiKeySource: "none", tools: [], mcp_servers: [], model: "m", permissionMode: "default" });
   } else if (m.type === "control_request" && m.request.subtype === "set_model") {
-    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    // « refused »: the CLI refuses the model (as it does for one the account cannot use).
+    if (m.request.model === "refused") out({ type: "control_response", response: { subtype: "error", request_id: m.request_id, error: "model not available" } });
+    else out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
   } else if (m.type === "control_request" && m.request.subtype === "interrupt") {
     clearTimeout(held);
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
