@@ -190,9 +190,18 @@
     return () => clearTimeout(timer);
   });
   // Another discussion: its table gives other labels, so the chips and « en clair » choices start again (the preview reruns).
+  // The references belong to the discussion they were picked in; the first view of the panel (none before it) keeps them.
+  let shownId: string | undefined;
   $effect(() => {
-    void chat.view?.summary.id;
-    untrack(() => ((chips = []), (clear = []), (menuFor = null), (refs = []), (menu = null)));
+    const id = chat.view?.summary.id;
+    untrack(() => {
+      chips = [];
+      clear = [];
+      menuFor = null;
+      menu = null;
+      if (shownId !== undefined && id !== shownId) refs = [];
+      if (id !== undefined) shownId = id;
+    });
   });
   // A press outside the chip's menu or Échap closes it.
   $effect(() => {
@@ -233,7 +242,7 @@
       pasted: pasted.map(([a, b]): [number, number] => [Math.max(a - cut, 0), b - cut]).filter(([a, b]) => a < b),
       clear: [...clear],
       ...(cmd ? { command: cmd } : {}),
-      ...(sentRefs.length ? { refs: sentRefs.map((x) => x.ref) } : {}),
+      ...(sentRefs.length ? { refs: sentRefs.map((x) => $state.snapshot(x.ref)) } : {}),
     });
     sending = false;
     if (!r.ok) return void (error = r.error);
