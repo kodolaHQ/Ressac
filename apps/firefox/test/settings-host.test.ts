@@ -68,7 +68,7 @@ describe("settings host", () => {
   it("docker absent", async () => {
     const { h, exec, o } = setup({ state: "docker-absent" });
     expect(await h["settings.agents"]!({})).toEqual([
-      { id: "claude", name: "Claude Code", state: "docker-absent", login: "panel" },
+      { id: "claude", name: "Claude Code", state: "docker-absent", login: "terminal" },
       { id: "codex", name: "Codex", state: "docker-absent", login: "device" },
     ]);
     expect(exec).not.toHaveBeenCalled();
@@ -109,7 +109,7 @@ describe("settings host", () => {
   it("container stopped", async () => {
     const { h } = setup({ state: "stopped" });
     expect(await h["settings.agents"]!({})).toEqual([
-      { id: "claude", name: "Claude Code", state: "no-container", login: "panel" },
+      { id: "claude", name: "Claude Code", state: "no-container", login: "terminal" },
       { id: "codex", name: "Codex", state: "no-container", login: "device" },
     ]);
   });
@@ -170,7 +170,7 @@ describe("settings host", () => {
 
   it("one login at a time", async () => {
     const { h, alive, o } = setup();
-    expect(await h["settings.login"]!({ id: "claude" })).toEqual({ kind: "panel" });
+    expect(await h["settings.login"]!({ id: "claude" })).toEqual({ kind: "terminal" });
     expect(await h["settings.login"]!({ id: "codex" })).toEqual({ kind: "device", url: "https://auth.openai.com/codex/device", code: "B3MH-2FT21" });
     expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "device" });
     await vi.waitFor(() => expect(alive()).toEqual([false, true]));
@@ -183,7 +183,7 @@ describe("settings host", () => {
   it("an agent whose CLI is not downloaded shows so without an exec; its sign-in downloads it first", async () => {
     const { h, exec, o } = setup({ installed: ["claude"] });
     expect(await h["settings.agents"]!({})).toEqual([
-      { id: "claude", name: "Claude Code", state: "logged-in", account: "ami@example.com", login: "panel" },
+      { id: "claude", name: "Claude Code", state: "logged-in", account: "ami@example.com", login: "terminal" },
       { id: "codex", name: "Codex", state: "not-downloaded", login: "device" },
     ]);
     expect(exec).toHaveBeenCalledTimes(1);

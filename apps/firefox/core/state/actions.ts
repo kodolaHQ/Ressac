@@ -859,6 +859,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.shortcuts = {};
       return true;
     }
+    case "chooseAgentView": {
+      if (d.settings.agentView === a.view) return false;
+      d.settings.agentView = a.view;
+      return true;
+    }
     case "setStartOnHome": {
       if (d.settings.startOnHome === a.enabled) return false;
       d.settings.startOnHome = a.enabled;

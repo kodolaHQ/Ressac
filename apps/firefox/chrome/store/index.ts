@@ -622,6 +622,7 @@ async function start(): Promise<RessacStore> {
       notify("agent.codexEngine", { engine: store.state.settings.codexEngine });
       notify("agent.claudeEngine", { engine: store.state.settings.claudeEngine });
       notify("agent.mode", { mode: store.state.settings.agentMode });
+      notify("settings.agentView", { view: store.state.settings.agentView });
       notify("settings.locale", { locale: store.state.locale });
       notify("settings.agentDomains", { domains: store.state.settings.agentDomains });
       notify("settings.machineIdle", { minutes: store.state.settings.machineIdleMinutes });

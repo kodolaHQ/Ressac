@@ -204,6 +204,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("chooseMachineIdle"), minutes: MachineIdleSchema }),
   z.object({ type: z.literal("setSidebarSide"), side: z.enum(["left", "right"]) }),
   z.object({ type: z.literal("setStartOnHome"), enabled: z.boolean() }),
+  z.object({ type: z.literal("chooseAgentView"), view: z.enum(["chat", "terminal"]) }),
   z.object({ type: z.literal("setAuraMotion"), enabled: z.boolean() }),
   z.object({ type: z.literal("setSaveMemory"), enabled: z.boolean() }),
   z.object({ type: z.literal("chooseAppearance"), appearance: z.enum(APPEARANCES) }),

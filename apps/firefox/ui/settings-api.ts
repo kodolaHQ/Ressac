@@ -145,7 +145,7 @@ export function createSettingsApi(o: {
     agents,
     async login(id) {
       const r = await ask<LoginResult>("settings.login", { id }, { kind: "error", error: silent().error });
-      if (r.kind === "panel") {
+      if (r.kind === "terminal") {
         o.switchAgent(id);
         o.openAgent();
       }

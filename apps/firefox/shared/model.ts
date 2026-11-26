@@ -275,6 +275,8 @@ export interface BrowserState {
   settings: { engine: SearchEngine; /** The address « Autre… » searches with (`%s` = the words), kept when another engine is chosen. */ customEngine: string | null; /** Profil d'agent (fichier .ressac/profiles/<id>.json). */ agentProfile: string;
     /** « browser »: the agent runs without a shell (search, recaps); « workshop »: it can run commands (apps, widgets, design mode). */
     agentMode: "browser" | "workshop";
+    /** The agent panel shows a chat (the default) or the CLI's own terminal (« Mode avancé »). */
+    agentView: "chat" | "terminal";
     /** Width of the agent panel, in pixels (the user sets it by dragging its left edge). */
     agentPanelWidth: number;
     /** Width of the tab sidebar (px), dragged by its inner edge. */

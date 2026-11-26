@@ -720,3 +720,16 @@ test("a damaged session leaves lab undecided", async () => {
   writeFileSync(join(bad, "session.json"), "{ not json");
   expect((await loadSession(bad)).settings.lab).toBe(null);
 });
+
+test("agentView: kept, missing or unknown → chat", async () => {
+  const d = folder();
+  const saved = initialState();
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: { ...saved.settings, agentView: "terminal" } }));
+  expect((await loadSession(d)).settings.agentView).toBe("terminal");
+  const { agentView: _, ...old } = saved.settings;
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: old }));
+  expect((await loadSession(d)).settings.agentView).toBe("chat");
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: { ...saved.settings, agentView: "bulles" } }));
+  expect((await loadSession(d)).settings.agentView).toBe("chat");
+  expect(apply(saved, { type: "chooseAgentView", view: "terminal" }).settings.agentView).toBe("terminal");
+});

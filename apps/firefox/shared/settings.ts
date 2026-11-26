@@ -42,14 +42,14 @@ export interface AgentAccount {
   id: string;
   name: string;
   state: AgentAccountState;
-  /** How the account signs in: Claude in a terminal panel, Codex by a code the host runs in the workshop. */
-  login: "panel" | "device";
+  /** How the account signs in: Claude in a small terminal (the chat's login card), Codex by a code the host runs in the workshop. */
+  login: "terminal" | "device";
   account?: string;
   error?: string;
   /** A sign-in by code is running in the workshop: absent once it ended (signed in, expired or stopped). */
   signingIn?: true;
 }
-export type LoginResult = { kind: "panel" } | { kind: "device"; url: string; code: string } | { kind: "error"; error: string };
+export type LoginResult = { kind: "terminal" } | { kind: "device"; url: string; code: string } | { kind: "error"; error: string };
 export type GrantKind = "site" | "widget" | "action" | "siteApp" | "external";
 export interface GrantRow {
   kind: GrantKind;

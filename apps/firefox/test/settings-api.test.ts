@@ -125,8 +125,8 @@ describe("settings api", () => {
   });
 
   it("login: a panel answer switches the agent and opens the panel; a device code is returned as is; a silent host is an error", async () => {
-    const a = setup({ "settings.login": ({ id }) => (id === "claude" ? { kind: "panel" } : { kind: "device", url: "https://x", code: "AB-1" }) });
-    expect(await a.api.login("claude")).toEqual({ kind: "panel" });
+    const a = setup({ "settings.login": ({ id }) => (id === "claude" ? { kind: "terminal" } : { kind: "device", url: "https://x", code: "AB-1" }) });
+    expect(await a.api.login("claude")).toEqual({ kind: "terminal" });
     expect(a.switchAgent).toHaveBeenCalledWith("claude");
     expect(a.openAgent).toHaveBeenCalledTimes(1);
     expect(await a.api.login("codex")).toEqual({ kind: "device", url: "https://x", code: "AB-1" });

@@ -18,7 +18,7 @@ export const AGENT_ACCOUNTS: {
   name: string;
   status: string[];
   logout: string[];
-  login: { kind: "panel" } | { kind: "device"; argv: string[]; origin: string };
+  login: { kind: "terminal"; argv: string[] } | { kind: "device"; argv: string[]; origin: string };
   /** Throws when the output is unreadable. */
   parse(r: { code: number; stdout: string; stderr: string }): { loggedIn: boolean; account?: string };
 }[] = [
@@ -27,7 +27,8 @@ export const AGENT_ACCOUNTS: {
     name: "Claude Code",
     status: ["claude", "auth", "status", "--json"],
     logout: ["claude", "auth", "logout"],
-    login: { kind: "panel" },
+    // The chat's login card runs it in a small terminal (kernel openLoginSession).
+    login: { kind: "terminal", argv: ["claude", "auth", "login"] },
     // `claude auth status` exits 1 when logged out but still prints its JSON: trust the JSON whatever the code.
     parse({ stdout }) {
       const j = JSON.parse(stdout) as { loggedIn?: unknown; email?: unknown };
@@ -279,7 +280,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     "settings.login": async (p: { id?: unknown }): Promise<LoginResult> => {
       const a = AGENT_ACCOUNTS.find((x) => x.id === p?.id);
       if (!a) return { kind: "error", error: hostSay("host-unknown-agent") };
-      if (a.login.kind === "panel") return { kind: "panel" };
+      if (a.login.kind === "terminal") return { kind: "terminal" };
       let state = await o.workshop.state();
       if (state === "machine-stopped") state = await startedWithin(o.workshop.ensureStarted(), state);
       if (state !== "started") {

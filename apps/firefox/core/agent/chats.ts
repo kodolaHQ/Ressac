@@ -10,6 +10,13 @@ const NEW_TITLE = "Nouvelle discussion";
 const TITLE_MAX = 40;
 const RESUME_FAILED = "La conversation n'a pas pu être reprise : l'agent repart sans le contexte des échanges précédents.";
 
+/** The host's `open` found the engine's account signed out: the discussion waits for a login, then retry(). */
+export class SignedOutError extends Error {
+  constructor() {
+    super("signed-out");
+  }
+}
+
 /** What the host's `open` gets: it starts the kernel pipe session and the engine. */
 export interface OpenOptions {
   chatId: string;
@@ -237,6 +244,13 @@ export class Chats {
     } catch (err) {
       if (e.opening !== opening) return;
       e.opening = undefined;
+      // Before the resume fallback: signed in again, the same conversation resumes.
+      if (err instanceof SignedOutError) {
+        e.state = "signed-out";
+        this.push(e);
+        this.wake();
+        return;
+      }
       if (resumeId) {
         // Once: the next start has no resumeId. The transcript stays; the engine loses the context.
         e.rec.engineSessionId = undefined;

@@ -6,7 +6,7 @@ import type { LaunchSpec } from "@ressac/kernel";
 import type { AskReply, ChatView, SessionUpdate } from "../../shared/chat";
 import type { EngineConversation } from "../../core/agent/chat/engine";
 import { ChatStore } from "../../core/agent/chat-store";
-import { Chats, LIVE_MAX, type OpenOptions } from "../../core/agent/chats";
+import { Chats, LIVE_MAX, SignedOutError, type OpenOptions } from "../../core/agent/chats";
 
 class FakeConv implements EngineConversation {
   prompts: string[] = [];
@@ -363,4 +363,26 @@ test("messages waiting when a window closes go after the reopen; at app quit the
   chats.prompt(b.summary.id, "deux", "deux");
   await chats.stopAll();
   expect((await chats.select("w2", b.summary.id))?.items[0]).toMatchObject({ text: "deux", unsent: true });
+});
+
+test("an open refused as signed out leaves the discussion signed-out, its resume id and waiting messages kept", async () => {
+  const { chats, opens, state } = prepare(false);
+  const a = await chats.create("w1", opts);
+  const id = a.summary.id;
+  opens[0]!.resolve();
+  await tick();
+  chats.prompt(id, "un", "un");
+  opens[0]!.conv.endTurn();
+  await chats.pause(id);
+  chats.prompt(id, "deux", "deux");
+  opens[1]!.reject(new SignedOutError());
+  await tick();
+  expect(state(id)).toBe("signed-out");
+  // No fresh reopen: signed in again, retry resumes the same conversation and sends what waited.
+  expect(opens).toHaveLength(2);
+  await chats.retry(id);
+  expect(opens[2]!.o.resumeId).toBe(opens[0]!.o.sessionId);
+  opens[2]!.resolve();
+  await tick();
+  expect(opens[2]!.conv.prompts).toEqual(["deux"]);
 });

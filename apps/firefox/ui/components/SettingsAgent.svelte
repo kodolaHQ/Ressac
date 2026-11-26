@@ -41,7 +41,7 @@
   // A check that failed during a sign-in by code keeps the code and the polling: the sign-in is still running.
   const signIn = (a: AgentAccount) => !!a.signingIn || a.state === "logged-out" || a.state === "no-container" || a.state === "not-downloaded";
   $effect(() => {
-    if (!aiOn() || !agents?.some((a) => signIn(a) && (a.login === "panel" || logins[a.id] !== undefined))) return;
+    if (!aiOn() || !agents?.some((a) => signIn(a) && (a.login === "terminal" || logins[a.id] !== undefined))) return;
     const t = setInterval(() => void loadAgents(), 5_000);
     return () => clearInterval(t);
   });
@@ -176,7 +176,7 @@
                   <span class="help">{t("settings-agent-device-waiting")}</span>
                 {:else if l?.kind === "error"}
                   <span class="alert appear">{t("settings-error", { error: l.error })}</span>
-                {:else if a.login === "panel"}
+                {:else if a.login === "terminal"}
                   {#if claudeSubscription}<span class="help">{t("settings-agent-panel-login")}</span>{/if}
                 {:else}
                   <span class="help">{t("settings-agent-codex-login")}</span>
