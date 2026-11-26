@@ -15,6 +15,13 @@
   let wrap = $state<HTMLElement>() as HTMLElement;
   let scroller = $state<HTMLElement>();
   const view = $derived(chat.view);
+  /** While the turn runs (a question card waits as « waiting »): what it does now, so something always moves. */
+  const working = $derived.by(() => {
+    if (view?.summary.state !== "running") return null;
+    if (view.streaming?.text) return t("chat-working-writing");
+    const last = view.items.at(-1);
+    return last?.kind === "tool" && (last.status === "pending" || last.status === "in_progress") ? t("chat-working-acting") : t("chat-working-thinking");
+  });
   /** Messages already shown while streaming: their final text replaces the stream in place, without entering again. */
   const streamed = new Set<string>();
   $effect.pre(() => void (chat.view?.streaming && streamed.add(chat.view.streaming.messageId)));
@@ -137,6 +144,12 @@
     {#if view?.streaming}
       <div class="agent streaming" data-testid="chat-streaming"><div class="md">{@html markdown(view.streaming.text)}</div></div>
     {/if}
+    {#if working}
+      <!-- Inside the log: read out once when it appears, its changing words are hidden from the reader. -->
+      <p class="working" data-testid="chat-working" out:fade={{ duration: chat.visible ? 150 : 0 }}>
+        <span class="orb" aria-hidden="true"></span><span class="visually-hidden">{t("chat-working")}</span><span aria-hidden="true">{working}</span>
+      </p>
+    {/if}
   </div>
   {#if unseen}
     <button class="pill" data-testid="chat-new-messages" out:fade={{ duration: chat.visible ? 150 : 0 }} onclick={toBottom}>{t("chat-new-messages")}</button>
@@ -190,5 +203,11 @@
   .status { margin-left: auto; flex: none; color: var(--text-muted); }
   .done { display: block; }
   .notice { align-self: center; margin: 0; max-width: 90%; color: var(--text-muted); font-size: 12px; text-align: center; }
+  /* The agent's mark (the aura's hues) turning while the turn runs: the halo's motion. Reduced motion: still, still shown. */
+  .working { align-self: flex-start; display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-muted); font-size: 12px; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .orb { flex: none; width: 12px; height: 12px; border-radius: 50%; background: conic-gradient(from var(--ang), var(--a1), var(--a2), var(--a3), var(--a1)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--a2) 22%, transparent); animation: orb-spin 1.8s linear infinite; }
+  @keyframes orb-spin { to { --ang: 360deg; } }
+  @media (prefers-reduced-motion: reduce) { .orb { animation: none; } }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pill { position: absolute; left: 0; right: 0; bottom: 10px; width: fit-content; margin: 0 auto; padding: 5px 12px; border-radius: 999px; border: 0; background: var(--accent); color: var(--accent-ink); font: 600 12px var(--font-ui); box-shadow: var(--float); cursor: pointer; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
 </style>

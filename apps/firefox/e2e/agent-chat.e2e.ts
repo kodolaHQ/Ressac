@@ -46,6 +46,21 @@ async function launch(o: { writer?: "claude" | "codex"; profile?: string; env?: 
   await waitReady(m);
   await click(m, '[data-testid="agent-button"]');
 }
+/** RESSAC_E2E_SHOTS: the window as it looks, light then dark, to a folder (a look, not a check). */
+async function shot(name: string): Promise<void> {
+  const dir = process.env.RESSAC_E2E_SHOTS;
+  if (!dir) return;
+  try {
+    for (const [theme, dark] of [["light", 0], ["dark", 1]] as const) {
+      await m.execute(`Services.prefs.setIntPref('ui.systemUsesDarkTheme', ${dark});`);
+      await new Promise((r) => setTimeout(r, 800));
+      const png = (await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value;
+      writeFileSync(join(dir, `${name}-${theme}.png`), Buffer.from(png, "base64"));
+    }
+  } finally {
+    await m.execute("Services.prefs.clearUserPref('ui.systemUsesDarkTheme');");
+  }
+}
 const waitAgent = <T>(body: string, args: unknown[] = [], ms = 20_000) => waitUi<T>(m, body, args, ms, "agent");
 const textOf = (testid: string) => waitAgent<string>(`return [...doc.querySelectorAll('[data-testid="${testid}"]')].map((e) => e.textContent).join("\\n")`);
 /** The composer takes the keyboard, `text` is typed key by key (typed, not pasted). */
@@ -101,6 +116,8 @@ it("une question de l'agent devient une carte", async () => {
   await launch({ writer: "claude" });
   await send("ask");
   expect(await textOf("chat-question")).toContain("Quel train ?");
+  // The card is what to look at: no « working » line under it.
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-working\"]')");
   await click(m, '[data-testid="chat-question-option"]', { frame: "agent", text: "8 h 04" });
   await expect
     .poll(() => trace().some((l) => l.type === "control_response" && JSON.stringify(l.response).includes("8 h 04")), { timeout: 20_000 })
@@ -181,6 +198,22 @@ it("Supprimer une discussion la retire après confirmation, l'historique de l'ag
   await waitAgent("return doc.querySelector('[data-testid=\"chat-delete-history\"]')?.checked === true");
   await click(m, '[data-testid="chat-delete-confirm"]', { frame: "agent" });
   await expect.poll(() => erased(third).length, { timeout: 20_000 }).toBe(1);
+});
+
+it("un tour en cours montre qu'il avance : Réfléchit… sans texte, Écrit… pendant le texte, rien après la fin ni après Arrêter", async () => {
+  await launch({ writer: "claude" });
+  // « wait »: the fake runs the turn with no text until interrupted.
+  await send("wait");
+  expect(await textOf("chat-working")).toContain("Réfléchit…");
+  await shot("chat-working");
+  await click(m, '[data-testid="chat-stop"]', { frame: "agent" });
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-working\"]') && !doc.querySelector('[data-testid=\"chat-stop\"]')");
+  // « Bonjour » streams its start then holds: the line says it writes.
+  await send("Bonjour");
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-streaming\"]')?.textContent.includes('Bonjour,') && doc.querySelector('[data-testid=\"chat-working\"]')?.textContent.includes('Écrit…')");
+  go();
+  await agentSays("Bonjour, Camille.");
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-working\"]')");
 });
 
 it("Arrêter coupe le tour", async () => {
@@ -300,6 +333,17 @@ it("compte déconnecté : la carte de connexion", async () => {
   // The CLI's own sign-in runs in the login card's terminal; the fake holds it until the test signs in.
   await waitAgent("return doc.querySelector('[data-testid=\"chat-login\"] .xterm-rows')?.textContent.includes('fake login: waiting')");
   expect(readFileSync(join(root(), "fake-docker-all.log"), "utf8")).toContain("claude auth login");
+  // The whole output in view, first line to last (the long sign-in address wraps), at the default width and a narrow one.
+  const whole = `const rows = doc.querySelector('[data-testid="chat-login"] .xterm-rows'), term = doc.querySelector('[data-testid="chat-login"] .term');
+    const last = [...rows.children].filter((r) => r.textContent.trim()).at(-1);
+    return rows.textContent.includes('fake login: waiting') && last?.textContent.includes('Paste code here if prompted >')
+      && last.getBoundingClientRect().bottom <= term.getBoundingClientRect().bottom && term.getBoundingClientRect().bottom <= ui.innerHeight;`;
+  await waitAgent(whole);
+  await shot("chat-login-default");
+  await dispatch(m, { type: "agentPanelWidth", width: 340 });
+  await waitAgent("return ui.innerWidth <= 345");
+  await waitAgent(whole);
+  await shot("chat-login-340");
   go();
   writeFileSync(join(root(), "fake-claude-login-go"), "");
   await waitAgent("return !doc.querySelector('[data-testid=\"chat-login\"]') && !!doc.querySelector('[data-testid=\"chat-input\"]')");

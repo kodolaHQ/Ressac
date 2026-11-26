@@ -22,7 +22,7 @@
     started = true;
     const term = new Terminal({
       fontSize: 12,
-      fontFamily: `"Geist Mono", ${MONO_FALLBACK}`,
+      fontFamily: MONO_FALLBACK,
       cursorBlink: true,
       minimumContrastRatio: 4.5,
       theme: palette(),
@@ -44,12 +44,24 @@
     };
     const obs = new ResizeObserver(resize);
     obs.observe(host);
+    // As the Mode avancé terminal: Geist Mono is measured once loaded (else the cells are too narrow and the lines run
+    // past the box), and the colours follow the system's light or dark.
+    void document.fonts.load(`12px "Geist Mono"`).then(() => {
+      if (!cleanup) return;
+      term.options.fontFamily = `"Geist Mono", ${MONO_FALLBACK}`;
+      resize();
+    });
+    const scheme = matchMedia("(prefers-color-scheme: dark)");
+    const repaint = () => (term.options.theme = palette());
+    scheme.addEventListener("change", repaint);
     void api.chat.login().then(() => {
       running = true;
       resize();
     });
     term.focus();
     cleanup = () => {
+      cleanup = undefined;
+      scheme.removeEventListener("change", repaint);
       obs.disconnect();
       offData();
       term.dispose();
@@ -90,8 +102,11 @@
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   /* The terminal needs a size before it opens: its block is laid out but hidden until « Se connecter ». */
   .term-block { display: flex; flex-direction: column; gap: 6px; visibility: hidden; height: 0; overflow: hidden; }
-  .term-block.shown { visibility: visible; height: auto; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
-  .term { height: 170px; padding: 8px 10px; border-radius: 10px; background: var(--sheet); box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
+  /* Shown, it takes the card's free height: the sign-in address wraps over many rows at a narrow width. */
+  /* Basis 0: the fitted rows never size the box they are fitted to. */
+  .term-block.shown { flex: 1 1 0; min-height: 320px; visibility: visible; height: auto; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
+  .term-block:not(.shown) .term { height: 300px; }
+  .term { flex: 1 1 0; min-height: 0; padding: 8px 10px; border-radius: 10px; background: var(--sheet); box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
   .small { margin: 0; color: var(--text-muted); font-size: 12px; }
   .link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
   .link:hover { text-decoration: underline; }

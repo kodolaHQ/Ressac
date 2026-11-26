@@ -444,7 +444,9 @@ if (args[0] === "exec") {
   // The chat's login terminal (openLoginSession): signed in once the test writes <RESSAC_ROOT>/fake-claude-login-go, or
   // given up after 60 s, so a failed test leaves no process behind.
   if (command.join(" ") === "claude auth login") {
-    process.stdout.write("fake login: waiting\r\n");
+    // Shaped like the real output: a long sign-in address that wraps, then the prompt as the last line.
+    const url = `https://claude.ai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&scope=org%3Acreate_api_key+user%3Aprofile+user%3Ainference+user%3Asessions%3Aclaude_code&code_challenge=${"x".repeat(43)}&code_challenge_method=S256&state=${"y".repeat(43)}`;
+    process.stdout.write(`fake login: waiting\r\n\r\nOpening browser to sign in…\r\nBrowser didn't open? Use the url below to sign in:\r\n\r\n${url}\r\n\r\nPaste code here if prompted > `);
     const end = Date.now() + 60_000;
     const go = join(env.RESSAC_ROOT, "fake-claude-login-go");
     setInterval(() => {
