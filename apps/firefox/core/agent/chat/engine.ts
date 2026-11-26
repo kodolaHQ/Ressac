@@ -23,17 +23,20 @@ export interface EngineConversation {
   onEnd(cb: (e: { code: number | null; error?: string }) => void): () => void;
 }
 
-export interface ChatEngine {
-  readonly id: "claude" | "codex";
+/** `L`: what the engine opens on (the kernel's LaunchSpec, or a host session); `X`: options only that engine takes. */
+export interface ChatEngine<L = LaunchSpecLike, X = {}> {
+  readonly id: "claude" | "codex" | "own";
   /** Starts or resumes one conversation; resolves once the engine is ready for a prompt. */
   /** `sessionId`: the id the host chose for a new discussion (engines that take one); `tabTitle`: see toolTitle. */
-  open(o: {
-    resumeId?: string;
-    sessionId?: string;
-    launch: LaunchSpecLike;
-    signal: AbortSignal;
-    tabTitle?: (id: unknown) => string | undefined;
-  }): Promise<EngineConversation>;
+  open(
+    o: {
+      resumeId?: string;
+      sessionId?: string;
+      launch: L;
+      signal: AbortSignal;
+      tabTitle?: (id: unknown) => string | undefined;
+    } & X,
+  ): Promise<EngineConversation>;
 }
 
 type EndInfo = { code: number | null; error?: string };
@@ -55,6 +58,8 @@ export function engineEvents(launch: Pick<LaunchSpecLike, "ended">) {
       endCbs.add(cb);
       return () => void endCbs.delete(cb);
     },
+    /** Tells the end subscribers; the caller reports it once. */
+    end: (e: EndInfo) => endCbs.forEach((cb) => cb(e)),
     watch(child: ChildProcessWithoutNullStreams, beforeEnd?: (error?: string) => void) {
       let stderrTail = "";
       let ended = false;
