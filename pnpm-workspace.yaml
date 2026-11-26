@@ -11,3 +11,6 @@ overrides:
   is-apple-silicon: 1.1.2
   # surfer's sharp 0.32 (logo resizing at build time, not shipped) carries libvips/libheif advisories fixed in 0.35.4.
   sharp: 0.35.5
+ignoredOptionalDependencies:
+  # The Agent SDK's bundled Claude Code binaries (~160 MB each): Ressac always spawns the workshop's pinned claude.
+  - "@anthropic-ai/claude-agent-sdk-*"

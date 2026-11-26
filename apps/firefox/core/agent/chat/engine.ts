@@ -27,7 +27,15 @@ export interface ChatEngine {
   readonly id: "claude" | "codex";
   readonly capabilities: { partialText: boolean; thinking: boolean; ask: boolean; resumeById: boolean };
   /** Starts or resumes one conversation; resolves once the engine is ready for a prompt. */
-  open(o: { chatId: string; resumeId?: string; launch: LaunchSpecLike; signal: AbortSignal }): Promise<EngineConversation>;
+  /** `sessionId`: the id the host chose for a new discussion (engines that take one); `tabTitle`: see toolTitle. */
+  open(o: {
+    chatId: string;
+    resumeId?: string;
+    sessionId?: string;
+    launch: LaunchSpecLike;
+    signal: AbortSignal;
+    tabTitle?: (id: unknown) => string | undefined;
+  }): Promise<EngineConversation>;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
