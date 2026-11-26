@@ -19,7 +19,7 @@ import { registerDevTools, type ProfileFiles } from "./devtools.js";
 import { STOP_TEXT, CLOSED_TEXT, URL_MAX, type SearchSessions } from "../search/sessions.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { ListToolsRequestSchema, type ListToolsResult, type ServerNotification, type ServerRequest } from "@modelcontextprotocol/sdk/types.js";
-import { unwrapLink, rankLinks } from "./links.js";
+import { isGoogleGoto, unwrapLink, rankLinks } from "./links.js";
 import { SeenUrls } from "./seen.js";
 import { NOTES_PREFIX, type BrowsingNotes } from "../search/notes.js";
 import { RECAP_TITLE_MAX, RECAP_UNKNOWN, type Recaps } from "../recaps/recaps.js";
@@ -1368,21 +1368,24 @@ export function createToolsServer(
         if (!(e instanceof LoadRefused)) throw e;
         if (masker.locked()) return { refused: l10n("kernel-mask-locked-refused") };
         const to = originOf(e.url);
-        if (!to || !(ownTarget(pin, e.url) || (await hopCard(pin, to, signal)))) return { refused: HANDLE_REFUSED };
+        if (!to || !(ownTarget(pin, e.url, url) || (await hopCard(pin, to, signal)))) return { refused: HANDLE_REFUSED };
         url = e.url;
         o = { allow: [to] };
       }
     }
   }
   /**
-   * A handle's redirect landing exactly on the address its own `q=` or `url=` parameter names (an engine's result link),
-   * carrying none of the handle's masked values nor the user's: those went only to the handle's origin, which showed them.
+   * A handle's redirect landing exactly on the address its own `q=` or `url=` parameter names (an engine's result link), or
+   * Google's first hop off its `/goto` link (whose sealed target only Google mints), carrying none of the handle's masked
+   * values nor the user's: those went only to the handle's origin, which showed them. `from`: the address that redirected.
    */
-  const ownTarget = (pin: Pin | undefined, hop: string) => {
+  const ownTarget = (pin: Pin | undefined, hop: string, from: string) => {
     if (!pin || !URL.canParse(hop) || !URL.canParse(pin.real)) return false;
     const dest = new URL(hop).href;
-    const params = new URL(pin.real).searchParams;
-    if (!["q", "url"].some((k) => params.getAll(k).some((v) => URL.canParse(v) && new URL(v).href === dest))) return false;
+    const real = new URL(pin.real);
+    const named = ["q", "url"].some((k) => real.searchParams.getAll(k).some((v) => URL.canParse(v) && new URL(v).href === dest));
+    // Only the hop Google's server makes: the destination's own redirects are judged as any site's.
+    if (!named && !(from === pin.real && isGoogleGoto(real))) return false;
     // A label that resolves to nothing could stand for anything: the card.
     const own = [...pin.handle.matchAll(LABELS)].map((m) => labels.resolve(m[0]));
     return own.every((e) => e !== undefined) && !carries(hop, [...(own as Entry[]), ...labels.entries("sources")]);

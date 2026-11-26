@@ -1056,6 +1056,64 @@ test("a Google result link in the url= shape (q= empty) redirecting to its own t
   });
 });
 
+// Google's /goto result links: `url=` is a sealed token (Tink, minted by Google only), never the destination in clear.
+const GOTO = "https://www.google.com/goto?url=CAESkQEB6zswFWq9Lr0xVbT3nH8yKp2QmZt7dXcRj4sAeUoGhNiYfWlE5_Mb6PvCkSz1aJqDgOw-tIr0n&gsessionid=Vq3Xk9TzL0pWm7RbYc2HdN8sFgJ4";
+const serp: TabInfo = { id: "g", title: "ps5 - Recherche Google", url: "https://www.google.com/search?q=ps5", space: "perso", agentReached: true };
+const gotoFrom = async (call: Call, bridge: FakeBridge, to: string) => {
+  bridge.pages.set("g", { text: "Résultats", links: [{ text: "Prix PS5", url: GOTO }] });
+  const handle = (await call("read_tab", { id: "g", links: true })).text.match(/https:\/\/www\.google\.com\/goto\?\S+/)![0];
+  bridge.redirects.set(GOTO, to);
+  return { handle, r: await call("open_tab", { url: handle }) };
+};
+
+test("a Google /goto result link redirecting to a destination clean of masked values: no card, the destination opens", async () => {
+  await serve({ tabs: [serp], bridge: { address: false } }, async ({ call, bridge, cards }) => {
+    const { handle, r } = await gotoFrom(call, bridge, ARTICLE);
+    expect(handle).toContain("⟨");
+    expect(r.isError).toBe(false);
+    expect(cards()).toEqual([]);
+    expect((await bridge.listTabs()).some((t) => t.url === ARTICLE)).toBe(true);
+  });
+});
+
+test("a Google /goto hop that carries the link's own masked token asks the hop card", async () => {
+  await serve({ tabs: [serp], bridge: { address: false } }, async ({ call, bridge, cards }) => {
+    const { r } = await gotoFrom(call, bridge, "https://www.jeux.test/news?s=Vq3Xk9TzL0pWm7RbYc2HdN8sFgJ4");
+    expect(r.text).toBe(HANDLE_REFUSED);
+    expect(cards()).toEqual([expect.objectContaining({ url: "https://www.jeux.test", found: true })]);
+  });
+});
+
+test("a Google /goto hop that carries a value masked in the user's sources asks the hop card", async () => {
+  await serve({ tabs: [serp], bridge: { address: false } }, async ({ call, bridge, cards, read }) => {
+    await read();
+    const { r } = await gotoFrom(call, bridge, `https://www.jeux.test/news?c=${CODE}`);
+    expect(r.text).toBe(HANDLE_REFUSED);
+    expect(cards()).toEqual([expect.objectContaining({ url: "https://www.jeux.test", found: true })]);
+  });
+});
+
+test("only Google's first hop is free: the destination's own redirect to another site asks the hop card", async () => {
+  await serve({ tabs: [serp], bridge: { address: false } }, async ({ call, bridge, cards }) => {
+    bridge.redirects.set(ARTICLE, "https://evil.test/collect");
+    const { r } = await gotoFrom(call, bridge, ARTICLE);
+    expect(r.text).toBe(HANDLE_REFUSED);
+    expect(cards()).toEqual([expect.objectContaining({ url: "https://evil.test", found: true })]);
+  });
+});
+
+test("a /goto link on another site than Google's is a plain handle: its redirect asks the hop card", async () => {
+  const fake = GOTO.replace("www.google.com", "www.google.com.evil.test");
+  const page: TabInfo = { ...serp, url: "https://www.google.com.evil.test/search?q=ps5" };
+  await serve({ tabs: [page], bridge: { address: false } }, async ({ call, bridge, cards }) => {
+    bridge.pages.set("g", { text: "Résultats", links: [{ text: "Prix PS5", url: fake }] });
+    const handle = (await call("read_tab", { id: "g", links: true })).text.match(/https:\/\/www\.google\.com\.evil\.test\/goto\?\S+/)![0];
+    bridge.redirects.set(fake, ARTICLE);
+    expect((await call("open_tab", { url: handle })).text).toBe(HANDLE_REFUSED);
+    expect(cards()).toEqual([expect.objectContaining({ url: "https://www.jeux.test", found: true })]);
+  });
+});
+
 test("a site's own label sent back to its own origin asks no label alert; to another site, or the user's value's label to its site, it does", async () => {
   await serve({ tabs: [results], bridge: { labelAlert: false } }, async ({ call, bridge, read }) => {
     bridge.pages.set("res", { text: "Résultats", links: [{ text: "Prix PS5", url: redirector(ARTICLE) }] });
