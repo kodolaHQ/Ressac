@@ -229,3 +229,23 @@ it("mask.guess: the field, and the name's parts for a name", () => {
   expect(() => maskGuess({ text: 42 })).toThrow();
   expect(() => maskGuess(null)).toThrow();
 });
+
+it("two live discussions in one window: the reveal and the marks use the discussion given, not the window's latest session", () => {
+  const masker = new Masker();
+  masker.open("s1", "f1");
+  const iban = "FR76 3000 6000 " + "0112 3456 7890 189";
+  const [label] = masker.maskTypedFor("s1", `mon IBAN ${iban}`).text.match(/⟨[a-z]+-[a-z0-9]{8}⟩/)!;
+  masker.open("s2", "f1"); // the window's latest session is now s2
+  expect(revealLocal(masker, "f1", label)).toBeNull();
+  expect(revealLocal(masker, "f1", label, "s1")).toBe(iban);
+  expect(revealLocal(masker, "f1", label, "s2")).toBeNull();
+  // Chat view, active discussion not live: nothing, never the main table.
+  expect(revealLocal(masker, "f1", label, null)).toBeNull();
+  const seen: (string | null)[] = [];
+  const kernel = { masker, tabZone: (s: string | null) => (seen.push(s), "sources" as const) };
+  const p = { window: "f1", tab: "t1", url: "https://banque.example/", agentReached: false, texts: ["x"] };
+  maskRuns(kernel, p, "s1");
+  maskRuns(kernel, p);
+  expect(seen).toEqual(["s1", "s2"]);
+  expect(maskRuns(kernel, p, null)).toEqual({ runs: null });
+});

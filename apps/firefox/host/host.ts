@@ -938,6 +938,12 @@ function prefillAgentContext(win: string, text: string): void {
 }
 
 const activeChat = (win: unknown) => (typeof win === "string" ? (chats.active(win)?.summary ?? null) : null);
+/**
+ * In chat view, the window's active discussion's session (null: none live): several discussions share a window, so its
+ * latest session may be another one's. undefined in terminal view: the window's own session applies.
+ */
+const chatSessionOf = (win: unknown): string | null | undefined =>
+  typeof win === "string" && viewOf(win) === "chat" ? chats.sessionIdOf(activeChat(win)?.id ?? "") : undefined;
 
 // The CLI's own sign-in for the chat's login card; a first session's sweep waits for it (launchKernel's aroundSweep).
 const logins = createLoginTerminals({
@@ -1374,8 +1380,7 @@ const rpc = createRpc({
     "agent.resize": (p: { window: string; size: TerminalSize }) => void (logins.resize(p.window, p.size) || sessions.resize(p.window, p.size)),
     "agent.masking": async (p: { window?: unknown }) => {
       const win = String(p?.window);
-      const chat = viewOf(win) === "chat" ? chats.sessionIdOf(activeChat(win)?.id ?? "") : undefined;
-      return maskingStatus(kernel?.masker ?? null, workspaceLock, maskNotices, win, passport, chat);
+      return maskingStatus(kernel?.masker ?? null, workspaceLock, maskNotices, win, passport, chatSessionOf(win));
     },
     // The chrome's passports (design § 5.2, § 5.3): kept by this process whether a kernel runs or not.
     "passport.replace": async (p: { profile?: unknown; entries?: unknown }) => {
@@ -1427,11 +1432,11 @@ const rpc = createRpc({
       await (await liveKernel()).masking.quarantine.restore(p.id);
     },
     // The value goes back to the window's own UI only: never logged, never in a card's request.
-    "agent.revealLocal": (p: { window?: unknown; label?: unknown }) => revealLocal(kernel?.masker ?? null, p?.window, p?.label),
+    "agent.revealLocal": (p: { window?: unknown; label?: unknown }) => revealLocal(kernel?.masker ?? null, p?.window, p?.label, chatSessionOf(p?.window)),
     // A paste held by the terminal: the masked text and what it hid, never the original (the UI keeps it for « Coller en clair »).
     "agent.maskPaste": (p: { window?: unknown; text?: unknown }) => maskPaste(() => kernel?.masker ?? null, passport, p?.window, p?.text),
     // Chrome's « Cacher pour l'agent » marks: where the window's agent sees labels, never a label or a value.
-    "mask.runs": (p: unknown) => maskRuns(kernel ?? null, p),
+    "mask.runs": (p: unknown) => maskRuns(kernel ?? null, p, chatSessionOf((p as { window?: unknown } | null)?.window)),
     "mask.guess": (p: unknown) => maskGuess(p),
     "agent.revealLogins": (p: { window?: unknown; ref?: unknown }) => bridge.loginsFor(p?.ref, p?.window),
     // A fill card's passport value (ruling F10): to that card's own window only, never logged.
@@ -1629,7 +1634,8 @@ process.on("uncaughtException", (e) => {
  * retenu » (`unless`: never over a notice already there, so a lock notice stays).
  */
 function maskNotice(o: { text: unknown }, win: string | undefined, unless = false) {
-  const session = win === undefined ? null : (kernel?.masker.sessionOf(win) ?? null);
+  const chat = chatSessionOf(win);
+  const session = win === undefined ? null : chat !== undefined ? chat : (kernel?.masker.sessionOf(win) ?? null);
   if (session === null || (unless && maskNotices.has(session))) return;
   maskNotices.set(session, String(o.text).slice(0, 300));
   maskingChanged();

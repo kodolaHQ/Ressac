@@ -46,10 +46,14 @@ export function hostPassport(env: Record<string, string | undefined>): PassportS
   return new PassportStore({ awaitReady: true, localAddresses: env.RESSAC_TEST_LOCAL_ADDRESSES === "1" });
 }
 
-/** The value behind a label of the window's own session, for its card or bubble: never logged, never sent to the agent. */
-export function revealLocal(masker: Pick<Masker, "lookupForUser"> | null, win: unknown, label: unknown): string | null {
+/**
+ * The value behind a label of the window's own session, for its card or bubble: never logged, never sent to the agent.
+ * `chatSession`, in chat view: the window's active discussion's session (null: none live, nothing resolves).
+ */
+export function revealLocal(masker: Pick<Masker, "lookupForSession" | "sessionOf"> | null, win: unknown, label: unknown, chatSession?: string | null): string | null {
   if (typeof win !== "string" || typeof label !== "string" || !LABEL.test(label)) return null;
-  return masker?.lookupForUser(win, label)?.value ?? null;
+  if (!masker || chatSession === null) return null;
+  return masker.lookupForSession(chatSession ?? masker.sessionOf(win), label)?.value ?? null;
 }
 
 /**
@@ -73,14 +77,14 @@ const RUNS_CHARS = 200_000;
  * session's table, the zone the kernel gives its reads of that tab (`agentReached`: chrome's flag; a site app the agent
  * navigated in this conversation is no source either). Issues no label. `window: null` asks for the main token's table
  * (no conversation: its zone and the passport's sites now). No session (or no kernel): `runs: null`, so a caller asking
- * several windows can tell « no conversation » from « nothing masked ».
+ * several windows can tell « no conversation » from « nothing masked ». `chatSession`: as revealLocal's.
  */
-export function maskRuns(kernel: Pick<Kernel, "masker" | "tabZone"> | null, p: unknown): { runs: MaskedRun[][] | null } {
+export function maskRuns(kernel: Pick<Kernel, "masker" | "tabZone"> | null, p: unknown, chatSession?: string | null): { runs: MaskedRun[][] | null } {
   const { window: win, tab, url, agentReached, texts } = (p ?? {}) as Record<string, unknown>;
   if ((typeof win !== "string" && win !== null) || typeof tab !== "string" || typeof url !== "string" || typeof agentReached !== "boolean" || !Array.isArray(texts) || texts.length > RUNS_TEXTS || !texts.every((t) => typeof t === "string" && t.length <= RUNS_CHARS))
     throw new Error("mask.runs: invalid params");
   if (!kernel) return { runs: null };
-  const session = win === null ? null : kernel.masker.sessionOf(win);
+  const session = win === null ? null : chatSession !== undefined ? chatSession : kernel.masker.sessionOf(win);
   if (win !== null && session === null) return { runs: null };
   // A site app's window is the tab `site:<id>` (`siteTab`).
   const site = tab.startsWith(SITE_PREFIX) ? tab.slice(SITE_PREFIX.length) : undefined;
