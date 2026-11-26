@@ -155,3 +155,25 @@ test("a draft prefill (a site app's prefix) waits as the window's prefix, shown 
   expect(written).toHaveBeenCalled();
   expect(send.prefixOf("w1")).toBeNull();
 });
+
+test("the panel's context, arriving after an app's prefix (design.giveAgent opens the panel), never replaces it", async () => {
+  const f = fakeChats();
+  f.openSession("s1");
+  const written = vi.fn();
+  const send = createChatSend({ chats: f.chats, masker: () => masker(), outflow: () => outflow(), interacted: () => {}, create: async () => f.chats.active("w1") });
+  await send.prefill("w1", "[application : Lune] ", { written });
+  send.panelOpened("w1", "[contexte : Page — https://a.fr/] ");
+  expect(send.prefixOf("w1")).toBe("[application : Lune] ");
+  await send.send("w1", "c1", draft("corrige"));
+  expect(f.prompts[0]![1]).toBe("[application : Lune] corrige");
+  expect(written).toHaveBeenCalled();
+});
+
+test("a send that fails keeps the window's prefix for the next one", async () => {
+  const f = fakeChats();
+  f.chats.select.mockResolvedValueOnce(null as never);
+  const send = createChatSend({ chats: f.chats, masker: () => masker(), outflow: () => outflow(), interacted: () => {}, create: async () => f.chats.active("w1") });
+  await send.prefill("w1", "[application : Lune] ");
+  expect(await send.send("w1", "c1", draft("corrige"))).toMatchObject({ ok: false });
+  expect(send.prefixOf("w1")).toBe("[application : Lune] ");
+});

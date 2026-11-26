@@ -899,9 +899,11 @@ export async function createKernel(o: {
         // What the user typed is theirs to send for this conversation only: a new one forgets it (a profile switch over-blocks, acceptable).
         if (win !== undefined && !resume) outflow.forgetTyped(win);
         const byId = conversation !== undefined && program === "claude" && /^[0-9a-f-]{36}$/.test(conversation);
-        // « Mode avancé » of a chat: its own Codex thread, never the workdir's latest (another discussion's). It goes into argv: a plain token only.
+        // « Mode avancé » of a chat: its own Codex thread, never the workdir's latest (another discussion's). The id comes from the
+        // container's app-server and goes into argv: a plain token starting alphanumeric, never something clap reads as an option.
+        // No `--` before it: the profile's options follow the id in `codex resume`.
         const codexThread = !pipe && program === "codex" && resume === true && conversation !== undefined ? conversation : undefined;
-        if (codexThread !== undefined && !/^[\w-]{1,100}$/.test(codexThread)) throw new Error(`Fil Codex invalide : ${JSON.stringify(codexThread.slice(0, 40))}`);
+        if (codexThread !== undefined && !/^[0-9A-Za-z][\w-]{0,99}$/.test(codexThread)) throw new Error(`Fil Codex invalide : ${JSON.stringify(codexThread.slice(0, 40))}`);
         const resumed = resume === true && (byId || chosen.resume !== undefined);
         if (win !== undefined) {
           sessionToken = server.openSession(win, chosen.name, id, mode);

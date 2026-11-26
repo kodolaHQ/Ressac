@@ -135,6 +135,8 @@ export function createChatSend(o: {
     waiting.set(chatId, queue);
     if (!o.chats.sessionIdOf(chatId) && !(await o.chats.select(win, chatId))) {
       waiting.delete(chatId);
+      // Nothing went: the prefix waits for the next message, unless a newer one came meanwhile.
+      if (prefix && !contexts.has(win)) contexts.set(win, prefix);
       return { ok: false, error: "Cette discussion n'existe plus." };
     }
     flush(chatId);
@@ -152,6 +154,8 @@ export function createChatSend(o: {
     },
     /** The panel opened on a tab: its context goes before the next first message of the window's discussion. */
     panelOpened(win: string, prefix: string): void {
+      // An explicit prefill (an app's, a site app's) opens the panel itself: its text and its `written` stay.
+      if (contexts.get(win)?.firstOnly === false) return;
       contexts.set(win, { text: prefix, firstOnly: true });
     },
     /**

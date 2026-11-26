@@ -824,6 +824,8 @@ describe("openAgentSession with a profile", () => {
       expect(command).not.toContain("--last");
       await s.stop();
       await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, conversation: "--last; rm" })).rejects.toThrow();
+      // The id comes from the container's app-server: one that starts like an option is never put in argv.
+      for (const id of ["--yolo", "-c", "-"]) await expect(n.openAgentSession({ cols: 80, rows: 24, window: "f1", profile: "codex", resume: true, conversation: id })).rejects.toThrow();
     });
   });
 
