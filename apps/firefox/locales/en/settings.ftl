@@ -64,7 +64,7 @@ settings-quarantine-title = Quarantine
 settings-quarantine-help = In quarantine: the agent no longer sees them, you read them in the Finder.
 settings-quarantine-restore = Give back to the workshop
 
-settings-ai-intro = A small AI runs on your Mac, alongside the agent: it pauses the agent when one of its actions looks odd, and finds your pages for ⌘T Ask. It is free and nothing it reads leaves your machine. It uses one model, which Ressac downloads and runs itself.
+settings-ai-intro = A small AI runs on your Mac, alongside the agent: it finds your pages by their meaning for ⌘T Ask. It is free and nothing it reads leaves your machine. It uses one model, which Ressac downloads and runs itself.
 settings-starting = Starting…
 settings-ai-model-failed = Download failed: { $reason }. Another try at the next launch.
 settings-ai-search-model = Search model

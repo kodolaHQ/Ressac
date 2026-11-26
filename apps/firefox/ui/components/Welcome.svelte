@@ -246,11 +246,6 @@
         {:else if page === 6}
           <h2>{t("home-welcome-ai-title")}</h2>
           <p>{t("home-welcome-ai-intro")}</p>
-          <ul>
-            <li>{t("home-welcome-ai-guard")}</li>
-            <li>{t("home-welcome-ai-triage")}</li>
-            <li>{t("home-welcome-ai-search")}</li>
-          </ul>
           <p>{t("home-welcome-ai-needs")}</p>
           <div class="check">
             {#if machine && machine.kind !== "running" && machine.kind !== "stopped"}{@render machineLine(machine)}{/if}

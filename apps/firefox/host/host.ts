@@ -312,7 +312,7 @@ const ai = new LocalAi({
   locale: () => hostLocale(),
 });
 // The decision model (d1) is gone: its folder, left by an older Ressac, is removed once. A plain rm of the path: a link in
-// its place is unlinked, never followed outside the data folder.
+// its place is unlinked, never followed outside the data folder. Idempotent, so retried at each launch if it failed.
 void rm(join(dataDir, "local-ai", "d1"), { recursive: true, force: true }).catch((e) => console.error("[ressac] the old d1 folder was not removed:", e));
 
 // The ⌘T bar's Demander mode: rules and the search model, outside the workflows' dispatcher queue.

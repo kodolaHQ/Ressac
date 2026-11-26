@@ -172,7 +172,7 @@ describe("welcome", () => {
     await launch({ env: { FAKE_DOCKER_ABSENT: "1", RESSAC_EMBED_SERVER_URL: "http://127.0.0.1:9" } });
     await forward(1, 5);
     await press("welcome-later");
-    await shows("welcome-models", "Les modèles sont installés.");
+    await shows("welcome-models", "Le modèle est installé.");
   });
 
   it("a container app installed but stopped: the welcome offers to start it", async () => {
