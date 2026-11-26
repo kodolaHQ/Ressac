@@ -169,11 +169,17 @@ export function remoteHost(url: string): string | null {
 export function onLan(host: string): boolean {
   let h: string;
   try {
-    h = new URL(`http://${host}`).hostname.toLowerCase();
+    h = new URL(`http://${host}`).hostname.toLowerCase().replace(/\.$/, "");
   } catch {
     return false;
   }
   if (LOOPBACK.has(h) || h.endsWith(".local")) return true;
+  // An IPv4-mapped address (the URL parser writes [::ffff:192.168.1.5] as [::ffff:c0a8:105]) is checked as its IPv4.
+  const mapped = /^\[::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})\]$/.exec(h);
+  if (mapped) {
+    const [hi, lo] = [parseInt(mapped[1]!, 16), parseInt(mapped[2]!, 16)];
+    return onLan(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
+  }
   if (h.startsWith("[")) return /^\[(f[cd]|fe[89ab])[0-9a-f]{0,2}:/.test(h);
   const ip = h.split(".").map(Number);
   if (ip.length !== 4 || ip.some((n) => !Number.isInteger(n) || n < 0 || n > 255) || !/^[\d.]+$/.test(h)) return false;

@@ -48,7 +48,7 @@ describe("remoteHost", () => {
 
 describe("onLan", () => {
   it("a host on this Mac or the local network: its model is a local one (no fill)", () => {
-    for (const h of ["192.168.1.20", "192.168.1.20:8443", "10.0.0.5", "172.16.0.1", "172.31.255.255", "169.254.3.4", "127.0.0.1:11434", "localhost", "[::1]", "[fd12::1]:443", "[fc00::2]", "nas.local", "NAS.LOCAL:8080", "[fe80::1]"]) expect(onLan(h), h).toBe(true);
+    for (const h of ["192.168.1.20", "192.168.1.20:8443", "10.0.0.5", "172.16.0.1", "172.31.255.255", "169.254.3.4", "127.0.0.1:11434", "localhost", "[::1]", "[fd12::1]:443", "[fc00::2]", "nas.local", "NAS.LOCAL:8080", "[fe80::1]", "[::ffff:192.168.1.5]", "[::ffff:7f00:1]", "[::ffff:a00:1]", "nas.local.", "localhost.", "192.168.1.5."]) expect(onLan(h), h).toBe(true);
     for (const h of ["ollama.com", "ollama.com:443", "api.deepseek.com", "172.32.0.1", "11.0.0.1", "192.169.0.1", "[2001:db8::1]", "local.example.com", "not a host/"]) expect(onLan(h), h).toBe(false);
   });
 });
