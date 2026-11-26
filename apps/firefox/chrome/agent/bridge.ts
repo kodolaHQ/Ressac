@@ -229,6 +229,9 @@ export function bridgeHandlers(
       const url = "query" in target ? template.replace("%s", encodeURIComponent(target.query)) : target.url;
       if (reuse != null && store.state.tabs[reuse]) {
         tab(reuse);
+        // The window's one search tab, now another discussion's: it moves to that one's group.
+        const { chat } = chatOf(o);
+        if (chat) store.dispatch({ type: "updateTab", id: reuse, fields: { chat } });
         await windowOf(reuse).controller.navigateForAgentLoaded(reuse, url, o?.allow ?? null);
         // Closed during the load: nothing to return.
         const info = tabInfos(store.state).find((o) => o.id === reuse);

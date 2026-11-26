@@ -94,6 +94,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
         security: z.enum(["secure", "insecure"]).nullable(),
         unloaded: z.boolean(),
         notifies: z.boolean(),
+        /** The discussion whose agent now uses the tab (its search tab, reused). */
+        chat: id.max(100),
       })
       .partial(),
   }),

@@ -118,6 +118,12 @@ test("a tab the agent opens for a discussion keeps that discussion", () => {
   expect([e.tabs[a]!.chat, e.tabs[b]!.chat]).toEqual(["c1", undefined]);
 });
 
+test("a search tab reused by another discussion moves to it", () => {
+  const a = open("https://a.test/", { openedByAgent: true, chat: "c1" });
+  ag(SchemaAction.parse({ type: "updateTab", id: a, fields: { chat: "c2" } }));
+  expect(e.tabs[a]!.chat).toBe("c2");
+});
+
 test("showChat: the window's panel shows the discussion; `open` opens the panel too", () => {
   ag({ type: "showChat", windowId: F, chatId: "c1" });
   expect(fen()).toMatchObject({ agentChat: "c1", agentPanelOpen: false });
