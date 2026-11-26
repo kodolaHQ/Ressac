@@ -480,7 +480,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     const a = await agentReady(k, "f1");
     expect(a[0]).toBe("codex");
     expect(a).toContain('model_provider="ressac-api"');
-    expect(a[a.indexOf("-m") + 1]).toBe("m");
+    expect(a).toContain('model="m"');
     expect(a.some((x) => x.includes(key))).toBe(false);
     expect(readFileSync(k.log, "utf8")).not.toContain(key);
   });

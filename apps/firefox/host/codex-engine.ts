@@ -18,6 +18,7 @@ export function href(url: string, who: "ollama" | "api"): string {
   }
 }
 
+// The model goes as `-c model=…`, not `-m`: `-m` is a TUI flag that `codex app-server` (the chat) parses and ignores (0.169.0).
 /** The `codex` arguments and environment for the chosen engine. The API key never appears here: `api` and `ollama` go through the relay. */
 export function codexEngineArgs(e: CodexEngine, relay: { url: string; token: string } | null): { args: string[]; env: Record<string, string> } {
   if (!CodexEngineSchema.safeParse(e).success) throw incomplete(e.kind === "api" ? "api" : "ollama");
@@ -26,11 +27,11 @@ export function codexEngineArgs(e: CodexEngine, relay: { url: string; token: str
     if (!e.ollamaUrl || !e.ollamaModel) throw incomplete("ollama");
     href(e.ollamaUrl, "ollama"); // validation only: the container never sees this address
     if (!relay) throw incomplete("ollama");
-    return { args: [...provider("ressac-ollama", "Ollama", new URL(relay.url).href.replace(/\/$/, "")), "-m", e.ollamaModel], env: { [ENGINE_TOKEN_VARIABLE]: relay.token } };
+    return { args: [...provider("ressac-ollama", "Ollama", new URL(relay.url).href.replace(/\/$/, "")), "-c", `model=${JSON.stringify(e.ollamaModel)}`], env: { [ENGINE_TOKEN_VARIABLE]: relay.token } };
   }
   if (!e.apiUrl || !e.apiModel) throw incomplete("api");
   href(e.apiUrl, "api");
   if (apiUrlProblem(e.apiUrl)) throw new Error(hostSay("host-engine-in-settings", { problem: hostSay("host-engine-url-invalid") }));
   if (!relay) throw new Error(NO_KEY());
-  return { args: [...provider("ressac-api", "API compatible", new URL(relay.url).href.replace(/\/$/, "")), "-m", e.apiModel], env: { [ENGINE_TOKEN_VARIABLE]: relay.token } };
+  return { args: [...provider("ressac-api", "API compatible", new URL(relay.url).href.replace(/\/$/, "")), "-c", `model=${JSON.stringify(e.apiModel)}`], env: { [ENGINE_TOKEN_VARIABLE]: relay.token } };
 }

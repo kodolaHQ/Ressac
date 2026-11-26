@@ -13,7 +13,7 @@ describe("codexEngineArgs", () => {
       args: [
         "-c", 'model_provider="ressac-ollama"',
         "-c", 'model_providers.ressac-ollama={name="Ollama",base_url="http://host.docker.internal:5555",env_key="RESSAC_ENGINE_TOKEN"}',
-        "-m", "gpt-oss:20b",
+        "-c", 'model="gpt-oss:20b"',
       ],
       env: { RESSAC_ENGINE_TOKEN: "t" },
     });
@@ -26,7 +26,7 @@ describe("codexEngineArgs", () => {
       args: [
         "-c", 'model_provider="ressac-api"',
         "-c", 'model_providers.ressac-api={name="API compatible",base_url="http://host.docker.internal:5555",env_key="RESSAC_ENGINE_TOKEN"}',
-        "-m", "m1",
+        "-c", 'model="m1"',
       ],
       env: { RESSAC_ENGINE_TOKEN: "t" },
     });
