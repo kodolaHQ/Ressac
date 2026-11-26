@@ -469,8 +469,9 @@ describe("design service", () => {
     await toggle();
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     await dispatch(m, { type: "disableAi" });
-    await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(false);
-    expect(await hosts()).toBe(0);
+    // AI off turns the lab off: the mode's processes stop, and the host refuses its state (tier 3).
+    await expect.poll(hosts, { timeout: 10_000 }).toBe(0);
+    expect(await svc("return await d.state(t).then(() => 'resolved', (e) => String(e.message));")).toContain("lab-off");
   });
 
   it("the host stopped: toggle does nothing, etat rejects", async () => {

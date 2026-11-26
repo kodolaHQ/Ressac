@@ -229,7 +229,7 @@ describe("Settings page", () => {
       await shows("machine-usage", "0,6 Go de mémoire · 1,8 Go sur le disque");
       expect(await inUi(m, `return ["workshop-restart", "workshop-rebuild", "machine-remove"].every((id) => doc.querySelector('[data-testid="' + id + '"]'))`)).toBe(true);
       await click(m, '[data-testid="machine-remove"]');
-      await shows("settings-workshop", "Les agents et les applis en cours s'arrêtent. Vos connexions Claude et Codex sont gardées. Elle ne sera téléchargée de nouveau (environ 500 Mo) que si vous cliquez sur « Installer la machine ».");
+      await shows("settings-workshop", "Les agents et les applis en cours s'arrêtent. Vos connexions Claude et Codex sont gardées. Elle ne sera téléchargée de nouveau (environ 275 Mo) que si vous cliquez sur « Installer la machine ».");
       expect(calls()).toEqual([]);
       await click(m, '[data-testid="confirm-machine"]');
       await waitFor(m, "return true", () => calls().includes("remove"), 10_000);
@@ -243,7 +243,7 @@ describe("Settings page", () => {
       await go("workshop");
       await click(m, '[data-testid="machine-remove"]');
       await click(m, '[data-testid="confirm-machine"]');
-      await shows("machine-state", "Supprimée. Elle ne revient que si vous l'installez (environ 500 Mo).");
+      await shows("machine-state", "Supprimée. Elle ne revient que si vous l'installez (environ 275 Mo).");
       await w!.close();
       w = undefined;
       await launch({ RESSAC_TEST_MACHINE: "running" }, {}, dataDir); // the next launch, AI on
