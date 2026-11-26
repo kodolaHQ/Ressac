@@ -447,3 +447,20 @@ test("a site app window is never pointed: it keeps its own grant", () => {
   p.pointTab("s1", app);
   expect(p.pointed("s1", app)).toBe(false);
 });
+
+test("a pointed tab shows as readable (badge, « couper ») and its changes are told", () => {
+  const told = vi.fn();
+  p.onChange(told);
+  p.pointTab("s1", gmail);
+  expect(told).toHaveBeenCalledTimes(1);
+  expect(p.state()[gmail.id]).toEqual({ read: true, rights: [], built: false, running: false });
+  // « Couper » takes it back: the next read asks.
+  p.cut(gmail.id);
+  expect(p.state()[gmail.id]).toBeUndefined();
+  expect(p.pointed("s1", gmail)).toBe(false);
+  p.pointTab("s1", gmail);
+  told.mockClear();
+  p.dropSession("s1");
+  expect(told).toHaveBeenCalledTimes(1);
+  expect(p.state()[gmail.id]).toBeUndefined();
+});

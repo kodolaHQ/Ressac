@@ -218,11 +218,13 @@ export class AccessPolicy {
 
   /** Tabs on which the agent has read access, a right, or a running tool. */
   state(): Record<string, TabAccessState> {
-    const ids = new Set([...this.permissions.keys(), ...this.builtTabs.keys(), ...this.rights.keys(), ...this.uses.keys()]);
+    const pointed = new Set([...this.pointedTabs.values()].flatMap((tabs) => [...tabs.keys()]));
+    const ids = new Set([...this.permissions.keys(), ...pointed, ...this.builtTabs.keys(), ...this.rights.keys(), ...this.uses.keys()]);
     const r: Record<string, TabAccessState> = {};
     for (const id of ids) {
       const built = this.builtTabs.has(id);
-      const reading = this.permissions.has(id);
+      // A tab pointed with @ reads in one discussion: shown as read all the same, so its badge and « couper » are there.
+      const reading = this.permissions.has(id) || pointed.has(id);
       const rights = this.rightsOf(id, this.rights.get(id)?.origin ?? this.builtTabs.get(id) ?? null, built);
       const running = this.uses.has(id);
       if (reading || rights.length || running) r[id] = { read: reading, rights: rights, built: built, running: running };
@@ -297,6 +299,7 @@ export class AccessPolicy {
     const tabs = this.pointedTabs.get(session) ?? new Map<string, string>();
     tabs.set(o.id, org);
     this.pointedTabs.set(session, tabs);
+    this.change();
   }
 
   /** Session `session` may read `o` because its user pointed it there, and it is still on that origin. */
@@ -307,7 +310,7 @@ export class AccessPolicy {
 
   /** The session closed: what was pointed in it goes. */
   dropSession(session: string): void {
-    this.pointedTabs.delete(session);
+    if (this.pointedTabs.delete(session)) this.change();
   }
 
   /** The user shared this tab with the agent (`userInteraction`), on the site of `url`, in this conversation or an earlier one. */
