@@ -870,6 +870,9 @@ describe("openAgentSession with a profile", () => {
             "Read(//home/node/.claude/.credentials.json)", "Read(//home/node/.codex/auth.json)", "Edit(//home/node/.claude/.credentials.json)", "Edit(//home/node/.codex/auth.json)",
             "Read(//home/node/.codex/**)", "Edit(//home/node/.codex/**)",
             "Read(//workspace/.ressac/browsing-notes.md)",
+            // Other conversations' transcripts (an Atelier one is unmasked), the prompt history, pastes, edit backups, live session keys.
+            // Read rules cover Grep and Glob too; tool-results/ stays readable (oversized results the model reads back).
+            "Read(//home/node/.claude/**/*.jsonl)", "Read(//home/node/.claude/paste-cache/**)", "Read(//home/node/.claude/file-history/**)", "Read(//home/node/.claude/sessions/**)",
           ],
         },
       });
