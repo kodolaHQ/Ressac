@@ -297,7 +297,8 @@ The chat:
 - The labels of a paused discussion resolve nothing after it resumes (the table is wiped with its session).
 - A resumed Codex discussion is not covered by masking.
 - A second discussion in a window asks tab access again.
-- A mode change during a sign-in interrupts it: sign in again.
+- A mode change recreates the workshop, which interrupts a sign-in in progress: sign in again.
+- If the engine dies during a discussion's first turn, the retry opens a fresh session: that turn's context is lost for the agent, while the transcript keeps it.
 
 ## Out of scope
 
