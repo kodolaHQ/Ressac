@@ -71,7 +71,7 @@ export function keychain(o: { service?: string; account?: string; command?: stri
         p.on("error", () => reject(new Error("Écriture au trousseau impossible")));
         p.on("close", (code) => (code === 0 ? resolve() : reject(new Error("Écriture au trousseau impossible"))));
         p.stdin.on("error", () => reject(new Error("Écriture au trousseau impossible")));
-        p.stdin.end(`add-generic-password -U ${ids.join(" ")} -w "${key}"${origin === undefined ? "" : ` -j "${origin}"`}\n`);
+        p.stdin.end(`add-generic-password -U ${ids.join(" ")} -w "${key}" -j "${origin ?? ""}"\n`); // -j always: -U would keep an older origin
       });
     },
     async origin() {

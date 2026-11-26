@@ -149,7 +149,7 @@ describe("openAiClient", () => {
   });
 
   it("an unrelated 400 is an error, not a downgrade", async () => {
-    for (const message of ["context length exceeded", "Unsupported value: 'temperature' is not supported with this model."]) {
+    for (const message of ["context length exceeded", "Unsupported value: 'top_p' is not supported with this model."]) {
       const f = capture(async () => json({ error: { message } }, 400));
       await expect(run(f)).rejects.toThrow(`api.example.com a répondu par une erreur : ${message}`);
       expect(f.calls.length).toBe(1);
@@ -165,6 +165,24 @@ describe("openAiClient", () => {
     expect(body(f, 1)).toMatchObject({ max_completion_tokens: 2048, response_format: { type: "json_schema" } });
     expect(body(f, 1).max_tokens).toBeUndefined();
     expect(body(f, 2).max_completion_tokens).toBe(2048);
+  });
+
+  it("a reasoning model: max_tokens then temperature refused, both remembered for the run", async () => {
+    const said = ["Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", "Unsupported value: 'temperature' does not support 0 with this model. Only the default (1) value is supported."];
+    let n = 0;
+    const f = capture(async () => (n < 2 ? json({ error: { message: said[n++] } }, 400) : reply("{}")));
+    await run(f);
+    await run(f);
+    expect(f.calls.length).toBe(4);
+    for (const i of [2, 3]) {
+      expect(body(f, i)).toMatchObject({ max_completion_tokens: 2048, response_format: { type: "json_schema" } });
+      expect(Object.keys(body(f, i))).not.toContain("temperature");
+    }
+    // A refusal it cannot step around ends the loop as an error.
+    resetOwnModelCache();
+    const g = capture(async () => json({ error: { message: said[1] } }, 400));
+    await expect(run(g)).rejects.toThrow("a répondu par une erreur");
+    expect(g.calls.length).toBe(2);
   });
 
   it("the key goes to its own origin only", async () => {

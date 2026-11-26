@@ -46,7 +46,7 @@ describe("keychain", () => {
     const l = await journal();
     expect(l).toHaveLength(1);
     expect(l[0]!.argv).toEqual(["-i"]);
-    expect(l[0]!.stdin).toBe('add-generic-password -U -s ressac-codex-api -a default -w "sk-abc_123"\n');
+    expect(l[0]!.stdin).toBe('add-generic-password -U -s ressac-codex-api -a default -w "sk-abc_123" -j ""\n');
     expect(l.some((e) => e.argv.join(" ").includes("sk-abc_123"))).toBe(false);
   });
 
@@ -54,6 +54,8 @@ describe("keychain", () => {
     const kc = keychain({ command: fake, ...OWN_KEY });
     await kc.write("sk-own", "http://[::1]:8080");
     expect((await journal())[0]!.stdin).toBe('add-generic-password -U -s ressac-own-api -a default -w "sk-own" -j "http://[::1]:8080"\n');
+    await kc.write("sk-own");
+    expect((await journal())[1]!.stdin).toContain('-w "sk-own" -j ""\n');
     for (const bad of ['https://x" -w "y', "https://x y", "file:///etc"]) await expect(kc.write("sk-own", bad)).rejects.toThrow("Clé invalide");
     await writeFile(state, '0\nattributes:\n    "acct"<blob>="default"\n    "icmt"<blob>="https://api.example.com"\n');
     expect(await kc.origin()).toBe("https://api.example.com");
@@ -111,7 +113,7 @@ describe("keychain", () => {
 
   it("Claude's key: its own service and its own test file", async () => {
     await keychain({ command: fake, service: CLAUDE_KEY.service }).write("sk-ant-1");
-    expect((await journal())[0]!.stdin).toBe('add-generic-password -U -s ressac-claude-api -a default -w "sk-ant-1"\n');
+    expect((await journal())[0]!.stdin).toBe('add-generic-password -U -s ressac-claude-api -a default -w "sk-ant-1" -j ""\n');
     const file = path.join(dir, "kc-file");
     const env = { RESSAC_TEST_KEYCHAIN: file };
     await keychain({ command: fake, env }).write("sk-codex");

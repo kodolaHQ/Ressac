@@ -150,9 +150,10 @@ async function apiPost(e: OwnEngine, key: string | null, body: object, signal: A
 
 /**
  * What works for each `${base} ${model}`, found by trying, for the app run. `mode`: 0 json_schema, 1 json_object, 2 none.
- * `limit`: newer OpenAI models refuse `max_tokens` and name `max_completion_tokens` instead.
+ * `limit`: newer OpenAI models refuse `max_tokens` and name `max_completion_tokens` instead; `temperature`: reasoning ones refuse it.
+ * Each refusal moves one field one way, so the loop ends.
  */
-const found = new Map<string, { mode: number; limit: "max_tokens" | "max_completion_tokens" }>();
+const found = new Map<string, { mode: number; limit: "max_tokens" | "max_completion_tokens"; temperature: boolean }>();
 /** For tests: forgets what was found. */
 export const resetOwnModelCache = () => found.clear();
 
@@ -170,14 +171,15 @@ export function openAiClient(e: OwnEngine, o: { key: () => Promise<OwnKey | null
         const base = apiBase(e.apiUrl);
         const id = `${base} ${e.apiModel}`;
         const key = keyOrThrow(base, await o.key());
-        const now = { ...(found.get(id) ?? { mode: 0, limit: "max_tokens" as const }) };
+        const now = { ...(found.get(id) ?? { mode: 0, limit: "max_tokens" as const, temperature: true }) };
         for (;;) {
           const response_format = [{ type: "json_schema", json_schema: { name: "action", schema, strict: false } }, { type: "json_object" }, undefined][now.mode];
-          const body = { model: e.apiModel, messages: now.mode ? withSchema(messages, schema) : messages, temperature: 0, [now.limit]: 2048, response_format };
+          const body = { model: e.apiModel, messages: now.mode ? withSchema(messages, schema) : messages, ...(now.temperature ? { temperature: 0 } : {}), [now.limit]: 2048, response_format };
           const r = await apiPost(e, key, body, signal, o.fetch ?? fetch);
           if (!r.ok) {
             if (now.mode < 2 && FORMAT_REFUSED.test(r.text)) now.mode++;
             else if (now.limit === "max_tokens" && r.text.includes("max_completion_tokens")) now.limit = "max_completion_tokens";
+            else if (now.temperature && r.text.includes("temperature")) now.temperature = false;
             else throw r.error;
             continue;
           }
