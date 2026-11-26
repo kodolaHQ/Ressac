@@ -69,6 +69,11 @@
     delete logins[id];
     agents = await s.logout(id);
   }
+  /** The page takes the screen and asks for the code: it goes on the clipboard first, to paste there (Réglages is hidden then). */
+  function openDevicePage(l: { url: string; code: string }) {
+    void navigator.clipboard.writeText(l.code).catch(() => {});
+    s.openUrl(l.url);
+  }
   async function login(id: string) {
     logins[id] = null;
     logins[id] = await s.login(id);
@@ -171,7 +176,7 @@
             {#if signIn(a)}
               {@const l = logins[a.id]}
               {#if l?.kind === "device"}
-                <button class="primary" data-testid="device-open" onclick={() => s.openUrl(l.url)}>{t("settings-agent-device-open")}</button>
+                <button class="primary" data-testid="device-open" onclick={() => openDevicePage(l)}>{t("settings-agent-device-open")}</button>
               {:else}
                 <button class:primary={a.id !== "claude" || claudeSubscription} data-testid="agent-login" disabled={l === null} onclick={() => void login(a.id)}>{t("settings-agent-login")}</button>
               {/if}

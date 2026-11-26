@@ -92,6 +92,14 @@ function filesWith(dir: string, text: string): string[] {
   return found;
 }
 
+/** The system clipboard's text (chrome context). */
+const clipboardText = () =>
+  m.execute<string>(`const t = Cc["@mozilla.org/widget/transferable;1"].createInstance(Ci.nsITransferable);
+    t.init(null); t.addDataFlavor("text/plain");
+    Services.clipboard.getData(t, Ci.nsIClipboard.kGlobalClipboard, window.browsingContext.currentWindowContext);
+    const o = {}; try { t.getTransferData("text/plain", o); } catch { return ""; }
+    return o.value.QueryInterface(Ci.nsISupportsString).data;`);
+
 describe("Codex in Settings", () => {
   it("codex account: sign in by code, the page opens, signed in, sign out", { timeout: 60_000 }, async () => {
     await launch();
@@ -110,7 +118,10 @@ describe("Codex in Settings", () => {
     // Again, this time opening the sign-in page (its address only: the proxy is dead); the code stays unentered so no re-read removes the button.
     writeFileSync(join(w!.dataDir, "workspace", "fake-codex-device-delay-ms"), "60000");
     await click(m, '[data-testid="agent-codex"] [data-testid="agent-login"]');
+    await m.execute(`Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString("avant");`);
     await click(m, '[data-testid="device-open"]');
+    // The page takes the screen and asks for the code: it is on the clipboard, to paste there.
+    await expect.poll(clipboardText, { timeout: 5_000 }).toBe("ABCD-12345");
     await waitFor<BrowserState>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).state)();`, (st) => Object.values(st.tabs).some((t) => t.url === "https://auth.openai.com/codex/device"));
   });
 
