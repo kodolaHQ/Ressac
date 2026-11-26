@@ -1819,7 +1819,7 @@ export function createToolsServer(
 
   server.registerTool(
     "active_tab",
-    { description: "The host loop's line on the tab the user is on: its title, then its origin and path. Empty when it is not shared." },
+    { description: "The host loop's line on the tab the user is on: its id (as list_tabs shows it), its title, then its origin and path. Empty when it is not shared." },
     protect(async () => {
       if (bridge.activePrivateTab?.()) return text("");
       // The discussion's window, never the focused one: the line describes the tab the user talks about.
@@ -1829,7 +1829,7 @@ export function createToolsServer(
       // No userinfo, query nor fragment (tokens); a site app by its domain only.
       const s = shownTab({ ...o, title: o.title.replace(/\s+/g, " ").trim().slice(0, 200) }, { url: u.origin + u.pathname, domainOnly: true, peek: true });
       if (!s) return text("");
-      const r = text(`${s.title}\n${s.address}`);
+      const r = text(`${o.id}\n${s.title}\n${s.address}`);
       if (!exempt(o)) remember(r, l10n("kernel-outflow-source-tabs"), linksFollowable(o));
       return r;
     }),

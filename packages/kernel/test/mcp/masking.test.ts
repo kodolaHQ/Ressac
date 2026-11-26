@@ -790,7 +790,7 @@ test("active_tab masks the title on the tab's origin, as list_tabs does: a value
     Object.assign(bridge, { active: "copie" });
     const line = (await call("active_tab", {}, t)).text;
     expect(line).not.toContain("camille.exemple");
-    expect(line.split("\n")[0]).toBe(`Profil de ${label}@novacourriel.test – Novacourriel`);
+    expect(line.split("\n")[1]).toBe(`Profil de ${label}@novacourriel.test – Novacourriel`);
     expect((await call("list_tabs", {}, t)).text).toContain(`copie · Profil de ${label}@novacourriel.test – Novacourriel · `);
   });
 });
@@ -803,7 +803,7 @@ test("active_tab leaves the conversation's sites unfixed: its zone is a peek, as
     const taken = vi.spyOn(masker, "originsOf");
     const peeked = vi.spyOn(masker, "peekOrigins");
     const t = s.openSession("W1", undefined, "A", "browser", HOST_LOOP_TOOLS);
-    expect((await call("active_tab", {}, t)).text).toBe(`Boîte de réception\n${HOST}/inbox`);
+    expect((await call("active_tab", {}, t)).text).toBe(`mail\nBoîte de réception\n${HOST}/inbox`);
     expect(taken).not.toHaveBeenCalled();
     expect(peeked).toHaveBeenCalled();
     await call("list_tabs", {}, t);

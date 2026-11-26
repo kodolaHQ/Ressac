@@ -3615,12 +3615,12 @@ describe("a per-session tool allowlist", () => {
 const activeLine = (call: Parameters<Parameters<typeof withSearch>[0]>[0]["call"], s: Awaited<ReturnType<typeof startMcpServer>>) => call("active_tab", {}, s.openSession("main", undefined, undefined, "browser", HOST_LOOP_TOOLS));
 const activate = (fake: FakeBridge, id: string) => Object.assign(fake, { active: id });
 
-test("active_tab: a readable tab's title (one line) and its origin and path only; no userinfo, query nor fragment", async () => {
+test("active_tab: a readable tab's id as list_tabs shows it, its title (one line) and its origin and path only; no userinfo, query nor fragment", async () => {
   const doc: TabInfo = { id: "doc", title: "Doc  du\n jour", url: "https://u:p@docs.test/a/b?token=S#f", space: "perso" };
   await withSearch(async ({ call, s, fake, policy }) => {
     activate(fake, "doc");
     policy.userInteraction(doc);
-    expect(await activeLine(call, s)).toEqual({ text: "Doc du jour\nhttps://docs.test/a/b", isError: false });
+    expect(await activeLine(call, s)).toEqual({ text: "doc\nDoc du jour\nhttps://docs.test/a/b", isError: false });
   }, { tabs: [doc] });
 });
 
@@ -3638,7 +3638,7 @@ test("active_tab: nothing of the search tab while the user has it in hand, even 
   await withSearch(async ({ call, s, fake, search, policy }) => {
     await call("search_web", { query: "x" });
     policy.grant((await fake.listTabs()).find((x) => x.id === "search-1")!);
-    expect((await activeLine(call, s)).text).toBe("https://moteur.test/?q=x\nhttps://moteur.test/");
+    expect((await activeLine(call, s)).text).toBe("search-1\nhttps://moteur.test/?q=x\nhttps://moteur.test/");
     const hand = handOver(call);
     await vi.waitFor(() => expect(search.handing("search-1")).toBe(true));
     expect((await activeLine(call, s)).text).toBe("");
@@ -3647,13 +3647,13 @@ test("active_tab: nothing of the search tab while the user has it in hand, even 
   });
 });
 
-test("active_tab: a site app by its name and its domain only, grant or not", async () => {
+test("active_tab: a site app by its id, its name and its domain only, grant or not", async () => {
   const app: TabInfo = { id: "site:vidola", title: "Vidola", url: "https://vidola-a.example/film/1?ep=3", space: "", site: "vidola", domain: "vidola-a.example" };
   await withSearch(async ({ call, s, fake, policy }) => {
     activate(fake, "site:vidola");
-    expect((await activeLine(call, s)).text).toBe("Vidola\nvidola-a.example");
+    expect((await activeLine(call, s)).text).toBe("site:vidola\nVidola\nvidola-a.example");
     policy.grantSiteRead("vidola");
-    expect((await activeLine(call, s)).text).toBe("Vidola\nvidola-a.example");
+    expect((await activeLine(call, s)).text).toBe("site:vidola\nVidola\nvidola-a.example");
   }, { tabs: [app], sites: { vidola: ["vidola-a.example"] } });
 });
 
@@ -3675,7 +3675,7 @@ test("active_tab and current_page answer for the discussion's window, never the 
   const c = new Client({ name: "test", version: "0" });
   try {
     await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${s.openSession("W2", undefined, undefined, "browser", HOST_LOOP_TOOLS)}` } } }));
-    expect(text(await c.callTool({ name: "active_tab", arguments: {} }))).toBe("Deux\nhttps://deux.test/");
+    expect(text(await c.callTool({ name: "active_tab", arguments: {} }))).toBe("two\nDeux\nhttps://deux.test/");
     expect(bridge.calls.filter((x) => x.method === "activeTab").map((x) => x.args)).toEqual([["W2"]]);
     expect(text(await c.callTool({ name: "current_page", arguments: {} }))).toContain("deux.test");
     expect(bridge.calls.filter((x) => x.method === "activeTab").map((x) => x.args)).toEqual([["W2"], ["W2"]]);

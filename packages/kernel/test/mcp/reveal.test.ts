@@ -1084,7 +1084,7 @@ test("under the lock, the host loop's active_tab line is a read: no card, no ref
     const asks = () => bridge.calls.filter((c) => c.method.startsWith("ask")).length;
     const before = asks();
     const r = await call("active_tab", {}, s.openSession("W1", undefined, "A", "browser", HOST_LOOP_TOOLS));
-    expect(r).toEqual({ text: `Boîte de réception\n${HOST}/inbox`, isError: false });
+    expect(r).toEqual({ text: `mail\nBoîte de réception\n${HOST}/inbox`, isError: false });
     expect(asks()).toBe(before);
   });
 });

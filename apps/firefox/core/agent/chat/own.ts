@@ -102,6 +102,13 @@ export function parseAction(content: string): { action: string; args: Record<str
     args[f] = r[f];
   }
   if (r.action === "answer" && typeof args.text !== "string") return null;
+  // A small model puts the search words in another field: query takes the model's own text (search_web: or its goal).
+  // Ids, urls, hand_over's reason and kind are never guessed: the kernel refuses them and the model sees why.
+  if (fields.includes("query") && !(typeof args.query === "string" && args.query.trim())) {
+    const q = [r.text, r.action === "search_web" ? args.goal : undefined].find((v) => typeof v === "string" && v.trim());
+    if (q !== undefined) args.query = q;
+  }
+  if (r.action === "read_pages" && args.urls === undefined && typeof r.url === "string") args.urls = [r.url];
   return { action: r.action as string, args };
 }
 
@@ -222,8 +229,8 @@ export const ownEngine: ChatEngine<HostLaunch, OwnOpen> = {
     /** The kernel's line on the user's tab (its read rules, its masking), quoted as page data; none when it is not shared. */
     const tabLine = async (s: AbortSignal) => {
       const r = await mcp.call("active_tab", {}, s).catch(() => null);
-      const [title, address] = r && !r.isError ? r.text.split("\n") : [];
-      return title !== undefined && address ? `${t.activeTab(sanitize(title).replace(/[«»"]/g, "'"), sanitize(address))}\n\n` : "";
+      const [id, title, address] = r && !r.isError ? r.text.split("\n") : [];
+      return id && title !== undefined && address ? `${t.activeTab(sanitize(id), sanitize(title).replace(/[«»"]/g, "'"), sanitize(address))}\n\n` : "";
     };
 
     const run = async (text: string, ac: AbortController) => {
