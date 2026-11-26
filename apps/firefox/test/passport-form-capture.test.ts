@@ -137,6 +137,43 @@ describe("typedFields", () => {
     expect(t.take()).toEqual([]);
   });
 
+  it("a dead key, the accent menu or an IME (a composition) keeps the field typed, even when no key comes just before", () => {
+    const t = typedFields<{ value: string }>(), el = field();
+    t.arm(el, true);
+    el.value = "Fran";
+    t.input(el, true, "insertText");
+    // ^ then e: the dead key's composition, its input after the key's keyup.
+    t.disarm(el);
+    el.value = "Fran^";
+    t.input(el, true, "insertCompositionText");
+    el.value = "Franê";
+    t.input(el, true, "insertCompositionText");
+    expect(t.take()).toEqual(["Franê"]);
+    // The long-press menu: an accent picked with the mouse, no keydown at all.
+    const b = field();
+    t.arm(b, true);
+    b.value = "Leo";
+    t.input(b, true, "insertText");
+    t.disarm(b);
+    b.value = "Léo";
+    t.input(b, true, "insertCompositionText");
+    expect(t.take()).toEqual(["Léo"]);
+  });
+
+  it("a replacement (autofill, a spelling fix) never counts, and a page's composition-looking event neither", () => {
+    const t = typedFields<{ value: string }>(), el = field();
+    t.arm(el, true);
+    el.value = "Lyonn";
+    t.input(el, true, "insertText");
+    el.value = "Lyon";
+    t.input(el, true, "insertReplacementText");
+    expect(t.take()).toEqual([]);
+    const s = field();
+    s.value = "Piège";
+    t.input(s, false, "insertCompositionText");
+    expect(t.take()).toEqual([]);
+  });
+
   it("keydown, focusout, then input does not count", () => {
     const t = typedFields<{ value: string }>(), el = field();
     t.arm(el, true); // Tab: its keydown lands on the field being left

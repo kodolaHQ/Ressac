@@ -10,8 +10,8 @@ export const bounded = (v: unknown): string[] =>
 
 /**
  * A field counts as typed when its input follows a trusted keydown, paste or drop on that same field (consumed by that
- * input, dropped at its keyup or when the field loses focus): a script's change, execCommand and Firefox's autofill never qualify. A value counts only while the field
- * still holds it.
+ * input, dropped at its keyup or when the field loses focus), or is a trusted composition: a script's change, execCommand and
+ * Firefox's autofill never qualify. A value counts only while the field still holds it.
  */
 export function typedFields<E extends { value: string }>() {
   const armed = new Set<E>();
@@ -27,9 +27,13 @@ export function typedFields<E extends { value: string }>() {
     },
     input(el: E, trusted: boolean, kind: unknown): void {
       const was = armed.delete(el);
+      const k = typeof kind === "string" ? kind : "";
+      // A composition (a dead key, the accent menu, an IME) is the keyboard's even when no key comes just before: its input
+      // can follow the key's keyup, or a click in the accent menu. No page or autofill makes a trusted one.
       // Not an autofill's or autocomplete's replacement, even right after a key.
-      if (trusted && was && typeof kind === "string" && /^(insert|delete)/.test(kind) && kind !== "insertReplacementText") typed.set(el, el.value);
-      else typed.delete(el);
+      if (trusted && /^(insert|delete)/.test(k) && k !== "insertReplacementText" && (was || k.includes("Composition"))) typed.set(el, el.value);
+      // A replacement (autofill, a spelling fix) is not typed; the field's old value no longer matches unless typed again.
+      else if (!(trusted && k === "insertReplacementText")) typed.delete(el);
     },
     /** The values still in their fields, bounded; then forgotten, so a form detected again is not offered again. */
     take(): string[] {
