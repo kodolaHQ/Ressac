@@ -108,3 +108,33 @@ test("usable: the search model is installed; warm starts its server", async () =
   ask.warm();
   expect(embed.warm).toHaveBeenCalled();
 });
+
+test("hand-off with the chat view sends a message to the active discussion", async () => {
+  const { Masker } = await import("../../../packages/kernel/src/mask/masker.ts");
+  const { createChatSend } = await import("../host/chat-send");
+  const m = new Masker();
+  m.open("s1", "w1");
+  const prompts: string[][] = [];
+  const typed: string[] = [];
+  const view = (id: string) => ({ summary: { id, title: "", engine: "claude" as const, profile: "claude", mode: "browser" as const, state: "ready" as const, updatedAt: 0, messages: 0 }, items: [] });
+  let active: ReturnType<typeof view> | null = null;
+  const create = vi.fn(async () => (active = view("new")));
+  const send = createChatSend({
+    chats: { sessionIdOf: () => "s1", prompt: (id, sent, shown) => void prompts.push([id, sent, shown]), select: async (_w, id) => view(id), active: () => active },
+    masker: () => m,
+    outflow: () => ({ typed: (_w, d) => void typed.push(d) }),
+    interacted: () => {},
+    create,
+  });
+  // No discussion yet: one is made, the question goes as its message, the pages shown after it are never typed.
+  await send.handOff("w1", "écris à camille.aubrac@example.com", " — pages vues […]");
+  expect(create).toHaveBeenCalledWith("w1");
+  expect(prompts[0]![0]).toBe("new");
+  expect(prompts[0]![1]).toMatch(/^écris à ⟨email-\w+⟩@example\.com — pages vues \[…\]$/);
+  expect(typed.join("")).toBe("écris à @example.com\r");
+  // The window's active discussion takes the next one.
+  active = view("c2");
+  await send.handOff("w1", "et ensuite ?", "");
+  expect(prompts[1]![0]).toBe("c2");
+  expect(create).toHaveBeenCalledTimes(1);
+});
