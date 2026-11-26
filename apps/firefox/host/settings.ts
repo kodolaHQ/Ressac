@@ -1,10 +1,11 @@
 import { listOllamaModels } from "./ollama-models.ts";
+import { listOwnModels } from "./own-model.ts";
 import { readGrants, readSiteGrants, type LlamaModel, type LocalAi, type Workshop, type WriterAgent } from "../../../packages/kernel/src/index.ts";
 import type { LocalAiStateShown } from "../shared/api.ts";
 import { startDeviceLogin } from "./device-login.ts";
 import { INVALID_KEY, type Keychain } from "./keychain.ts";
 import { deleteBackup, exportData, listBackups } from "./data-folder.ts";
-import { SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type MachineShown, type SettingsResult, type PullProgress } from "../shared/settings.ts";
+import { apiUrlProblem, DEFAULT_OWN_ENGINE, SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperation, type GrantKind, type GrantRow, type MachineShown, type SettingsResult, type PullProgress } from "../shared/settings.ts";
 import type { DockerRuntime } from "./docker-runtime.ts";
 import type { createMachine } from "./machine.ts";
 import { hostSay } from "./locale.ts";
@@ -61,6 +62,10 @@ export const SETTINGS_METHODS = [
   "settings.claudeKey",
   "settings.claudeKeySaved",
   "settings.claudeKeyDelete",
+  "settings.ownKey",
+  "settings.ownKeySaved",
+  "settings.ownKeyDelete",
+  "settings.ownModels",
   "settings.ollamaModels",
   "settings.workshop",
   "settings.docker",
@@ -124,8 +129,10 @@ export interface SettingsOptions {
   deviceCommand(argv: string[]): string[];
   keychain: Keychain;
   claudeKeychain: Keychain;
+  /** The key of « Votre modèle »'s OpenAI-compatible API. */
+  ownKeychain: Keychain;
   /** Called after an agent's compatible API key is written or removed. */
-  forgetKey(kind: "codex" | "claude"): void;
+  forgetKey(kind: "codex" | "claude" | "own"): void;
   /** A system notification (the end of a background model download). */
   notify(n: { title: string; text: string }): void;
   /** One of Ressac's own models finished downloading. */
@@ -249,7 +256,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     return rows;
   }
 
-  const keyResult = async (kind: "codex" | "claude", change: () => Promise<void>): Promise<SettingsResult> => {
+  const keyResult = async (kind: "codex" | "claude" | "own", change: () => Promise<void>): Promise<SettingsResult> => {
     try {
       await change();
       o.forgetKey(kind);
@@ -316,6 +323,18 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     }),
     "settings.claudeKeySaved": () => o.claudeKeychain.has(),
     "settings.claudeKeyDelete": () => keyResult("claude", () => o.claudeKeychain.remove()),
+    "settings.ownKey": (p: { key?: unknown }) => keyResult("own", async () => {
+      if (typeof p?.key !== "string") throw new Error(INVALID_KEY());
+      await o.ownKeychain.write(p.key);
+    }),
+    "settings.ownKeySaved": () => o.ownKeychain.has(),
+    "settings.ownKeyDelete": () => keyResult("own", () => o.ownKeychain.remove()),
+    // shortcut: the saved key goes to the address being typed in Réglages (not yet saved); bind it to the saved apiUrl if that matters.
+    "settings.ownModels": async (p: { url?: unknown }) => {
+      const problem = typeof p?.url === "string" ? apiUrlProblem(p.url) : "Adresse invalide";
+      if (problem) return { ok: false, error: problem };
+      return listOwnModels({ ...DEFAULT_OWN_ENGINE, kind: "api", apiUrl: p.url as string }, { key: await o.ownKeychain.read() });
+    },
     "settings.ollamaModels": (p: { url?: unknown }) => (typeof p?.url === "string" ? listOllamaModels(p.url) : { ok: false, error: "Adresse invalide" }),
     "settings.logout": async (p: { id?: unknown }) => {
       const a = AGENT_ACCOUNTS.find((x) => x.id === p?.id);

@@ -65,7 +65,7 @@ const { copyLogins, createEngines } = await import("./engines.ts");
 const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
 const { removeAgentExtensions } = await import("./extensions-removal.ts");
-const { CLAUDE_KEY, keychain } = await import("./keychain.ts");
+const { CLAUDE_KEY, OWN_KEY, keychain } = await import("./keychain.ts");
 const { startRelay } = await import("./relay.ts");
 const { codexEngineArgs } = await import("./codex-engine.ts");
 const { ollamaRelayTarget } = await import("./ollama-models.ts");
@@ -296,8 +296,8 @@ const cliOfProfile = async (id: string): Promise<"claude" | "codex" | null> => {
 // Codex's and Claude's engines (Settings › Agent) and their API keys: declared before the writer that reads them.
 let engine = DEFAULT_CODEX_ENGINE;
 let claudeEngine = DEFAULT_CLAUDE_ENGINE;
-const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY) };
-const cachedKeys: { codex?: string; claude?: string } = {};
+const keys = { codex: keychain(), claude: keychain(CLAUDE_KEY), own: keychain(OWN_KEY) };
+const cachedKeys: { codex?: string; claude?: string; own?: string } = {};
 // Only a string is kept: a failed read (Keychain locked) is tried again.
 async function readKey(kind: "codex" | "claude"): Promise<string | null> {
   cachedKeys[kind] ??= (await keys[kind].read()) ?? undefined;
@@ -523,7 +523,7 @@ let kernelLaunched = false;
 // The relay adds each engine's compatible API key, which stays on the Mac.
 let relocalized = 0;
 // Called after a key is written or removed (Settings › Agent).
-const forgetKey = (kind: "codex" | "claude") => {
+const forgetKey = (kind: "codex" | "claude" | "own") => {
   delete cachedKeys[kind];
   writerChoice.reset();
 };
@@ -562,6 +562,7 @@ const AI_SETTINGS = new Set<string>([
   "settings.login",
   "settings.logout",
   "settings.ollamaModels",
+  "settings.ownModels",
   "settings.workshop",
   "settings.docker",
   "settings.startDocker",
@@ -1825,6 +1826,7 @@ const settings = createSettingsHandlers({
   deviceCommand: (argv) => workshop.execCommand(argv, { interactive: false }),
   keychain: keys.codex,
   claudeKeychain: keys.claude,
+  ownKeychain: keys.own,
   forgetKey,
   notify,
   modelInstalled: (name) => name === SEARCH_MODEL && startIndexer(),

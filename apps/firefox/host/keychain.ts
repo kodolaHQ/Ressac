@@ -7,6 +7,7 @@ const run = promisify(execFile);
 
 export const CODEX_KEY = { service: "ressac-codex-api", account: "default" };
 export const CLAUDE_KEY = { service: "ressac-claude-api", account: "default" };
+export const OWN_KEY = { service: "ressac-own-api", account: "default" };
 /** `security`'s exit code for an item not found. */
 const ABSENT = 44;
 /** How long a `security` call may take (a locked keychain asks for the password). */
@@ -31,7 +32,7 @@ export function keychain(o: { service?: string; account?: string; command?: stri
   const service = o.service ?? CODEX_KEY.service;
   const account = o.account ?? CODEX_KEY.account;
   const testFile = (o.env ?? process.env).RESSAC_TEST_KEYCHAIN;
-  const file = testFile && service === CLAUDE_KEY.service ? `${testFile}.claude` : testFile;
+  const file = testFile && (service === CLAUDE_KEY.service ? `${testFile}.claude` : service === OWN_KEY.service ? `${testFile}.own` : testFile);
   const ids = ["-s", service, "-a", account];
   /** The output, or `absent` (not found), or null (locked, refused or too slow). */
   const find = async (extra: string[]): Promise<string | "absent" | null> => {

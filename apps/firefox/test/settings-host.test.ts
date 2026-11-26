@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { OWN_KEY, keychain } from "../host/keychain";
 import { createSettingsHandlers } from "../host/settings";
 import type { AiState } from "../../../packages/kernel/src/index";
 import type { MachineStatus } from "../shared/settings";
@@ -55,6 +56,7 @@ function setup(over: { state?: string; started?: string; exec?: (argv: string[])
     }),
     keychain: { read: vi.fn(async () => null), has: vi.fn(async () => true), write: vi.fn(async (k: string) => void (k.includes(" ") && (() => { throw new Error("Clé invalide : x"); })())), remove: vi.fn(async () => {}) },
     claudeKeychain: { read: vi.fn(async () => null), has: vi.fn(async () => false), write: vi.fn(async () => {}), remove: vi.fn(async () => {}) },
+    ownKeychain: keychain({ ...OWN_KEY, env: { RESSAC_TEST_KEYCHAIN: join(dataDir, "kc") } }),
     forgetKey: vi.fn(),
     writer: { via: vi.fn(async () => ({ agent: "claude" as const, via: "subscription" as const })), reset: vi.fn() },
     cli: { installed: vi.fn(async (a: string) => (over.installed ?? ["claude", "codex"]).includes(a)), ensure: vi.fn(async (_a: string) => {}) },
@@ -306,6 +308,30 @@ describe("settings host", () => {
     expect(await h["settings.claudeKeyDelete"]!({})).toEqual({ ok: true });
     expect(o.claudeKeychain.remove).toHaveBeenCalled();
     expect(o.forgetKey).toHaveBeenCalledTimes(2);
+  });
+
+  it("own key is written to its own Keychain item and never returned", async () => {
+    const { h, o } = setup();
+    const results = [await h["settings.ownKeySaved"]!({}), await h["settings.ownKey"]!({ key: "sk-own" }), await h["settings.ownKeySaved"]!({})];
+    expect(results).toEqual([false, { ok: true }, true]);
+    expect(readFileSync(join(o.dataDir, "kc.own"), "utf8")).toBe("sk-own");
+    expect(o.forgetKey).toHaveBeenLastCalledWith("own");
+    expect(await h["settings.ownKey"]!({ key: 42 })).toMatchObject({ ok: false, error: expect.stringContaining("Clé invalide") });
+    const seen: RequestInit[] = [];
+    vi.stubGlobal("fetch", async (_u: string, i: RequestInit) => (seen.push(i), new Response(JSON.stringify({ data: [{ id: "m" }] }))));
+    try {
+      results.push(await h["settings.ownModels"]!({ url: "https://api.example.com/v1" }));
+      results.push(await h["settings.ownModels"]!({ url: "http://192.168.1.4/v1" }));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(results.slice(3)).toEqual([{ ok: true, models: ["m"] }, { ok: false, error: "Adresse invalide (https://…)" }]);
+    expect(seen.length).toBe(1);
+    expect((seen[0]!.headers as Record<string, string>).authorization).toBe("Bearer sk-own");
+    results.push(await h["settings.ownKeyDelete"]!({}), await h["settings.ownKeySaved"]!({}));
+    expect(results.at(-1)).toBe(false);
+    expect(o.keychain.write).not.toHaveBeenCalled();
+    expect(JSON.stringify(results)).not.toContain("sk-own");
   });
 
   it("rebuild order", async () => {

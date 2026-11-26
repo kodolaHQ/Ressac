@@ -1,7 +1,7 @@
 import { withoutV1 } from "./claude-engine.ts";
 import { hostSay } from "./locale.ts";
 import { macSideUrl } from "./ollama-models.ts";
-import type { OwnEngine } from "../shared/settings.ts";
+import { apiUrlProblem, type OwnEngine } from "../shared/settings.ts";
 
 export type ModelMessage = { role: "system" | "user" | "assistant"; content: string };
 /** One model reply for the loop (core/agent/chat/own.ts). `promptTokens`: the reply's own prompt count, null when absent. */
@@ -32,6 +32,10 @@ export function ollamaBase(url: string): string {
   return u.origin + withoutV1(u.pathname).replace(/\/$/, "");
 }
 
+/** A server's own error line, without control characters, capped (and without the key, which some servers echo). */
+const cleaned = (said: unknown, key?: string | null): string =>
+  typeof said === "string" ? (key ? said.split(key).join("…") : said).replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim().slice(0, 200) : "";
+
 /** POSTs JSON to Ollama; a network failure is « unreachable », a 404 « model missing » (both texts name the host). */
 async function ollamaPost(e: OwnEngine, path: string, body: object, signal: AbortSignal, f: typeof fetch): Promise<Response> {
   const base = ollamaBase(e.ollamaUrl);
@@ -46,8 +50,7 @@ async function ollamaPost(e: OwnEngine, path: string, body: object, signal: Abor
   if (res.status === 404) throw new Error(hostSay("own-model-missing", { model: e.ollamaModel, host }));
   if (!res.ok) {
     // Ollama answers e.g. 500 « model requires more system memory »: it runs, so say what it said (cleaned, capped).
-    const said = ((await res.json().catch(() => null)) as { error?: unknown } | null)?.error;
-    const error = typeof said === "string" ? said.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim().slice(0, 200) : "";
+    const error = cleaned(((await res.json().catch(() => null)) as { error?: unknown } | null)?.error);
     throw new Error(error ? hostSay("own-server-error", { host, error }) : hostSay("own-unreachable", { host }));
   }
   return res;
@@ -72,9 +75,108 @@ export function ollamaClient(e: OwnEngine, o: { fetch?: typeof fetch } = {}): Mo
   };
 }
 
+/** The API base as typed (https, or http on this Mac), without a trailing slash. */
+function apiBase(url: string): string {
+  const problem = apiUrlProblem(url);
+  if (problem) throw new Error(problem);
+  return url.replace(/\/+$/, "");
+}
+
+const authorization = (key: string | null): Record<string, string> => (key ? { authorization: `Bearer ${key}` } : {});
+
+/** A 400/422 that refuses the structured-output mode (the ladder steps down), not any other 400. */
+const FORMAT_REFUSED = /response_format|json_schema|not supported/i;
+type ApiReply = { status: "ok"; body: unknown } | { status: "format-refused" };
+
+/**
+ * POSTs to `<base>/chat/completions` with the key only toward that base (no redirect). A network failure is « unreachable »,
+ * 401/403 « key refused », 404 or `model_not_found` « model missing »; no error text holds the key.
+ */
+async function apiPost(e: OwnEngine, key: string | null, body: object, signal: AbortSignal, f: typeof fetch): Promise<ApiReply> {
+  const base = apiBase(e.apiUrl);
+  const host = new URL(base).host;
+  let res: Response;
+  try {
+    res = await f(base + "/chat/completions", { method: "POST", headers: { "content-type": "application/json", ...authorization(key) }, body: JSON.stringify(body), redirect: "error", signal });
+  } catch (err) {
+    if (signal.aborted && signal.reason?.name === "AbortError") throw err;
+    throw new Error(hostSay("own-unreachable", { host }));
+  }
+  if (res.ok) return { status: "ok", body: await res.json().catch(() => null) };
+  const text = await res.text().catch(() => "");
+  if (res.status === 401 || res.status === 403) throw new Error(hostSay("own-key-refused", { host, status: res.status }));
+  if (res.status === 404 || text.includes("model_not_found")) throw new Error(hostSay("own-model-missing", { model: e.apiModel, host }));
+  if ((res.status === 400 || res.status === 422) && FORMAT_REFUSED.test(text)) return { status: "format-refused" };
+  let said: unknown;
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: unknown } | string; message?: unknown };
+    said = typeof parsed.error === "string" ? parsed.error : (parsed.error?.message ?? parsed.message);
+  } catch {
+    said = undefined;
+  }
+  const error = cleaned(said, key);
+  throw new Error(error ? hostSay("own-server-error", { host, error }) : hostSay("own-unreachable", { host }));
+}
+
+/** The structured-output mode that works for each `${base} ${model}`, for the app run: 0 json_schema, 1 json_object, 2 none. */
+const formatMode = new Map<string, number>();
+/** For tests: forgets the modes found. */
+export const resetOwnModelCache = () => formatMode.clear();
+
+/** Modes 1 and 2 carry the schema in the system message (prepended when there is none). */
+function withSchema(messages: ModelMessage[], schema: object): ModelMessage[] {
+  const line = `Answer with one JSON object only, matching this JSON schema: ${JSON.stringify(schema)}`;
+  return messages[0]?.role === "system" ? [{ role: "system", content: `${messages[0].content}\n\n${line}` }, ...messages.slice(1)] : [{ role: "system", content: line }, ...messages];
+}
+
+/** An OpenAI-compatible API (`/chat/completions`), local or remote. `key` is read at each step (the host caches it). Nothing of the content is logged. */
+export function openAiClient(e: OwnEngine, o: { key: () => Promise<string | null>; fetch?: typeof fetch }): ModelClient {
+  return {
+    async step(messages, schema, signal) {
+      try {
+        const id = `${apiBase(e.apiUrl)} ${e.apiModel}`;
+        const key = await o.key();
+        for (let mode = formatMode.get(id) ?? 0; ; mode++) {
+          const response_format = [{ type: "json_schema", json_schema: { name: "action", schema, strict: false } }, { type: "json_object" }, undefined][mode];
+          const body = { model: e.apiModel, messages: mode ? withSchema(messages, schema) : messages, temperature: 0, max_tokens: 2048, response_format };
+          const r = await apiPost(e, key, body, signal, o.fetch ?? fetch);
+          if (r.status === "format-refused") {
+            if (mode < 2) continue;
+            throw new Error(hostSay("own-bad-format"));
+          }
+          formatMode.set(id, mode);
+          const reply = r.body as { choices?: { message?: { content?: unknown } }[]; usage?: { prompt_tokens?: unknown } } | null;
+          const content = reply?.choices?.[0]?.message?.content;
+          if (typeof content !== "string") throw new Error(hostSay("own-bad-format"));
+          return { content, promptTokens: typeof reply?.usage?.prompt_tokens === "number" ? reply.usage.prompt_tokens : null };
+        }
+      } catch (err) {
+        if (signal.aborted) throw signal.reason;
+        throw err;
+      }
+    },
+  };
+}
+
+/** The API's model list (`GET <base>/models` with the key, no redirect), sorted; any failure → the « type it » line. */
+export async function listOwnModels(e: OwnEngine, o: { key: string | null; fetch?: typeof fetch }): Promise<{ ok: true; models: string[] } | { ok: false; error: string }> {
+  try {
+    const res = await (o.fetch ?? fetch)(apiBase(e.apiUrl) + "/models", { headers: authorization(o.key), redirect: "error", signal: AbortSignal.timeout(5000) });
+    const data = res.ok ? ((await res.json()) as { data?: unknown }).data : null;
+    if (!Array.isArray(data)) throw new Error("no list");
+    return { ok: true, models: data.map((m: { id?: unknown }) => m?.id).filter((id): id is string => typeof id === "string").sort() };
+  } catch {
+    return { ok: false, error: hostSay("own-models-failed") };
+  }
+}
+
 /** Throws the French line when the chosen model cannot be used (checked at save and at every open). */
 export async function checkOwnModel(e: OwnEngine, o: { key: string | null; fetch?: typeof fetch }): Promise<void> {
-  if (e.kind !== "ollama") throw new Error("checkOwnModel: API kind not implemented"); // Task 4
+  if (e.kind === "api") {
+    // A one-token completion: the only check every compatible server answers the same way (some have no /models/<id>).
+    await apiPost(e, o.key, { model: e.apiModel, messages: [{ role: "user", content: "ping" }], max_tokens: 1 }, AbortSignal.timeout(15_000), o.fetch ?? fetch);
+    return;
+  }
   const res = await ollamaPost(e, "/api/show", { model: e.ollamaModel }, AbortSignal.timeout(5000), o.fetch ?? fetch);
   const shown = (await res.json().catch(() => null)) as { remote_host?: unknown; remote_model?: unknown } | null;
   // A cloud model (pulled as `…-cloud`) answers from ollama.com behind the loopback address.

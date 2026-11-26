@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { checkOwnModel, isOnMac, ollamaBase, ollamaClient } from "../host/own-model";
+import { beforeEach, describe, expect, it } from "vitest";
+import { checkOwnModel, isOnMac, listOwnModels, ollamaBase, ollamaClient, openAiClient, resetOwnModelCache } from "../host/own-model";
 import { DEFAULT_OWN_ENGINE, type OwnEngine } from "../shared/settings";
 
 const REFUSED = "Adresse refusée : pour une adresse hors de votre Mac, choisissez « API compatible OpenAI ».";
@@ -101,5 +101,119 @@ describe("checkOwnModel (Ollama)", () => {
     const f = capture(async () => json({}));
     await expect(checkOwnModel(engine({ ollamaUrl: "http://192.168.1.4:11434" }), { key: null, fetch: f.fetch })).rejects.toThrow(REFUSED);
     expect(f.calls).toEqual([]);
+  });
+});
+
+describe("openAiClient", () => {
+  beforeEach(() => resetOwnModelCache());
+  const api = (o: Partial<OwnEngine> = {}) => engine({ kind: "api", apiUrl: "https://api.example.com/v1/", apiModel: "deepseek-chat", ...o });
+  const reply = (content: string, usage: object | null = { prompt_tokens: 42 }) => json({ choices: [{ message: { role: "assistant", content } }], usage });
+  const SYS = [{ role: "system" as const, content: "Rôle" }, ...MESSAGES];
+  const run = (f: ReturnType<typeof capture>, key: string | null = "k", e = api()) => openAiClient(e, { key: async () => key, fetch: f.fetch }).step(SYS, SCHEMA, new AbortController().signal);
+  const body = (f: ReturnType<typeof capture>, i: number) => JSON.parse(f.calls[i]!.init.body as string);
+  const refused = () => json({ error: { message: "response_format json_schema is not supported" } }, 400);
+
+  it("api step tries json_schema first", async () => {
+    const f = capture(async () => reply('{"action":"answer"}'));
+    expect(await run(f)).toEqual({ content: '{"action":"answer"}', promptTokens: 42 });
+    expect(f.calls[0]!.url).toBe("https://api.example.com/v1/chat/completions");
+    expect(f.calls[0]!.init.redirect).toBe("error");
+    expect((f.calls[0]!.init.headers as Record<string, string>).authorization).toBe("Bearer k");
+    expect(body(f, 0)).toEqual({ model: "deepseek-chat", messages: SYS, temperature: 0, max_tokens: 2048, response_format: { type: "json_schema", json_schema: { name: "action", schema: SCHEMA, strict: false } } });
+    const g = capture(async () => reply("{}", null));
+    expect((await run(g, null)).promptTokens).toBeNull();
+    expect(Object.keys(g.calls[0]!.init.headers as object).map((h) => h.toLowerCase())).not.toContain("authorization");
+  });
+
+  it("api step falls back on a refused format", async () => {
+    let n = 0;
+    const f = capture(async () => (++n <= 2 ? refused() : reply("{}")));
+    await run(f);
+    expect(f.calls.length).toBe(3);
+    expect(body(f, 1).response_format).toEqual({ type: "json_object" });
+    expect(body(f, 1).messages[0].role).toBe("system");
+    expect(body(f, 1).messages[0].content).toContain("Rôle");
+    expect(body(f, 1).messages[0].content).toContain(JSON.stringify(SCHEMA));
+    expect(body(f, 1).messages.slice(1)).toEqual(MESSAGES);
+    expect(body(f, 2).response_format).toBeUndefined();
+    expect(body(f, 2).messages[0].content).toContain(JSON.stringify(SCHEMA));
+    await run(f);
+    expect(f.calls.length).toBe(4);
+    expect(body(f, 3).response_format).toBeUndefined();
+    // Another model on the same base starts over.
+    await run(f, "k", api({ apiModel: "other" }));
+    expect(body(f, 4).response_format.type).toBe("json_schema");
+  });
+
+  it("an unrelated 400 is an error, not a downgrade", async () => {
+    const f = capture(async () => json({ error: { message: "context length exceeded" } }, 400));
+    await expect(run(f)).rejects.toThrow("api.example.com a répondu par une erreur : context length exceeded");
+    expect(f.calls.length).toBe(1);
+  });
+
+  it("a reply ignoring the format is not trusted", async () => {
+    const f = capture(async () => reply("Bonjour, voici la réponse."));
+    expect((await run(f)).content).toBe("Bonjour, voici la réponse.");
+    await run(f);
+    expect(body(f, 1).response_format.type).toBe("json_schema");
+  });
+
+  it("errors map to their texts", async () => {
+    const KEY = "sk-secret-123";
+    const step = (r: () => Promise<Response>) => run(capture(r), KEY);
+    const cases: [() => Promise<Response>, string][] = [
+      [() => Promise.reject(new TypeError("fetch failed")), "api.example.com ne répond pas. Vérifiez l'adresse et que le serveur est lancé."],
+      [async () => json({ error: { message: `Incorrect API key provided: ${KEY}` } }, 401), "api.example.com refuse la clé d'API (erreur 401)."],
+      [async () => json({}, 403), "api.example.com refuse la clé d'API (erreur 403)."],
+      [async () => json({ error: { message: "nope" } }, 404), "Le modèle « deepseek-chat » est introuvable sur api.example.com."],
+      [async () => json({ error: { code: "model_not_found", message: "The model does not exist" } }, 400), "Le modèle « deepseek-chat » est introuvable sur api.example.com."],
+      [async () => json({ error: { message: `bad key ${KEY} here` } }, 500), "api.example.com a répondu par une erreur : bad key … here"],
+      [async () => json({ choices: [] }), "Le modèle n'a pas répondu dans le format attendu."],
+    ];
+    for (const [r, text] of cases) {
+      const err = await step(r).catch((e: Error) => e);
+      expect((err as Error).message, text).toBe(text);
+      expect((err as Error).message).not.toContain(KEY);
+    }
+  });
+
+  it("refuses a bad address without fetching; an aborted step is an abort", async () => {
+    const f = capture(async () => reply("{}"));
+    await expect(run(f, "k", api({ apiUrl: "http://192.168.1.4:8080/v1" }))).rejects.toThrow("Adresse invalide");
+    expect(f.calls).toEqual([]);
+    const c = new AbortController();
+    const g = (() => (c.abort(), Promise.reject(new TypeError("fetch failed")))) as unknown as typeof fetch;
+    await expect(openAiClient(api(), { key: async () => null, fetch: g }).step(SYS, SCHEMA, c.signal)).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+describe("listOwnModels", () => {
+  const api = engine({ kind: "api", apiUrl: "https://api.example.com/v1" });
+  it("listOwnModels reads /models", async () => {
+    const f = capture(async () => json({ data: [{ id: "b" }, { id: "a" }, { nope: 1 }] }));
+    expect(await listOwnModels(api, { key: "k", fetch: f.fetch })).toEqual({ ok: true, models: ["a", "b"] });
+    expect(f.calls[0]!.url).toBe("https://api.example.com/v1/models");
+    expect(f.calls[0]!.init.redirect).toBe("error");
+    expect((f.calls[0]!.init.headers as Record<string, string>).authorization).toBe("Bearer k");
+    const failed = { ok: false, error: "La liste des modèles n'a pas pu être lue : saisissez le nom du modèle." };
+    expect(await listOwnModels(api, { key: null, fetch: capture(async () => json({}, 401)).fetch })).toEqual(failed);
+    expect(await listOwnModels(api, { key: null, fetch: capture(() => Promise.reject(new TypeError("x"))).fetch })).toEqual(failed);
+    expect(await listOwnModels(api, { key: null, fetch: capture(async () => json({ data: "x" })).fetch })).toEqual(failed);
+  });
+});
+
+describe("checkOwnModel (API)", () => {
+  beforeEach(() => resetOwnModelCache());
+  const api = engine({ kind: "api", apiUrl: "https://api.example.com/v1", apiModel: "deepseek-chat" });
+  const check = (r: () => Promise<Response>) => checkOwnModel(api, { key: "k", fetch: capture(r).fetch });
+  it("api check: key refused, missing, down, ok", async () => {
+    await expect(check(async () => json({}, 401))).rejects.toThrow("api.example.com refuse la clé d'API (erreur 401).");
+    await expect(check(async () => json({}, 403))).rejects.toThrow("api.example.com refuse la clé d'API (erreur 403).");
+    await expect(check(async () => json({}, 404))).rejects.toThrow("Le modèle « deepseek-chat » est introuvable sur api.example.com.");
+    await expect(check(() => Promise.reject(new TypeError("fetch failed")))).rejects.toThrow("api.example.com ne répond pas.");
+    const f = capture(async () => json({ choices: [{ message: { content: "o" } }] }));
+    await checkOwnModel(api, { key: null, fetch: f.fetch });
+    expect(f.calls[0]!.url).toBe("https://api.example.com/v1/chat/completions");
+    expect(JSON.parse(f.calls[0]!.init.body as string)).toMatchObject({ model: "deepseek-chat", max_tokens: 1 });
   });
 });
