@@ -218,6 +218,19 @@ export async function checkOwnModel(e: OwnEngine, o: { key: OwnKey | null; fetch
   }
   const res = await ollamaPost(e, "/api/show", { model: e.ollamaModel }, AbortSignal.timeout(5000), o.fetch ?? fetch);
   const shown = (await res.json().catch(() => null)) as { remote_host?: unknown; remote_model?: unknown } | null;
-  // A cloud model (pulled as `…-cloud`) answers from its remote host behind the loopback address.
-  return ollamaCloudHost(shown);
+  // A cloud model (pulled as `…-cloud`) answers from its remote host behind the loopback address. Ollama's /api/show
+  // does not say so (no remote_host there): its /api/tags entry does. Unknown host on a cloud name: off the Mac all the same.
+  return ollamaCloudHost(shown) ?? ollamaCloudHost(await tagsEntry(e, o.fetch ?? fetch)) ?? (/[-:]cloud$/.test(e.ollamaModel) ? "ollama.com" : null);
+}
+
+/** The model's /api/tags entry (`name` is the model with its tag, `:latest` when none was written); null on any failure. */
+async function tagsEntry(e: OwnEngine, f: typeof fetch): Promise<{ remote_host?: unknown; remote_model?: unknown } | null> {
+  const names = new Set([e.ollamaModel, e.ollamaModel.includes(":") ? e.ollamaModel : `${e.ollamaModel}:latest`]);
+  try {
+    const res = await f(ollamaBase(e.ollamaUrl) + "/api/tags", { redirect: "error", signal: AbortSignal.timeout(5000) });
+    const body = res.ok ? ((await res.json()) as { models?: { name?: unknown; remote_host?: unknown; remote_model?: unknown }[] }) : null;
+    return body?.models?.find((m) => typeof m?.name === "string" && names.has(m.name)) ?? null;
+  } catch {
+    return null;
+  }
 }

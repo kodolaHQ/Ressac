@@ -106,12 +106,27 @@ describe("checkOwnModel (Ollama)", () => {
     expect(await check({ remote_model: "m", remote_host: "https://eu.example.com:8443" })).toBe("eu.example.com:8443");
     expect(await check({ remote_model: "gpt-oss:120b", remote_host: "" })).toBe("ollama.com");
   });
+  it("a cloud model as real Ollama shows it: no remote_host in /api/show, its /api/tags entry has it", async () => {
+    const tags = (models: object[]) => (async (url: string) => (url.endsWith("/api/tags") ? json({ models }) : json({ details: {}, capabilities: ["completion"] }))) as unknown as typeof fetch;
+    const cloud = engine({ ollamaModel: "deepseek-v4.1-flash:1017-cloud" });
+    const entry = { name: "deepseek-v4.1-flash:1017-cloud", remote_model: "deepseek-v4.1-flash:1017", remote_host: "https://eu.example.com:8443" };
+    expect(await checkOwnModel(cloud, { key: null, fetch: tags([{ name: "qwen3:8b" }, entry]) })).toBe("eu.example.com:8443");
+    // A name without its tag is Ollama's « :latest ».
+    expect(await checkOwnModel(engine({ ollamaModel: "gros" }), { key: null, fetch: tags([{ ...entry, name: "gros:latest" }]) })).toBe("eu.example.com:8443");
+    // No host known (tags down, or the entry gone) on a cloud name: off the Mac, at ollama.com.
+    expect(await checkOwnModel(cloud, { key: null, fetch: tags([]) })).toBe("ollama.com");
+    expect(await checkOwnModel(engine({ ollamaModel: "gpt-oss:cloud" }), { key: null, fetch: (async (url: string) => (url.endsWith("/api/tags") ? json({}, 500) : json({}))) as unknown as typeof fetch })).toBe("ollama.com");
+    // A local model stays on the Mac, even when another entry is a cloud one.
+    expect(await checkOwnModel(engine(), { key: null, fetch: tags([{ name: "qwen3:8b" }, entry]) })).toBeNull();
+  });
   it("asks /api/show for the model, without redirects, and passes a local model", async () => {
     const f = capture(async () => json({ details: { family: "qwen3" } }));
     expect(await checkOwnModel(engine({ ollamaUrl: "http://localhost:11434" }), { key: null, fetch: f.fetch })).toBeNull();
     expect(f.calls[0]!.url).toBe("http://127.0.0.1:11434/api/show");
     expect(f.calls[0]!.init.redirect).toBe("error");
     expect(JSON.parse(f.calls[0]!.init.body as string)).toEqual({ model: "qwen3:8b" });
+    expect(f.calls[1]!.url).toBe("http://127.0.0.1:11434/api/tags");
+    expect(f.calls[1]!.init.redirect).toBe("error");
   });
   it("refuses a non-loopback address without fetching", async () => {
     const f = capture(async () => json({}));

@@ -64,9 +64,9 @@ async function maybeHold(res: ServerResponse): Promise<boolean> {
 }
 
 const routes: NonNullable<Parameters<typeof startServer>[0]>["routes"] = {
-  "/api/tags": (req, res) => void readBody(req).then(() => json(res, 200, { models: [{ name: MODEL, details: { parameter_size: "4B" } }, { name: "gros:cloud", remote_host: "https://ollama.com:443" }] })),
-  // The cloud model: the local Ollama forwards it to its remote host.
-  "/api/show": (req, res) => void readBody(req).then((body) => json(res, 200, body.model === "gros:cloud" ? { remote_model: "gros", remote_host: "https://ollama.com:443", details: {} } : { details: {} })),
+  "/api/tags": (req, res) => void readBody(req).then(() => json(res, 200, { models: [{ name: MODEL, details: { parameter_size: "4B" } }, { name: "gros:cloud", remote_model: "gros", remote_host: "https://ollama.com:443" }] })),
+  // As real Ollama: /api/show never names a cloud model's remote host, only its /api/tags entry does.
+  "/api/show": (req, res) => void readBody(req).then(() => json(res, 200, { details: {} })),
   "/api/chat": (req, res) =>
     void readBody(req).then(async (body) => {
       if (await maybeHold(res)) json(res, 200, { message: { content: step(body) }, prompt_eval_count: 200 });
@@ -344,7 +344,7 @@ it("un modèle cloud d'Ollama se choisit, marqué en ligne ; la discussion dit o
   await ownSaved((e) => e.ollamaModel === "gros:cloud");
   await shows("Ce modèle n'est pas sur votre Mac : ce que l'agent lit et ce que vous lui écrivez sont envoyés à ollama.com.");
   await ownDiscussion();
-  // Known once the host checked the model at open (/api/show names its remote host).
+  // Known once the host checked the model at open (its /api/tags entry names its remote host).
   await waitAgent("return doc.querySelector('[data-testid=\"chat-sent-to\"]')?.textContent === 'Envoyé à ollama.com.'");
   expect(await textOf("chat-engine-remote")).toBe("en ligne");
   expect(await textOf("chat-own-warning")).toBe("Votre modèle peut se tromper. Vérifiez les réponses importantes.");

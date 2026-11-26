@@ -1169,7 +1169,7 @@ describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
       expect(created.remote).toBeUndefined();
       expect(await h.rpc.request("chat.send", { window: "f1", draft: { text: "Quelle ville ?" } })).toMatchObject({ ok: true });
       await until(() => views.some((v) => v.view.summary.id === created.summary.id && v.view.items.some((i) => i.kind === "agent" && i.text === "Lyon")));
-      expect(paths).toEqual(["/api/show", "/api/chat"]);
+      expect(paths).toEqual(["/api/show", "/api/tags", "/api/chat"]);
       // The turn names the window's active tab (given to the agent as the user talked), masked by the kernel, its query
       // gone: the key never reaches the model.
       const user = (JSON.parse(chatBody) as { messages: { role: string; content: string }[] }).messages.at(-1)!.content;
@@ -1217,8 +1217,8 @@ describe("« Votre modèle » in the host", { timeout: 30_000 }, () => {
       await until(() => views.slice(seen).some((v) => v.view.summary.id === c.summary.id && v.view.summary.state === "paused"));
       await h.rpc.request("chat.send", { window: "f1", draft: { text: "deux" } });
       await until(() => answers() === 2);
-      expect(a).toEqual(["/api/show", "/api/chat"]);
-      expect(b).toEqual(["/api/show", "/api/chat"]);
+      expect(a).toEqual(["/api/show", "/api/tags", "/api/chat"]);
+      expect(b).toEqual(["/api/show", "/api/tags", "/api/chat"]);
     } finally {
       for (const x of servers) x.close();
     }
