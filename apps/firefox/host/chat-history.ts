@@ -29,7 +29,7 @@ export function historyCommand(h: EngineHistory): string[] | null {
 
 /**
  * Erases at once while the workshop runs; otherwise never starts it: the deletion waits in `file` (a list of
- * EngineHistory) for `replay`, at the workshop's next use.
+ * EngineHistory) for `replay`, at the workshop's next use. A failed run waits there too.
  */
 export function createEngineHistory(o: {
   file: string;
@@ -69,9 +69,11 @@ export function createEngineHistory(o: {
         console.error(`[chat] ${h.engine} history not erased: invalid id`);
         return "failed";
       }
-      if ((await o.workshop.state().catch(() => null)) === "started") return (await run(h)) ? "done" : "failed";
+      const started = (await o.workshop.state().catch(() => null)) === "started";
+      if (started && (await run(h))) return "done";
+      // Stopped, or the run failed: tried again at the workshop's next use.
       await serial(async () => write([...(await read()), h]));
-      return "pending";
+      return started ? "failed" : "pending";
     },
     /** The workshop runs: the deletions kept for it; a failed one stays for the next time. */
     replay: (): Promise<void> =>

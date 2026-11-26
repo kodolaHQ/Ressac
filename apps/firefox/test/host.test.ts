@@ -361,7 +361,8 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("chat view: ⌘T makes the window's discussion, its question waits for the session unmasked nowhere; a custom profile is refused", async () => {
     const views: { window: string; view: { summary: { id: string; state: string }; items: { kind: string; text?: string }[]; waiting?: number } }[] = [];
-    const h = startHost({}, undefined, { handlers: { "chat.view": (p: (typeof views)[number]) => void views.push(p) } });
+    const removedIn: unknown[] = [];
+    const h = startHost({}, undefined, { handlers: { "chat.view": (p: (typeof views)[number]) => void views.push(p), "chat.removed": (p: unknown) => void removedIn.push(p) } });
     await h.rpc.request("start", { agentProfile: "claude", aiEnabled: true });
     h.rpc.notify("settings.agentView", { view: "chat" });
     const key = "ghp_x7Kq9LmN2pRs4TuVw6YzA8bCdEfGhJ1kMn3P";
@@ -376,10 +377,15 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(await h.rpc.request("chat.list", { window: "f1", space: null })).toEqual([]);
     expect(await h.rpc.request("chat.preview", undefined)).toBeNull();
     await expect(h.rpc.request("chat.create", { window: "f1", space: "perso", profile: "mon-agent" })).rejects.toThrow("Ce profil s'utilise dans le terminal (Mode avancé).");
-    // « Supprimer »: gone from the list; an unknown id is no error, a malformed one is refused.
-    expect(await h.rpc.request("chat.remove", { window: "f1", chatId: views[0]!.view.summary.id, engineHistory: true })).toEqual({ history: null });
+    // « Supprimer »: gone from the list, its engine history erased (Claude's uuid is known from the start); an unknown id is no error, a malformed one is refused.
+    expect(await h.rpc.request("chat.remove", { window: "f1", chatId: views[0]!.view.summary.id, engineHistory: true })).toEqual({ history: "done" });
     expect(await h.rpc.request("chat.list", { window: "f1", space: "perso" })).toEqual([]);
     expect(await h.rpc.request("chat.remove", { window: "f1", chatId: "inconnue" })).toEqual({ history: null });
+    // Deleted from f1 while f2 shows it: f2 is told, f1 (the caller) is not.
+    const other = (await h.rpc.request("chat.create", { window: "f2", space: "perso" })) as { summary: { id: string } };
+    await h.rpc.request("chat.remove", { window: "f1", chatId: other.summary.id });
+    await until(() => removedIn.length > 0);
+    expect(removedIn).toEqual([{ window: "f2", chatId: other.summary.id }]);
     await expect(h.rpc.request("chat.remove", { window: "f1", chatId: "../x" })).rejects.toThrow();
   });
 

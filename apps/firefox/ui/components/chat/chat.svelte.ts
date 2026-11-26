@@ -38,8 +38,8 @@ export const newChat = (o?: { profile?: string; mode?: "browser" | "workshop" })
 export const readList = (): Promise<void> => api.chat.list().then((l) => void (chat.list = l), () => {});
 
 /**
- * « Supprimer »: the row goes at once; the window's active discussion gives way to the space's most recent other one, or
- * a new one (what the panel opens with none). Returns a short notice for the list, null when there is nothing to say.
+ * « Supprimer »: the row goes at once; the window's active discussion gives way to a new one (what the panel opens with
+ * none). Returns a short notice for the list, null when there is nothing to say.
  */
 export async function removeChat(id: string, engineHistory: boolean): Promise<string | null> {
   const wasActive = chat.view?.summary.id === id;
@@ -52,7 +52,8 @@ export async function removeChat(id: string, engineHistory: boolean): Promise<st
     notice = t("chat-delete-failed", { message: e instanceof Error ? e.message : String(e) });
   }
   await readList();
-  if (wasActive && !chat.list.some((s) => s.id === id)) await openChat(chat.list[0]?.id);
+  // A new discussion, never another one: picking one could take it from another window or wake a paused engine.
+  if (wasActive && !chat.list.some((s) => s.id === id)) await openChat();
   return notice;
 }
 
@@ -63,13 +64,19 @@ const off = api.onChat((v) => {
   else if (chat.listOpen) void readList();
 });
 
+// Deleted from another window: this one moves on to a new discussion, as after its own « Supprimer ».
+const offRemoved = api.onChatRemoved((id) => {
+  chat.list = chat.list.filter((s) => s.id !== id);
+  if (chat.view?.summary.id === id) void openChat();
+});
+
 // A streaming message's text only: the other items stay as they are, so they are not drawn again.
 const offStream = api.onChatStream((id, s) => {
   if (chat.view?.summary.id === id) chat.view.streaming = s;
 });
 
 // Hot reload (development): the old module gives its subscription back.
-if (import.meta.hot) import.meta.hot.dispose(() => (off(), offStream()));
+if (import.meta.hot) import.meta.hot.dispose(() => (off(), offStream(), offRemoved()));
 
 const LABEL_TYPES = new Set(["nom", "adresse", "carte", "iban", "tel", "email", "code", "id", "secu", "motdepasse", "date", "masque"]);
 /** A chip's words for a label's kind: « nom masqué », « IBAN masqué »… */

@@ -630,7 +630,18 @@ test("remove: a save still writing when it starts does not bring the file back",
   opens[0]!.conv.endTurn(); // its save waits on the gate
   const removed = chats.remove(a.summary.id);
   release();
-  expect(await removed).toEqual({ engine: "claude", engineSessionId: opens[0]!.o.sessionId });
+  expect(await removed).toEqual({ engine: "claude", historyIds: [opens[0]!.o.sessionId], windows: ["w1"] });
   await tick();
   expect(await store.read(a.summary.id)).toBeNull();
+});
+
+test("remove during the first turn: the engine's id is known for its history, the box shows; other windows are named", async () => {
+  const { chats, opens } = prepare();
+  const a = await chats.create("w1", opts);
+  await tick();
+  chats.prompt(a.summary.id, "travaille", "travaille");
+  expect((await chats.list("perso"))[0]?.engineHistory).toBe(true);
+  await chats.select("w2", a.summary.id); // now live in w2
+  await tick();
+  expect(await chats.remove(a.summary.id)).toEqual({ engine: "claude", historyIds: [opens[1]!.o.sessionId, opens[0]!.o.sessionId], windows: ["w2"] });
 });

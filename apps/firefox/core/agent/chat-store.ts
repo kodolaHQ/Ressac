@@ -6,7 +6,14 @@ import type { ChatItem, ChatSummary } from "../../shared/chat";
 export const CHAT_RETENTION_DAYS = 30;
 
 /** One discussion on disk: only what the agent received and said (masked text), never a clear passport value. */
-export type ChatRecord = ChatSummary & { windowId: string | null; spaceId: string; engineSessionId?: string; items: ChatItem[] };
+export type ChatRecord = ChatSummary & {
+  windowId: string | null;
+  spaceId: string;
+  engineSessionId?: string;
+  /** The engine's ids of every conversation it opened, even one with no turn yet: only to erase their history. */
+  historyIds?: string[];
+  items: ChatItem[];
+};
 
 /** Ids come from the UI: a plain name only, never a path. */
 const ID = /^[\w-]+$/;

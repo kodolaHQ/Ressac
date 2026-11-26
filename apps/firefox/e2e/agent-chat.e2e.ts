@@ -166,6 +166,18 @@ it("Supprimer une discussion la retire après confirmation, l'historique de l'ag
   await openList();
   await waitAgent("return doc.querySelectorAll('[data-testid=\"chat-row\"]').length <= 1");
   expect((await rows()).join(" ")).not.toMatch(/Bonjour|deuxième/);
+  // Deleted during its first turn (no turn ended yet): its engine history goes too, by the uuid it was started with.
+  await click(m, '[data-testid="chat-list-close"]', { frame: "agent" });
+  await waitAgent("return !doc.querySelector('[data-testid=\"chat-list\"]')");
+  await send("wait");
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-stop\"]')");
+  await expect.poll(() => new Set(sessionIds()).size, { timeout: 20_000 }).toBe(3);
+  const third = [...new Set(sessionIds())][2]!;
+  await openList();
+  await click(m, '[data-testid="chat-row-delete"]', { frame: "agent" });
+  await waitAgent("return doc.querySelector('[data-testid=\"chat-delete-history\"]')?.checked === true");
+  await click(m, '[data-testid="chat-delete-confirm"]', { frame: "agent" });
+  await expect.poll(() => erased(third).length, { timeout: 20_000 }).toBe(1);
 });
 
 it("Arrêter coupe le tour", async () => {

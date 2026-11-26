@@ -323,14 +323,14 @@ chat-list-messages = { $count ->
         [one] { $count } message
        *[other] { $count } messages
     }
-chat-delete = Supprimer la discussion
+chat-delete = Supprimer la discussion « { $title } »
 chat-delete-title = Supprimer cette discussion ?
 chat-delete-text = Elle sera effacée de Ressac.
 chat-delete-history = Supprimer aussi l'historique dans { $engine }
 chat-delete-confirm = Supprimer
 chat-delete-cancel = Annuler
-chat-delete-pending = L'historique de l'agent sera effacé au prochain démarrage de l'atelier.
-chat-delete-history-failed = L'historique de l'agent n'a pas pu être effacé dans l'atelier.
+chat-delete-pending = L'historique de l'agent sera effacé au prochain démarrage d'une discussion.
+chat-delete-history-failed = L'historique de l'agent n'a pas pu être effacé : Ressac réessaiera au prochain démarrage d'une discussion.
 chat-delete-failed = La discussion n'a pas pu être supprimée : { $message }
 chat-composer-label = Message à l'agent
 chat-composer-placeholder = Demandez quelque chose à l'agent

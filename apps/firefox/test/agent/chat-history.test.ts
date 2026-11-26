@@ -61,10 +61,15 @@ test("workshop stopped: never started, kept for its next start and replayed then
   expect(existsSync(join(dir, "chats", "engine-history-pending.json"))).toBe(false);
 });
 
-test("a refused id is neither run nor kept; a failed run says so", async () => {
-  const { execs, w, history } = prepare(true);
+test("a refused id is neither run nor kept; a failed run says so and is kept for the next replay", async () => {
+  const { execs, w, history, pending } = prepare(true);
   expect(await history.forget({ engine: "claude", id: "../x" })).toBe("failed");
+  expect(execs).toHaveLength(0);
   w.code = 1;
   expect(await history.forget({ engine: "claude", id: UUID })).toBe("failed");
   expect(execs).toHaveLength(1);
+  expect(pending()).toEqual([{ engine: "claude", id: UUID }]);
+  w.code = 0;
+  await history.replay();
+  expect(execs).toHaveLength(2);
 });

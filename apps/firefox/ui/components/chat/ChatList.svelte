@@ -74,39 +74,30 @@
     notice = await removeChat(d.s.id, d.history && !!d.s.engineHistory);
     void tick().then(() => panel?.querySelector<HTMLElement>(".row, .new")?.focus());
   }
-  /** Échap and Annuler close it; Tab stays among its controls. */
+  /** Échap and Annuler close it; the rest of the list is inert meanwhile. */
   function dialogKeys(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      closeDialog();
-    } else if (e.key === "Tab") {
-      const list = [...dialog!.querySelectorAll<HTMLElement>("button, input")];
-      const i = list.indexOf(document.activeElement as HTMLElement);
-      const next = e.shiftKey ? (i <= 0 ? list.at(-1) : null) : i === -1 || i === list.length - 1 ? list[0] : null;
-      if (next) {
-        e.preventDefault();
-        next.focus();
-      }
-    }
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeDialog();
   }
 </script>
 
 {#snippet remove(s: ChatSummary)}
-  <button class="delete" aria-label={t("chat-delete")} title={t("chat-delete")} data-testid="chat-row-delete" onclick={(e) => askDelete(s, e)}>
+  <button class="delete" aria-label={t("chat-delete", { title: s.title || t("chat-untitled") })} title={t("chat-delete", { title: s.title || t("chat-untitled") })} data-testid="chat-row-delete" onclick={(e) => askDelete(s, e)}>
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M6 7l1 13h10l1-13" /><path d="M9 7V4h6v3" /></svg>
   </button>
 {/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <section class="list" data-testid="chat-list" aria-label={t("chat-list-title")} bind:this={panel} out:fade={{ duration: chat.visible ? 150 : 0 }} onkeydown={(e) => e.key === "Escape" && (e.stopPropagation(), close())}>
-  <header>
+  <header inert={!!toDelete}>
     <button class="icon" aria-label={t("chat-list-close")} title={t("chat-list-close")} data-testid="chat-list-close" onclick={close}><Icon name="back" size={15} /></button>
     <strong>{t("chat-list-title")}</strong>
     <span class="spacer"></span>
     <button class="new" data-testid="chat-list-new" onclick={fresh}><Icon name="plus" size={13} />{t("chat-list-new")}</button>
   </header>
-  <div class="rows">
+  <div class="rows" inert={!!toDelete}>
     {#if live.length}
       <span class="group">{t("chat-list-live")}</span>
       {#each live as s (s.id)}
@@ -173,7 +164,7 @@
   .item.current { background: var(--bg-active); }
   .item .row { flex: 1; min-width: 0; }
   /* Shown on hover or focus; still in the Tab order, so the keyboard always reaches it. */
-  .delete { flex: none; width: 28px; height: 28px; margin-right: 6px; display: grid; place-items: center; padding: 0; border-radius: 8px; border: 0; background: transparent; color: var(--text-muted); opacity: 0; transition: opacity var(--tap), transform var(--tap), background var(--tap); }
+  .delete { flex: none; width: 28px; height: 28px; margin-right: 6px; display: grid; place-items: center; padding: 0; border-radius: 8px; border: 0; background: transparent; color: var(--text-muted); opacity: 0; transition: opacity var(--tap), background var(--tap); }
   .item:hover .delete, .delete:focus-visible { opacity: 1; }
   .delete:hover { background: var(--glass-hi); color: var(--in-error); }
   .veil { position: absolute; inset: 0; z-index: 1; display: grid; place-content: center; padding: 16px; background: var(--veil); backdrop-filter: blur(6px); }

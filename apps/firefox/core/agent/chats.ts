@@ -226,15 +226,18 @@ export class Chats {
   }
 
   /**
-   * Deletes the discussion: gone from the list and the window at once, its engine closed (its kernel session stops),
-   * then its file. Returns the engine conversation it ran (to erase that history too), null when unknown.
+   * Deletes the discussion: gone from the list and the windows at once, its engine closed (its kernel session stops),
+   * then its file. Returns the engine conversation it ran (to erase that history too) and the windows it was active in;
+   * null when unknown.
    */
-  async remove(chatId: string): Promise<{ engine: "claude" | "codex"; engineSessionId?: string } | null> {
+  async remove(chatId: string): Promise<{ engine: "claude" | "codex"; historyIds: string[]; windows: string[] } | null> {
     const e = this.entries.get(chatId);
     const rec = e?.rec ?? (await this.o.store.read(chatId));
+    const historyIds = rec ? [...new Set([rec.engineSessionId, e?.conv?.engineSessionId, ...(rec.historyIds ?? [])])].filter((x): x is string => !!x) : [];
     // Gone first: a select meanwhile finds nothing in memory, and save() writes nothing for it any more.
     this.entries.delete(chatId);
-    for (const [w, id] of this.actives) if (id === chatId) this.actives.delete(w);
+    const windows = [...this.actives].filter(([, id]) => id === chatId).map(([w]) => w);
+    for (const w of windows) this.actives.delete(w);
     if (e) {
       e.rec.windowId = null; // pushes nothing to a window
       // The write already running lands before the file goes: it cannot bring it back.
@@ -245,7 +248,7 @@ export class Chats {
       await starting;
       this.wake();
     } else await this.o.store.remove(chatId);
-    return rec ? { engine: rec.engine, ...(rec.engineSessionId ? { engineSessionId: rec.engineSessionId } : {}) } : null;
+    return rec ? { engine: rec.engine, historyIds, windows } : null;
   }
 
   /** App quit: messages still waiting are marked never sent. */
@@ -300,6 +303,8 @@ export class Chats {
     // Only a conversation that ran a turn resumes: a Codex thread with no turn would resume without its policy.
     const resumeId = e.rec.engineSessionId;
     const sessionId = !resumeId && e.rec.engine === "claude" ? randomUUID() : undefined;
+    // Claude writes its history under this uuid from the first prompt: « Supprimer » can erase it before any turn ends.
+    if (sessionId) keepHistoryId(e.rec, sessionId);
     let opened: { conversation: EngineConversation; launch: LaunchSpec };
     try {
       opened = await this.o.open({
@@ -342,6 +347,7 @@ export class Chats {
     e.opening = undefined;
     e.conv = conv;
     e.launch = opened.launch;
+    keepHistoryId(e.rec, conv.engineSessionId); // Codex: the thread id, known once the thread started
     e.unsubs = [conv.onUpdate((u) => this.update(e, conv, u)), conv.onEnd((x) => this.ended(e, conv, x))];
     e.state = "ready";
     this.pump(e);
@@ -495,6 +501,11 @@ function unsend(e: Entry): void {
   e.pending = [];
 }
 
+/** shortcut: one id per engine start, so a discussion reopened without end grows the list; cap it if that shows. */
+function keepHistoryId(r: ChatRecord, id: string): void {
+  if (!r.historyIds?.includes(id)) r.historyIds = [...(r.historyIds ?? []), id];
+}
+
 const openQuestion = (e: Entry): boolean => e.rec.items.some((i) => i.kind === "question" && !i.answer);
 
 /** A message cut short (turn end, death, pause) is kept as said. */
@@ -511,5 +522,5 @@ function endQuestions(r: ChatRecord): void {
 
 function summaryOf(r: ChatRecord): ChatSummary {
   const { id, title, engine, profile, mode, state, updatedAt, messages } = r;
-  return { id, title, engine, profile, mode, state, updatedAt, messages, ...(r.engineSessionId ? { engineHistory: true as const } : {}) };
+  return { id, title, engine, profile, mode, state, updatedAt, messages, ...(r.engineSessionId || r.historyIds?.length ? { engineHistory: true as const } : {}) };
 }

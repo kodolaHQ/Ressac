@@ -406,6 +406,8 @@ export interface ApiRessac {
   };
   /** A discussion of this window changed. */
   onChat(callback: (v: ChatView) => void): () => void;
+  /** Discussion `chatId` was deleted from another window while this one showed it. */
+  onChatRemoved(callback: (chatId: string) => void): () => void;
   /** A message of discussion `chatId` streaming in this window grew: its text so far. */
   onChatStream(callback: (chatId: string, streaming: { messageId: string; text: string }) => void): () => void;
   /** The agent's access to tabs (badges and bubble to cut it). */

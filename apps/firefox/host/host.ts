@@ -1515,7 +1515,6 @@ const rpc = createRpc({
       if (!chat) return { ok: false, error: "Aucune discussion n'est ouverte." };
       return chatSend.send(p.window as string, chat.id, draft);
     }),
-    // Chips while typing: masked with the discussion's table (the labels it issues are the ones the send gives); never typed, never sent.
     // « Supprimer »: the discussion goes from Ressac; with `engineHistory`, the engine's own session files in the workshop too.
     "chat.remove": async (p: { window?: unknown; chatId?: unknown; engineHistory?: unknown }) => {
       if (typeof p?.window !== "string" || typeof p.chatId !== "string" || !/^[\w-]{1,100}$/.test(p.chatId)) throw new Error(hostSay("host-invalid-params"));
@@ -1526,9 +1525,14 @@ const rpc = createRpc({
       const removed = await chats.remove(id);
       chatViews.delete(id);
       chatPrep.delete(id);
-      if (p.engineHistory !== true || !removed?.engineSessionId) return { history: null };
-      return { history: await engineHistory.forget({ engine: removed.engine, id: removed.engineSessionId }) };
+      // Another window showing it moves on (the caller's UI does so itself).
+      for (const w of removed?.windows ?? []) if (w !== p.window) rpc.notify("chat.removed", { window: w, chatId: id });
+      if (p.engineHistory !== true || !removed?.historyIds.length) return { history: null };
+      const results = [];
+      for (const hid of removed.historyIds) results.push(await engineHistory.forget({ engine: removed.engine, id: hid }));
+      return { history: results.includes("failed") ? "failed" : results.includes("pending") ? "pending" : "done" };
     },
+    // Chips while typing: masked with the discussion's table (the labels it issues are the ones the send gives); never typed, never sent.
     "chat.preview": (p: { window?: unknown; text?: unknown }) => {
       const chat = activeChat(p?.window);
       const session = chat && chats.sessionIdOf(chat.id);
