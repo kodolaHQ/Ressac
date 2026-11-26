@@ -364,6 +364,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
     if (state.locale !== previous.locale) host.notify("settings.locale", { locale: state.locale });
     if (changed(state.settings.claudeEngine, previous.settings.claudeEngine)) host.notify("agent.claudeEngine", { engine: state.settings.claudeEngine });
     if (changed(state.settings.ownEngine, previous.settings.ownEngine)) host.notify("agent.ownEngine", { engine: state.settings.ownEngine });
+    if (changed(state.settings.chatModels, previous.settings.chatModels)) host.notify("settings.chatModels", { models: state.settings.chatModels });
     if (state.settings.agentMode !== previous.settings.agentMode) host.notify("agent.mode", { mode: state.settings.agentMode });
     if (state.settings.agentView !== previous.settings.agentView) host.notify("settings.agentView", { view: state.settings.agentView });
     if (state.settings.agentProfile !== previous.settings.agentProfile)

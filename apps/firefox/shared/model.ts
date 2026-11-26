@@ -286,6 +286,8 @@ export interface BrowserState {
     claudeEngine: ClaudeEngine;
     /** « Votre modèle »: the user's Ollama or OpenAI-compatible API, driven by a loop in the host. */
     ownEngine: OwnEngine;
+    /** The model new chat discussions take on Claude's and Codex's subscription ("" : the engine's default), the last one picked in the chat. */
+    chatModels: { claude: string; codex: string };
     /** False until the first-launch welcome is finished (or skipped). */
     onboarded: boolean;
     /** The Ressac version of the last launch; null before any launch that records it. */

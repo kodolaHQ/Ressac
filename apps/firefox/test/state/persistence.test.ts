@@ -533,6 +533,15 @@ test("machineIdleMinutes: a valid delay kept; missing or other, 5", async () => 
   }
 });
 
+test("chatModels: a model name kept; missing or bad, the engine's default", async () => {
+  const d = folder();
+  const saved = initialState();
+  for (const [v, want] of [[{ claude: "opus", codex: "gpt-5.4" }, { claude: "opus", codex: "gpt-5.4" }], [{ claude: "--x", codex: 3 }, { claude: "", codex: "" }], [undefined, { claude: "", codex: "" }]] as const) {
+    writeFileSync(join(d, "session.json"), JSON.stringify({ ...saved, settings: { ...saved.settings, chatModels: v } }));
+    expect((await loadSession(d)).settings.chatModels).toEqual(want);
+  }
+});
+
 test("auraMotion: off kept; missing, on", async () => {
   const d = folder();
   const saved = initialState();

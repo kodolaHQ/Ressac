@@ -5,7 +5,7 @@ import { SHORTCUT_IDS, type ShortcutId } from "./shortcuts";
 import { CUSTOM_ENGINE_MAX, SEARCH_ENGINE_IDS, customEngineError } from "./search";
 import { APPEARANCES, LANGUAGE_SETTING, NOTICE_IDS, type Decision, type PendingRequest, type AccessState, type BrowserState, type WindowId, type TabId, type Download, type Visit, type AskHit, type AskResult } from "./model";
 import { validFolder, ID_EXECUTION, ID_SITE, PROJECT_ID, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner, type RenderedPage, type BatchState, type ProjectId, type ExternalProject, type TrackedProject, type Comment, type DiffFile, type ModifiedFile, type InstructionChange, type ChangedFile, type LiftChoice, type QuarantinedFile } from "@ressac/kernel";
-import { ClaudeEngineSchema, CodexEngineSchema, MachineIdleSchema, OwnEngineSchema, type OwnEngine, type DockerStatus, type MachineShown, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
+import { ClaudeEngineSchema, CodexEngineSchema, MachineIdleSchema, OwnEngineSchema, modelField, type OwnEngine, type DockerStatus, type MachineShown, type AgentAccount, type Backup, type CodexEngine, type ClaudeEngine, type LoginResult, type GrantKind, type GrantRow, type SettingsResult, type WorkshopOperation, type PullProgress } from "./settings";
 import type { WorkshopState } from "../../../packages/kernel/src/container/workshop.ts";
 import type { AskReply, ChatDraft, ChatSummary, ChatView } from "./chat";
 import type { PassportEntry, PassportField } from "../../../packages/kernel/src/mask/passport-fields.ts";
@@ -177,6 +177,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("chooseClaudeEngine"), engine: ClaudeEngineSchema }),
   /** Saved only once the host accepted it (`agent.ownEngine`, through `SettingsApi.chooseOwnEngine`). */
   z.object({ type: z.literal("chooseOwnEngine"), engine: OwnEngineSchema }),
+  /** The chat's model picker: the default for new discussions of that engine. */
+  z.object({ type: z.literal("chooseChatModel"), engine: z.enum(["claude", "codex"]), model: modelField }),
   z.object({ type: z.literal("finishOnboarding"), ai: z.boolean().optional() }),
   z.object({ type: z.literal("enableAi") }),
   z.object({ type: z.literal("disableAi") }),

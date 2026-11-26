@@ -833,6 +833,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       d.settings.agentDomains = domains;
       return true;
     }
+    case "chooseChatModel": {
+      if (d.settings.chatModels[a.engine] === a.model) return false;
+      d.settings.chatModels[a.engine] = a.model;
+      return true;
+    }
     case "chooseMachineIdle": {
       if (d.settings.machineIdleMinutes === a.minutes) return false;
       d.settings.machineIdleMinutes = a.minutes;

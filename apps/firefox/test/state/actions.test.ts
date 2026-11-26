@@ -1285,6 +1285,18 @@ test("chooseMachineIdle keeps one of the four delays; the IPC schema refuses any
   for (const minutes of [10, "30"]) expect(MachineIdleSchema.safeParse(minutes).success).toBe(false); // the host's own check
 });
 
+test("chooseChatModel stores the engine's default model for new discussions; the IPC schema refuses a flag", () => {
+  e = initialState(genId);
+  expect(e.settings.chatModels).toEqual({ claude: "", codex: "" });
+  ag({ type: "chooseChatModel", engine: "codex", model: "gpt-5.4" });
+  expect(e.settings.chatModels).toEqual({ claude: "", codex: "gpt-5.4" });
+  const before = e;
+  ag({ type: "chooseChatModel", engine: "codex", model: "gpt-5.4" });
+  expect(e).toBe(before);
+  for (const model of ["--dangerously-skip-permissions", "a b", 3]) expect(SchemaAction.safeParse({ type: "chooseChatModel", engine: "claude", model }).success).toBe(false);
+  expect(SchemaAction.safeParse({ type: "chooseChatModel", engine: "own", model: "m" }).success).toBe(false);
+});
+
 test("shortcut actions store, refuse and reset bindings", () => {
   e = initialState(genId);
   const changed = (a: Action) => {
