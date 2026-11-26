@@ -48,6 +48,7 @@ const { cleanDraft, createChatSend, DRAFT_MAX } = await import("./chat-send.ts")
 const { createEngineHistory } = await import("./chat-history.ts");
 const { createLoginTerminals } = await import("./chat-login.ts");
 const { chatToTerminal } = await import("./chat-terminal.ts");
+const { callingChat } = await import("./calling-chat.ts");
 const { LABEL_SOURCE } = await import("../../../packages/kernel/src/mask/table.ts");
 const { labInUse } = await import("./tiers.ts");
 const { History } = await import("../core/history.ts");
@@ -1902,16 +1903,14 @@ function maskNotice(o: { text: unknown }, win: string | undefined, unless = fals
   maskNotices.set(session, String(o.text).slice(0, 300));
   maskingChanged();
 }
-/**
- * The discussion of the session whose tool call runs now: a chat's live conversation, or the terminal a discussion went to
- * (« Mode avancé »). Workflows, watches and the terminal of no discussion: none.
- */
-function callingChat(): string | undefined {
-  const s = askScope.getStore();
-  if (!s?.chat) return undefined;
-  return chats.chatOfSession(s.chat) ?? (s.window && terminalWindows.has(s.window) ? activeChat(s.window)?.id : undefined);
-}
-const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url), maskNotice, asksLog(join(dataDir, "logs", "asks.jsonl")), callingChat);
+const callingChatNow = () =>
+  callingChat(askScope.getStore(), {
+    chatOfSession: (s) => chats.chatOfSession(s),
+    advanced: (w) => terminalWindows.has(w),
+    terminalSession: (w) => kernel?.masker.sessionOf(w) ?? null,
+    activeChat: (w) => activeChat(w)?.id,
+  });
+const bridge = new RemoteBridge(rpc, hist, (site, url) => sites.urlAllowed(site, url), maskNotice, asksLog(join(dataDir, "logs", "asks.jsonl")), callingChatNow);
 // The titles the agent's list_tabs gives, for the chat's « Lit la page « … » » lines (read_tab's input has the id only).
 const listTabs = bridge.listTabs;
 bridge.listTabs = () => listTabs().then((l) => (rememberTabs(l), l));
