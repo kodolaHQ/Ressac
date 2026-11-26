@@ -15,9 +15,9 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
   const now = o.now ?? Date.now;
   // The in-flight promise is cached, so parallel cold calls share one status exec; a failed check is not kept.
   const cache = new Map<WriterAgent, { at: number; in: Promise<boolean> }>();
-  const signedIn = async (a: WriterAgent): Promise<boolean> => {
-    // The image carries no CLI: one not downloaded yet is not signed in, and is never exec'd (not cached: a download may follow).
-    if (!(await o.installed(a))) return false;
+  // The image carries no CLI: one not downloaded yet is never exec'd for its status; its sign-in is unknown until the write's
+  // own cli.ensure downloads it (not cached: a download may follow).
+  const signedIn = (a: WriterAgent): Promise<boolean> => {
     const hit = cache.get(a);
     if (hit && now() - hit.at < TTL_MS) return hit.in;
     const account = AGENT_ACCOUNTS.find((x) => x.id === a)!;
@@ -32,8 +32,14 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
     async agent(exclude?: ReadonlySet<WriterAgent>): Promise<WriterAgent | "workshop-stopped" | null> {
       if ((await o.workshop.state()) !== "started") return "workshop-stopped";
       const first = o.preferred();
-      for (const a of [first, first === "claude" ? "codex" : "claude"] as const) if (!exclude?.has(a) && (await signedIn(a))) return a;
-      return null;
+      const agents = ([first, first === "claude" ? "codex" : "claude"] as const).filter((a) => !exclude?.has(a));
+      const absent: WriterAgent[] = [];
+      for (const a of agents) {
+        if (!(await o.installed(a))) absent.push(a);
+        else if (await signedIn(a)) return a;
+      }
+      // Sign-in unknown: tried after the signed-in ones; a signed-out answer excludes it like a dead token.
+      return absent[0] ?? null;
     },
     async wakeAgent(exclude?: ReadonlySet<WriterAgent>): Promise<WriterAgent | "workshop-stopped" | null> {
       // A machine the user removed, or one failing, waits for them: a background write (a watch) never installs or boots it.
@@ -43,6 +49,7 @@ export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec
     /** For the host writer, without starting anything: signed in, unknown but the machine can wake for a write, or why not. */
     async usable(a: WriterAgent): Promise<CliState> {
       const s = await o.workshop.state();
+      if (s === "started" && !(await o.installed(a))) return "wakeable"; // sign-in unknown, the write downloads it
       if (s === "started") return (await signedIn(a)) ? "signed-in" : "signed-out";
       return s === "machine-stopped" && (await o.workshop.harvestReady()) ? "wakeable" : "stopped";
     },

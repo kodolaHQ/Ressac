@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHostWriter, createWriterChoice, type CliState } from "../host/writer";
-import { CODEX_WRITER_MODEL, SYSTEM_PROMPT } from "../../../packages/kernel/src/index.ts";
+import { CODEX_WRITER_MODEL, SYSTEM_PROMPT, say } from "../../../packages/kernel/src/index.ts";
 import { DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, type ClaudeEngine, type CodexEngine } from "../shared/settings";
 
 const setup = (state: string, loggedIn: Record<string, boolean>, preferred: "claude" | "codex" = "claude", harvestReady = true, installed = ["claude", "codex"]) => {
@@ -42,11 +42,22 @@ describe("writer choice", () => {
     expect(await s.choice.agent(new Set(["claude"]))).toBe("codex");
     expect(await s.choice.agent(new Set(["claude", "codex"]))).toBeNull();
   });
-  it("a CLI not downloaded is signed out, never exec'd (the image carries none)", async () => {
+  it("a CLI not downloaded is never exec'd: sign-in unknown, after a signed-in one", async () => {
     const s = setup("started", { claude: true, codex: true }, "claude", true, ["codex"]);
     expect(await s.choice.agent()).toBe("codex");
-    expect(await s.choice.usable("claude")).toBe("signed-out");
+    expect(await s.choice.usable("claude")).toBe("wakeable");
     expect(s.calls).toEqual(["codex"]);
+    const none = setup("started", {}, "claude", true, []);
+    expect(await none.choice.agent()).toBe("claude");
+    expect(await none.choice.agent(new Set(["claude"]))).toBe("codex");
+    expect(none.calls).toEqual([]);
+  });
+  it("a CLI not downloaded: wakeable when the machine can wake, else stopped", async () => {
+    const m = setup("machine-stopped", {}, "claude", true, []);
+    expect(await m.choice.usable("claude")).toBe("wakeable");
+    expect(await m.choice.wakeAgent()).toBe("claude");
+    expect(m.calls).toEqual(["ensureStarted"]);
+    expect(await setup("machine-stopped", {}, "claude", false, []).choice.usable("claude")).toBe("stopped");
   });
   it("is null when both are signed out", async () => {
     expect(await setup("started", {}).choice.agent()).toBeNull();
@@ -155,6 +166,21 @@ const hostWriter = (o: {
 };
 
 describe("host writer", () => {
+  it("a subscription CLI not downloaded yet: written via the subscription when the machine can wake, else the workshop text", async () => {
+    for (const [harvestReady, expected] of [[true, "subscription"], [false, null]] as const) {
+      const { choice, calls } = setup("machine-stopped", {}, "claude", harvestReady, []);
+      const cli = vi.fn(() => async () => "ok");
+      const w = createHostWriter({ preferred: () => "claude", engine: (a) => (a === "claude" ? DEFAULT_CLAUDE_ENGINE : DEFAULT_CODEX_ENGINE), readKey: async () => null, cli, cliUsable: choice.usable, locale: () => "fr" });
+      if (expected) {
+        expect(await w.via()).toEqual({ agent: "claude", via: "subscription" });
+        expect(await w({ prompt: "P" })).toBe("ok");
+      } else {
+        expect(await w.via()).toBe("workshop-stopped");
+        await expect(w({ prompt: "P" })).rejects.toThrow(say("fr", "kernel-writer-workshop-stopped"));
+      }
+      expect(calls.filter((c) => c !== "ensureStarted")).toEqual([]); // no status exec of a missing binary
+    }
+  });
   it("Claude API uses Haiku on Anthropic and the user's model elsewhere", async () => {
     const answer = () => Response.json({ content: [{ type: "text", text: "Bon" }, { type: "text", text: "jour" }] });
     const a = hostWriter({ claude: { kind: "api", apiUrl: "https://api.anthropic.com/v1", apiModel: "claude-opus" }, keys: { claude: KEY }, answer });
