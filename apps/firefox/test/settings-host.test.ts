@@ -9,7 +9,7 @@ import type { MachineStatus } from "../shared/settings";
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 
-function setup(over: { state?: string; started?: string; exec?: (argv: string[]) => unknown } = {}) {
+function setup(over: { state?: string; started?: string; exec?: (argv: string[]) => unknown; installed?: string[] } = {}) {
   const pids = join(mkdtempSync(join(tmpdir(), "settings-pids-")), "pids");
   dirs.push(join(pids, ".."));
   const dataDir = mkdtempSync(join(tmpdir(), "settings-host-"));
@@ -57,6 +57,7 @@ function setup(over: { state?: string; started?: string; exec?: (argv: string[])
     claudeKeychain: { read: vi.fn(async () => null), has: vi.fn(async () => false), write: vi.fn(async () => {}), remove: vi.fn(async () => {}) },
     forgetKey: vi.fn(),
     writer: { via: vi.fn(async () => ({ agent: "claude" as const, via: "subscription" as const })), reset: vi.fn() },
+    cli: { installed: vi.fn(async (a: string) => (over.installed ?? ["claude", "codex"]).includes(a)), ensure: vi.fn(async (_a: string) => {}) },
     notify: vi.fn(),
   };
   const alive = () => readFileSync(pids, "utf8").trim().split("\n").map((p) => { try { process.kill(Number(p), 0); return true; } catch { return false; } });
@@ -171,6 +172,20 @@ describe("settings host", () => {
     await vi.waitFor(() => expect(alive()).toEqual([false, false]));
     expect(o.deviceCommand).toHaveBeenCalledWith(["codex", "login", "--device-auth"]);
     expect(o.workshop.secureNetwork).toHaveBeenCalled();
+  });
+
+  it("an agent whose CLI is not downloaded shows so without an exec; its sign-in downloads it first", async () => {
+    const { h, exec, o } = setup({ installed: ["claude"] });
+    expect(await h["settings.agents"]!({})).toEqual([
+      { id: "claude", name: "Claude Code", state: "logged-in", account: "ami@example.com", login: "panel" },
+      { id: "codex", name: "Codex", state: "not-downloaded", login: "device" },
+    ]);
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(exec).toHaveBeenCalledWith(["claude", "auth", "status", "--json"]);
+    expect(await h["settings.login"]!({ id: "codex" })).toMatchObject({ kind: "device" });
+    expect(o.cli.ensure).toHaveBeenCalledWith("codex");
+    expect(o.cli.ensure.mock.invocationCallOrder[0]).toBeLessThan(o.workshop.secureNetwork.mock.invocationCallOrder[0]!);
+    h.stopLogins();
   });
 
   it("loginEnded waits for a sign-in by code still running, so the sweep never kills it", async () => {

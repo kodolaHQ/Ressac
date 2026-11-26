@@ -49,6 +49,7 @@ settings-agent-logged-in = Signed in
 settings-agent-logged-out = Not signed in
 settings-agent-docker-absent = Docker is not running: see Workshop.
 settings-agent-no-container = The agent's workshop is not started: see Workshop.
+settings-agent-not-downloaded = Not downloaded yet: it will be at the first sign-in or when the agent first opens.
 settings-agent-device-code = Open the sign-in page and enter the code
 settings-agent-device-waiting = Waiting for sign-in…
 settings-agent-device-interrupted = the sign-in by code was interrupted, start again

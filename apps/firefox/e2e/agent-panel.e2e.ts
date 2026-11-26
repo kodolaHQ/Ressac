@@ -144,7 +144,7 @@ it("« Atelier » relaunches the agent with its shell, the choice is saved, anot
   // The container is recreated with Atelier's mounts: the other window's agent cannot stay in the removed one, it is relaunched in Atelier.
   await expect.poll(() => sessions().slice(before).filter((l) => !l.includes(`--resume ${id}`)).length, { timeout: 20_000 }).toBeGreaterThanOrEqual(1);
   expect(sessions().slice(before).some((l) => l.includes("Bash,mcp__ressac__launch_app"))).toBe(false);
-  expect(read(join(w!.dataDir, "workspace", "fake-docker-shape"))).toBe("1-workshop");
+  expect(read(join(w!.dataDir, "workspace", "fake-docker-shape"))).toBe("2-workshop");
   await inWindow(m, second, async () => {
     await terminalShows("fake agent ready>");
     expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"agent-engine-changed\"]')", [], "agent")).toBe(false);

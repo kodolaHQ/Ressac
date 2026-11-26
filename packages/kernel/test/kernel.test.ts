@@ -164,7 +164,7 @@ test("at launch, once the container is ready, the agents of a previous app are s
   // Up-to-date container: the mount probe returns the expected root and hash.
   const { dockerfileHash } = await import("../src/container/workshop.js");
   const runUpToDate: typeof run = (c, args, o) =>
-    args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}|2684354560|1-browser\n`, stderr: "" }) : run(c, args, o);
+    args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}|2684354560|2-browser\n`, stderr: "" }) : run(c, args, o);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
   kernel = await createKernel({ lab: () => true, maskingFolder: `${root}-masking`, locale: () => "fr", widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop });
   await kernel.openAgentSession({ cols: 80, rows: 24, mode: "workshop" }).then((s) => s.stop(), () => {});
@@ -401,9 +401,9 @@ async function createReady(locale: () => string = () => "fr", o: { lab?: () => b
       : args.includes("{{.State.Running}}")
         ? run(c, args, opts)
         : args.includes('{{index .Config.Labels "ressac.shape"}}')
-          ? { code: 0, stdout: `${o.shape ?? "1-browser"}\n`, stderr: "" }
+          ? { code: 0, stdout: `${o.shape ?? "2-browser"}\n`, stderr: "" }
           : args[0] === "inspect"
-          ? { code: 0, stdout: `${root}|${dockerfileHash()}|2684354560|${o.shape ?? "1-browser"}\n`, stderr: "" }
+          ? { code: 0, stdout: `${root}|${dockerfileHash()}|2684354560|${o.shape ?? "2-browser"}\n`, stderr: "" }
           : run(c, args, opts);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
   kernel = await createKernel({ lab: o.lab ?? (() => true), maskingFolder: `${root}-masking`, locale: locale, widgetsFolder: `${root}-widgets`, actionsFolder: `${root}-actions`, bridge: o.bridge ?? new FakeBridge([], { active: null, allow: false }), root: root, run: runUpToDate, workshop: workshop, ...(o.onLock ? { onLock: o.onLock } : {}) });
@@ -493,7 +493,7 @@ test("the lift is refused while a conversation is open; once it ended, the lock 
 });
 
 test("under the lock a shape change refuses the session", async () => {
-  const n = await createReady(() => "fr", { shape: "1-workshop" });
+  const n = await createReady(() => "fr", { shape: "2-workshop" });
   await n.workspaceLock.lock({ names: ["votre code"] });
   await expect(n.openAgentSession({ cols: 80, rows: 24, window: "F1" })).rejects.toThrow("Le mode a changé pendant le verrou : levez d'abord le verrou pour ouvrir une conversation.");
 });

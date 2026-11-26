@@ -46,6 +46,7 @@ const { createPageIndexer, llamaEmbed } = await import("./page-indexer.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createSettingsHandlers, SETTINGS_METHODS } = await import("./settings.ts");
 const { createHostWriter, createWriterChoice } = await import("./writer.ts");
+const { createAgentCli } = await import("./agent-cli.ts");
 const { createDockerRuntime } = await import("./docker-runtime.ts");
 const { MACHINE_HOME, createMachine, engineCopy, fakeMachine, createWakeGrace, memoryAllows, memoryLevel, vmImage } = await import("./machine.ts");
 const { copyLogins, createEngines } = await import("./engines.ts");
@@ -240,6 +241,9 @@ const engines = createEngines({
 });
 const workshop = new Workshop({ paths: paths, locale: () => hostLocale(), engine: () => engines.current(), browserMode: () => agentMode === "browser", network: () => ({ ports: [kernel?.mcpPort, relay.port].filter((p): p is number => typeof p === "number"), domains: agentDomains, locked: workspaceLock.locked() }) });
 
+// The agents' CLIs, downloaded on first use into .ressac/cli (first on the container's PATH).
+const cli = createAgentCli({ internal: paths.internal });
+
 let kernel: Kernel | null = null;
 let error: string | null = null;
 let ready: Promise<Kernel | null> = Promise.resolve(null);
@@ -294,7 +298,10 @@ const hostWriter = createHostWriter({
   // The other agent is excluded: the CLI writes as the agent picked, never as one the user put on a key or Ollama.
   cli: (only) =>
     createAgentWriter({
-      exec: (a, x) => workshop.execWrite(a, x),
+      exec: async (argv, x) => {
+        await cli.ensure(argv[0] as "claude" | "codex");
+        return workshop.execWrite(argv, x);
+      },
       agent: (exclude) => writerChoice.wakeAgent(new Set([...(exclude ?? []), only === "claude" ? "codex" : "claude"])),
       signedOut: writerChoice.signedOut,
       log: (l) => console.log("[writer]", l),
@@ -569,6 +576,7 @@ const applyAi = async () => {
   aiWoken = false;
   kernelLaunched = false;
   settings.cancelDownloads();
+  cli.cancel();
   void machine.cancel().catch((e) => console.error("[ressac] the machine did not stop:", e));
   // The kernel first: its widget scheduler must not start a harvest while the sessions and apps stop. Its stop only
   // drops the sessions' MCP tokens (idempotent with their own end); the sessions themselves stop below.
@@ -640,6 +648,10 @@ const sessions = new SessionsAgent({
     await engines.current().wake("user").catch(() => {});
     if (!aiOn) throw new Error("ai-off");
     if (profile !== "codex" && profile !== "claude") return n.openAgentSession({ ...t, window: f, profile, resume, mode: agentMode, onBuildProgress, review });
+    const since = Date.now();
+    const agent = profile === "claude" ? "Claude Code" : "Codex";
+    await cli.ensure(profile, (p) => onBuildProgress?.({ step: 1, of: 1, label: hostSay("host-cli-downloading", { agent, percent: p ?? 0 }), since }));
+    if (!aiOn) throw new Error("ai-off");
     const e = profile === "claude" ? claudeEngine : engine; // one snapshot: the env must match the relay token
     const claude = profile === "claude";
     // Ollama is relayed without a key: the agent reaches inference paths only, never /api/pull. Codex's target ends in /v1.
@@ -1332,6 +1344,7 @@ function watchActionsNow() {
 let fakeSwitched = false;
 const settings = createSettingsHandlers({
   workshop,
+  cli,
   writer: { via: hostWriter.via, reset: writerChoice.reset },
   ai,
   docker,

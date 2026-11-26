@@ -37,7 +37,7 @@ export type Backup = { path: string; date: string; bytes: number };
 
 /** The workshop restart or rebuild in progress, if any. */
 export type WorkshopOperation = "restart" | "rebuild" | null;
-export type AgentAccountState = "docker-absent" | "no-container" | "logged-out" | "logged-in" | "error";
+export type AgentAccountState = "docker-absent" | "no-container" | "not-downloaded" | "logged-out" | "logged-in" | "error";
 export interface AgentAccount {
   id: string;
   name: string;

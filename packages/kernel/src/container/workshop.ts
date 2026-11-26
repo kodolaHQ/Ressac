@@ -100,9 +100,9 @@ export const WORKSHOP_MEMORY = 2.5 * 2 ** 30;
 export const DEFAULT_DOCKER_FOLDER = join(KERNEL_ROOT, "docker");
 const dockerfile = (folder: string) => join(folder, "workshop.Dockerfile");
 const HASH_LABEL = "ressac.dockerfile";
-/** The container's mounts by mode (not in the image: a change recreates only the container). Bump on a mount change. */
+/** The container's mounts by mode and its PATH (not in the image: a change recreates only the container). Bump on a mount change. */
 const SHAPE_LABEL = "ressac.shape";
-const CONTAINER_SHAPE_VERSION = 1;
+const CONTAINER_SHAPE_VERSION = 2;
 /** Tier-3 code folders: read-only in Navigateur. */
 const TIER3_FOLDERS = ["actions", "sites", "components"] as const;
 
@@ -699,6 +699,8 @@ export class Workshop {
       "-p", `127.0.0.1:${ports}:${ports}`,
       // AGENTS.md tells the agent to keep its hand-run servers in this range.
       "-e", `RESSAC_PORTS=${ports}`,
+      // The CLIs the host downloads into .ressac/cli (read-only here) come before any the image brings.
+      "-e", `PATH=${CONTAINER_PATH}/.ressac/cli/claude:${CONTAINER_PATH}/.ressac/cli/codex:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
       "--memory", String(this.memory()),
       // The agent reaches the web only through the allowlist proxy (see secureNetwork); the rules need NET_ADMIN.
       ...RUN_FLAGS,

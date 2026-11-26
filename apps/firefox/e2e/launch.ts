@@ -137,6 +137,8 @@ export async function launchRessac(o: { headed?: boolean; width?: number; height
         RESSAC_TEST_NO_SYSTEM: "1",
         // Never the real search model (334 MB): a test with a fake host passes its own.
         RESSAC_EMBED_URL: "http://127.0.0.1:9",
+        // The fake tools stand in for the agents' CLIs: a test never downloads them.
+        RESSAC_TEST_CLI_PRESENT: "1",
         // A new session follows the Mac's language: the tests read French whatever this machine's language is.
         RESSAC_TEST_MAC_LANGUAGES: "fr-FR",
         // The frames' test hook (e2e/ui.ts inFrame): evaluates in an agent-written frame's page.

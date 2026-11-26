@@ -8,6 +8,7 @@ import { SEARCH_MODEL, type AgentAccount, type LoginResult, type WorkshopOperati
 import type { DockerRuntime } from "./docker-runtime.ts";
 import type { createMachine } from "./machine.ts";
 import { hostSay } from "./locale.ts";
+import type { AgentCli } from "./agent-cli.ts";
 
 // The settings page's host side: agent accounts, workshop, local AI, durable grants, data backups.
 
@@ -96,6 +97,8 @@ export const startedWithin = <T>(start: Promise<T>, otherwise: T, ms = 60_000): 
 
 export interface SettingsOptions {
   workshop: Pick<Workshop, "state" | "exec" | "restart" | "rebuild" | "secureNetwork" | "ensureStarted">;
+  /** The agents' CLIs, downloaded into the workshop's .ressac (host/agent-cli.ts). */
+  cli: Pick<AgentCli, "installed" | "ensure">;
   /** Who writes and how (the account check is cached): reset whenever an account may have changed. */
   writer: { via(): Promise<{ agent: WriterAgent; via: "subscription" | "api" | "ollama" } | "workshop-stopped" | null>; reset(): void };
   ai: Pick<LocalAi, "check" | "cancelInstall"> & { embed: Pick<LlamaModel, "install" | "state"> };
@@ -211,6 +214,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     return Promise.all(
       AGENT_ACCOUNTS.map(async (a): Promise<AgentAccount> => {
         try {
+          if (!(await o.cli.installed(a.id as "claude" | "codex"))) return { id: a.id, name: a.name, login: a.login.kind, state: "not-downloaded", ...signing(a) };
           const r = await o.workshop.exec(a.status);
           let s: ReturnType<typeof a.parse>;
           try {
@@ -286,6 +290,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
       }
       stopLogins();
       try {
+        await o.cli.ensure(a.id as "claude" | "codex");
         // The login runs the agent's CLI as node: never before the network rules are in place.
         await o.workshop.secureNetwork();
         const started = startDeviceLogin(o.deviceCommand(a.login.argv), { origin: a.login.origin });

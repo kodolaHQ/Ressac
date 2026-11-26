@@ -39,7 +39,7 @@
   $effect(() => void (aiOn() && loadAgents()));
   // Claude signs in in the agent panel (which builds the workshop if needed), Codex by a code on OpenAI's site: re-read only while one is awaited (a Codex code shown, or Claude signed out).
   // A check that failed during a sign-in by code keeps the code and the polling: the sign-in is still running.
-  const signIn = (a: AgentAccount) => !!a.signingIn || a.state === "logged-out" || a.state === "no-container";
+  const signIn = (a: AgentAccount) => !!a.signingIn || a.state === "logged-out" || a.state === "no-container" || a.state === "not-downloaded";
   $effect(() => {
     if (!aiOn() || !agents?.some((a) => signIn(a) && (a.login === "panel" || logins[a.id] !== undefined))) return;
     const t = setInterval(() => void loadAgents(), 5_000);
@@ -55,6 +55,8 @@
         return t("settings-agent-docker-absent");
       case "no-container":
         return t("settings-agent-no-container");
+      case "not-downloaded":
+        return t("settings-agent-not-downloaded");
       case "error":
         return t("settings-error", { error: a.error ?? "" });
     }

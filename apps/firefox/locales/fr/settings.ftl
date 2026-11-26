@@ -49,6 +49,7 @@ settings-agent-logged-in = Connecté
 settings-agent-logged-out = Non connecté
 settings-agent-docker-absent = Docker n'est pas lancé : voir Atelier.
 settings-agent-no-container = L'atelier de l'agent n'est pas démarré : voir Atelier.
+settings-agent-not-downloaded = Pas encore téléchargé : il le sera à la première connexion ou ouverture de l'agent.
 settings-agent-device-code = Ouvrez la page de connexion et saisissez le code
 settings-agent-device-waiting = En attente de la connexion…
 settings-agent-device-interrupted = la connexion par code s'est interrompue, recommencez

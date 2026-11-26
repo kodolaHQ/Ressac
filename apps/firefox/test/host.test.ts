@@ -57,6 +57,8 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       RESSAC_PORT_MCP_EXTERNAL: "0",
       // AI on downloads Ressac's models: never from the real web here (a closed local port fails at once).
       RESSAC_EMBED_URL: "http://127.0.0.1:9/embed.gguf",
+      // The fake tools stand in for the agents' CLIs: never downloaded here.
+      RESSAC_TEST_CLI_PRESENT: "1",
       ...env,
     },
   });
@@ -214,7 +216,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     await h.rpc.request("agent.start", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => ready() > 1);
     const shape = () => (existsSync(join(h.root, "fake-docker-shape")) ? readFileSync(join(h.root, "fake-docker-shape"), "utf8") : "");
-    expect(shape()).toBe("1-workshop");
+    expect(shape()).toBe("2-workshop");
     await h.rpc.request("agent.closeWindow", { window: "f1" });
     const removals = () => readFileSync(join(h.root, "fake-docker-calls.log"), "utf8").split("\n").filter((l) => l === "rm -f ressac-workshop").length;
     const before = removals();

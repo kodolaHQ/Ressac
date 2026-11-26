@@ -68,7 +68,7 @@ if (args[0] === "inspect") {
   if (failing || (args[3] === "ressac-workshop" && existsSync(removedMark()))) quit(1, "", "No such object");
   const format = args[2] ?? "";
   if (format.includes("State.Running")) quit(0, "true\n");
-  const shape = existsSync(shapeFile()) ? readFileSync(shapeFile(), "utf8") : "1-browser";
+  const shape = existsSync(shapeFile()) ? readFileSync(shapeFile(), "utf8") : "2-browser";
   if (format === '{{index .Config.Labels "ressac.shape"}}') quit(0, `${shape}\n`);
   const dockerfile = join(__dirname, "..", "..", "..", "..", "packages", "kernel", "docker", "workshop.Dockerfile");
   // Same recipe as the kernel's dockerfileHash: Dockerfile, network module, run-flags version.
