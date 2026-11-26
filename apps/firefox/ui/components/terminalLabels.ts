@@ -22,3 +22,12 @@ export function labelsOn(row: Row): { label: string; start: number; end: number 
   }
   return [...text.matchAll(LABELS)].map((m) => ({ label: m[0], start: columns[m.index]!, end: columns[m.index + m[0].length - 1]! }));
 }
+
+/**
+ * `text` without bracketed-paste markers: a clipboard a page set could hold `\x1b[201~`, end the paste early and have
+ * the rest (a `\r` included) taken as keystrokes. Removed until none is left: removing one may join another.
+ */
+export function withoutPasteMarkers(text: string): string {
+  for (let prev = ""; prev !== text; ) [prev, text] = [text, text.replace(/\x1b\[20[01]~/g, "")];
+  return text;
+}

@@ -160,6 +160,28 @@ it("a paste with nothing to mask is written at once, with no bubble; the reminde
   expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [BUBBLE], "agent")).toBe(false);
 });
 
+it("a paste reaches the host as a paste: a key in it is not exempt, and a pasted end marker cannot end the paste and submit", async () => {
+  w = await launchRessac({ env: { RESSAC_HOST_TEST: "1" } });
+  m = w.marionette;
+  await m.setContext("chrome");
+  await waitFor(m, "return !!window.ressacWindow && gBrowser.tabs.some((t) => t.hasAttribute('ressac-parking'))", (v) => v === true);
+  await terminalReady();
+  await inUi(m, "ui.ressac.agent.write(arguments[0]); return true;", ["bracketed\r"], "agent");
+  // Printed after the mode switch: once shown, xterm brackets pastes.
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('bracketed on')", [], 10_000, "agent");
+  const key = "ghp_x7Kq9LmN2pRs4TuVw6YzA8bC" + "dEfGhJ1kMn3P";
+  await paste(`clé ${key}\x1b[201~\rpwned`);
+  await click(m, '[data-testid="mask-paste-clear"]', { frame: "agent" });
+  // The clipboard's marker is gone: one paste, its \r inside it, closed by xterm's own marker.
+  await expect.poll(input, { timeout: 10_000 }).toContain(`\x1b[200~clé ${key}\rpwned\x1b[201~`);
+  const windowId = (await state(m)).windows[0]!.id;
+  const hit = await m.execute(
+    `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/ressac/store.sys.mjs").ready).agent.request("debug.outflowCheck", { window: arguments[0], text: arguments[1] }))();`,
+    [windowId, `fix ${key}`],
+  );
+  expect(hit).toMatchObject({ kind: "api-key" });
+});
+
 it("the panel's context prefix for a tab whose title holds an IBAN reaches the agent with its label", async () => {
   await launch();
   const url = `${server.url}/releve.html`;

@@ -85,6 +85,13 @@ test("a paste split across chunks is not exempt, its markers cut anywhere", () =
   expect(pastedThenRead("\x1b[200~code 4815B", "\r\x1b[201~", "\r").check("w", "code 4815B")).toMatchObject({ source: "mail.example.fr" });
 });
 
+test("a flagged paste holding an unclosed start marker leaves later typing as typed", () => {
+  const o = pastedThenRead(["\x1b[200~x", { pasted: true }], "code 4815B\r");
+  expect(o.check("w", "code 4815B")).toBeUndefined();
+  // Nor a cut escape that the next keystrokes would complete into a start marker.
+  expect(pastedThenRead(["x\x1b[20", { pasted: true }], "0~code 4815B\r").check("w", "code 4815B")).toBeUndefined();
+});
+
 test("typed words around a paste stay exempt", () => {
   const o = pastedThenRead("tarif \x1b[200~4815B\x1b[201~ hotel\r");
   expect(o.check("w", "tarif")).toBeUndefined();

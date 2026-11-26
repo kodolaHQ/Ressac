@@ -384,7 +384,10 @@ export class Outflow {
       w.buffer += c;
       w.origin += w.paste || o?.pasted ? "p" : "t";
     };
-    const s = w.carry + data;
+    // A flagged paste is all pasted, whatever markers it holds: it never leaves the paste state or a cut escape to the
+    // next keystrokes, nor takes theirs.
+    const before = { paste: w.paste, carry: w.carry };
+    const s = o?.pasted ? data : w.carry + data;
     w.carry = "";
     for (let i = 0; i < s.length; ) {
       const c = s[i]!;
@@ -411,6 +414,7 @@ export class Outflow {
       } else if (c === "\x03" || c === "\x15") w.buffer = w.origin = "";
       else if (c >= " " || c === "\t") add(c);
     }
+    if (o?.pasted) Object.assign(w, before);
     w.buffer = w.buffer.slice(-TYPED_MAX);
     w.origin = w.origin.slice(-TYPED_MAX);
   }

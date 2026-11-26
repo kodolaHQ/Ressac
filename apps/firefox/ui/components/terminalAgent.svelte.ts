@@ -3,7 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import type { AgentPanelState } from "../../shared/api";
 import { api } from "../state.svelte";
-import { labelsOn } from "./terminalLabels";
+import { labelsOn, withoutPasteMarkers } from "./terminalLabels";
 
 /**
  * The window's agent terminal: **a single** xterm, subscribed only once to the session's data. The side panel and
@@ -34,7 +34,7 @@ let pasting = false;
 function paste(text: string): void {
   pasting = true;
   try {
-    terminal?.paste(text);
+    terminal?.paste(withoutPasteMarkers(text));
   } finally {
     pasting = false;
   }
