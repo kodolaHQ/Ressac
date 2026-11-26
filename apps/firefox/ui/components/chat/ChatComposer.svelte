@@ -73,7 +73,9 @@
   const REF_ICONS: Record<RefId, IconName> = { tab: "tab", page: "globe", history: "clock", bookmark: "bookmark" };
   type Item = { key: string; label: string; hint?: string; icon?: IconName; disabled?: boolean; run: () => void };
   const own = $derived(chat.view?.summary.engine === "own");
+  /** A tab matches anywhere in its title or address; a mode or an agent by the start of its name. */
   const has = (q: string, ...s: string[]) => s.some((x) => x.toLowerCase().includes(q.toLowerCase().trim()));
+  const starts = (q: string, ...names: string[]) => matching([{ aliases: names }], q.trim()).length > 0;
   /** The tabs the agent can see (the host checks again at send): no private space's, no Ressac page. */
   const openTabs = $derived.by(() => {
     const st = appState.value;
@@ -106,8 +108,8 @@
     if (m.kind === "option" && m.command === "mode")
       return (["browser", "workshop"] as const)
         .map((mode) => ({ key: mode, label: t(mode === "workshop" && !labOn() ? "agent-panel-mode-workshop-lab" : `agent-panel-mode-${mode}`), disabled: mode === "workshop" && (!labOn() || own), run: () => void pickOption({ mode }) }))
-        .filter((i) => has(m.query, i.label));
-    if (m.kind === "option") return profiles.filter((p) => has(m.query, p.name, p.id)).map((p) => ({ key: p.id, label: p.name, run: () => void pickOption({ profile: p.id }) }));
+        .filter((i) => starts(m.query, i.label, i.key));
+    if (m.kind === "option") return profiles.filter((p) => starts(m.query, p.name, p.id)).map((p) => ({ key: p.id, label: p.name, run: () => void pickOption({ profile: p.id }) }));
     if (m.kind === "ref")
       return matching(REFS, m.query).map((r) => ({ key: r.id, label: `@${t(`chat-ref-${r.id}`)}`, hint: t(`chat-ref-${r.id}-hint`), icon: REF_ICONS[r.id], disabled: r.id === "page" && !shown, run: () => void pickRef(r.id) }));
     if (m.ref === "tab")
