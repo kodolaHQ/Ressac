@@ -866,9 +866,12 @@ async function openChat(o: OpenOptions) {
       throw err;
     }
   } finally {
-    if (chatOpens.get(o.chatId) === slot) chatOpens.delete(o.chatId);
-    chatPrep.delete(o.chatId);
-    repushChat(o.chatId);
+    // A newer open (select, retry) owns the slot and its « preparing » state then: left as they are.
+    if (chatOpens.get(o.chatId) === slot) {
+      chatOpens.delete(o.chatId);
+      chatPrep.delete(o.chatId);
+      repushChat(o.chatId);
+    }
   }
 }
 
