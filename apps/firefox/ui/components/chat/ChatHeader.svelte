@@ -51,7 +51,7 @@
     <div class="chip-wrap" bind:this={menu}>
       <button class="chip" data-testid="chat-mode-chip" aria-haspopup="menu" aria-expanded={menuOpen} title={t("chat-menu")} onclick={() => (menuOpen = !menuOpen)}>
         {modeName(own ? "browser" : summary.mode)} · {engineName(summary.profile)}{#if own && chat.view?.remote}
-          · <span class="remote" data-testid="chat-engine-remote" title={t("chat-engine-own-remote-title", { host: chat.view.remote })}>{t("chat-engine-own-remote")}</span>{/if}
+          · <span class="remote" data-testid="chat-engine-remote" out:fade={{ duration: chat.visible ? 150 : 0 }} title={t("chat-engine-own-remote-title", { host: chat.view.remote })}>{t("chat-engine-own-remote")}</span>{/if}
       </button>
       {#if menuOpen}
         <div class="menu" role="menu" aria-label={t("chat-menu")} out:fade={{ duration: chat.visible ? 150 : 0 }}>
@@ -92,7 +92,7 @@
   .chip-wrap { position: relative; flex: none; }
   .chip { padding: 3px 8px; border-radius: 999px; border: 0; background: var(--bg-hover); color: var(--text-muted); font: 11.5px/1.4 var(--font-ui); white-space: nowrap; }
   .chip:hover { color: var(--text); }
-  .remote { color: var(--in-progress); }
+  .remote { display: inline-block; color: var(--in-progress); animation: ressac-rise var(--spring-d) var(--spring) backwards; }
   .icon { flex: none; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text); }
   .icon.muted { color: var(--text-muted); }
   .icon:hover { background: var(--bg-hover); }

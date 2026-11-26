@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { apiUrlProblem, DEFAULT_OWN_ENGINE, OwnEngineSchema, type OwnEngine } from "../../shared/settings";
+  import { apiUrlProblem, DEFAULT_OWN_ENGINE, isOnMac, OwnEngineSchema, type OwnEngine } from "../../shared/settings";
   import { api, appState } from "../state.svelte";
   import { t } from "../i18n.svelte";
   import OllamaModelPicker from "./OllamaModelPicker.svelte";
@@ -14,8 +14,11 @@
   /** The field a refusal of the whole setting shows under: the kind's address. */
   const urlField = (e: OwnEngine): Field => (e.kind === "ollama" ? "ollamaUrl" : "apiUrl");
 
-  /** Validated here, then by the host (Ollama on this Mac only): a refused value stays in the field with its message. */
-  async function choose(next: OwnEngine, field: Field) {
+  /**
+   * Validated here, then by the host (Ollama on this Mac only): a refused value stays in the field with its message.
+   * Resolves to the engine saved, null when refused.
+   */
+  async function choose(next: OwnEngine, field: Field): Promise<OwnEngine | null> {
     const problem =
       field === "apiUrl" && next.apiUrl && apiUrlProblem(next.apiUrl)
         ? t("agent-engine-url-invalid-https")
@@ -23,16 +26,23 @@
           ? null
           : t(field.endsWith("Url") ? "agent-engine-url-invalid" : "agent-engine-model-invalid");
     problems = { ...problems, [field]: problem ?? undefined };
-    if (problem) return;
+    if (problem) return null;
     const r = await s.chooseOwnEngine(next);
     problems = { ...problems, [field]: r.ok ? undefined : r.error };
     checked = null;
+    return r.ok ? next : null;
   }
-  const change = (field: Field, value: string) => void choose({ ...engine, [field]: value.trim() }, field);
-  // The saved setting, asked again: one the host refused at start (an address it no longer accepts) shows its refusal here.
+  /** The last save from this page: « Enregistrer la clé » waits for it, so the key binds to the address really saved. */
+  let saving: Promise<OwnEngine | null | undefined> = Promise.resolve(undefined);
+  const save = (next: OwnEngine, field: Field) => void (saving = choose(next, field));
+  const change = (field: Field, value: string) => save({ ...engine, [field]: value.trim() }, field);
+  // The saved setting, asked again once loaded: one the host refused at start (an address it no longer accepts) shows its refusal here.
+  let rechecked = false;
   $effect(() => {
+    const saved = appState.value?.settings.ownEngine;
+    if (!saved || rechecked) return;
+    rechecked = true;
     untrack(() => {
-      const saved = engine;
       void s.chooseOwnEngine(saved).then((r) => {
         if (!r.ok) problems = { ...problems, [urlField(saved)]: r.error };
       });
@@ -40,23 +50,22 @@
   });
 
   const model = $derived(engine.kind === "ollama" ? engine.ollamaModel : engine.apiModel);
-  // Loopback as the host's `isOnMac` sees it (no DNS): anything else is off this Mac.
-  const remoteHost = $derived.by(() => {
-    if (engine.kind !== "api" || !engine.apiUrl) return null;
-    try {
-      const u = new URL(engine.apiUrl);
-      return ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname) ? null : u.host;
-    } catch {
-      return null;
-    }
-  });
+  // The host's rule (shared): anything not on loopback is off this Mac. A saved apiUrl always parses.
+  const remoteHost = $derived(engine.kind === "api" && engine.apiUrl && !isOnMac(engine.apiUrl) ? new URL(engine.apiUrl).host : null);
 
   let keySaved = $state(false);
   let key = $state("");
   let keyError = $state<string | null>(null);
   $effect(() => void s.ownKeySaved().then((k) => (keySaved = k)));
   async function saveKey() {
-    const r = await s.setOwnKey(key.trim(), engine.apiUrl);
+    // A URL typed just before (its change still with the host) decides where the key goes; a refused one takes no key.
+    const pending = saving;
+    const saved = await pending;
+    if (saving === pending) saving = Promise.resolve(undefined);
+    if (problems.apiUrl) return void (keyError = problems.apiUrl);
+    const url = saved?.apiUrl ?? engine.apiUrl;
+    if (!url) return;
+    const r = await s.setOwnKey(key.trim(), url);
     key = "";
     keyError = r.ok ? null : r.error;
     if (r.ok) keySaved = true;
@@ -106,7 +115,7 @@
   <SettingsRow label={t("agent-engine-label")} labelId="own-engine-label" help={t("own-help")}>
     <div class="kinds" role="radiogroup" aria-labelledby="own-engine-label">
       {#each [["ollama", "own-kind-ollama"], ["api", "own-kind-api"]] as const as [kind, name] (kind)}
-        <label><input type="radio" name="own-engine" data-testid="own-kind-{kind}" checked={engine.kind === kind} onchange={() => void choose({ ...engine, kind }, kind === "ollama" ? "ollamaUrl" : "apiUrl")} />{t(name)}</label>
+        <label><input type="radio" name="own-engine" data-testid="own-kind-{kind}" checked={engine.kind === kind} onchange={() => save({ ...engine, kind }, kind === "ollama" ? "ollamaUrl" : "apiUrl")} />{t(name)}</label>
       {/each}
     </div>
     {#snippet below()}

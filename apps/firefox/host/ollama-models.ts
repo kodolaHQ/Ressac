@@ -1,5 +1,5 @@
 import { withoutV1, withV1 } from "./claude-engine.ts";
-import { modelField } from "../shared/settings.ts";
+import { macSideUrl, modelField } from "../shared/settings.ts";
 import { hostSay } from "./locale.ts";
 
 /** `cloud`: an Ollama cloud model (pulled as `…-cloud`, `remote_host` set): its prompts go to ollama.com, not this Mac. */
@@ -7,12 +7,7 @@ export type OllamaModels = { ok: true; models: { name: string; size?: string; cl
 
 const down = (): OllamaModels => ({ ok: false, error: hostSay("host-ollama-down") });
 
-/** The Mac cannot resolve the container alias: it reaches the same Ollama on loopback. */
-export const macSideUrl = (url: string): string => {
-  const u = new URL(url);
-  if (u.hostname === "host.docker.internal") u.hostname = "127.0.0.1";
-  return u.href;
-};
+export { macSideUrl };
 
 /** Where the relay (on the Mac) forwards an Ollama session: Claude Code appends /v1/messages, Codex appends /responses. */
 export const ollamaRelayTarget = (url: string, profile: "claude" | "codex"): string => (profile === "claude" ? withoutV1(macSideUrl(url)).replace(/\/$/, "") : withV1(macSideUrl(url)));

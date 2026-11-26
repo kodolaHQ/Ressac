@@ -63,31 +63,33 @@ async function maybeHold(res: ServerResponse): Promise<boolean> {
   return !res.destroyed;
 }
 
+const routes: NonNullable<Parameters<typeof startServer>[0]>["routes"] = {
+  "/api/tags": (req, res) => void readBody(req).then(() => json(res, 200, { models: [{ name: MODEL, details: { parameter_size: "4B" } }, { name: "gros:cloud", remote_host: "https://ollama.com:443" }] })),
+  "/api/show": (req, res) => void readBody(req).then(() => json(res, 200, { details: {} })),
+  "/api/chat": (req, res) =>
+    void readBody(req).then(async (body) => {
+      if (await maybeHold(res)) json(res, 200, { message: { content: step(body) }, prompt_eval_count: 200 });
+    }),
+  "/v1/models": (req, res) => void readBody(req).then(() => json(res, 200, { data: [{ id: "gpt-test" }, { id: "autre-modele" }] })),
+  "/v1/chat/completions": (req, res) =>
+    void readBody(req).then((body) => {
+      if (fake.refuseJsonSchema && body.response_format?.type === "json_schema") return json(res, 400, { error: { message: "response_format json_schema is not supported" } });
+      // Réglages' check (« Reply OK. ») or a loop step.
+      if (body.messages?.[0]?.content === "Reply OK.") return json(res, 200, { choices: [{ message: { content: "OK" } }] });
+      json(res, 200, { choices: [{ message: { content: step(body) } }], usage: { prompt_tokens: 200 } });
+    }),
+};
 let model: Awaited<ReturnType<typeof startServer>>;
+let other: Awaited<ReturnType<typeof startServer>>;
 let site: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => {
-  model = await startServer({
-    routes: {
-      "/api/tags": (req, res) => void readBody(req).then(() => json(res, 200, { models: [{ name: MODEL, details: { parameter_size: "4B" } }, { name: "gros:cloud", remote_host: "https://ollama.com:443" }] })),
-      "/api/show": (req, res) => void readBody(req).then(() => json(res, 200, { details: {} })),
-      "/api/chat": (req, res) =>
-        void readBody(req).then(async (body) => {
-          if (await maybeHold(res)) json(res, 200, { message: { content: step(body) }, prompt_eval_count: 200 });
-        }),
-      "/v1/models": (req, res) => void readBody(req).then(() => json(res, 200, { data: [{ id: "gpt-test" }, { id: "autre-modele" }] })),
-      "/v1/chat/completions": (req, res) =>
-        void readBody(req).then((body) => {
-          if (fake.refuseJsonSchema && body.response_format?.type === "json_schema") return json(res, 400, { error: { message: "response_format json_schema is not supported" } });
-          // Réglages' check (« Reply OK. ») or a loop step.
-          if (body.messages?.[0]?.content === "Reply OK.") return json(res, 200, { choices: [{ message: { content: "OK" } }] });
-          json(res, 200, { choices: [{ message: { content: step(body) } }], usage: { prompt_tokens: 200 } });
-        }),
-    },
-  });
+  model = await startServer({ routes });
+  // A second provider (another origin) for the key's binding.
+  other = await startServer({ routes });
   site = await startServer({ routes: { "/ville": (_req, res) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end("<title>Ville</title><p>La ville est Lyon.</p>") } });
 });
 afterAll(async () => {
-  await Promise.all([model?.close(), site?.close()]);
+  await Promise.all([model?.close(), other?.close(), site?.close()]);
   rmSync(temp, { recursive: true, force: true });
 });
 
@@ -98,6 +100,8 @@ beforeEach(() => {
   Object.assign(fake, { script: [], refuseJsonSchema: false, hold: false, heldClosed: false });
   rmSync(logFile, { force: true });
   rmSync(goFile, { force: true });
+  // Each test starts without a saved key (the keychain stand-in files: keychain.own and its origin).
+  for (const f of readdirSync(temp)) if (f.startsWith("keychain")) rmSync(join(temp, f), { force: true });
 });
 afterEach(async () => {
   await w?.close();
@@ -329,4 +333,38 @@ it("une API hors du Mac est signalée dans Réglages, sur la puce et sous la sai
   expect(await textOf("chat-engine-remote")).toBe("en ligne");
   expect(await waitAgent<string>("return doc.querySelector('[data-testid=\"chat-engine-remote\"]')?.title")).toContain("vont à 127.0.0.2");
   expect(await textOf("chat-sent-to")).toBe("Envoyé à 127.0.0.2.");
+});
+
+it("une clé saisie juste après une nouvelle adresse va à cette adresse", async () => {
+  await launch();
+  await openSettings();
+  await click(m, `${OWN} [data-testid="own-kind-api"]`);
+  await fill("api-url", `${model.url}/v1`);
+  await ownSaved((e) => e.kind === "api" && e.apiUrl === `${model.url}/v1`);
+  // Provider B's address then its key, saved at once in one script (a Marionette round trip would let the host answer
+  // first): the address's change is still with the host when « Enregistrer la clé » is pressed.
+  await inUi(
+    m,
+    `const q = (id) => doc.querySelector(arguments[0] + ' [data-testid="' + id + '"]');
+     const url = q("api-url");
+     url.value = arguments[1];
+     url.dispatchEvent(new ui.Event("change", { bubbles: true }));
+     const key = q("api-key");
+     key.value = arguments[2];
+     key.dispatchEvent(new ui.Event("input", { bubbles: true }));
+     await Promise.resolve(); // the button arms on Svelte's microtask flush
+     if (q("api-key-save").disabled) throw new Error("save not armed");
+     q("api-key-save").click();`,
+    [OWN, `${other.url}/v1`, KEY],
+  );
+  await waitUi(m, "return !!doc.querySelector(arguments[0])", [`${OWN} [data-testid="api-key-saved"]`]);
+  const to = (s: { url: string }) => logged().filter((l) => l.path === "/v1/models" && `http://${l.headers.host}` === s.url);
+  // The list read again with the key: it went to B.
+  await expect.poll(() => to(other).some((l) => l.headers.authorization === `Bearer ${KEY}`), { timeout: 15_000 }).toBe(true);
+  // Back on A: the list is asked without the key, and Réglages says why.
+  await fill("api-url", `${model.url}/v1`);
+  await ownSaved((e) => e.apiUrl === `${model.url}/v1`);
+  await waitUi(m, "return !!doc.querySelector(arguments[0])", [`${OWN} [data-testid="own-key-not-sent"]`]);
+  expect(to(model).length).toBeGreaterThan(0);
+  expect(to(model).every((l) => !l.headers.authorization)).toBe(true);
 });

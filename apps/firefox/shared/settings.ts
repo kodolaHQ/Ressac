@@ -132,7 +132,27 @@ export const OwnEngineSchema: z.ZodType<OwnEngine> = z.object({
   apiModel: modelField,
 });
 
-/** null when the address is https://, or http:// to this Mac (loopback, as `isOnMac` in host/own-model.ts): the key must not travel in clear over the network. */
+/** The Mac cannot resolve the container alias: it reaches the same service on loopback. */
+export const macSideUrl = (url: string): string => {
+  const u = new URL(url);
+  if (u.hostname === "host.docker.internal") u.hostname = "127.0.0.1";
+  return u.href;
+};
+
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
+/** The address parsed, with the container alias mapped to loopback, when it is on this Mac (exact hostname, no DNS); else null. */
+export function onMacUrl(url: string): URL | null {
+  try {
+    const u = new URL(macSideUrl(url));
+    return (u.protocol === "http:" || u.protocol === "https:") && !u.username && !u.password && LOOPBACK.has(u.hostname) ? u : null;
+  } catch {
+    return null;
+  }
+}
+/** True when `url` points at this Mac (loopback): its model's traffic stays local (host and Réglages alike). */
+export const isOnMac = (url: string): boolean => onMacUrl(url) !== null;
+
+/** null when the address is https://, or http:// to this Mac (loopback, as `isOnMac`): the key must not travel in clear over the network. */
 export function apiUrlProblem(url: string): string | null {
   try {
     const u = new URL(url);

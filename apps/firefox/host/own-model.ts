@@ -1,8 +1,7 @@
 import { withoutV1 } from "./claude-engine.ts";
 import type { Keychain } from "./keychain.ts";
 import { hostSay } from "./locale.ts";
-import { macSideUrl } from "./ollama-models.ts";
-import { apiUrlProblem, type OwnEngine } from "../shared/settings.ts";
+import { apiUrlProblem, isOnMac, onMacUrl as onMac, type OwnEngine } from "../shared/settings.ts";
 
 export type ModelMessage = { role: "system" | "user" | "assistant"; content: string };
 /** One model reply for the loop (core/agent/chat/own.ts). `promptTokens`: the reply's own prompt count, null when absent. */
@@ -10,20 +9,7 @@ export interface ModelClient {
   step(messages: ModelMessage[], schema: object, signal: AbortSignal): Promise<{ content: string; promptTokens: number | null }>;
 }
 
-const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
-
-/** The address parsed, with the container alias mapped to loopback, when it is on this Mac (exact hostname, no DNS); else null. */
-function onMac(url: string): URL | null {
-  try {
-    const u = new URL(macSideUrl(url));
-    return (u.protocol === "http:" || u.protocol === "https:") && !u.username && !u.password && LOOPBACK.has(u.hostname) ? u : null;
-  } catch {
-    return null;
-  }
-}
-
-/** True when `url` points at this Mac (loopback): its model's traffic stays local. */
-export const isOnMac = (url: string): boolean => onMac(url) !== null;
+export { isOnMac };
 
 /** The Ollama base for the host's requests: loopback only (`localhost` → 127.0.0.1), no trailing /v1 or slash. */
 export function ollamaBase(url: string): string {
