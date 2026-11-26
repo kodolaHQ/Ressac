@@ -33,8 +33,10 @@
     term.loadAddon(fit);
     term.open(host);
     fit.fit();
-    // A sign-in code pasted here goes to the CLI only: the host keeps the login's keys away from any agent.
-    term.onData((d) => api.agent.write(d));
+    // Keys go out only once the host's login runs: it then routes agent.write to the login (logins.write), never to an
+    // agent session or the outflow. Before that, the same call would take the agent terminal's path.
+    let running = false;
+    term.onData((d) => running && api.agent.write(d));
     const offData = api.agent.onData((d) => term.write(d));
     const resize = () => {
       fit.fit();
@@ -42,7 +44,10 @@
     };
     const obs = new ResizeObserver(resize);
     obs.observe(host);
-    void api.chat.login().then(resize);
+    void api.chat.login().then(() => {
+      running = true;
+      resize();
+    });
     term.focus();
     cleanup = () => {
       obs.disconnect();

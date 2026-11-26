@@ -1,15 +1,16 @@
 import { LABELS } from "../../../../../packages/kernel/src/mask/table";
 
 /**
- * The agent's text as HTML, for `{@html}`: paragraphs, lists, `**bold**`, `*em*`, inline and fenced code, http(s) and
- * mailto links. Everything else is escaped: no HTML from the agent (or a page it read) ever reaches the panel as markup.
+ * The agent's text as HTML, for `{@html}`: paragraphs, lists, `**bold**`, `*em*`, inline and fenced code, http(s)
+ * links. Everything else is escaped: no HTML from the agent (or a page it read) ever reaches the panel as markup.
  */
 
 /** A masked label's chip, built by the caller (its own markup, trusted): `type` is the label's kind (`nom`, `iban`…). */
 export type Chip = (label: string, type: string) => string;
 
 export const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-const SAFE_URL = /^(https?:\/\/|mailto:)/i;
+/** A mailto: link stays text: the chrome has no mail opener for the panel. */
+const SAFE_URL = /^https?:\/\//i;
 
 /** Escaped text with its labels as chips (a user's message, a link's text). */
 export function renderPlain(text: string, chip?: Chip): string {

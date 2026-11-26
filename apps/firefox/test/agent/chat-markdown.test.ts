@@ -25,7 +25,9 @@ test("fenced code is kept verbatim and escaped", () => {
   expect(html).toContain("<p>apres</p>");
 });
 
-test("only http(s) and mailto links become links", () => {
+test("only http(s) links become links", () => {
+  expect(renderMarkdown("[m](mailto:a@b.fr)")).not.toContain("<a");
+  expect(renderMarkdown("[l](http://localhost:3000)")).toBe('<p><a href="http://localhost:3000" rel="noopener">l</a></p>');
   expect(renderMarkdown("[x](javascript:alert(1))")).not.toContain("<a");
   expect(renderMarkdown("[x](javascript:alert(1))")).toContain("[x](javascript:alert(1))");
   expect(renderMarkdown("[x](https://a.fr)")).toBe('<p><a href="https://a.fr" rel="noopener">x</a></p>');

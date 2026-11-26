@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { ChatItem } from "../../../shared/chat";
   import { api } from "../../state.svelte";
   import { t } from "../../i18n.svelte";
@@ -9,6 +10,11 @@
   let picks = $state<Record<string, string[]>>({});
   /** Answered here: the buttons go at once, before the host's view comes back. */
   let sent = $state(false);
+  // Each view the host pushes is a new item: a card still unanswered there takes presses again (an answer lost on the way).
+  $effect(() => {
+    void item;
+    untrack(() => (sent = false));
+  });
   const oneClick = $derived(item.questions.length === 1 && !item.questions[0]!.multiSelect);
   const complete = $derived(item.questions.every((q) => picks[q.question]?.length));
 

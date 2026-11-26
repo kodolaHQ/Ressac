@@ -195,17 +195,34 @@
   $effect(() => {
     if (!chatMode) chat.listOpen = false;
   });
+  // The host says when the window's panel is in « Mode avancé » (a UI reload forgets it): the terminal shows again.
+  $effect(() => {
+    if (chat.view?.advanced) untrack(() => (advanced = true));
+  });
+  /** A failed switch between the chat and the terminal, said in the panel until the next one. */
+  let switchError = $state<string | null>(null);
+  const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
   /** « Mode avancé »: the discussion pauses, the window's terminal resumes its conversation. */
   async function toTerminal() {
+    switchError = null;
     const had = terminalAgent.exists();
-    await api.chat.toTerminal();
+    try {
+      await api.chat.toTerminal();
+    } catch (e) {
+      return void (switchError = reason(e));
+    }
     advanced = true;
     // A terminal made earlier needs a new start; a first one starts as it attaches.
     if (had) terminalAgent.reset();
   }
   /** « Revenir au chat »: the terminal stops, the discussion resumes. */
   async function toChat() {
-    await api.chat.toChat();
+    switchError = null;
+    try {
+      await api.chat.toChat();
+    } catch (e) {
+      return void (switchError = reason(e));
+    }
     advanced = false;
   }
   const chatReview = (id: number, choice: "keep" | "revert") => Promise.resolve(api.chat.review(id, choice));
@@ -396,6 +413,9 @@
   {/each}
   {#if masking.notice}
     <p class="mask-banner" role="status" data-testid="agent-mask-notice" out:fade={{ duration: visible ? 150 : 0 }}>{masking.notice.slice(0, 300)}</p>
+  {/if}
+  {#if switchError}
+    <p class="mask-banner" role="alert" data-testid="chat-switch-error" out:fade={{ duration: visible ? 150 : 0 }}>{t("chat-switch-failed", { message: switchError.slice(0, 300) })}</p>
   {/if}
   {#if signedOutCodex && !chatMode}
     <p class="message">{t("agent-panel-codex-signed-out")}</p>

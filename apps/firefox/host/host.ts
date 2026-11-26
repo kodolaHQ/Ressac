@@ -765,7 +765,7 @@ const decorated = (win: string, view: ChatView): ChatView => {
   const preparing = chatPrep.get(id);
   const waiting = chatSend.waiting(id);
   const prefix = chats.active(win)?.summary.id === id ? chatSend.prefixOf(win) : null;
-  return { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}), ...(prefix ? { prefix } : {}) };
+  return { ...view, ...(preparing ? { preparing } : {}), ...(waiting ? { waiting } : {}), ...(prefix ? { prefix } : {}), ...(terminalWindows.has(win) ? { advanced: true as const } : {}) };
 };
 const pushChat = (win: string, view: ChatView) => {
   chatViews.set(view.summary.id, { win, view });

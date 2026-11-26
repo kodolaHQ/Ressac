@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import { fade } from "svelte/transition";
   import { LABELS } from "../../../../../packages/kernel/src/mask/table";
   import { api } from "../../state.svelte";
@@ -54,6 +54,7 @@
   let previews = 0;
   $effect(() => {
     const draft = text;
+    void chat.view?.summary.id;
     const n = ++previews;
     if (!draft.trim()) return void ((chips = []), (clear = []));
     const timer = setTimeout(async () => {
@@ -65,6 +66,23 @@
     }, 250);
     return () => clearTimeout(timer);
   });
+  // Another discussion: its table gives other labels, so the chips and « en clair » choices start again (the preview reruns).
+  $effect(() => {
+    void chat.view?.summary.id;
+    untrack(() => ((chips = []), (clear = []), (menuFor = null)));
+  });
+  // A press outside the chip's menu or Échap closes it.
+  $effect(() => {
+    if (menuFor === null) return;
+    const away = (e: PointerEvent) => !(e.target as Element).closest?.(".chip-wrap") && (menuFor = null);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && (menuFor = null);
+    window.addEventListener("pointerdown", away, true);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("pointerdown", away, true);
+      window.removeEventListener("keydown", key);
+    };
+  });
   const toggleClear = (label: string) => {
     clear = clear.includes(label) ? clear.filter((l) => l !== label) : [...clear, label];
     menuFor = null;
@@ -73,13 +91,18 @@
   async function submit() {
     if (!text.trim() || sending) return;
     sending = true;
+    const sent = text;
     const r = await api.chat.send({ text, pasted, clear: [...clear] });
     sending = false;
     if (!r.ok) return void (error = r.error);
-    text = known = "";
-    pasted = [];
-    clear = [];
-    chips = [];
+    // Only what went: text typed while the send was on its way stays, with its pasted ranges.
+    text = text.startsWith(sent) ? text.slice(sent.length) : text;
+    pasted = shiftRanges(pasted, known, text);
+    known = text;
+    if (!text) {
+      clear = [];
+      chips = [];
+    }
     await tick();
     fit();
   }

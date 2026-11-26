@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
+  import { SvelteSet } from "svelte/reactivity";
   import type { ToolKind } from "../../../shared/chat";
   import { api } from "../../state.svelte";
   import { t } from "../../i18n.svelte";
@@ -22,7 +23,10 @@
   const svg = (name: IconName, size: number) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TRACES[name].map((d) => `<path d="${d}"/>`).join("")}</svg>`;
   /** A label the agent wrote: a chip that shows its value here only (MaskBubble), never sent. */
-  const chip: Chip = (label, type) => `<button type="button" class="masked" data-label="${label}" title="${escape(t("chat-reveal"))}">${svg("lock", 11)}${escape(maskedName(type))}</button>`;
+  /** Labels whose value this discussion no longer knows (a paused one's, R2): plain « masqué », no reveal offered. */
+  const unknown = new SvelteSet<string>();
+  const chip: Chip = (label, type) =>
+    unknown.has(label) ? `<span class="masked gone">${svg("lock", 11)}${escape(maskedName(type))}</span>` : `<button type="button" class="masked" data-label="${label}" title="${escape(t("chat-reveal"))}">${svg("lock", 11)}${escape(maskedName(type))}</button>`;
   const copyButton = $derived(`<button type="button" class="copy-code" data-copy aria-label="${escape(t("chat-copy-code"))}" title="${escape(t("chat-copy-code"))}">${svg("copy", 13)}</button>`);
   const markdown = (text: string) => renderMarkdown(text, chip, copyButton);
 
@@ -34,6 +38,7 @@
   async function reveal(label: string) {
     const n = ++asked;
     const value = await api.chat.reveal(label);
+    if (value === null) unknown.add(label);
     if (n === asked) bubble.current = { kind: "reveal", host: wrap, value };
   }
   const copy = (text: string) => void navigator.clipboard.writeText(text).catch(() => {});
@@ -47,7 +52,8 @@
     const link = target.closest<HTMLAnchorElement>("a[href]");
     if (link) {
       e.preventDefault();
-      api.settings.openUrl(link.href);
+      // A new tab of this window; agentReached left out: the agent wrote this address (fail closed).
+      if (/^https?:/i.test(link.href)) api.dispatch({ type: "openTab", windowId: api.windowId, url: link.href, activate: true });
     }
   }
 
@@ -138,7 +144,8 @@
   .copy:hover, .md :global(.copy-code:hover) { background: var(--bg-hover); color: var(--text); }
   /* A masked value: a lock and its kind, tinted by the space's accent; a click shows it here only. */
   .thread :global(.masked) { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; border: 0; background: var(--notice-bg); color: var(--accent); font: 12px/1.4 var(--font-ui); vertical-align: baseline; cursor: pointer; }
-  .thread :global(.masked:hover) { text-decoration: underline; }
+  .thread :global(button.masked:hover) { text-decoration: underline; }
+  .thread :global(.masked.gone) { cursor: default; }
   .thread :global(button:focus-visible), .pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .tool { max-width: 92%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--access-act-bg); color: var(--access-act); font-size: 12px; }
   .tool.read { background: var(--access-read-bg); color: var(--access-read); }

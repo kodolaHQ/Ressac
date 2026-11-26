@@ -392,9 +392,9 @@ export interface ApiRessac {
     review(id: number, choice: "keep" | "revert"): void;
     /** The value behind a label of the active discussion, shown here only; null when unknown (another discussion's, a paused one). */
     reveal(label: string): Promise<string | null>;
-    /** « Mode avancé »: the discussion pauses and the window's terminal resumes its conversation. */
+    /** « Mode avancé »: the discussion pauses and the window's terminal resumes its conversation. Rejects with the host's reason. */
     toTerminal(): Promise<void>;
-    /** « Revenir au chat »: the terminal stops, the discussion resumes. */
+    /** « Revenir au chat »: the terminal stops, the discussion resumes. Rejects with the host's reason. */
     toChat(): Promise<void>;
     /** The CLI's own sign-in in a small terminal, over `agent.onData` / `agent.write` / `agent.resize`. */
     login(): Promise<void>;

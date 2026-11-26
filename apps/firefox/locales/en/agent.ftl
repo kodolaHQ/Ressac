@@ -375,3 +375,4 @@ chat-login-alt = No subscription?
 chat-login-api-key = Use an API key
 chat-login-or = or
 chat-login-local = a local model
+chat-switch-failed = Switching between the terminal and the chat failed: { $message }

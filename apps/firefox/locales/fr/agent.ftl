@@ -376,3 +376,4 @@ chat-login-alt = Pas d'abonnement ?
 chat-login-api-key = Utiliser une clé d'API
 chat-login-or = ou
 chat-login-local = un modèle local
+chat-switch-failed = Le passage au terminal ou au chat a échoué : { $message }
