@@ -117,6 +117,8 @@ export class Chats {
     if (!e) {
       const rec = await this.o.store.read(chatId);
       if (!rec) return null;
+      // A card saved unanswered belongs to a turn that is over: it never takes an answer again.
+      endQuestions(rec);
       e = this.entries.get(chatId) ?? this.entry(rec, "paused");
     }
     const was = e.rec.windowId;
@@ -160,7 +162,8 @@ export class Chats {
   answer(chatId: string, requestId: string, reply: AskReply): void {
     const e = this.entries.get(chatId);
     const q = e?.rec.items.find((i) => i.kind === "question" && i.id === requestId && !i.answer);
-    if (!e?.conv || q?.kind !== "question") return;
+    // Only the running turn waits for an answer: the adapter knows no other card.
+    if (!e?.conv || !e.turn || q?.kind !== "question") return;
     e.conv.answer(requestId, reply);
     q.answer = "cancelled" in reply ? "cancelled" : reply.answers;
     if (e.turn && !openQuestion(e)) e.state = "running";
@@ -358,6 +361,7 @@ export class Chats {
       case "turn_end":
         e.turn = false;
         flush(e);
+        endQuestions(e.rec);
         if (u.stopReason === "error" && u.error === "signed-out") e.state = "signed-out";
         else {
           e.state = "ready";
@@ -382,6 +386,7 @@ export class Chats {
     if (e.conv !== conv) return;
     this.detach(e);
     flush(e);
+    endQuestions(e.rec);
     e.state = "error";
     e.error = x.error ?? `L'agent s'est arrêté (code ${x.code ?? "inconnu"}).`;
     e.rec.updatedAt = this.now();
@@ -421,6 +426,7 @@ export class Chats {
     const conv = this.detach(e);
     if (!live && !conv) return;
     flush(e);
+    endQuestions(e.rec);
     e.state = "paused";
     this.push(e);
     await Promise.all([conv?.close().catch((err) => console.error("[chat] close:", err)), this.save(e)]);
@@ -462,6 +468,11 @@ function flush(e: Entry): void {
   if (!e.streaming) return;
   e.rec.items.push({ kind: "agent", id: e.streaming.messageId, text: e.streaming.text });
   e.streaming = undefined;
+}
+
+/** The turn is over (end, death, pause): its cards still waiting show as never answered. */
+function endQuestions(r: ChatRecord): void {
+  for (const i of r.items) if (i.kind === "question" && !i.answer) i.answer = "cancelled";
 }
 
 function summaryOf(r: ChatRecord): ChatSummary {

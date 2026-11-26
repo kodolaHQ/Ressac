@@ -503,3 +503,43 @@ test("close waits for a close already running and for an open still running (« 
   await pausing2;
   expect(opens[1]!.conv.prompts).toEqual([]);
 });
+
+test("a question still waiting when the turn ends (Arrêter, death, pause) is marked unanswered and takes no answer", async () => {
+  const { chats, opens, onDisk } = prepare();
+  const a = await chats.create("w1", opts);
+  const id = a.summary.id;
+  await tick();
+  const ask = (requestId: string) =>
+    opens.at(-1)!.conv.emit({ type: "request_question", requestId, questions: [{ question: "Laquelle ?", header: "", options: [], multiSelect: false }] });
+  const answerOf = (requestId: string) => chats.active("w1")!.items.find((i) => i.id === requestId);
+  // Cancel while waiting: the turn ends cancelled.
+  chats.prompt(id, "un", "un");
+  ask("q1");
+  chats.cancel(id);
+  opens[0]!.conv.emit({ type: "turn_end", stopReason: "cancelled" });
+  expect(answerOf("q1")).toMatchObject({ answer: "cancelled" });
+  chats.answer(id, "q1", { answers: { "Laquelle ?": "A" } });
+  expect(opens[0]!.conv.answers).toEqual([]);
+  expect(answerOf("q1")).toMatchObject({ answer: "cancelled" });
+  // Process death.
+  chats.prompt(id, "deux", "deux");
+  ask("q2");
+  opens[0]!.conv.die(1);
+  expect(answerOf("q2")).toMatchObject({ answer: "cancelled" });
+  // Pause.
+  await chats.retry(id);
+  await tick();
+  chats.prompt(id, "trois", "trois");
+  ask("q3");
+  await chats.pause(id);
+  expect(answerOf("q3")).toMatchObject({ answer: "cancelled" });
+  await expect.poll(() => onDisk(id).items.find((i: { id: string }) => i.id === "q3")?.answer).toBe("cancelled");
+});
+
+test("a card saved unanswered (the app quit mid-turn) loads as unanswered", async () => {
+  const { chats, store } = prepare();
+  const rec = { id: "old", title: "t", engine: "claude" as const, profile: "claude", mode: "browser" as const, state: "paused" as const, updatedAt: 1, messages: 0, windowId: null, spaceId: "perso", items: [{ kind: "question" as const, id: "q", questions: [] }] };
+  await store.write(rec);
+  const v = await chats.select("w1", "old");
+  expect(v!.items[0]).toMatchObject({ answer: "cancelled" });
+});
