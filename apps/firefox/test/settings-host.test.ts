@@ -149,6 +149,12 @@ describe("settings host", () => {
     expect(exec).not.toHaveBeenCalledWith(["claude", "auth", "logout"]);
   });
 
+  it("logout of a CLI not downloaded execs nothing (the image carries none)", async () => {
+    const { h, exec } = setup({ installed: ["codex"] });
+    await h["settings.logout"]!({ id: "claude" });
+    expect(exec).not.toHaveBeenCalledWith(["claude", "auth", "logout"]);
+  });
+
   it("codex states", async () => {
     let r = { code: 0, stdout: "", stderr: "Logged in using ChatGPT" };
     const { h } = setup({ exec: async (argv) => (argv[0] === "codex" ? r : { code: 0, stdout: '{"loggedIn":false}', stderr: "" }) });

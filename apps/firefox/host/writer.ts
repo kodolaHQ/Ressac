@@ -11,11 +11,13 @@ const TTL_MS = 5 * 60_000;
  * Which agent writes: the preferred one if signed in, else the other, else none; "workshop-stopped" when its accounts
  * cannot be read. `agent` never starts the workshop; `wakeAgent`, for a write, starts it when Ressac's machine is stopped (unless removed or failing).
  */
-export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec" | "ensureStarted" | "harvestReady">; preferred(): WriterAgent; now?(): number }) {
+export function createWriterChoice(o: { workshop: Pick<Workshop, "state" | "exec" | "ensureStarted" | "harvestReady">; preferred(): WriterAgent; installed(a: WriterAgent): Promise<boolean>; now?(): number }) {
   const now = o.now ?? Date.now;
   // The in-flight promise is cached, so parallel cold calls share one status exec; a failed check is not kept.
   const cache = new Map<WriterAgent, { at: number; in: Promise<boolean> }>();
-  const signedIn = (a: WriterAgent): Promise<boolean> => {
+  const signedIn = async (a: WriterAgent): Promise<boolean> => {
+    // The image carries no CLI: one not downloaded yet is not signed in, and is never exec'd (not cached: a download may follow).
+    if (!(await o.installed(a))) return false;
     const hit = cache.get(a);
     if (hit && now() - hit.at < TTL_MS) return hit.in;
     const account = AGENT_ACCOUNTS.find((x) => x.id === a)!;

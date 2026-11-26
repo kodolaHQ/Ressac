@@ -3,7 +3,7 @@ import { createHostWriter, createWriterChoice, type CliState } from "../host/wri
 import { CODEX_WRITER_MODEL, SYSTEM_PROMPT } from "../../../packages/kernel/src/index.ts";
 import { DEFAULT_CLAUDE_ENGINE, DEFAULT_CODEX_ENGINE, type ClaudeEngine, type CodexEngine } from "../shared/settings";
 
-const setup = (state: string, loggedIn: Record<string, boolean>, preferred: "claude" | "codex" = "claude", harvestReady = true) => {
+const setup = (state: string, loggedIn: Record<string, boolean>, preferred: "claude" | "codex" = "claude", harvestReady = true, installed = ["claude", "codex"]) => {
   const calls: string[] = [];
   let t = 0;
   const choice = createWriterChoice({
@@ -24,6 +24,7 @@ const setup = (state: string, loggedIn: Record<string, boolean>, preferred: "cla
       },
     },
     preferred: () => preferred,
+    installed: async (a) => installed.includes(a),
     now: () => t,
   });
   return { choice, calls, advance: (ms: number) => (t += ms) };
@@ -40,6 +41,12 @@ describe("writer choice", () => {
     const s = setup("started", { claude: true, codex: true });
     expect(await s.choice.agent(new Set(["claude"]))).toBe("codex");
     expect(await s.choice.agent(new Set(["claude", "codex"]))).toBeNull();
+  });
+  it("a CLI not downloaded is signed out, never exec'd (the image carries none)", async () => {
+    const s = setup("started", { claude: true, codex: true }, "claude", true, ["codex"]);
+    expect(await s.choice.agent()).toBe("codex");
+    expect(await s.choice.usable("claude")).toBe("signed-out");
+    expect(s.calls).toEqual(["codex"]);
   });
   it("is null when both are signed out", async () => {
     expect(await setup("started", {}).choice.agent()).toBeNull();
@@ -67,6 +74,7 @@ describe("writer choice", () => {
       const choice = createWriterChoice({
         workshop: { state: async () => "machine-stopped" as never, harvestReady: async () => true, ensureStarted: () => new Promise(() => {}), exec: async () => ({ code: 1, stdout: "", stderr: "" }) },
         preferred: () => "claude",
+        installed: async () => true,
       });
       const answer = choice.wakeAgent();
       await vi.advanceTimersByTimeAsync(60_000);
@@ -85,6 +93,7 @@ describe("writer choice", () => {
     const choice = createWriterChoice({
       workshop: { state: async () => "started" as never, harvestReady: async () => true, ensureStarted: async () => "started", exec: async (argv) => { if (argv[0] === "codex") return { code: 0, stdout: "Not logged in", stderr: "" }; n++; if (n === 1) throw new Error("boom"); return { code: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }; } },
       preferred: () => "claude",
+      installed: async () => true,
     });
     expect(await choice.agent()).toBeNull();
     const two = await Promise.all([choice.agent(), choice.agent()]);

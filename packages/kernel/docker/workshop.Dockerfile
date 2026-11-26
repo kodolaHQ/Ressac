@@ -1,5 +1,5 @@
 # Ressac "workshop" container: the agent works in it, isolated from the Mac.
-# The slim base and the cleaned npm cache keep the image at about 1.4 GB (2.3 GB on the full base).
+# The slim base keeps the image small: TODO(size) size measured at build (`docker image ls`).
 # Pinned by digest (Dependabot bumps it); a new digest changes the Dockerfile hash, so testers rebuild the image once.
 FROM node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
 
@@ -7,10 +7,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git ripgrep curl ca-certificates build-essential python3 iptables \
  && rm -rf /var/lib/apt/lists/*
 
-# Installed globally (/usr/local), so outside the volume mounted on /home/node. Pinned: every tester runs the same
-# agents, and « Reconstruire » never picks up a broken or compromised release; a bump changes the hash, so images rebuild.
-RUN npm install -g @anthropic-ai/claude-code@2.1.325 @openai/codex@0.169.0 \
- && npm cache clean --force
+# No agent CLI here: Ressac downloads the pinned Claude Code or Codex into .ressac/cli, first on the PATH (AGENT_CLIS).
 
 # Network lock-down: the allowlist proxy runs as its own user, the rules are applied by root at session start.
 RUN useradd --system --no-create-home --shell /usr/sbin/nologin ressac-proxy

@@ -5,8 +5,10 @@
 export type Agent = "claude" | "codex";
 
 /**
- * The agents' linux-arm64 CLIs, the versions pinned in workshop.Dockerfile: npm's platform packages, one native binary each
+ * The agents' linux-arm64 CLIs (the workshop image carries none): npm's platform packages, one native binary each
  * (`member`, whose file name is `binary`). Claude's is the glibc build the bookworm image needs; Codex's is static (musl).
+ * Pinned: every tester runs the same agents, and a new download never picks up a broken or compromised release. A bump
+ * changes `version`, so each Mac downloads the new CLI once.
  */
 export const AGENT_CLIS: Record<Agent, { version: string; url: string; sha256: string; bytes: number; member: string; binary: string }> = {
   claude: {

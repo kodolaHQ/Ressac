@@ -167,9 +167,9 @@ describe("agent CLI download", () => {
     expect(readFileSync(join(internal, "cli", "claude", "claude"), "utf8")).toContain("echo claude");
   });
 
-  it("the pinned versions are the Dockerfile's", () => {
+  it("the workshop image installs no agent CLI: Ressac downloads the pinned ones", () => {
     const dockerfile = readFileSync(join(__dirname, "../../../packages/kernel/docker/workshop.Dockerfile"), "utf8");
-    expect(/@anthropic-ai\/claude-code@(\S+)/.exec(dockerfile)?.[1]).toBe(AGENT_CLIS.claude.version);
-    expect(/@openai\/codex@(\S+)/.exec(dockerfile)?.[1]).toBe(AGENT_CLIS.codex.version);
+    expect(dockerfile).not.toContain("@anthropic-ai/claude-code");
+    expect(dockerfile).not.toContain("@openai/codex");
   });
 });

@@ -288,7 +288,7 @@ async function readKey(kind: "codex" | "claude"): Promise<string | null> {
 // The profile of windows that have not chosen their agent. One kernel serves every profile: it starts once.
 let defaultProfile = "claude";
 const preferredWriter = (): "claude" | "codex" => profileAgents.get(defaultProfile) ?? (defaultProfile === "codex" ? "codex" : "claude");
-const writerChoice = createWriterChoice({ workshop, preferred: preferredWriter });
+const writerChoice = createWriterChoice({ workshop, preferred: preferredWriter, installed: cli.installed });
 // Each agent's engine (Réglages › Agent): its API key or its Ollama first, its CLI only on its subscription.
 const engineOf = (a: "claude" | "codex"): ClaudeEngine | CodexEngine => (a === "claude" ? claudeEngine : engine);
 const hostWriter = createHostWriter({

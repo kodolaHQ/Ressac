@@ -322,7 +322,7 @@ export function createSettingsHandlers(o: SettingsOptions): Record<(typeof SETTI
     "settings.ollamaModels": (p: { url?: unknown }) => (typeof p?.url === "string" ? listOllamaModels(p.url) : { ok: false, error: "Adresse invalide" }),
     "settings.logout": async (p: { id?: unknown }) => {
       const a = AGENT_ACCOUNTS.find((x) => x.id === p?.id);
-      if (a) await o.workshop.exec(a.logout).catch((e) => console.error("[settings] logout:", e));
+      if (a && (await o.cli.installed(a.id as "claude" | "codex"))) await o.workshop.exec(a.logout).catch((e) => console.error("[settings] logout:", e));
       return agents();
     },
     "settings.workshop": () => o.workshop.state(),
