@@ -36,6 +36,8 @@ export interface OpenOptions {
   resumeId?: string;
   /** Claude: the uuid of a new conversation. */
   sessionId?: string;
+  /** The discussion's model (ChatRecord.model). */
+  model?: string;
 }
 
 interface Entry {
@@ -103,7 +105,7 @@ export class Chats {
     return e ? this.view(e) : null;
   }
 
-  async create(windowId: string, c: { profile: string; mode: "browser" | "workshop"; engine: "claude" | "codex" | "own"; spaceId: string }): Promise<ChatView> {
+  async create(windowId: string, c: { profile: string; mode: "browser" | "workshop"; engine: "claude" | "codex" | "own"; spaceId: string; model?: string }): Promise<ChatView> {
     const t = this.now();
     const rec: ChatRecord = { id: randomUUID(), title: NEW_TITLE, ...c, state: "starting", updatedAt: t, messages: 0, windowId, items: [] };
     const e = this.entry(rec, "starting");
@@ -211,6 +213,25 @@ export class Chats {
     this.live(e);
   }
 
+  /** The discussion's model from the next message on, the same conversation; "" is the engine's default. */
+  async setModel(chatId: string, model: string): Promise<void> {
+    const e = this.entries.get(chatId);
+    if (!e) return;
+    e.rec.model = model || undefined;
+    e.conv?.setModel?.(e.rec.model);
+    this.push(e);
+    await this.save(e);
+  }
+
+  modelOf(chatId: string): string | undefined {
+    return this.entries.get(chatId)?.rec.model;
+  }
+
+  /** The live conversation's model list; null when not live or the engine has none. */
+  models(chatId: string) {
+    return this.entries.get(chatId)?.conv?.models?.() ?? null;
+  }
+
   /** The kernel session id of the live conversation (the masker's key, R1). */
   sessionIdOf(chatId: string): string | null {
     const e = this.entries.get(chatId);
@@ -314,6 +335,7 @@ export class Chats {
     if (sessionId) keepHistoryId(e.rec, sessionId);
     const waiting = new Set(e.pending.map((p) => p.itemId));
     const transcript = e.rec.engine === "own" ? e.rec.items.filter((i) => !waiting.has(i.id) && !(i.kind === "user" && i.unsent)) : undefined;
+    const model = e.rec.model;
     let opened: { conversation: EngineConversation; launch: { sessionId: string } };
     try {
       opened = await this.o.open({
@@ -325,6 +347,7 @@ export class Chats {
         ...(resumeId ? { resumeId } : {}),
         ...(sessionId ? { sessionId } : {}),
         ...(transcript ? { transcript } : {}),
+        ...(model ? { model } : {}),
       });
     } catch (err) {
       if (e.opening !== opening) return;
@@ -360,6 +383,14 @@ export class Chats {
     keepHistoryId(e.rec, conv.engineSessionId); // Codex: the thread id, known once the thread started
     e.unsubs = [conv.onUpdate((u) => this.update(e, conv, u)), conv.onEnd((x) => this.ended(e, conv, x))];
     e.state = "ready";
+    // Changed while it opened: the new one goes from the first message.
+    if (e.rec.model !== model) conv.setModel?.(e.rec.model);
+    // A model the engine no longer lists: its default.
+    if (e.rec.model && conv.models)
+      conv.models().then(
+        (l) => void (e.conv === conv && e.rec.model && !l.some((m) => m.value === e.rec.model) && this.setModel(e.rec.id, "")),
+        () => {},
+      );
     this.pump(e);
     this.push(e);
   }

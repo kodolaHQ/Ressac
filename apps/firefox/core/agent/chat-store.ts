@@ -12,6 +12,8 @@ export type ChatRecord = ChatSummary & {
   engineSessionId?: string;
   /** The engine's ids of every conversation it opened, even one with no turn yet: only to erase their history. */
   historyIds?: string[];
+  /** Claude, Codex: the model chosen in the chat, from the engine's own list; absent: the engine's default. */
+  model?: string;
   items: ChatItem[];
 };
 

@@ -12,6 +12,14 @@ class FakeConv implements EngineConversation {
   answers: [string, AskReply][] = [];
   cancels = 0;
   closed = false;
+  modelsSet: (string | undefined)[] = [];
+  list = [{ value: "", name: "Défaut" }, { value: "opus", name: "Opus" }, { value: "sonnet", name: "Sonnet" }];
+  async models() {
+    return this.list;
+  }
+  setModel(m: string | undefined) {
+    this.modelsSet.push(m);
+  }
   private updates = new Set<(u: SessionUpdate) => void>();
   private ends = new Set<(e: { code: number | null; error?: string }) => void>();
   constructor(readonly engineSessionId: string) {}
@@ -710,4 +718,45 @@ test("a turn ending on its step cap shows the engine's text (own model)", async 
   chats.prompt(a.summary.id, "deux", "deux");
   opens[0]!.conv.endTurn();
   expect(chats.active("w1")?.error).toBeUndefined();
+});
+
+test("model: a new discussion takes the one given, opens with it, and keeps it on disk", async () => {
+  const { chats, opens, onDisk } = prepare();
+  const a = await chats.create("w1", { ...opts, model: "opus" });
+  await tick();
+  expect(opens[0]!.o.model).toBe("opus");
+  expect(chats.modelOf(a.summary.id)).toBe("opus");
+  expect(onDisk(a.summary.id).model).toBe("opus");
+  const b = await chats.create("w1", opts);
+  await tick();
+  expect(opens[1]!.o.model).toBeUndefined();
+  expect(chats.modelOf(b.summary.id)).toBeUndefined();
+});
+
+test("setModel: the live conversation switches (no restart), the record keeps it for the next open", async () => {
+  const { chats, opens, onDisk } = prepare();
+  const a = await chats.create("w1", opts);
+  await tick();
+  await chats.setModel(a.summary.id, "sonnet");
+  expect(opens[0]!.conv.modelsSet).toEqual(["sonnet"]);
+  expect(opens).toHaveLength(1);
+  expect(onDisk(a.summary.id).model).toBe("sonnet");
+  await chats.setModel(a.summary.id, "");
+  expect(opens[0]!.conv.modelsSet).toEqual(["sonnet", undefined]);
+  expect(chats.modelOf(a.summary.id)).toBeUndefined();
+  await chats.setModel(a.summary.id, "opus");
+  await chats.pause(a.summary.id);
+  chats.prompt(a.summary.id, "re", "re");
+  await tick();
+  expect(opens[1]!.o.model).toBe("opus");
+});
+
+test("a model the engine no longer lists falls back to its default at open", async () => {
+  const { chats, opens } = prepare();
+  const a = await chats.create("w1", { ...opts, model: "gone" });
+  await tick();
+  await tick();
+  expect(opens[0]!.conv.modelsSet).toEqual([undefined]);
+  expect(chats.modelOf(a.summary.id)).toBeUndefined();
+  expect(await chats.models(a.summary.id)).toEqual(opens[0]!.conv.list);
 });
