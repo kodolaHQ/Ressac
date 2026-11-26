@@ -68,3 +68,14 @@ test("a discussion saved with the panel's context in its title and bubble reads 
   await s.write(rec("b", { items: [{ kind: "user", id: "u1", text: "Bonjour" }] }));
   expect((await s.read("b"))?.items[0]).toEqual({ kind: "user", id: "u1", text: "Bonjour" });
 });
+
+test("a hostile old message (pages markers repeated, never closed) reads back in linear time", async () => {
+  const { store: s } = store();
+  const text = "x" + ' — [{"title":'.repeat(1500);
+  await s.write(rec("a", { title: "[contexte : " + text.slice(0, 20), items: [{ kind: "user", id: "u1", text }] }));
+  const t0 = performance.now();
+  const r = (await s.read("a"))!;
+  // Generous bound: the old regex took seconds on this; a linear parse takes well under a millisecond.
+  expect(performance.now() - t0).toBeLessThan(500);
+  expect(r.items[0]).toEqual({ kind: "user", id: "u1", text });
+});

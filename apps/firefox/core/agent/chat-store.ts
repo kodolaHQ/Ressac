@@ -22,11 +22,21 @@ export const TITLE_MAX = 40;
 
 /** Up to 0.1.28 a message kept the panel's context ahead of it and the pages' data after it in its bubble and its title. */
 const OLD_CONTEXT = /^\[contexte : (?:.*? — )?\S*\] /;
-const OLD_PAGES = / — [^\n]*? \[\{"(?:tab|title)":.*\}\]$/;
+/** The text without its trailing ` — <note> [{"tab"|"title":…}]`: the last ` [{"`, parsed, never a backtracking regex (a stored text is untrusted). */
+function withoutOldPages(text: string): string {
+  const at = text.lastIndexOf(' [{"');
+  const dash = at < 0 ? -1 : text.lastIndexOf(" — ", at);
+  if (dash < 0 || text.slice(dash, at).includes("\n") || !/^\[\{"(?:tab|title)":/.test(text.slice(at + 1))) return text;
+  try {
+    return Array.isArray(JSON.parse(text.slice(at + 1))) ? text.slice(0, dash) : text;
+  } catch {
+    return text;
+  }
+}
 function cleanOld(rec: ChatRecord): ChatRecord {
   for (const i of rec.items) {
     if (i.kind !== "user" || i.display !== undefined) continue;
-    const own = i.text.replace(OLD_CONTEXT, "").replace(OLD_PAGES, "");
+    const own = withoutOldPages(i.text.replace(OLD_CONTEXT, ""));
     if (own !== i.text) i.display = own;
   }
   const first = rec.items.find((i) => i.kind === "user");
