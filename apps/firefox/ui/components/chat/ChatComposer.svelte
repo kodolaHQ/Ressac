@@ -268,6 +268,8 @@
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
         active = nextIndex(active, items.length, e.key);
+        // The focus stays in the text (aria-activedescendant): the list scrolls to the chosen row itself.
+        void tick().then(() => box?.ownerDocument.getElementById(`chat-composer-menu-${active}`)?.scrollIntoView({ block: "nearest" }));
         return;
       }
       if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {

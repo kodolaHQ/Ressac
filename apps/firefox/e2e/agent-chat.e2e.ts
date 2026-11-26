@@ -335,6 +335,14 @@ it("le menu « / » : filtré à la frappe, au clavier, /modèle ouvre le choix 
   await agentSays("Bien reçu.");
   await type("/");
   await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["model", "new", "mode", "agent", "terminal", "search", "read", "tabs", "history", "bookmarks"]);
+  // ↑ from the first row wraps to the last: the list scrolls with it, the chosen row stays in sight.
+  await pressKeys(m, "ArrowUp");
+  await expect.poll(activeKey).toBe("bookmarks");
+  const inSight = "const r = doc.querySelector('[data-testid=\"chat-menu-item\"].active').getBoundingClientRect(), b = doc.querySelector('[data-testid=\"chat-command-menu\"]').getBoundingClientRect(); return r.top >= b.top - 1 && r.bottom <= b.bottom + 1";
+  await waitAgent(inSight);
+  await pressKeys(m, "ArrowDown");
+  await expect.poll(activeKey).toBe("model");
+  await waitAgent(inSight);
   await typeText(m, "mod");
   await expect.poll(menuKeys, { timeout: 10_000 }).toEqual(["model", "mode"]);
   await pressKeys(m, "ArrowDown");
