@@ -485,7 +485,8 @@
   .right .handle { left: auto; right: 0; }
   .handle:hover, .handle:active { background: color-mix(in srgb, var(--accent) 40%, transparent); }
   /* The panel's header moves the window, its menu aside. */
-  header { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 12px; flex: none; -moz-window-dragging: drag; }
+  /* Wraps in a narrow panel: « Revenir au chat » goes under the mode switch rather than past the edge. */
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; min-height: 40px; padding: 4px 12px; box-sizing: border-box; flex: none; -moz-window-dragging: drag; }
   /* A narrow panel shortens the agent's name, never pushes the mode switch out. */
   header select { -moz-window-dragging: no-drag; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .orb { flex: none; width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(from var(--ang), var(--a1), var(--a2), var(--a3), var(--a1)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--a2) 16%, transparent); transition: box-shadow 300ms var(--out); }
@@ -519,6 +520,8 @@
   .mask-banner.lock p { flex: 1; min-width: 0; margin: 0; }
   .mask-banner .lift-open { flex: none; margin: 0; padding: 4px 10px; font-size: 12px; }
   .terminal[hidden] { display: none; }
-  .back { flex: none; margin: 0 0 0 auto; padding: 4px 10px; font-size: 12px; -moz-window-dragging: no-drag; }
+  /* After the mode switch, both sit together at the right edge (on a line of their own in a narrow panel). */
+  .mode + .back { margin-left: 0; }
+  .back { flex: none; margin: 0 0 0 auto; padding: 4px 10px; font-size: 12px; white-space: nowrap; -moz-window-dragging: no-drag; }
   .typed { flex: none; margin: -2px 14px 6px; color: var(--text-muted); font-size: 11.5px; line-height: 1.3; animation: ressac-rise var(--spring-d) var(--spring) backwards; }
 </style>

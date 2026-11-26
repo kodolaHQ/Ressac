@@ -282,6 +282,11 @@ it("panneau étroit : le modèle est en bas, l'en-tête laisse sa place à la li
   expect(await waitAgent<boolean>("return doc.querySelector('[data-testid=\"chat-model-menu\"]').getBoundingClientRect().bottom <= doc.querySelector('[data-testid=\"chat-model-chip\"]').getBoundingClientRect().top")).toBe(true);
   // Inside the narrow panel: never past its left or right edge.
   expect(await waitAgent<boolean>("const r = doc.querySelector('[data-testid=\"chat-model-menu\"]').getBoundingClientRect(); return r.left >= 0 && r.right <= doc.defaultView.innerWidth")).toBe(true);
+  // Mode avancé: the terminal's header keeps « Revenir au chat » whole inside the panel, next to the mode switch.
+  await pressKeys(m, "Escape");
+  await click(m, '[data-testid="chat-advanced"]', { frame: "agent" });
+  await waitAgent("return !!doc.querySelector('[data-testid=\"agent-mode\"]') && !!doc.querySelector('[data-testid=\"chat-back\"]')");
+  expect(await waitAgent<boolean>("const b = doc.querySelector('[data-testid=\"chat-back\"]'), r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= doc.defaultView.innerWidth && b.scrollWidth <= b.clientWidth")).toBe(true);
   if (process.env.RESSAC_E2E_SHOTS) {
     const png = (await m.command<{ value: string }>("WebDriver:TakeScreenshot", { full: false, hash: false })).value;
     writeFileSync(join(process.env.RESSAC_E2E_SHOTS, "chat-model-340.png"), Buffer.from(png, "base64"));
